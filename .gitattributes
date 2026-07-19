@@ -1,0 +1,32 @@
+# Normalização de fim de linha.
+#
+# O Git converte para LF ao commitar. Isso é certo para código, e fatal para os
+# scripts do Windows: um .bat com LF quebra `goto`, rótulos e blocos entre
+# parênteses de formas silenciosas e difíceis de diagnosticar — o cmd lê o
+# rótulo com um caractere invisível grudado e simplesmente não o encontra.
+#
+# Por isso os scripts do Windows são forçados a CRLF no checkout, sempre,
+# independentemente do sistema de quem clonou.
+
+* text=auto eol=lf
+
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binários: nunca converter.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary
+*.zip  binary
+*.node binary
+
+# Não polui o diff nem conta como código nas estatísticas do GitHub.
+pnpm-lock.yaml linguist-generated=true -diff

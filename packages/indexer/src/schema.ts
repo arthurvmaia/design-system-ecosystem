@@ -1,0 +1,192 @@
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
+
+/**
+ * Schema do SQLite.
+ *
+ * Regras:
+ * - Nomes de tabela e coluna em snake_case (convenção SQL).
+ * - Timestamps em unix ms (integer).
+ * - JSON blobs guardados como text; sempre validados por Zod ao ler.
+ * - Foreign keys explícitas com onDelete comportamento definido.
+ */
+
+// ── Design Systems ─────────────────────────────────────────────────────────
+export const designSystems = sqliteTable(
+  'design_systems',
+  {
+    id: text('id').primaryKey(),
+    sourceUrl: text('source_url'),
+    sourceHash: text('source_hash').notNull(),
+    extractedAt: integer('extracted_at').notNull(),
+    name: text('name').notNull(),
+    stackJson: text('stack_json'),
+    status: text('status').notNull(),
+    vaultPath: text('vault_path').notNull(),
+    errorMessage: text('error_message'),
+  },
+  (t) => ({
+    sourceHashUnique: uniqueIndex('design_systems_source_hash_uq').on(t.sourceHash),
+    statusIdx: index('design_systems_status_idx').on(t.status),
+  }),
+);
+
+// ── Segments (candidatos antes da curadoria) ───────────────────────────────
+export const segments = sqliteTable(
+  'segments',
+  {
+    id: text('id').primaryKey(),
+    designSystemId: text('design_system_id')
+      .notNull()
+      .references(() => designSystems.id, { onDelete: 'cascade' }),
+    category: text('category').notNull(),
+    kind: text('kind').notNull(),
+    name: text('name').notNull(),
+    htmlSnippet: text('html_snippet').notNull(),
+    previewPath: text('preview_path'),
+    position: integer('position').notNull(),
+    inLibrary: integer('in_library', { mode: 'boolean' }).notNull().default(false),
+  },
+  (t) => ({
+    dsCategoryIdx: index('segments_ds_category_idx').on(t.designSystemId, t.category),
+    inLibraryIdx: index('segments_in_library_idx').on(t.inLibrary),
+  }),
+);
+
+// ── Library Components (o ativo curado) ────────────────────────────────────
+export const libraryComponents = sqliteTable(
+  'library_components',
+  {
+    id: text('id').primaryKey(),
+    segmentId: text('segment_id').references(() => segments.id, { onDelete: 'set null' }),
+    designSystemId: text('design_system_id').references(() => designSystems.id, {
+      onDelete: 'set null',
+    }),
+    category: text('category').notNull(),
+    kind: text('kind').notNull(),
+    name: text('name').notNull(),
+    bundlePath: text('bundle_path').notNull(),
+    bundleHash: text('bundle_hash').notNull(),
+    tokensJson: text('tokens_json'),
+    addedAt: integer('added_at').notNull(),
+    notes: text('notes'),
+  },
+  (t) => ({
+    categoryIdx: index('library_components_category_idx').on(t.category),
+    addedAtIdx: index('library_components_added_at_idx').on(t.addedAt),
+    bundleHashIdx: index('library_components_bundle_hash_idx').on(t.bundleHash),
+  }),
+);
+
+// ── Tags de componentes ────────────────────────────────────────────────────
+export const componentTags = sqliteTable(
+  'component_tags',
+  {
+    componentId: text('component_id')
+      .notNull()
+      .references(() => libraryComponents.id, { onDelete: 'cascade' }),
+    tag: text('tag').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.componentId, t.tag] }),
+    tagIdx: index('component_tags_tag_idx').on(t.tag),
+  }),
+);
+
+// ── Dependências de componentes ────────────────────────────────────────────
+export const componentDependencies = sqliteTable(
+  'component_dependencies',
+  {
+    componentId: text('component_id')
+      .notNull()
+      .references(() => libraryComponents.id, { onDelete: 'cascade' }),
+    depType: text('dep_type').notNull(),
+    depPath: text('dep_path'),
+    depUrl: text('dep_url'),
+  },
+  (t) => ({
+    componentIdx: index('component_deps_component_idx').on(t.componentId),
+  }),
+);
+
+// ── Projects (sites gerados) ───────────────────────────────────────────────
+export const projects = sqliteTable(
+  'projects',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+    contentJson: text('content_json'),
+    brandingJson: text('branding_json'),
+    mediaManifestJson: text('media_manifest_json'),
+    /** ProjectLayout serializado: blueprint escolhido, slots ligados, densidade e movimento. */
+    layoutJson: text('layout_json'),
+    status: text('status').notNull(),
+  },
+  (t) => ({
+    updatedAtIdx: index('projects_updated_at_idx').on(t.updatedAt),
+    statusIdx: index('projects_status_idx').on(t.status),
+  }),
+);
+
+// ── Relação project → components ───────────────────────────────────────────
+export const projectComponents = sqliteTable(
+  'project_components',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    componentId: text('component_id')
+      .notNull()
+      .references(() => libraryComponents.id, { onDelete: 'restrict' }),
+    role: text('role').notNull(),
+    position: integer('position').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.projectId, t.componentId, t.position] }),
+  }),
+);
+
+// ── LLM cache (regenerável, mas evita custo) ───────────────────────────────
+export const llmCache = sqliteTable('llm_cache', {
+  inputHash: text('input_hash').primaryKey(),
+  operation: text('operation').notNull(),
+  outputJson: text('output_json').notNull(),
+  costUsd: integer('cost_usd_micros'),
+  createdAt: integer('created_at').notNull(),
+});
+
+// ── Tasks (histórico de operações longas) ──────────────────────────────────
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    operation: text('operation').notNull(),
+    status: text('status').notNull(),
+    createdAt: integer('created_at').notNull(),
+    startedAt: integer('started_at'),
+    completedAt: integer('completed_at'),
+    inputJson: text('input_json').notNull(),
+    outputJson: text('output_json'),
+    errorMessage: text('error_message'),
+  },
+  (t) => ({
+    statusIdx: index('tasks_status_idx').on(t.status),
+    createdAtIdx: index('tasks_created_at_idx').on(t.createdAt),
+  }),
+);
+
+// SQL bruto para o FTS5 virtual table de busca textual em componentes.
+// A instrução é executada em migrate.ts porque drizzle-kit não gera
+// CREATE VIRTUAL TABLE. Mantida aqui como documentação da estrutura.
+// CREATE VIRTUAL TABLE IF NOT EXISTS components_fts USING fts5(
+//   component_id UNINDEXED, name, notes, tags,
+//   tokenize = 'unicode61 remove_diacritics 2'
+// );

@@ -1,0 +1,228 @@
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
+import { queueDoneDir, queueLotePath, queuePendingDir } from './paths.js';
+import type { QueueJob, QueueJobType } from './schemas/queue.js';
+
+/** Operações de fila. Puro sistema de arquivos — sem processo, sem watcher, sem daemon. */
+
+const ensureDirs = (): void => {
+  for (const dir of [queuePendingDir(), queueDoneDir()]) {
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  }
+};
+
+const newJobId = (): string =>
+  `job_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+/** Registra um pedido. Retorna o job gravado — não executa nada. */
+export const enqueueJob = (
+  type: QueueJobType,
+  label: string,
+  payload: Record<string, unknown>,
+): QueueJob => {
+  ensureDirs();
+  const job: QueueJob = {
+    id: newJobId(),
+    type,
+    label,
+    status: 'pendente',
+    createdAt: Date.now(),
+    completedAt: null,
+    payload,
+    result: null,
+    error: null,
+  };
+  writeFileSync(join(queuePendingDir(), `${job.id}.json`), JSON.stringify(job, null, 2), 'utf8');
+  return job;
+};
+
+const readJobs = (dir: string): QueueJob[] => {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => {
+      try {
+        return JSON.parse(readFileSync(join(dir, f), 'utf8')) as QueueJob;
+      } catch {
+        return null;
+      }
+    })
+    .filter((j): j is QueueJob => j !== null)
+    .sort((a, b) => a.createdAt - b.createdAt);
+};
+
+export const listPendingJobs = (): QueueJob[] => readJobs(queuePendingDir());
+export const listDoneJobs = (): QueueJob[] => readJobs(queueDoneDir());
+
+// ── Lote em processamento ──────────────────────────────────────────────────
+
+/**
+ * Os ids que a rodada atual pegou, e o quanto cada um já andou por dentro.
+ *
+ * `ids` sozinho só permite contar jobs inteiros — a barra saltaria de 0 para
+ * 100 numa extração única e ficaria parada por minutos. `etapas` guarda o
+ * progresso interno que quem processa reporta, e é o que faz o número subir de
+ * forma contínua.
+ */
+export type QueueLote = {
+  ids: string[];
+  startedAt: number;
+  /** jobId → 0..100. Ausente significa "ainda não reportou nada". */
+  etapas?: Record<string, number>;
+};
+
+/** Marca o início de uma rodada. Chamado pelo `fila:escolher`. */
+export const setLote = (ids: string[]): QueueLote => {
+  ensureDirs();
+  const lote: QueueLote = { ids, startedAt: Date.now(), etapas: {} };
+  writeFileSync(queueLotePath(), JSON.stringify(lote, null, 2), 'utf8');
+  return lote;
+};
+
+/**
+ * Registra o avanço interno de um job. Chamado pelo `fila:progresso`.
+ *
+ * Silencioso quando não há lote: reportar progresso fora de uma rodada não é
+ * erro, é só irrelevante.
+ */
+export const reportarProgresso = (jobId: string, percentual: number): void => {
+  const lote = getLote();
+  if (lote === null) return;
+
+  const limpo = Math.max(0, Math.min(100, Math.round(percentual)));
+  const atualizado: QueueLote = {
+    ...lote,
+    etapas: { ...(lote.etapas ?? {}), [jobId]: limpo },
+  };
+  writeFileSync(queueLotePath(), JSON.stringify(atualizado, null, 2), 'utf8');
+};
+
+export const getLote = (): QueueLote | null => {
+  const path = queueLotePath();
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as QueueLote;
+  } catch {
+    return null;
+  }
+};
+
+/** Encerra a rodada. Sem isso a barra ficaria congelada em 100% para sempre. */
+export const clearLote = (): void => {
+  const path = queueLotePath();
+  if (existsSync(path)) {
+    try {
+      unlinkSync(path);
+    } catch {
+      // Arquivo já removido ou em uso. Não vale derrubar o fluxo por isso.
+    }
+  }
+};
+
+/**
+ * Quanto da rodada atual já andou, de 0 a 100.
+ *
+ * Combina duas fontes, e a ordem de confiança importa:
+ *
+ * 1. **O disco.** Um job que saiu de `pendente/` está feito, ponto — vale 100
+ *    independente do que tenha sido reportado. É o piso confiável.
+ * 2. **O reporte de etapa.** Para o job que ainda está rodando, usa o que o
+ *    processador informou via `fila:progresso`.
+ *
+ * Um job em andamento é limitado a 99 de propósito: 100% só aparece quando o
+ * trabalho realmente fechou. Se ninguém reportar nada, a barra ainda avança a
+ * cada job concluído — degrada para o comportamento antigo em vez de travar.
+ */
+export const getProgresso = (): {
+  total: number;
+  concluidos: number;
+  percentual: number;
+} | null => {
+  const lote = getLote();
+  if (lote === null || lote.ids.length === 0) return null;
+
+  const pendentes = new Set(listPendingJobs().map((j) => j.id));
+  const etapas = lote.etapas ?? {};
+
+  let concluidos = 0;
+  let acumulado = 0;
+
+  for (const id of lote.ids) {
+    if (!pendentes.has(id)) {
+      concluidos++;
+      acumulado += 100;
+      continue;
+    }
+    acumulado += Math.min(99, etapas[id] ?? 0);
+  }
+
+  return {
+    total: lote.ids.length,
+    concluidos,
+    percentual: Math.round(acumulado / lote.ids.length),
+  };
+};
+
+export const getJob = (id: string): QueueJob | null => {
+  for (const dir of [queuePendingDir(), queueDoneDir()]) {
+    const path = join(dir, `${id}.json`);
+    if (existsSync(path)) {
+      try {
+        return JSON.parse(readFileSync(path, 'utf8')) as QueueJob;
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+};
+
+/** Move um job de pendente para concluído, anexando resultado ou erro. */
+export const finishJob = (
+  id: string,
+  outcome: { result?: Record<string, unknown>; error?: string },
+): QueueJob | null => {
+  ensureDirs();
+  const pendingPath = join(queuePendingDir(), `${id}.json`);
+  if (!existsSync(pendingPath)) return null;
+
+  const job = JSON.parse(readFileSync(pendingPath, 'utf8')) as QueueJob;
+  const updated: QueueJob = {
+    ...job,
+    status: outcome.error === undefined ? 'concluido' : 'erro',
+    completedAt: Date.now(),
+    result: outcome.result ?? null,
+    error: outcome.error ?? null,
+  };
+
+  const donePath = join(queueDoneDir(), `${id}.json`);
+  writeFileSync(donePath, JSON.stringify(updated, null, 2), 'utf8');
+  renameSync(pendingPath, join(queueDoneDir(), `.${id}.consumed`));
+  return updated;
+};
+
+/** Remove um pedido da fila sem executá-lo. */
+export const cancelJob = (id: string): boolean => {
+  const pendingPath = join(queuePendingDir(), `${id}.json`);
+  if (!existsSync(pendingPath)) return false;
+  const job = JSON.parse(readFileSync(pendingPath, 'utf8')) as QueueJob;
+  writeFileSync(
+    join(queueDoneDir(), `${id}.json`),
+    JSON.stringify(
+      { ...job, status: 'erro', completedAt: Date.now(), error: 'cancelado' },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+  renameSync(pendingPath, join(queueDoneDir(), `.${id}.consumed`));
+  return true;
+};

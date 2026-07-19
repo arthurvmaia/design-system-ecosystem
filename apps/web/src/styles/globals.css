@@ -1,0 +1,636 @@
+@import "tailwindcss";
+
+/**
+ * Tema: obsidian + crimson + bone.
+ *
+ * Preto, branco e vermelho escuro. O vermelho nunca aparece chapado em área
+ * grande — ele sempre nasce do preto por gradiente, o que dá profundidade sem
+ * transformar a tela num alerta.
+ *
+ * A linguagem de superfície é vidro: painéis translúcidos com blur e saturação
+ * sobre um fundo com luz ambiente em movimento lento. Isso é o que separa uma
+ * interface viva de uma tabela pintada de escuro.
+ *
+ * O vocabulário de superfície e movimento vem da referência glass-green-effect,
+ * recolorido: onde ela usa teal, aqui é crimson. Cards que inclinam em 3D sob o
+ * cursor, bordas em gradiente recortado, brilho pulsante e flutuação lenta —
+ * tudo apoiado no mesmo vidro.
+ */
+@theme {
+  /* Cores. */
+  --color-obsidian-0: #000000;
+  --color-obsidian-1: #060606;
+  --color-obsidian-2: #0d0d0d;
+  --color-obsidian-3: #141414;
+  --color-obsidian-4: #1f1f1f;
+  --color-obsidian-5: #2a2a2a;
+
+  --color-crimson-9: #3d0a0a;
+  --color-crimson-8: #520f0f;
+  --color-crimson-7: #6b1414;
+  --color-crimson-6: #8a1a1a;
+  --color-crimson-5: #a81f1f;
+  --color-crimson-4: #c62828;
+  --color-crimson-3: #e03535;
+
+  --color-bone-1: #ffffff;
+  --color-bone-2: #e8e8e8;
+  --color-bone-3: #a8a8a8;
+  --color-bone-4: #757575;
+  --color-bone-5: #4f4f4f;
+  --color-bone-6: #383838;
+
+  /* Semânticas. */
+  --color-bg: var(--color-obsidian-1);
+  --color-surface: var(--color-obsidian-2);
+  --color-surface-elevated: var(--color-obsidian-3);
+  --color-border: var(--color-obsidian-4);
+  --color-border-strong: var(--color-obsidian-5);
+  --color-fg: var(--color-bone-1);
+  --color-fg-muted: var(--color-bone-3);
+  --color-fg-subtle: var(--color-bone-4);
+  --color-primary: var(--color-crimson-7);
+  --color-primary-hover: var(--color-crimson-6);
+  --color-signal: var(--color-crimson-4);
+
+  /* Tipografia: display angular e técnica, corpo neutro, mono para dados. */
+  --font-display: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Raios generosos, como na referência. Vidro com canto quase reto lê como
+     recorte; com canto redondo lê como painel flutuando sobre o fundo. */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* Curva única para todo movimento da interface. */
+  --ease-ds: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-body);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background-color: var(--color-crimson-7);
+    color: var(--color-bone-1);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+}
+
+/* ── Luz ambiente ────────────────────────────────────────────────────────────
+   Duas manchas de vermelho muito diluído que derivam devagar atrás de todo o
+   conteúdo. É o que impede o preto de parecer morto. Fica em z-index 0 e não
+   captura ponteiro. */
+.ds-ambient {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+}
+
+.ds-ambient-1 {
+  top: -10%;
+  left: -5%;
+  width: 45vw;
+  height: 45vw;
+  background: radial-gradient(circle, rgba(138, 26, 26, 0.16) 0%, transparent 68%);
+  filter: blur(60px);
+  animation: ds-drift-1 22s var(--ease-ds) infinite alternate;
+}
+
+.ds-ambient-2 {
+  bottom: -15%;
+  right: -8%;
+  width: 55vw;
+  height: 55vw;
+  background: radial-gradient(circle, rgba(107, 20, 20, 0.13) 0%, transparent 70%);
+  filter: blur(80px);
+  animation: ds-drift-2 28s var(--ease-ds) infinite alternate;
+}
+
+@keyframes ds-drift-1 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    transform: translate(12vw, 8vh) scale(1.18);
+  }
+}
+
+@keyframes ds-drift-2 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    transform: translate(-10vw, -6vh) scale(0.88);
+  }
+}
+
+/* ── Vidro ───────────────────────────────────────────────────────────────── */
+.ds-glass {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.045) 0%,
+    rgba(255, 255, 255, 0.015) 100%
+  );
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: all 0.35s var(--ease-ds);
+}
+
+.ds-glass:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.075) 0%, rgba(198, 40, 40, 0.05) 100%);
+  border-color: rgba(198, 40, 40, 0.28);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(198, 40, 40, 0.1);
+}
+
+/* Vidro que não reage ao mouse — para painéis de leitura. */
+.ds-glass-static {
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Blur forte isolado, para barras que flutuam sobre conteúdo rolando. */
+.ds-backdrop {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+/* Vidro que adensa sob o cursor — para barras de métrica sobre imagem. */
+.ds-glass-lift {
+  transition: all 0.4s var(--ease-ds);
+}
+
+.ds-glass-lift:hover {
+  backdrop-filter: blur(30px) saturate(200%);
+  -webkit-backdrop-filter: blur(30px) saturate(200%);
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-3px);
+}
+
+/* ── Cartão com profundidade ─────────────────────────────────────────────────
+   A assinatura da referência: o cartão não sobe reto, ele inclina. O `perspective`
+   precisa estar aqui — a referência original o esqueceu, e sem ele o rotateX/Y
+   vira uma deformação chapada e o translateZ do conteúdo não faz nada. Com ele,
+   o conteúdo descola da borda e ganha paralaxe. */
+.ds-card {
+  position: relative;
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transition: transform 0.4s var(--ease-ds), box-shadow 0.4s var(--ease-ds);
+}
+
+.ds-card:hover {
+  transform: perspective(1000px) translateY(-8px) rotateX(2deg) rotateY(-2deg);
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1), 0 0 60px
+    rgba(198, 40, 40, 0.2);
+}
+
+.ds-card-content {
+  transition: transform 0.4s var(--ease-ds);
+}
+
+.ds-card:hover .ds-card-content {
+  transform: translateZ(20px);
+}
+
+/* ── Borda em gradiente ──────────────────────────────────────────────────────
+   A moldura vive num pseudo-elemento e é recortada por mask-composite, deixando
+   visível só o 1px da borda. É o jeito de animar um gradiente de contorno sem
+   repintar a superfície. A referência usa `xor`, que só existe no prefixo webkit;
+   a propriedade padrão pede `exclude`. Declaramos as duas. */
+.ds-glow-border {
+  position: relative;
+  border: 1px solid rgba(198, 40, 40, 0.3);
+  transition: all 0.3s var(--ease-ds);
+}
+
+.ds-glow-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(198, 40, 40, 0.6),
+    rgba(224, 53, 53, 0.3),
+    rgba(198, 40, 40, 0.6)
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s var(--ease-ds);
+}
+
+.ds-glow-border:hover::before {
+  opacity: 1;
+}
+
+.ds-glow-border:hover {
+  border-color: rgba(198, 40, 40, 0.6);
+  box-shadow: 0 0 20px rgba(198, 40, 40, 0.3);
+  transform: translateY(-1px);
+}
+
+/* ── Brilho ──────────────────────────────────────────────────────────────────
+   Onde a referência usa teal, aqui é crimson. Duas camadas de sombra sem blur
+   de superfície: uma curta e saturada, outra larga e diluída. */
+.ds-glow {
+  box-shadow: 0 0 20px rgba(198, 40, 40, 0.3), 0 0 40px rgba(198, 40, 40, 0.1);
+}
+
+.ds-glow-intense {
+  box-shadow: 0 0 30px rgba(198, 40, 40, 0.4), 0 0 60px rgba(198, 40, 40, 0.2), inset 0 1px 0
+    rgba(255, 255, 255, 0.1);
+  transition: all 0.3s var(--ease-ds);
+}
+
+.ds-glow-intense:hover {
+  box-shadow: 0 0 40px rgba(198, 40, 40, 0.6), 0 0 80px rgba(198, 40, 40, 0.3), inset 0 1px 0
+    rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px) scale(1.05);
+}
+
+/* ── Reações ao cursor ───────────────────────────────────────────────────── */
+.ds-hover-lift {
+  transition: all 0.3s var(--ease-ds);
+}
+
+.ds-hover-lift:hover {
+  transform: translateY(-4px) scale(1.02);
+}
+
+.ds-hover-float {
+  transition: all 0.4s var(--ease-ds);
+}
+
+.ds-hover-float:hover {
+  transform: translateY(-6px);
+  filter: drop-shadow(0 10px 30px rgba(198, 40, 40, 0.2));
+}
+
+.ds-hover-glow {
+  transition: all 0.3s var(--ease-ds);
+}
+
+.ds-hover-glow:hover {
+  color: var(--color-crimson-3);
+  text-shadow: 0 0 25px rgba(198, 40, 40, 0.6), 0 0 50px rgba(198, 40, 40, 0.3);
+}
+
+/* Etiqueta que cresce e acende sob o cursor. */
+.ds-tag {
+  transition: all 0.3s var(--ease-ds);
+}
+
+.ds-tag:hover {
+  background: linear-gradient(135deg, rgba(198, 40, 40, 0.2), rgba(107, 20, 20, 0.1));
+  border-color: rgba(198, 40, 40, 0.6);
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 8px 25px rgba(198, 40, 40, 0.2);
+}
+
+/* Texto que vira gradiente sob o cursor. */
+.ds-interactive-text {
+  transition: all 0.3s var(--ease-ds);
+}
+
+.ds-interactive-text:hover {
+  background: linear-gradient(135deg, var(--color-crimson-4), var(--color-crimson-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* A marca inclina e o ponto pulsa. */
+.ds-logo-hover {
+  transition: all 0.4s var(--ease-ds);
+}
+
+.ds-logo-hover:hover {
+  transform: rotate(-5deg) scale(1.1);
+}
+
+.ds-logo-hover:hover .ds-logo-dot {
+  animation: ds-beat 0.6s ease-in-out;
+}
+
+@keyframes ds-beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+/* ── Movimento contínuo ──────────────────────────────────────────────────────
+   Flutuação e brilho pulsante. Só em elemento isolado — se dois vizinhos
+   flutuam fora de fase, a tela inteira parece tremer. */
+.ds-float {
+  animation: ds-float 6s ease-in-out infinite;
+}
+
+@keyframes ds-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.ds-glow-pulse {
+  animation: ds-glow-pulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes ds-glow-pulse {
+  from {
+    box-shadow: 0 0 20px rgba(198, 40, 40, 0.3), 0 0 40px rgba(198, 40, 40, 0.1);
+  }
+  to {
+    box-shadow: 0 0 30px rgba(198, 40, 40, 0.5), 0 0 60px rgba(198, 40, 40, 0.2);
+  }
+}
+
+/* ── Superfícies com gradiente para o preto ──────────────────────────────── */
+.ds-gradient-crimson {
+  background: linear-gradient(135deg, var(--color-crimson-7) 0%, var(--color-obsidian-0) 130%);
+}
+
+.ds-gradient-panel {
+  background: linear-gradient(160deg, rgba(107, 20, 20, 0.14) 0%, rgba(0, 0, 0, 0) 55%);
+}
+
+/* Lavagem de cor bem fraca, para diferenciar um painel do vizinho sem borda. */
+.ds-gradient-glow {
+  background: linear-gradient(135deg, rgba(198, 40, 40, 0.1), rgba(107, 20, 20, 0.05));
+}
+
+.ds-gradient-text {
+  background: linear-gradient(120deg, var(--color-bone-1) 20%, var(--color-crimson-3) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Botão com varredura ─────────────────────────────────────────────────── */
+.ds-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s var(--ease-ds);
+}
+
+.ds-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -100%;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  transition: left 0.55s var(--ease-ds);
+}
+
+.ds-btn:hover::before {
+  left: 100%;
+}
+
+.ds-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(107, 20, 20, 0.45);
+}
+
+.ds-btn:active {
+  transform: translateY(0);
+}
+
+/* ── Entradas ────────────────────────────────────────────────────────────────
+   Atenção ao combinar com hover: `ds-slide-up` e `ds-scale-in` animam transform
+   com fill-mode `both`, então continuam aplicando o valor final depois de
+   terminar — e animação vence :hover na cascata. Quem precisar de entrada E de
+   hover com transform (`.ds-card`, `.ds-hover-lift`, `.ds-tag`) põe a entrada
+   num invólucro e o hover no filho. `ds-fade-in` não tem esse problema: só mexe
+   em opacidade. */
+.ds-fade-in {
+  animation: ds-fade-in 0.7s var(--ease-ds) both;
+}
+.ds-slide-up {
+  animation: ds-slide-up 0.6s var(--ease-ds) both;
+}
+.ds-scale-in {
+  animation: ds-scale-in 0.5s var(--ease-ds) both;
+}
+
+@keyframes ds-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ds-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ds-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.ds-d1 {
+  animation-delay: 0.05s;
+}
+.ds-d2 {
+  animation-delay: 0.1s;
+}
+.ds-d3 {
+  animation-delay: 0.15s;
+}
+.ds-d4 {
+  animation-delay: 0.2s;
+}
+.ds-d5 {
+  animation-delay: 0.25s;
+}
+.ds-d6 {
+  animation-delay: 0.3s;
+}
+
+/* ── Revelação no scroll ─────────────────────────────────────────────────── */
+.ds-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.65s var(--ease-ds), transform 0.65s var(--ease-ds);
+}
+
+.ds-reveal.ds-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Sinais ──────────────────────────────────────────────────────────────── */
+@keyframes ds-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+}
+
+.ds-signal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--color-signal);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-signal) 22%, transparent);
+  animation: ds-pulse 1.6s ease-in-out infinite;
+}
+
+.ds-active-bar {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--color-crimson-4), var(--color-crimson-8));
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  box-shadow: 0 0 12px rgba(198, 40, 40, 0.5);
+}
+
+/* Barra de progresso indeterminada. */
+@keyframes ds-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.ds-progress {
+  position: relative;
+  overflow: hidden;
+  height: 2px;
+  background: var(--color-obsidian-4);
+}
+
+.ds-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 25%;
+  background: linear-gradient(90deg, transparent, var(--color-crimson-4), transparent);
+  animation: ds-sweep 1.4s var(--ease-ds) infinite;
+}
+
+/* Texto com brilho discreto — só em títulos de destaque. */
+.ds-text-glow {
+  text-shadow: 0 0 24px rgba(198, 40, 40, 0.35);
+}
+
+/* Números e identificadores em mono, com tracking técnico. */
+.ds-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── Acessibilidade ──────────────────────────────────────────────────────────
+   Quem pede menos movimento recebe a interface inteira sem animação, incluindo
+   as manchas de fundo — que são o efeito mais pesado da página. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .ds-ambient {
+    display: none;
+  }
+
+  .ds-reveal {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* As transformações de hover não são animação — precisam ser desligadas uma
+     a uma, senão continuam saltando de imediato mesmo sem transição. */
+  .ds-card:hover,
+  .ds-card:hover .ds-card-content,
+  .ds-glow-border:hover,
+  .ds-glow-intense:hover,
+  .ds-glass-lift:hover,
+  .ds-hover-lift:hover,
+  .ds-hover-float:hover,
+  .ds-tag:hover,
+  .ds-logo-hover:hover {
+    transform: none;
+  }
+}

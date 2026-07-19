@@ -1,0 +1,259 @@
+$ErrorActionPreference = 'Stop'
+$raiz = Split-Path -Parent $PSScriptRoot
+Set-Location $raiz
+
+$Host.UI.RawUI.WindowTitle = 'Design System Ecosystem'
+
+function Titulo($texto) {
+    Write-Host ''
+    Write-Host "  $texto" -ForegroundColor Cyan
+    Write-Host ''
+}
+function Ok($texto)     { Write-Host "  [OK] $texto" -ForegroundColor Green }
+function Passo($texto)  { Write-Host "  ... $texto" -ForegroundColor Yellow }
+function Erro($texto)   { Write-Host "  [ERRO] $texto" -ForegroundColor Red }
+
+function Parar($mensagem) {
+    Write-Host ''
+    Erro $mensagem
+    Write-Host ''
+    Write-Host '  Pressione ENTER para fechar.' -ForegroundColor DarkGray
+    Read-Host | Out-Null
+    exit 1
+}
+
+Clear-Host
+Write-Host ''
+Write-Host '  ===========================================' -ForegroundColor Cyan
+Write-Host '     DESIGN SYSTEM ECOSYSTEM' -ForegroundColor Cyan
+Write-Host '  ===========================================' -ForegroundColor Cyan
+
+# --- 1. Node.js -------------------------------------------------------------
+Titulo 'Verificando o ambiente'
+
+$node = Get-Command node -ErrorAction SilentlyContinue
+if (-not $node) {
+    Parar @'
+Node.js nao esta instalado.
+
+Baixe a versao LTS em https://nodejs.org
+Instale, feche esta janela e clique no INICIAR de novo.
+'@
+}
+
+$versaoNode = (node --version) -replace 'v', ''
+$major = [int]($versaoNode -split '\.')[0]
+if ($major -lt 20) {
+    Parar "Node.js $versaoNode e antigo demais. Instale a versao LTS em https://nodejs.org"
+}
+Ok "Node.js $versaoNode"
+
+# --- 2. pnpm ----------------------------------------------------------------
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    Passo 'Instalando o pnpm (primeira vez, ~30s)'
+    npm install -g pnpm@9.15.0 2>&1 | Out-Null
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+                [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+        Parar 'O pnpm foi instalado mas nao foi encontrado. Feche esta janela e clique no INICIAR de novo.'
+    }
+}
+Ok "pnpm $(pnpm --version)"
+
+# --- 3. Dependencias --------------------------------------------------------
+# O pnpm liga cada dependencia com uma junction que guarda CAMINHO ABSOLUTO.
+# Se a pasta do projeto for movida, copiada ou renomeada, todas as ligacoes
+# continuam apontando para o lugar antigo e o app morre logo no inicio com
+# "Cannot find module ...\node_modules\turbo\bin\turbo".
+# Detectamos isso aqui e refazemos a instalacao sozinhos, entao o projeto roda
+# de qualquer pasta do computador.
+
+function MotivoParaReinstalar {
+    $nm = Join-Path $raiz 'node_modules'
+
+    if (-not (Test-Path -LiteralPath $nm)) {
+        return 'primeira vez nesta pasta'
+    }
+
+    # --- Instalacao vinda de outro computador (zip) -------------------------
+    # Este e o caso que mais quebra na pratica: alguem compacta a pasta inteira
+    # com node_modules dentro e manda para outra pessoa.
+    #
+    # Ao compactar, o Windows desfaz as junctions do pnpm - vira pasta comum ou
+    # some. Do outro lado, as checagens abaixo passam (as pastas existem, os
+    # arquivos-sonda existem) mas o conteudo esta incompleto ou apontando para
+    # um caminho que nao existe naquela maquina, e o app morre com erro de
+    # modulo nao encontrado.
+    #
+    # O .modules.yaml e a prova documental: o pnpm grava ali o caminho ABSOLUTO
+    # do virtual store daquela instalacao. Se ele nao esta dentro desta pasta,
+    # esta instalacao nasceu em outro lugar e nao serve aqui.
+    $modulesYaml = Join-Path $nm '.modules.yaml'
+    if (Test-Path -LiteralPath $modulesYaml) {
+        $linha = Select-String -LiteralPath $modulesYaml -Pattern '^\s*virtualStoreDir:\s*(.+)$' |
+                 Select-Object -First 1
+        if ($linha) {
+            $store = $linha.Matches[0].Groups[1].Value.Trim().Trim("'", '"')
+            # Caminho relativo significa instalacao local a esta pasta: ok.
+            if ([System.IO.Path]::IsPathRooted($store) -and
+                -not $store.StartsWith($raiz, [StringComparison]::OrdinalIgnoreCase)) {
+                return 'estas dependencias vieram de outro computador'
+            }
+        }
+    } else {
+        # node_modules sem .modules.yaml nao foi produzido por um pnpm install
+        # saudavel. Quase sempre e resto de zip.
+        return 'a pasta node_modules esta corrompida'
+    }
+
+    # Cuidado: Test-Path numa junction quebrada devolve $true, porque o link em
+    # si existe. Quem denuncia a mudanca de pasta e o alvo do link.
+    foreach ($link in Get-ChildItem -LiteralPath $nm -Force -Directory -ErrorAction SilentlyContinue) {
+        $alvo = @($link.Target)[0]
+        if ($alvo -and -not $alvo.StartsWith($raiz, [StringComparison]::OrdinalIgnoreCase)) {
+            return 'a pasta do projeto mudou de lugar'
+        }
+    }
+
+    # Sondas: arquivos que o "pnpm dev" precisa alcancar de verdade.
+    foreach ($sonda in @('turbo\bin\turbo', 'typescript\package.json')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $nm $sonda))) {
+            return 'a instalacao anterior ficou incompleta'
+        }
+    }
+
+    # O better-sqlite3 e binario nativo, compilado para um Node e uma
+    # arquitetura especificos. Um zip carrega o .node de quem compactou, que
+    # pode nao servir aqui. Carregar e a unica forma honesta de saber.
+    $probe = Join-Path $raiz 'node_modules\better-sqlite3'
+    if (Test-Path -LiteralPath $probe) {
+        node -e "require('better-sqlite3')" 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            return 'o modulo nativo do banco nao roda nesta maquina'
+        }
+    }
+
+    return $null
+}
+
+function LimparInstalacao {
+    $alvos = @(Join-Path $raiz 'node_modules')
+    foreach ($grupo in @('apps', 'packages')) {
+        $dir = Join-Path $raiz $grupo
+        if (Test-Path -LiteralPath $dir) {
+            foreach ($sub in Get-ChildItem -LiteralPath $dir -Directory) {
+                $alvos += Join-Path $sub.FullName 'node_modules'
+            }
+        }
+    }
+    foreach ($alvo in $alvos) {
+        # rmdir apaga a junction em si; nunca segue para o conteudo do alvo.
+        if (Test-Path -LiteralPath $alvo) { cmd /c rmdir /s /q "$alvo" }
+    }
+
+    # Caches indexados por caminho absoluto ficam invalidos pelo mesmo motivo.
+    # Roda depois do node_modules sumir, senao a varredura entra nele e demora.
+    Get-ChildItem -LiteralPath $raiz -Recurse -Force -Directory -Filter '.turbo' -ErrorAction SilentlyContinue |
+        ForEach-Object { cmd /c rmdir /s /q "$($_.FullName)" }
+    Get-ChildItem -LiteralPath $raiz -Recurse -Force -File -Filter '*.tsbuildinfo' -ErrorAction SilentlyContinue |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+}
+
+$motivo = MotivoParaReinstalar
+if ($motivo) {
+    Passo "Preparando as dependencias - $motivo (1-2 min)"
+    LimparInstalacao
+    pnpm install
+    if ($LASTEXITCODE -ne 0) { Parar 'Falha ao instalar as dependencias. Me mande print do erro acima.' }
+
+    $restou = MotivoParaReinstalar
+    if ($restou) { Parar "A instalacao terminou, mas $restou. Me mande print desta janela." }
+}
+Ok 'Dependencias instaladas'
+
+# --- 4. Chave da Anthropic --------------------------------------------------
+$envPath      = Join-Path $raiz 'apps\server\.env'
+$exemploPath  = Join-Path $raiz 'apps\server\.env.example'
+
+if (-not (Test-Path $envPath)) {
+    Copy-Item $exemploPath $envPath
+}
+
+# Le e grava sempre em UTF-8 sem BOM. O padrao do PowerShell 5.1 e outro
+# (ANSI na leitura, UTF-8 com BOM na escrita), e isso corrompe os acentos dos
+# comentarios do .env um pouco mais a cada execucao.
+$utf8SemBom = New-Object System.Text.UTF8Encoding($false)
+$conteudo = [System.IO.File]::ReadAllText($envPath, [System.Text.Encoding]::UTF8)
+$temChave = $conteudo -match '(?m)^ANTHROPIC_API_KEY=\s*sk-'
+
+if (-not $temChave) {
+    Titulo 'Configurando a chave da Anthropic'
+    Write-Host '  Cole abaixo a chave da API da Anthropic (comeca com sk-ant-).' -ForegroundColor Gray
+    Write-Host '  Voce pega em: https://console.anthropic.com/settings/keys' -ForegroundColor Gray
+    Write-Host ''
+    $chave = (Read-Host '  Chave').Trim()
+
+    if ($chave -notmatch '^sk-ant-') {
+        Parar 'Essa chave nao parece valida (precisa comecar com sk-ant-). Clique no INICIAR de novo.'
+    }
+
+    $conteudo = $conteudo -replace '(?m)^ANTHROPIC_API_KEY=.*$', "ANTHROPIC_API_KEY=$chave"
+    [System.IO.File]::WriteAllText($envPath, $conteudo, $utf8SemBom)
+    Ok 'Chave salva'
+}
+Ok 'Chave da Anthropic configurada'
+
+# --- 5. Banco de dados ------------------------------------------------------
+$dbPath = Join-Path $env:USERPROFILE 'design-system-ecosystem\ecosystem.db'
+if (-not (Test-Path $dbPath)) {
+    Passo 'Criando o banco de dados (so na primeira vez)'
+    pnpm db:migrate
+    if ($LASTEXITCODE -ne 0) { Parar 'Falha ao criar o banco. Me mande print do erro acima.' }
+}
+Ok 'Banco de dados pronto'
+
+# --- 6. Porta livre? --------------------------------------------------------
+$ocupada = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
+if ($ocupada) {
+    Write-Host ''
+    Write-Host '  O app ja esta rodando em outra janela.' -ForegroundColor Yellow
+    Start-Process 'http://localhost:5173'
+    Write-Host '  Abri no navegador. Pode fechar esta janela.' -ForegroundColor Gray
+    Write-Host ''
+    Write-Host '  Pressione ENTER para fechar.' -ForegroundColor DarkGray
+    Read-Host | Out-Null
+    exit 0
+}
+
+# --- 7. Abre o navegador assim que o app subir ------------------------------
+Start-Job -ScriptBlock {
+    for ($i = 0; $i -lt 90; $i++) {
+        Start-Sleep -Seconds 1
+        $pronto = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
+        if ($pronto) {
+            Start-Sleep -Seconds 2
+            Start-Process 'http://localhost:5173'
+            return
+        }
+    }
+} | Out-Null
+
+# --- 8. Sobe o app ----------------------------------------------------------
+Titulo 'Iniciando o app'
+Write-Host '  O navegador abre sozinho em alguns segundos.' -ForegroundColor Gray
+Write-Host '  Endereco: http://localhost:5173' -ForegroundColor White
+Write-Host ''
+Write-Host '  NAO FECHE ESTA JANELA enquanto estiver usando o app.' -ForegroundColor Yellow
+Write-Host '  Para parar: aperte Ctrl+C ou feche a janela.' -ForegroundColor Gray
+Write-Host ''
+Write-Host '  -------------------------------------------' -ForegroundColor DarkGray
+
+try {
+    pnpm dev
+} finally {
+    Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+    Write-Host ''
+    Write-Host '  App encerrado.' -ForegroundColor Gray
+    Write-Host '  Pressione ENTER para fechar.' -ForegroundColor DarkGray
+    Read-Host | Out-Null
+}

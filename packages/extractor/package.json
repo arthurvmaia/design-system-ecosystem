@@ -1,0 +1,24 @@
+{
+  "name": "@ds/extractor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./prompt": "./src/prompt.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "node ../../scripts/limpar.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
+    "@ds/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

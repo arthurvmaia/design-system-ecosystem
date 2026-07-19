@@ -1,0 +1,35 @@
+{
+  "name": "design-system-ecosystem",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma para engenharia reversa de sites, curadoria de componentes e geração de novos sites a partir da biblioteca curada.",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "pnpm --filter @ds/indexer db:generate",
+    "db:migrate": "pnpm --filter @ds/indexer db:migrate",
+    "fila": "tsx scripts/fila.ts",
+    "fila:escolher": "tsx scripts/selecionar.ts",
+    "fila:progresso": "tsx scripts/fila-progresso.ts",
+    "fila:concluir": "tsx scripts/fila-concluir.ts",
+    "fila:limpar": "tsx scripts/fila-limpar.ts",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "tsx": "^4.19.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@ds/shared": "workspace:^"
+  }
+}

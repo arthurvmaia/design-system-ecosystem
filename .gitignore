@@ -1,0 +1,32 @@
+node_modules
+dist
+.turbo
+*.log
+.DS_Store
+.vscode
+.idea
+coverage
+*.tsbuildinfo
+apps/web/vite.config.d.ts
+apps/web/vite.config.js
+
+# Segredos. O .env.example fica versionado de propósito: é o molde, sem chave.
+# Se algum destes for commitado, a chave da Anthropic vira pública no GitHub e
+# precisa ser rotacionada no console — não basta apagar o arquivo depois.
+.env
+.env.*
+!.env.example
+
+# Zip gerado pelo EMPACOTAR.bat.
+*.zip
+
+# Dados de runtime. Ficam em ~/design-system-ecosystem, mas se alguém apontar
+# o DS_ECOSYSTEM_ROOT para dentro do repo, não vão junto.
+ecosystem-data/
+vault/
+library/
+projects/
+queue/
+*.db
+*.db-shm
+*.db-wal

@@ -1,0 +1,34 @@
+{
+  "name": "@ds/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "node ../../scripts/limpar.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
+    "@ds/classifier": "workspace:*",
+    "@ds/extractor": "workspace:*",
+    "@ds/generator": "workspace:*",
+    "@ds/indexer": "workspace:*",
+    "@ds/isolator": "workspace:*",
+    "@ds/segmenter": "workspace:*",
+    "@ds/shared": "workspace:*",
+    "@ds/tokens": "workspace:*",
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.4.1",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.36.4",
+    "hono": "^4.6.14",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
