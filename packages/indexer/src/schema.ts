@@ -115,6 +115,55 @@ export const componentDependencies = sqliteTable(
   }),
 );
 
+// ── Kits (Design Systems finais) ───────────────────────────────────────────
+/**
+ * Um kit é um Design System FINAL: um conjunto nomeado e persistente de
+ * componentes escolhidos da Biblioteca, que representa as decisões visuais de
+ * uma marca ou de um estilo.
+ *
+ * É a entidade que faltava entre a Biblioteca (acervo solto) e o site gerado:
+ * a Biblioteca guarda tudo que você já gostou de qualquer lugar; o kit é o
+ * subconjunto coerente que você montou de propósito para gerar sites.
+ */
+export const kits = sqliteTable(
+  'kits',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    description: text('description'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    updatedAtIdx: index('kits_updated_at_idx').on(t.updatedAt),
+  }),
+);
+
+/**
+ * Componentes de um kit, com posição estável.
+ *
+ * `onDelete: cascade` no componente: quando um item sai da Biblioteca, sai dos
+ * kits junto. A interface mostra o impacto ANTES de deixar apagar — o cascade
+ * é o mecanismo, não o aviso.
+ */
+export const kitComponents = sqliteTable(
+  'kit_components',
+  {
+    kitId: text('kit_id')
+      .notNull()
+      .references(() => kits.id, { onDelete: 'cascade' }),
+    componentId: text('component_id')
+      .notNull()
+      .references(() => libraryComponents.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.kitId, t.componentId] }),
+    kitIdx: index('kit_components_kit_idx').on(t.kitId),
+    componentIdx: index('kit_components_component_idx').on(t.componentId),
+  }),
+);
+
 // ── Projects (sites gerados) ───────────────────────────────────────────────
 export const projects = sqliteTable(
   'projects',
@@ -123,6 +172,12 @@ export const projects = sqliteTable(
     name: text('name').notNull(),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
+    /**
+     * O Design System final que este site usa como base visual. `set null` na
+     * exclusão: o site gerado sobrevive ao kit (os arquivos estão em disco),
+     * só perde a referência de origem.
+     */
+    kitId: text('kit_id').references(() => kits.id, { onDelete: 'set null' }),
     contentJson: text('content_json'),
     brandingJson: text('branding_json'),
     mediaManifestJson: text('media_manifest_json'),
@@ -133,6 +188,7 @@ export const projects = sqliteTable(
   (t) => ({
     updatedAtIdx: index('projects_updated_at_idx').on(t.updatedAt),
     statusIdx: index('projects_status_idx').on(t.status),
+    kitIdx: index('projects_kit_idx').on(t.kitId),
   }),
 );
 

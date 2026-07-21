@@ -1,10 +1,24 @@
 import { z } from 'zod';
 
 /**
- * Categorias de componente. Correspondem à sidebar da galeria no mockup.
- * A lista fica versionada aqui para que o classifier LLM tenha um vocabulário fechado.
+ * Categorias de componente. A lista fica versionada aqui para que o classifier
+ * LLM tenha um vocabulário fechado.
+ *
+ * São dois grupos com origens diferentes:
+ *
+ * **Seções** (`hero`, `nav`, `pricing`, …) saem de um pedaço real do DOM. É uma
+ * fatia da página, do jeito que ela está lá.
+ *
+ * **Sistemas** (`typography`, `interaction`, e também `button` e `card` quando
+ * vêm do segundo passe) não existem como um nó só em lugar nenhum: são
+ * varreduras do documento inteiro que juntam o que se repete. A família de
+ * botões de um site está espalhada por dez seções; o conjunto tipográfico
+ * idem. Reunir isso é o que permite curtir "a tipografia deste site" em vez de
+ * curtir vinte títulos soltos.
  */
 export const ComponentCategory = z.enum([
+  'typography',
+  'interaction',
   'hero',
   'header',
   'nav',

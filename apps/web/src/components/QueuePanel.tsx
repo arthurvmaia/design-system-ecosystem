@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Terminal, X } from 'lucide-react';
+import { FluxoProgresso } from './FluxoProgresso';
 
 /**
  * Painel da fila.
@@ -86,7 +87,13 @@ export function QueuePanel() {
     <div className="ds-glass-static ds-slide-up rounded-lg p-4">
       <Cabecalho estado={estado} quantidade={pendentes.length} />
 
-      {data.progresso !== null && <BarraProgresso progresso={data.progresso} />}
+      {data.progresso !== null && (
+        <FluxoProgresso
+          percentual={data.progresso.percentual}
+          total={data.progresso.total}
+          tipo={pendentes[0]?.type ?? data.done[0]?.type ?? 'extract'}
+        />
+      )}
 
       {data.erros > 0 && (
         <div className="mt-3 text-[11px]" style={{ color: SEMAFORO.amarelo.cor }}>
@@ -175,37 +182,6 @@ function Cabecalho({ estado, quantidade }: { estado: Semaforo; quantidade?: numb
         >
           {texto}
         </span>
-      </div>
-    </div>
-  );
-}
-
-function BarraProgresso({ progresso }: { progresso: Progresso }) {
-  return (
-    <div className="mt-4">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
-          Processando {progresso.concluidos} de {progresso.total}
-        </span>
-        <span
-          className="ds-data text-[13px]"
-          style={{ color: 'var(--color-signal)', fontFamily: 'var(--font-display)' }}
-        >
-          {progresso.percentual}%
-        </span>
-      </div>
-      <div
-        className="mt-1.5 h-1.5 overflow-hidden rounded-full"
-        style={{ backgroundColor: 'rgba(255, 255, 255, 0.06)' }}
-      >
-        <div
-          className="h-full rounded-full transition-[width] duration-700 ease-out"
-          style={{
-            width: `${progresso.percentual}%`,
-            backgroundColor: 'var(--color-primary)',
-            boxShadow: '0 0 12px var(--color-primary)',
-          }}
-        />
       </div>
     </div>
   );

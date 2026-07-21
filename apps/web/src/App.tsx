@@ -1,6 +1,7 @@
 import { Shell } from '@/components/Shell';
 import { ExtractPage } from '@/routes/Extract';
 import { GalleryPage } from '@/routes/Gallery';
+import { KitsPage } from '@/routes/Kits';
 import { LibraryPage } from '@/routes/Library';
 import { MeusProjetosPage } from '@/routes/MeusProjetos';
 import { ProjectsPage } from '@/routes/Projects';
@@ -28,6 +29,7 @@ export function App() {
             <Route path="/extract" element={<ExtractPage />} />
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/library" element={<LibraryPage />} />
+            <Route path="/design-systems" element={<KitsPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/meus-projetos" element={<MeusProjetosPage />} />
             <Route path="/settings" element={<SettingsPage />} />

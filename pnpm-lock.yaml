@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@ds/indexer':
+        specifier: workspace:^
+        version: link:packages/indexer
+      '@ds/segmenter':
+        specifier: workspace:^
+        version: link:packages/segmenter
       '@ds/shared':
         specifier: workspace:^
         version: link:packages/shared

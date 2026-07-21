@@ -53,8 +53,7 @@ export const validateExtraction = (workDir: string): ValidationResult => {
       const amostra = faltando.slice(0, 6).join(', ');
       const resto = faltando.length > 6 ? ` (e mais ${faltando.length - 6})` : '';
       errors.push(
-        `design-system.html referencia ${faltando.length} arquivo(s) que não existem: ${amostra}${resto}. ` +
-          'Provavelmente os STEPs 2 a 4 não gravaram os assets antes do HTML ser escrito.',
+        `design-system.html referencia ${faltando.length} arquivo(s) que não existem: ${amostra}${resto}. Provavelmente os STEPs 2 a 4 não gravaram os assets antes do HTML ser escrito.`,
       );
     }
   }

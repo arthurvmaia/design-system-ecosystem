@@ -96,48 +96,81 @@ const selectorMatches = (
   return matched;
 };
 
-/** Concatena todos os CSS files da pasta assets/css. */
-const concatCss = (cssDir: string): string => {
-  if (!existsSync(cssDir)) return '';
-  const files = readdirSync(cssDir).filter((f) => f.endsWith('.css'));
-  return files
-    .map((f) => `/* --- ${f} --- */\n${readFileSync(join(cssDir, f), 'utf8')}`)
-    .join('\n\n');
+/** Lê os arquivos CSS da pasta assets/css, cada um com seu nome. */
+const readCssFiles = (cssDir: string): Array<{ name: string; css: string }> => {
+  if (!existsSync(cssDir)) return [];
+  return readdirSync(cssDir)
+    .filter((f) => f.endsWith('.css'))
+    .map((f) => ({ name: f, css: readFileSync(join(cssDir, f), 'utf8') }));
 };
 
-/** Roda o isolamento. */
-export const isolateComponent = (opts: IsolateOptions): IsolationResult => {
-  const used = collectUsedTokens(opts.html);
-  const cssIn = concatCss(opts.cssDir);
-  const cssBytesTotal = cssIn.length;
-
-  const parsed = postcss.parse(cssIn);
-  let rulesTotal = 0;
-  let rulesKept = 0;
+/**
+ * Isola um bloco de CSS: mantém só as regras cujos seletores casam com o
+ * componente. Pode lançar `CssSyntaxError` se o CSS tiver sintaxe que o postcss
+ * não engole — quem chama decide o que fazer com isso.
+ */
+const isolarBloco = (
+  css: string,
+  used: { classes: Set<string>; tags: Set<string>; ids: Set<string> },
+): { css: string; total: number; kept: number } => {
+  const parsed = postcss.parse(css);
+  let total = 0;
+  let kept = 0;
 
   parsed.walkRules((rule) => {
-    rulesTotal++;
-    // Divide seletor por vírgula
+    total++;
     const parts = rule.selector.split(',').map((s) => s.trim());
-    const kept = parts.filter((sel) => selectorMatches(sel, used));
-    if (kept.length === 0) {
+    const mantidos = parts.filter((sel) => selectorMatches(sel, used));
+    if (mantidos.length === 0) {
       rule.remove();
     } else {
-      rule.selector = kept.join(', ');
-      rulesKept++;
+      rule.selector = mantidos.join(', ');
+      kept++;
     }
   });
 
-  // Remove @media / @supports que ficaram vazios
   parsed.walkAtRules((atRule) => {
     if (['media', 'supports'].includes(atRule.name) && (atRule.nodes?.length ?? 0) === 0) {
       atRule.remove();
     }
   });
 
-  const cssOut = parsed.toString();
+  return { css: parsed.toString(), total, kept };
+};
 
-  // Assets referenciados no HTML ou no CSS restante
+/**
+ * Roda o isolamento, arquivo por arquivo.
+ *
+ * Isolar cada arquivo em separado (em vez de concatenar tudo e parsear uma vez)
+ * é o que torna o "curtir" à prova de CSS ruim: um único arquivo com sintaxe que
+ * o postcss não engole — comum em CSS raspado, minificado ou com hacks — deixava
+ * a operação inteira estourar com 500. Agora esse arquivo é mantido cru (o
+ * componente fica menos isolado, mas curável e renderizável, já que a prévia usa
+ * o head do design system de origem), e os demais são isolados normalmente.
+ */
+export const isolateComponent = (opts: IsolateOptions): IsolationResult => {
+  const used = collectUsedTokens(opts.html);
+  const files = readCssFiles(opts.cssDir);
+  const cssBytesTotal = files.reduce((n, f) => n + f.css.length, 0);
+
+  let rulesTotal = 0;
+  let rulesKept = 0;
+  const partes: string[] = [];
+
+  for (const f of files) {
+    partes.push(`/* --- ${f.name} --- */`);
+    try {
+      const r = isolarBloco(f.css, used);
+      rulesTotal += r.total;
+      rulesKept += r.kept;
+      partes.push(r.css);
+    } catch {
+      // CSS que o postcss não engole: mantém cru em vez de derrubar tudo.
+      partes.push(f.css);
+    }
+  }
+
+  const cssOut = partes.join('\n\n');
   const referencedAssets = collectAssetPaths(opts.html, cssOut);
 
   return {

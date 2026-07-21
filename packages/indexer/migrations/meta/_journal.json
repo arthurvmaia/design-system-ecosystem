@@ -15,6 +15,13 @@
       "when": 1784405604682,
       "tag": "0001_fancy_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784484858918,
+      "tag": "0002_overjoyed_jocasta",
+      "breakpoints": true
     }
   ]
 }

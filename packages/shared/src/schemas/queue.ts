@@ -18,7 +18,13 @@ import { z } from 'zod';
 export const QueueJobType = z.enum(['extract', 'classify', 'generate']);
 export type QueueJobType = z.infer<typeof QueueJobType>;
 
-export const QueueJobStatus = z.enum(['pendente', 'concluido', 'erro']);
+/**
+ * `cancelado` é separado de `erro` de propósito. Cancelar é uma decisão de quem
+ * usa — clicar no X da fila — e não tem nada de anormal. Enquanto os dois
+ * dividiam o mesmo status, remover um pedido acendia o alerta do painel e a
+ * pessoa ficava procurando um problema que nunca existiu.
+ */
+export const QueueJobStatus = z.enum(['pendente', 'concluido', 'erro', 'cancelado']);
 export type QueueJobStatus = z.infer<typeof QueueJobStatus>;
 
 export const QueueJob = z.object({

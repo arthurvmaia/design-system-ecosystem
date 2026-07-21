@@ -12,11 +12,29 @@ import {
 } from '@ds/shared';
 import { extractTokens } from '@ds/tokens';
 import { zValidator } from '@hono/zod-validator';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
 export const libraryRoute = new Hono();
+
+/** Tags de um conjunto de componentes, num mapa id → tags[]. */
+const carregarTags = (componentIds: string[]): Map<string, string[]> => {
+  const mapa = new Map<string, string[]>();
+  if (componentIds.length === 0) return mapa;
+  const db = getDb();
+  const rows = db
+    .select()
+    .from(tables.componentTags)
+    .where(inArray(tables.componentTags.componentId, componentIds))
+    .all();
+  for (const r of rows) {
+    const atual = mapa.get(r.componentId);
+    if (atual) atual.push(r.tag);
+    else mapa.set(r.componentId, [r.tag]);
+  }
+  return mapa;
+};
 
 libraryRoute.get('/', (c) => {
   const db = getDb();
@@ -25,7 +43,8 @@ libraryRoute.get('/', (c) => {
     .from(tables.libraryComponents)
     .orderBy(desc(tables.libraryComponents.addedAt))
     .all();
-  return c.json({ items: rows });
+  const tags = carregarTags(rows.map((r) => r.id));
+  return c.json({ items: rows.map((r) => ({ ...r, tags: tags.get(r.id) ?? [] })) });
 });
 
 libraryRoute.get('/:id', (c) => {
@@ -36,7 +55,32 @@ libraryRoute.get('/:id', (c) => {
     .where(eq(tables.libraryComponents.id, c.req.param('id')))
     .get();
   if (!row) return c.json({ error: 'not_found' }, 404);
-  return c.json({ item: row });
+  const tags = carregarTags([row.id]);
+  return c.json({ item: { ...row, tags: tags.get(row.id) ?? [] } });
+});
+
+/**
+ * O que acontece se este componente sair da Biblioteca. A UI pergunta antes de
+ * apagar; o cascade do schema executa depois.
+ */
+libraryRoute.get('/:id/impacto', (c) => {
+  const id = c.req.param('id');
+  const db = getDb();
+  const links = db
+    .select()
+    .from(tables.kitComponents)
+    .where(eq(tables.kitComponents.componentId, id))
+    .all();
+  const kitIds = links.map((l) => l.kitId);
+  const kits =
+    kitIds.length > 0
+      ? db
+          .select({ id: tables.kits.id, name: tables.kits.name })
+          .from(tables.kits)
+          .where(inArray(tables.kits.id, kitIds))
+          .all()
+      : [];
+  return c.json({ usadoEmKits: kits });
 });
 
 const AddInput = z.object({ segmentId: z.string().startsWith('seg_') });
@@ -121,19 +165,47 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
 const PatchInput = z.object({
   name: z.string().min(1).optional(),
   notes: z.string().nullable().optional(),
+  category: z.string().min(1).optional(),
+  /** Lista completa. Substitui as tags anteriores. */
+  tags: z.array(z.string().min(1).max(40)).max(12).optional(),
 });
 
 libraryRoute.patch('/:id', zValidator('json', PatchInput), (c) => {
   const id = c.req.param('id');
-  const patch = c.req.valid('json');
+  const { tags, ...patch } = c.req.valid('json');
   const db = getDb();
-  db.update(tables.libraryComponents).set(patch).where(eq(tables.libraryComponents.id, id)).run();
+
+  const existe = db
+    .select({ id: tables.libraryComponents.id })
+    .from(tables.libraryComponents)
+    .where(eq(tables.libraryComponents.id, id))
+    .get();
+  if (!existe) return c.json({ error: 'not_found' }, 404);
+
+  db.transaction((tx) => {
+    if (Object.keys(patch).length > 0) {
+      tx.update(tables.libraryComponents)
+        .set(patch)
+        .where(eq(tables.libraryComponents.id, id))
+        .run();
+    }
+    if (tags !== undefined) {
+      tx.delete(tables.componentTags).where(eq(tables.componentTags.componentId, id)).run();
+      // Normaliza para não guardar "Hero" e "hero" como tags diferentes.
+      const unicas = [...new Set(tags.map((t) => t.trim().toLowerCase()).filter((t) => t !== ''))];
+      for (const tag of unicas) {
+        tx.insert(tables.componentTags).values({ componentId: id, tag }).run();
+      }
+    }
+  });
+
   const row = db
     .select()
     .from(tables.libraryComponents)
     .where(eq(tables.libraryComponents.id, id))
     .get();
-  return c.json({ item: row });
+  const mapaTags = carregarTags([id]);
+  return c.json({ item: { ...row, tags: mapaTags.get(id) ?? [] } });
 });
 
 libraryRoute.delete('/:id', (c) => {

@@ -40,7 +40,9 @@ O `payload` traz `kind: 'url' | 'html'`.
 1. Busque o HTML (WebFetch para URL, ou use o HTML do payload).
 2. **Siga `packages/extractor/src/prompt.ts` literalmente** — os 6 STEPs, na ordem. Esse prompt está na `PROMPT_VERSION = 3` e é o que define a qualidade da extração. Não improvise um processo próprio.
 3. Escreva a saída em `~/design-system-ecosystem/vault/<ds_id>/extracted/`, na mesma estrutura que o extrator da API produz. O `design-system.html` vai nessa pasta, e os assets em `extracted/assets/{css,js,images/svg}/`.
-4. Registre no banco e finalize o job (abaixo).
+4. Registre o design system no banco e finalize o job (abaixo).
+
+**Não segmente à mão.** O `fila:concluir` roda a segmentação sozinho ao fechar o job, usando o mesmo código do modo `api`. Extrair sem segmentar deixa a Galeria com "0 de 0 segmentos" e nada para curar — por isso os dois passos ficam amarrados num comando só, em vez de dependerem de alguém lembrar.
 
 **Grave os assets antes do HTML.** Os STEPs 2 a 4 existem para produzir arquivos; o STEP 5 só escreve os `<link>` e `<script>` que apontam para eles. Escrever o HTML primeiro e deixar os assets para depois é o erro que gera um design system que abre sem estilo nenhum — e o `fila:concluir` agora recusa fechar um job assim, listando o que ficou faltando.
 
@@ -60,12 +62,25 @@ Use a proporção do prompt: STEP 1 ≈ 15, STEP 2 ≈ 35, STEP 3 ≈ 50, STEP 4
 
 ### `generate`
 
-1. Leia `payload.layout`. Ele traz `mode`:
-   - `blueprint` — a estrutura está fixada. Use `getBlueprint(payload.blueprintId)` e `resolveSlots()` de `@ds/shared`. Preencha um componente por slot, na ordem.
+O payload é rico e é a fonte da verdade — não vá ler o banco por fora:
+
+```
+{ projectId, projectName,
+  kitId, kit: { id, name, components: [{ id, name, category, kind, bundlePath }] },
+  layout, blueprintId,
+  branding,   // ProjectBranding: brandName, tone, palette, typography, logoPath, contact, social, mainCta
+  content,    // ProjectContent: sections{ role→texto }, ...
+  media }     // MediaItem[]: { path, kind, slotRole, originalName, ... } (path relativo a projects/<id>/media/)
+```
+
+1. **Use SOMENTE os componentes do kit** (`payload.kit.components`), nunca a Biblioteca inteira. Cada componente tem `bundlePath` — leia `bundlePath/index.html` (marcação) e `bundlePath/styles.css` (estilo isolado). O kit é o Design System final; sair dele traz peças de origens que não conversam.
+2. Leia `payload.layout.mode`:
+   - `blueprint` — a estrutura está fixada. Use `getBlueprint(payload.blueprintId)` e `resolveSlots()` de `@ds/shared`. Um slot por posição, na ordem.
    - `criativo` — você decide a estrutura. Use `pickCreativeDirection(layout.creativeSeed)` e comprometa-se com a direção sorteada.
-2. **Nos dois modos: use apenas componentes da biblioteca curada.** É a regra que não se quebra.
-3. Respeite `density`, `motion` e `preferDesignSystemId` (prioriza peças do mesmo design system, para a página não ficar incoerente).
-4. Escreva em `~/design-system-ecosystem/projects/<prj_id>/generated/<timestamp>/`.
+3. **Preencha cada slot.** Se o kit tem um componente da categoria do slot (ver mapa papel→categoria), use-o e marque-o `data-origem="biblioteca" data-componente="cmp_..."`. Se não tem, **crie** o HTML/CSS/JS daquele slot no estilo do kit (mesmas cores, tipografia, espaçamento, densidade) e marque-o `data-origem="gerado"`. Nenhum slot fica vazio.
+4. **Aplique a marca e o conteúdo do usuário**, não o do site de origem: cores e fontes de `branding`, texto de `content.sections[role]`, contato/redes/CTA de `branding`, logo e mídias de `media` no slot indicado por `slotRole`. Respeite o `tone` ao ajustar copy. Respeite `density` e `motion` do layout.
+5. **NUNCA copie texto, nome ou marca do site de origem.** O kit empresta só o jeito visual; a identidade é a do usuário.
+6. Escreva em `~/design-system-ecosystem/projects/<prj_id>/generated/<timestamp>/` com `index.html` + assets. É o que a tela **Meus sites** serve na prévia e empacota no `.zip`.
 
 ## Finalizando um job
 
@@ -93,13 +108,14 @@ pnpm db:migrate       # aplica migrations
 pnpm fila             # lista a fila
 pnpm fila:escolher    # lista numerado e devolve os ids escolhidos (usado pelo PROCESSAR.bat)
 pnpm fila:progresso   # reporta 0-100 de um job em andamento
-pnpm fila:concluir    # valida a entrega, indexa e fecha um job
+pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
+pnpm segmentar        # segmenta um ds_id à mão (conserto; o fila:concluir já faz sozinho)
 pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
 ```
 
 ## Arquitetura
 
-- `apps/web` — React 19 + Vite + Tailwind v4. Paleta obsidian/crimson/bone. `Meus projetos` (`/meus-projetos`) é o fim da linha: lista só o que tem site gerado em disco e oferece o `.zip`.
+- `apps/web` — React 19 + Vite + Tailwind v4. Paleta obsidian/crimson/bone. Fluxo: Extrair → Galeria (triagem) → Biblioteca (acervo) → Design Systems (kits finais) → Gerar site (wizard a partir de um kit) → Meus sites (`/meus-projetos`, fim da linha: só o que tem site em disco, com prévia via `/site`, `.zip` e edição).
 - `apps/server` — Hono. `EXECUTION_MODE=queue|api` decide se registra em disco ou chama a API.
 - `packages/extractor` — loop agêntico com tools de arquivo. `prompt.ts` é o ativo.
 - `packages/classifier` — categoriza segmentos em lote.

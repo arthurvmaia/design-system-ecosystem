@@ -56,11 +56,59 @@ designSystemsRoute.get('/:id/segments', (c) => {
   return c.json({ items: rows });
 });
 
+/**
+ * Impacto de apagar uma extração: o que deixa de existir e o que sobrevive.
+ * A interface mostra isso ANTES do delete, para a confirmação ser informada.
+ */
+designSystemsRoute.get('/:id/impacto', (c) => {
+  const db = getDb();
+  const id = c.req.param('id');
+  const segs = db
+    .select({ id: tables.segments.id })
+    .from(tables.segments)
+    .where(eq(tables.segments.designSystemId, id))
+    .all();
+  const componentes = db
+    .select({ id: tables.libraryComponents.id, name: tables.libraryComponents.name })
+    .from(tables.libraryComponents)
+    .where(eq(tables.libraryComponents.designSystemId, id))
+    .all();
+  return c.json({
+    segmentos: segs.length,
+    // Componentes da Biblioteca são cópias (bundle próprio em library/), então
+    // sobrevivem — mas as prévias deles perdem fontes e runtime do head da
+    // origem. É perda de fidelidade, não de dados.
+    componentesDaBiblioteca: componentes,
+  });
+});
+
 designSystemsRoute.delete('/:id', (c) => {
   const db = getDb();
   const id = c.req.param('id');
   db.delete(tables.designSystems).where(eq(tables.designSystems.id, id)).run();
   // TODO: apagar vault/{id}/ também. Fica para a Fase 4 quando tiver GC.
+  return c.json({ deleted: true });
+});
+
+/**
+ * Remove um segmento bruto da Galeria.
+ *
+ * A Galeria é material de trabalho, não acervo — excluir um bruto que não
+ * interessa é parte da triagem. O que já foi curado não é tocado: o item da
+ * Biblioteca é uma cópia independente e o vínculo é desfeito via `set null`
+ * pelo próprio schema.
+ *
+ * Previsibilidade: re-segmentar a mesma extração recria a lista completa, e os
+ * excluídos voltam. É o comportamento esperado de material derivado.
+ */
+designSystemsRoute.delete('/:dsId/segments/:segId', (c) => {
+  const db = getDb();
+  const segId = c.req.param('segId');
+  const seg = db.select().from(tables.segments).where(eq(tables.segments.id, segId)).get();
+  if (!seg || seg.designSystemId !== c.req.param('dsId')) {
+    return c.json({ error: 'not_found' }, 404);
+  }
+  db.delete(tables.segments).where(eq(tables.segments.id, segId)).run();
   return c.json({ deleted: true });
 });
 

@@ -28,3 +28,10 @@ if (comErro.length > 0) {
   }
   console.log('');
 }
+
+// Numa linha só, e sem alarme: quem cancelou já sabe que cancelou. Some do
+// relatório de erro, mas não some da vista.
+const cancelados = concluidos.filter((j) => j.status === 'cancelado');
+if (cancelados.length > 0) {
+  console.log(`${cancelados.length} job(s) cancelado(s) por você.\n`);
+}

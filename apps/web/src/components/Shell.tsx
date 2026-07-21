@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
+import { Toaster } from './Toaster';
 import { TopBar } from './TopBar';
 
 /**
@@ -27,6 +28,10 @@ export function Shell() {
           <Outlet />
         </main>
       </div>
+
+      {/* Pilha de toasts — fica fora do <main> com key de rota para não reiniciar
+          a cada navegação. */}
+      <Toaster />
     </div>
   );
 }

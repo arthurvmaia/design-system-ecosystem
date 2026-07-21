@@ -7,7 +7,7 @@
  * job terminou, validando que o que foi produzido existe em disco antes de
  * marcar como concluído — para um job não ser fechado sem entrega.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   finishJob,
@@ -17,6 +17,7 @@ import {
   vaultDsDir,
   vaultExtractedDir,
 } from '@ds/shared';
+import { avisoSpa, segmentarEIndexar } from './segmentar.js';
 
 const [, , jobId, ...rest] = process.argv;
 
@@ -47,8 +48,14 @@ if (erro !== undefined) {
 // Verifica que a entrega existe antes de fechar.
 const problemas: string[] = [];
 
+/** Preenchido quando o job é de extração e passou na validação. */
+let paraSegmentar: `ds_${string}` | null = null;
+
 if (job.type === 'extract') {
   const dsId = job.result?.designSystemId ?? job.payload.designSystemId;
+  if (typeof dsId === 'string' && dsId.startsWith('ds_')) {
+    paraSegmentar = dsId as `ds_${string}`;
+  }
   if (typeof dsId !== 'string') {
     problemas.push('designSystemId não informado — grave o id do design system no job.');
   } else if (!existsSync(vaultDsDir(dsId as `ds_${string}`))) {
@@ -86,8 +93,39 @@ if (job.type === 'generate') {
   const prjId = job.payload.projectId;
   if (typeof prjId !== 'string') {
     problemas.push('projectId ausente no payload.');
-  } else if (!existsSync(projectGeneratedDir(prjId as `prj_${string}`))) {
-    problemas.push(`nenhuma versão gerada em: ${projectGeneratedDir(prjId as `prj_${string}`)}`);
+  } else {
+    const geradosDir = projectGeneratedDir(prjId as `prj_${string}`);
+
+    if (!existsSync(geradosDir)) {
+      problemas.push(`nenhuma versão gerada em: ${geradosDir}`);
+    } else {
+      // Mesma checagem da extração, pelo mesmo motivo: um index.html que
+      // aponta para um CSS inexistente abre sem estilo. Aqui dói ainda mais,
+      // porque é o arquivo que a pessoa vai baixar e mandar para um cliente.
+      const versoes = readdirSync(geradosDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort();
+      const ultima = versoes.at(-1);
+
+      if (ultima === undefined) {
+        problemas.push(`a pasta ${geradosDir} existe mas está vazia.`);
+      } else {
+        const dir = join(geradosDir, ultima);
+        const indexPath = join(dir, 'index.html');
+
+        if (!existsSync(indexPath)) {
+          problemas.push(`index.html não existe em ${dir}`);
+        } else {
+          const faltando = listarAssetsFaltando(dir, readFileSync(indexPath, 'utf8'));
+          if (faltando.length > 0) {
+            problemas.push(
+              `o site gerado referencia ${faltando.length} arquivo(s) que não existem: ${faltando.slice(0, 6).join(', ')}`,
+            );
+          }
+        }
+      }
+    }
   }
 }
 
@@ -96,6 +134,30 @@ if (problemas.length > 0) {
   for (const p of problemas) console.error(`  - ${p}`);
   console.error('\nProduza a saída antes de fechar, ou use --erro para registrar a falha.\n');
   process.exit(1);
+}
+
+// Segmentação. Roda aqui, e não a cargo de quem processou, porque é o passo
+// que já foi esquecido uma vez: o design system entrou no banco como
+// `extracted`, a Galeria abriu com "0 de 0 segmentos" e não havia o que curar.
+// Extrair sem segmentar não entrega nada de útil, então os dois andam juntos.
+if (paraSegmentar !== null) {
+  try {
+    const { total, suspeitoDeSpa } = segmentarEIndexar(paraSegmentar);
+    if (total === 0) {
+      console.error('\nA segmentação não encontrou nenhum componente.');
+      console.error('O design-system.html existe, mas o <body> não tem filhos');
+      console.error('diretos que sirvam como segmento. Refaça a extração.\n');
+      process.exit(1);
+    }
+    console.log(`\n${total} segmento(s) prontos na Galeria.`);
+    // Aviso, não bloqueio: existe página legítima com poucas seções, e recusar
+    // fecharia o job de alguém que sabe o que está fazendo.
+    if (suspeitoDeSpa) console.log(avisoSpa(total));
+  } catch (err) {
+    console.error(`\nFalha ao segmentar: ${err instanceof Error ? err.message : String(err)}`);
+    console.error('O job continua pendente — corrija e rode de novo.\n');
+    process.exit(1);
+  }
 }
 
 finishJob(jobId, { result: { fechadoEm: new Date().toISOString() } });

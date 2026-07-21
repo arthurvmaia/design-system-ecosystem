@@ -44,13 +44,24 @@ export const enqueueJob = (
   return job;
 };
 
+/**
+ * Antes de `cancelado` existir, cancelar gravava `erro` com a palavra no campo
+ * `error`. Esses arquivos continuam em disco e continuariam acusando falha,
+ * então traduzimos na leitura em vez de sair reescrevendo o histórico de quem
+ * já usa o app.
+ */
+const normalizar = (job: QueueJob): QueueJob =>
+  job.status === 'erro' && job.error === 'cancelado'
+    ? { ...job, status: 'cancelado', error: null }
+    : job;
+
 const readJobs = (dir: string): QueueJob[] => {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => f.endsWith('.json'))
     .map((f) => {
       try {
-        return JSON.parse(readFileSync(join(dir, f), 'utf8')) as QueueJob;
+        return normalizar(JSON.parse(readFileSync(join(dir, f), 'utf8')) as QueueJob);
       } catch {
         return null;
       }
@@ -209,18 +220,20 @@ export const finishJob = (
   return updated;
 };
 
-/** Remove um pedido da fila sem executá-lo. */
+/**
+ * Remove um pedido da fila sem executá-lo.
+ *
+ * Grava `cancelado`, não `erro`: quem clicou no X sabe muito bem o que fez, e
+ * marcar isso como falha fazia o painel acusar problema pelo resto da vida do
+ * histórico.
+ */
 export const cancelJob = (id: string): boolean => {
   const pendingPath = join(queuePendingDir(), `${id}.json`);
   if (!existsSync(pendingPath)) return false;
   const job = JSON.parse(readFileSync(pendingPath, 'utf8')) as QueueJob;
   writeFileSync(
     join(queueDoneDir(), `${id}.json`),
-    JSON.stringify(
-      { ...job, status: 'erro', completedAt: Date.now(), error: 'cancelado' },
-      null,
-      2,
-    ),
+    JSON.stringify({ ...job, status: 'cancelado', completedAt: Date.now(), error: null }, null, 2),
     'utf8',
   );
   renameSync(pendingPath, join(queueDoneDir(), `.${id}.consumed`));

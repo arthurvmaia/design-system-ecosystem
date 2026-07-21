@@ -9,10 +9,13 @@ import { logger } from 'hono/logger';
 import { getExecutionMode } from './lib/execution-mode.js';
 import { designSystemsRoute } from './routes/design-systems.js';
 import { healthRoute } from './routes/health.js';
+import { kitsRoute } from './routes/kits.js';
 import { libraryRoute } from './routes/library.js';
 import { meusProjetosRoute } from './routes/meus-projetos.js';
+import { previewRoute } from './routes/preview.js';
 import { projectsRoute } from './routes/projects.js';
 import { queueRoute } from './routes/queue.js';
+import { siteRoute } from './routes/site.js';
 import { tasksRoute } from './routes/tasks.js';
 import { vaultRoute } from './routes/vault.js';
 
@@ -34,11 +37,14 @@ app.use(
 app.route('/health', healthRoute);
 app.route('/api/design-systems', designSystemsRoute);
 app.route('/api/library', libraryRoute);
+app.route('/api/kits', kitsRoute);
 app.route('/api/projects', projectsRoute);
 app.route('/api/meus-projetos', meusProjetosRoute);
+app.route('/api/preview', previewRoute);
 app.route('/api/queue', queueRoute);
 app.route('/api/tasks', tasksRoute);
 app.route('/vault', vaultRoute);
+app.route('/site', siteRoute);
 
 app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404));
 app.onError((err, c) => {

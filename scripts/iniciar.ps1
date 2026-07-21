@@ -125,9 +125,22 @@ function MotivoParaReinstalar {
     # O better-sqlite3 e binario nativo, compilado para um Node e uma
     # arquitetura especificos. Um zip carrega o .node de quem compactou, que
     # pode nao servir aqui. Carregar e a unica forma honesta de saber.
-    $probe = Join-Path $raiz 'node_modules\better-sqlite3'
+    #
+    # A sonda aponta para dentro do packages\indexer porque e de la que a
+    # dependencia e declarada. O pnpm nao ica nada para a raiz, entao procurar
+    # em node_modules\better-sqlite3 nunca achava nada e o teste inteiro era
+    # pulado - justamente no caso que este bloco existe para pegar.
+    #
+    # O caminho vai por argv em vez de embutido no -e: caminho do Windows tem
+    # barra invertida, que dentro de uma string JS viraria escape.
+    #
+    # O try/catch fica dentro do node de proposito. Assim a falha vira codigo
+    # de saida e nada e escrito no stderr - redirecionar stderr de um exe no
+    # PowerShell 5.1, com ErrorActionPreference = Stop, derruba o script em vez
+    # de deixar a mensagem amigavel daqui aparecer.
+    $probe = Join-Path $raiz 'packages\indexer\node_modules\better-sqlite3'
     if (Test-Path -LiteralPath $probe) {
-        node -e "require('better-sqlite3')" 2>$null | Out-Null
+        node -e "try { require(process.argv[1]); process.exit(0) } catch (e) { process.exit(1) }" "$probe" | Out-Null
         if ($LASTEXITCODE -ne 0) {
             return 'o modulo nativo do banco nao roda nesta maquina'
         }

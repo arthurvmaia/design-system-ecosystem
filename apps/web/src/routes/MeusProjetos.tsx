@@ -1,24 +1,21 @@
+import { ConfirmPop } from '@/components/ConfirmPop';
+import { PreviewFrame } from '@/components/PreviewFrame';
+import { type MeusProjetosItem, api, downloadUrl, siteUrl } from '@/lib/api';
+import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { Download, FolderOpen, Package } from 'lucide-react';
-
-/**
- * O fim da linha do fluxo.
- *
- * Projetos lista tudo que foi pedido, inclusive rascunho que nunca gerou nada.
- * Aqui só entra o que virou arquivo em disco — é a diferença entre "pedi" e
- * "está pronto para baixar".
- */
-
-type Versao = { timestamp: string; arquivos: number; bytes: number };
-
-type ProjetoConcluido = {
-  id: string;
-  name: string;
-  status: string;
-  updatedAt: number;
-  versoes: Versao[];
-};
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Copy,
+  Download,
+  ExternalLink,
+  FolderOpen,
+  Loader2,
+  Package,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const formatarBytes = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} b`;
@@ -39,14 +36,7 @@ const formatarData = (nome: string): string => {
 };
 
 export function MeusProjetosPage() {
-  const projetos = useQuery({
-    queryKey: ['meus-projetos'],
-    queryFn: async () => {
-      const res = await fetch('/api/meus-projetos');
-      if (!res.ok) throw new Error('falha ao listar');
-      return res.json() as Promise<{ items: ProjetoConcluido[] }>;
-    },
-  });
+  const projetos = useQuery({ queryKey: ['meus-projetos'], queryFn: api.listMeusProjetos });
 
   const items = projetos.data?.items ?? [];
   useReveal([items.length]);
@@ -57,26 +47,26 @@ export function MeusProjetosPage() {
         className="ds-slide-up text-[10px] uppercase tracking-[0.28em]"
         style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}
       >
-        Fase 8 · Entrega
+        Meus sites
       </div>
       <h1
         className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
-        Meus projetos.
+        Prontos para sair daqui.
       </h1>
       <p
         className="ds-slide-up ds-d2 mt-3 max-w-[62ch] text-[14px] leading-[1.6]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        Tudo que já foi gerado e está pronto para sair daqui. Cada versão é um site completo —
-        baixe o .zip para subir num host ou mandar para alguém.
+        Cada versão é um site completo. Veja a prévia, abra numa aba, baixe o .zip para subir num
+        host — ou volte a editar o projeto e gere de novo.
       </p>
 
       {items.length === 0 ? (
         <VazioState carregando={projetos.isPending} />
       ) : (
-        <div className="mt-10 space-y-4">
+        <div className="mt-10 space-y-5">
           {items.map((projeto) => (
             <CardProjeto key={projeto.id} projeto={projeto} />
           ))}
@@ -86,103 +76,212 @@ export function MeusProjetosPage() {
   );
 }
 
-function CardProjeto({ projeto }: { projeto: ProjetoConcluido }) {
-  const abrirPasta = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/meus-projetos/${projeto.id}/abrir-pasta`, { method: 'POST' });
-      if (!res.ok) throw new Error('falha ao abrir a pasta');
-    },
-  });
+function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [confirmDel, setConfirmDel] = useState(false);
 
   const maisRecente = projeto.versoes[0];
   const anteriores = projeto.versoes.slice(1);
 
-  return (
-    <div className="ds-reveal ds-glass-static rounded-xl p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-[17px] font-medium" style={{ color: 'var(--color-fg)' }}>
-            {projeto.name}
-          </div>
-          <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            {projeto.id} · {projeto.versoes.length}{' '}
-            {projeto.versoes.length === 1 ? 'versão' : 'versões'}
-          </div>
-        </div>
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['meus-projetos'] });
+    qc.invalidateQueries({ queryKey: ['meus-projetos-contagem'] });
+    qc.invalidateQueries({ queryKey: ['projects'] });
+  };
 
-        <div className="flex shrink-0 items-center gap-2">
+  const abrirPasta = useMutation({
+    mutationFn: () => api.abrirPasta(projeto.id),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao abrir a pasta.'),
+  });
+  const duplicar = useMutation({
+    mutationFn: () => api.duplicateProject(projeto.id),
+    onSuccess: () => {
+      invalidate();
+      toast.ok('Projeto duplicado como rascunho. Está em Gerar site.');
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao duplicar.'),
+  });
+  const excluir = useMutation({
+    mutationFn: () => api.deleteProject(projeto.id),
+    onSuccess: () => {
+      invalidate();
+      toast.ok('Projeto excluído.');
+      setConfirmDel(false);
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir.'),
+  });
+
+  return (
+    <div className="ds-reveal ds-glass-static overflow-hidden rounded-xl">
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,340px)_1fr]">
+        {/* Prévia da versão mais recente. */}
+        {maisRecente && (
           <button
             type="button"
-            onClick={() => abrirPasta.mutate()}
-            title="Abrir a pasta no computador"
-            className="ds-btn ds-glow-border ds-backdrop flex items-center gap-2 rounded-full px-4 py-2 text-[12px]"
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.04)',
-              color: 'var(--color-fg)',
-              fontFamily: 'var(--font-body)',
-            }}
+            onClick={() =>
+              window.open(siteUrl(projeto.id, maisRecente.timestamp), '_blank', 'noopener')
+            }
+            className="group block border-b md:border-r md:border-b-0"
+            style={{ borderColor: 'var(--color-border)' }}
+            aria-label={`Abrir ${projeto.name} em nova aba`}
           >
-            <FolderOpen size={13} />
-            Abrir pasta
+            <PreviewFrame
+              src={siteUrl(projeto.id, maisRecente.timestamp)}
+              title={projeto.name}
+              aspect={16 / 10}
+            />
           </button>
+        )}
 
-          {maisRecente !== undefined && (
-            <a
-              href={`/api/meus-projetos/${projeto.id}/download?versao=${encodeURIComponent(maisRecente.timestamp)}`}
-              className="ds-btn ds-glow flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium"
-              style={{
-                backgroundColor: 'var(--color-primary)',
-                color: 'var(--color-bone-1)',
-                fontFamily: 'var(--font-body)',
-              }}
+        <div className="flex flex-col p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div
+                className="truncate text-[17px] font-medium"
+                style={{ color: 'var(--color-fg)' }}
+              >
+                {projeto.name}
+              </div>
+              <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                {projeto.id} · {projeto.versoes.length}{' '}
+                {projeto.versoes.length === 1 ? 'versão' : 'versões'}
+              </div>
+            </div>
+          </div>
+
+          {maisRecente && (
+            <div
+              className="mt-3 flex items-center gap-3 text-[11px]"
+              style={{ color: 'var(--color-fg-muted)' }}
             >
-              <Download size={13} />
-              Baixar .zip
-            </a>
+              <Package size={12} style={{ color: 'var(--color-signal)' }} />
+              <span>Mais recente · {formatarData(maisRecente.timestamp)}</span>
+              <span className="ds-data" style={{ color: 'var(--color-fg-subtle)' }}>
+                {maisRecente.arquivos} arquivos · {formatarBytes(maisRecente.bytes)}
+              </span>
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {maisRecente && (
+              <a
+                href={siteUrl(projeto.id, maisRecente.timestamp)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ds-btn ds-glow-border ds-backdrop flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px]"
+                style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-fg)' }}
+              >
+                <ExternalLink size={12} />
+                Ver site
+              </a>
+            )}
+            {maisRecente && (
+              <a
+                href={downloadUrl(projeto.id, maisRecente.timestamp)}
+                className="ds-btn ds-glow flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium"
+                style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
+              >
+                <Download size={12} />
+                Baixar .zip
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => navigate(`/projects?edit=${projeto.id}`)}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
+              style={{ color: 'var(--color-fg-muted)' }}
+            >
+              <Pencil size={12} />
+              Editar
+            </button>
+            <button
+              type="button"
+              onClick={() => abrirPasta.mutate()}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
+              style={{ color: 'var(--color-fg-muted)' }}
+            >
+              <FolderOpen size={12} />
+              Pasta
+            </button>
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => duplicar.mutate()}
+                disabled={duplicar.isPending}
+                title="Duplicar"
+                className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-white/[0.06]"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                {duplicar.isPending ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Copy size={13} />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDel(true)}
+                title="Excluir"
+                className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(198,40,40,0.16)]"
+                style={{ color: 'var(--color-crimson-3)' }}
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </div>
+
+          {anteriores.length > 0 && (
+            <div
+              className="mt-4 space-y-1.5 border-t pt-3"
+              style={{ borderColor: 'var(--color-border)' }}
+            >
+              {anteriores.map((versao) => (
+                <div
+                  key={versao.timestamp}
+                  className="flex items-center justify-between rounded-md px-2 py-1.5 text-[11px]"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}
+                >
+                  <span style={{ color: 'var(--color-fg-muted)' }}>
+                    {formatarData(versao.timestamp)}
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="ds-data" style={{ color: 'var(--color-fg-subtle)' }}>
+                      {versao.arquivos} arquivos · {formatarBytes(versao.bytes)}
+                    </span>
+                    <a
+                      href={siteUrl(projeto.id, versao.timestamp)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="opacity-50 transition-opacity hover:opacity-100"
+                      title="Abrir esta versão"
+                    >
+                      <ExternalLink size={12} />
+                    </a>
+                    <a
+                      href={downloadUrl(projeto.id, versao.timestamp)}
+                      className="opacity-50 transition-opacity hover:opacity-100"
+                      title="Baixar esta versão"
+                    >
+                      <Download size={12} />
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
 
-      {maisRecente !== undefined && (
-        <div
-          className="mt-4 flex items-center gap-3 border-t pt-3 text-[11px]"
-          style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
-        >
-          <Package size={12} style={{ color: 'var(--color-signal)' }} />
-          <span>Mais recente · {formatarData(maisRecente.timestamp)}</span>
-          <span className="ds-data" style={{ color: 'var(--color-fg-subtle)' }}>
-            {maisRecente.arquivos} arquivos · {formatarBytes(maisRecente.bytes)}
-          </span>
-        </div>
-      )}
-
-      {anteriores.length > 0 && (
-        <div className="mt-3 space-y-1.5">
-          {anteriores.map((versao) => (
-            <div
-              key={versao.timestamp}
-              className="flex items-center justify-between rounded-md px-2 py-1.5 text-[11px]"
-              style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}
-            >
-              <span style={{ color: 'var(--color-fg-muted)' }}>
-                {formatarData(versao.timestamp)}
-              </span>
-              <div className="flex items-center gap-3">
-                <span className="ds-data" style={{ color: 'var(--color-fg-subtle)' }}>
-                  {versao.arquivos} arquivos · {formatarBytes(versao.bytes)}
-                </span>
-                <a
-                  href={`/api/meus-projetos/${projeto.id}/download?versao=${encodeURIComponent(versao.timestamp)}`}
-                  className="opacity-50 transition-opacity hover:opacity-100"
-                  title="Baixar esta versão"
-                >
-                  <Download size={12} />
-                </a>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <ConfirmPop
+        open={confirmDel}
+        title={`Apagar "${projeto.name}"?`}
+        busy={excluir.isPending}
+        confirmLabel="Apagar projeto"
+        onConfirm={() => excluir.mutate()}
+        onClose={() => setConfirmDel(false)}
+        description="Leva junto todos os sites gerados dele. Não dá para desfazer."
+      />
     </div>
   );
 }
@@ -192,12 +291,12 @@ function VazioState({ carregando }: { carregando: boolean }) {
     <div className="ds-glass-static ds-slide-up ds-d3 mt-10 rounded-xl p-10 text-center">
       <Package size={22} className="mx-auto" style={{ color: 'var(--color-fg-subtle)' }} />
       <div className="mt-4 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>
-        {carregando ? 'Carregando...' : 'Nenhum projeto gerado ainda.'}
+        {carregando ? 'Carregando...' : 'Nenhum site gerado ainda.'}
       </div>
       {!carregando && (
         <div className="mt-2 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          Crie um projeto em <span className="ds-data">Projetos</span> e processe a fila. Quando o
-          site for gerado, ele aparece aqui para baixar.
+          Vá em <span className="ds-data">Gerar site</span>, monte um projeto a partir de um kit e
+          gere. Quando o site ficar pronto, ele aparece aqui.
         </div>
       )}
     </div>

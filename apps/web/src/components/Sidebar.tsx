@@ -1,19 +1,21 @@
+import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useUiStore } from '@/lib/store';
 import { useQuery } from '@tanstack/react-query';
-import { Compass, FolderKanban, Library, Package, Settings, UploadCloud } from 'lucide-react';
+import { Compass, Layers, Library, Package, Settings, UploadCloud, Wand2 } from 'lucide-react';
 import type React from 'react';
 import { NavLink } from 'react-router-dom';
 import { BrandMark } from './BrandMark';
 
 const primaryNav = [
-  { to: '/extract', label: 'Extrair', icon: UploadCloud, description: 'Novo design system' },
-  { to: '/gallery', label: 'Galeria', icon: Compass, description: 'Componentes candidatos' },
-  { to: '/library', label: 'Biblioteca', icon: Library, description: 'Componentes aprovados' },
-  { to: '/projects', label: 'Projetos', icon: FolderKanban, description: 'Sites gerados' },
+  { to: '/extract', label: 'Extrair', icon: UploadCloud, description: 'Nova extração' },
+  { to: '/gallery', label: 'Galeria', icon: Compass, description: 'Triagem de candidatos' },
+  { to: '/library', label: 'Biblioteca', icon: Library, description: 'Acervo curado' },
+  { to: '/design-systems', label: 'Design Systems', icon: Layers, description: 'Kits finais' },
+  { to: '/projects', label: 'Gerar site', icon: Wand2, description: 'A partir de um kit' },
   {
     to: '/meus-projetos',
-    label: 'Meus projetos',
+    label: 'Meus sites',
     icon: Package,
     description: 'Prontos para baixar',
   },
@@ -147,7 +149,8 @@ function NavItem({
           <Icon size={16} strokeWidth={1.75} />
           <span style={{ fontFamily: 'var(--font-body)' }}>{label}</span>
           {label === 'Biblioteca' && <BadgeBiblioteca />}
-          {label === 'Meus projetos' && <BadgeMeusProjetos />}
+          {label === 'Design Systems' && <BadgeKits />}
+          {label === 'Meus sites' && <BadgeMeusProjetos />}
         </>
       )}
     </NavLink>
@@ -179,6 +182,12 @@ function BadgeBiblioteca() {
       return res.json() as Promise<{ items: unknown[] }>;
     },
   });
+  return <Badge valor={data?.items.length ?? 0} />;
+}
+
+/** Conta os kits (Design Systems finais). Compartilha o cache com a página Kits. */
+function BadgeKits() {
+  const { data } = useQuery({ queryKey: ['kits'], queryFn: api.listKits });
   return <Badge valor={data?.items.length ?? 0} />;
 }
 

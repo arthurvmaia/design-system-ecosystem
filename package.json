@@ -12,6 +12,8 @@
     "db:generate": "pnpm --filter @ds/indexer db:generate",
     "db:migrate": "pnpm --filter @ds/indexer db:migrate",
     "fila": "tsx scripts/fila.ts",
+    "segmentar": "tsx scripts/segmentar.ts",
+    "testar:segmentacao": "tsx scripts/testar-segmentacao.ts",
     "fila:escolher": "tsx scripts/selecionar.ts",
     "fila:progresso": "tsx scripts/fila-progresso.ts",
     "fila:concluir": "tsx scripts/fila-concluir.ts",
@@ -30,6 +32,8 @@
     "pnpm": ">=9.0.0"
   },
   "dependencies": {
+    "@ds/indexer": "workspace:^",
+    "@ds/segmenter": "workspace:^",
     "@ds/shared": "workspace:^"
   }
 }

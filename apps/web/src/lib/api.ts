@@ -73,6 +73,143 @@ export type LibraryComponentRecord = {
   tokensJson: string | null;
   addedAt: number;
   notes: string | null;
+  /** Etiquetas livres do usuário. Sempre presente (lista vazia quando não há). */
+  tags: string[];
+};
+
+// ── Kits (Design Systems finais) ─────────────────────────────────────────────
+
+export type KitComponentRef = {
+  id: string;
+  name: string;
+  category: string;
+  kind: string;
+  position: number;
+};
+
+export type KitRecord = {
+  id: string;
+  name: string;
+  description: string | null;
+  createdAt: number;
+  updatedAt: number;
+  components: KitComponentRef[];
+  /** Projetos que usam este kit — a UI avisa antes de excluir. */
+  usedByProjects: Array<{ id: string; name: string }>;
+};
+
+export type CreateKitInput = {
+  name: string;
+  description?: string | null;
+  componentIds?: string[];
+};
+
+export type UpdateKitInput = {
+  name?: string;
+  description?: string | null;
+  /** Lista completa, na ordem desejada. Substitui a anterior. */
+  componentIds?: string[];
+};
+
+// ── Impacto (o que quebra ao apagar) ─────────────────────────────────────────
+
+export type DesignSystemImpact = {
+  segmentos: number;
+  componentesDaBiblioteca: Array<{ id: string; name: string }>;
+};
+
+export type LibraryComponentImpact = {
+  usadoEmKits: Array<{ id: string; name: string }>;
+};
+
+// ── Layout / blueprints ──────────────────────────────────────────────────────
+
+export type LayoutSlot = { role: string; label: string; hint: string; required: boolean };
+export type Blueprint = {
+  id: string;
+  name: string;
+  description: string;
+  bestFor: string;
+  slots: LayoutSlot[];
+};
+export type CreativeDirection = { id: string; name: string; guidance: string };
+
+export type ProjectLayout = {
+  mode: 'blueprint' | 'criativo';
+  blueprintId: string;
+  disabledRoles: string[];
+  density?: 'compacto' | 'equilibrado' | 'espacoso';
+  motion?: 'nenhuma' | 'sutil' | 'expressiva';
+  preferDesignSystemId?: string | null;
+  creativeSeed?: number;
+};
+
+// ── Projetos ─────────────────────────────────────────────────────────────────
+
+export type ProjectContent = {
+  about?: string;
+  slogan?: string;
+  cta?: string;
+  sections?: Record<string, string>;
+  [k: string]: unknown;
+};
+
+export type ProjectBranding = {
+  brandName?: string;
+  tone?: string;
+  logoPath?: string | null;
+  faviconPath?: string | null;
+  palette: {
+    primary: string;
+    secondary?: string;
+    background: string;
+    foreground: string;
+    accent?: string;
+  };
+  typography: { display: string; body: string; mono?: string };
+  contact?: { email?: string; phone?: string; whatsapp?: string; address?: string };
+  social?: Record<string, string>;
+  mainCta?: { label?: string; href?: string };
+};
+
+export type MediaItem = {
+  path: string;
+  mimeType: string;
+  kind: 'image' | 'video' | 'logo' | 'icon' | '3d' | 'lottie' | 'mockup';
+  originalName: string;
+  alt?: string;
+  slotRole?: string;
+};
+
+export type ProjectRecord = {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  kitId: string | null;
+  contentJson: string | null;
+  brandingJson: string | null;
+  mediaManifestJson: string | null;
+  layoutJson: string | null;
+  status: string;
+};
+
+export type ProjectVersion = { timestamp: string; arquivos: number; bytes: number };
+
+export type MeusProjetosItem = {
+  id: string;
+  name: string;
+  status: string;
+  updatedAt: number;
+  versoes: ProjectVersion[];
+};
+
+export type UpdateProjectInput = {
+  name?: string;
+  kitId?: string | null;
+  content?: ProjectContent;
+  branding?: ProjectBranding;
+  layout?: ProjectLayout;
 };
 
 const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
@@ -87,17 +224,44 @@ const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
   return (await res.json()) as T;
 };
 
+/**
+ * URLs de prévia servidas pelo próprio backend.
+ *
+ * A prévia é um documento HTML completo montado no server (head real, scripts,
+ * atributos do body) e servido com `Content-Security-Policy: sandbox`. O front
+ * só aponta um iframe para cá — nada de montar srcDoc no cliente. `bg` força o
+ * contraste do fundo no modal de detalhe.
+ */
+export const previewSegmentUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
+  `/api/preview/segment/${segId}${bg ? `?bg=${bg}` : ''}`;
+export const previewComponentUrl = (cmpId: string, bg?: 'claro' | 'escuro'): string =>
+  `/api/preview/component/${cmpId}${bg ? `?bg=${bg}` : ''}`;
+
+/** URL estática de uma versão gerada de um site (iframe de Meus sites / nova aba). */
+export const siteUrl = (prjId: string, versao: string): string =>
+  `/site/${prjId}/${encodeURIComponent(versao)}/index.html`;
+
+/** URL de download do .zip de uma versão gerada. */
+export const downloadUrl = (prjId: string, versao: string): string =>
+  `/api/meus-projetos/${prjId}/download?versao=${encodeURIComponent(versao)}`;
+
 export const api = {
   health: () => jsonFetch<HealthResponse>('/health'),
+
+  // ── Design Systems (extrações) ──────────────────────────────────────────
   listDesignSystems: () => jsonFetch<{ items: DesignSystemRecord[] }>('/api/design-systems'),
   getDesignSystem: (id: string) =>
-    jsonFetch<{ item: DesignSystemRecord; assetsFaltando: string[] }>(
-      `/api/design-systems/${id}`,
-    ),
+    jsonFetch<{ item: DesignSystemRecord; assetsFaltando: string[] }>(`/api/design-systems/${id}`),
   deleteDesignSystem: (id: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/design-systems/${id}`, { method: 'DELETE' }),
+  designSystemImpact: (id: string) =>
+    jsonFetch<DesignSystemImpact>(`/api/design-systems/${id}/impacto`),
   listSegments: (dsId: string) =>
     jsonFetch<{ items: SegmentRecord[] }>(`/api/design-systems/${dsId}/segments`),
+  deleteSegment: (dsId: string, segId: string) =>
+    jsonFetch<{ deleted: boolean }>(`/api/design-systems/${dsId}/segments/${segId}`, {
+      method: 'DELETE',
+    }),
   createDesignSystem: (
     input:
       | { kind: 'url'; url: string; name?: string }
@@ -107,11 +271,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  getTask: (id: string) => jsonFetch<{ task: TaskRecord }>(`/api/tasks/${id}`),
-  listTasks: () => jsonFetch<{ items: TaskRecord[] }>('/api/tasks'),
   classify: (dsId: string) =>
     jsonFetch<StartWorkResponse>(`/api/design-systems/${dsId}/classify`, { method: 'POST' }),
+
+  // ── Tasks ───────────────────────────────────────────────────────────────
+  getTask: (id: string) => jsonFetch<{ task: TaskRecord }>(`/api/tasks/${id}`),
+  listTasks: () => jsonFetch<{ items: TaskRecord[] }>('/api/tasks'),
+
+  // ── Biblioteca ──────────────────────────────────────────────────────────
   listLibrary: () => jsonFetch<{ items: LibraryComponentRecord[] }>('/api/library'),
+  getLibraryComponent: (id: string) =>
+    jsonFetch<{ item: LibraryComponentRecord }>(`/api/library/${id}`),
   addToLibrary: (segmentId: string) =>
     jsonFetch<{ item: LibraryComponentRecord }>('/api/library', {
       method: 'POST',
@@ -119,15 +289,86 @@ export const api = {
     }),
   removeFromLibrary: (id: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/library/${id}`, { method: 'DELETE' }),
+  patchComponent: (
+    id: string,
+    patch: { name?: string; category?: string; notes?: string | null; tags?: string[] },
+  ) =>
+    jsonFetch<{ item: LibraryComponentRecord }>(`/api/library/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  /** Atalho preservado: renomear é o caso mais comum de PATCH. */
   renameComponent: (id: string, name: string) =>
     jsonFetch<{ item: LibraryComponentRecord }>(`/api/library/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ name }),
     }),
-  createProject: (input: { name: string }) =>
-    jsonFetch<{ task: TaskRecord }>('/api/projects', {
+  libraryImpact: (id: string) => jsonFetch<LibraryComponentImpact>(`/api/library/${id}/impacto`),
+
+  // ── Kits (Design Systems finais) ────────────────────────────────────────
+  listKits: () => jsonFetch<{ items: KitRecord[] }>('/api/kits'),
+  getKit: (id: string) => jsonFetch<{ item: KitRecord }>(`/api/kits/${id}`),
+  createKit: (input: CreateKitInput) =>
+    jsonFetch<{ item: KitRecord }>('/api/kits', { method: 'POST', body: JSON.stringify(input) }),
+  updateKit: (id: string, input: UpdateKitInput) =>
+    jsonFetch<{ item: KitRecord }>(`/api/kits/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  deleteKit: (id: string) =>
+    jsonFetch<{ deleted: boolean }>(`/api/kits/${id}`, { method: 'DELETE' }),
+  duplicateKit: (id: string) =>
+    jsonFetch<{ item: KitRecord }>(`/api/kits/${id}/duplicate`, { method: 'POST' }),
+
+  // ── Projetos ────────────────────────────────────────────────────────────
+  getBlueprints: () =>
+    jsonFetch<{ items: Blueprint[]; directions: CreativeDirection[] }>('/api/projects/blueprints'),
+  listProjects: () => jsonFetch<{ items: ProjectRecord[] }>('/api/projects'),
+  getProject: (id: string) => jsonFetch<{ item: ProjectRecord }>(`/api/projects/${id}`),
+  /** Cria um rascunho. NÃO gera nada — só nome + kit. */
+  createProject: (input: { name: string; kitId?: string | null }) =>
+    jsonFetch<{ item: ProjectRecord }>('/api/projects', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  listProjects: () => jsonFetch<{ items: unknown[] }>('/api/projects'),
+  updateProject: (id: string, patch: UpdateProjectInput) =>
+    jsonFetch<{ item: ProjectRecord }>(`/api/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  duplicateProject: (id: string) =>
+    jsonFetch<{ item: ProjectRecord }>(`/api/projects/${id}/duplicate`, { method: 'POST' }),
+  deleteProject: (id: string) =>
+    jsonFetch<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
+  /** Dispara a geração do site a partir do rascunho já salvo. */
+  generateProject: (id: string) =>
+    jsonFetch<StartWorkResponse & { projectId?: string }>(`/api/projects/${id}/generate`, {
+      method: 'POST',
+    }),
+  /** Upload de mídia (multipart). Não passa por jsonFetch: o corpo é FormData. */
+  uploadMedia: async (
+    id: string,
+    file: File,
+    meta: { kind: MediaItem['kind']; slotRole?: string; alt?: string },
+  ): Promise<{ item: MediaItem; media: MediaItem[] }> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('kind', meta.kind);
+    if (meta.slotRole) form.append('slotRole', meta.slotRole);
+    if (meta.alt) form.append('alt', meta.alt);
+    const res = await fetch(`/api/projects/${id}/media`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+    return res.json();
+  },
+  deleteMedia: (id: string, path: string) =>
+    jsonFetch<{ deleted: boolean; media: MediaItem[] }>(
+      `/api/projects/${id}/media?path=${encodeURIComponent(path)}`,
+      { method: 'DELETE' },
+    ),
+
+  // ── Meus sites (versões geradas em disco) ───────────────────────────────
+  listMeusProjetos: () => jsonFetch<{ items: MeusProjetosItem[] }>('/api/meus-projetos'),
+  meusProjetosContagem: () => jsonFetch<{ total: number }>('/api/meus-projetos/contagem'),
+  abrirPasta: (id: string) =>
+    jsonFetch<{ ok: boolean }>(`/api/meus-projetos/${id}/abrir-pasta`, { method: 'POST' }),
 };
