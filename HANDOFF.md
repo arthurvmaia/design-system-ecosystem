@@ -102,3 +102,8 @@ pnpm db:migrate               # migrations (0002 já aplicada)
 - **GitHub — SUBIDO**: remote corrigido para `github.com/arthurvmaia/design-system-ecosystem` (o usuário `arthurvdata` era typo). Repo criado pelo usuário; dois pushes feitos (reforma+correções, depois validação/Revisão). Branch `main`. `.env` protegido (fora do commit). Próximos envios: `SUBIR-GITHUB.bat` (o GCM não libera token de forma não-interativa por script).
 
 > **IMPORTANTE — reiniciar o servidor**: o isolador (fix do 500 no curtir), a rota `/api/rejeitados` e a validação do segmenter só entram ao reiniciar o servidor (INICIAR.bat), porque o código fica em memória. Os nomes PT do teste01 já estão no banco (aparecem só atualizando a Galeria).
+
+## Correções pós-reforma (parte 2)
+
+- **`no such table: kits`** (banco pré-existente): a causa era o servidor **não aplicar migrations no boot** — só o `pnpm db:migrate` aplicava, e o INICIAR só o chamava quando o banco não existia. Um banco criado antes da migration de kits nunca recebia as tabelas novas. Fix: `packages/indexer/src/migrate.ts` exporta `runMigrations()` (idempotente, guardada por `process.argv` para o import no servidor não disparar o CLID); `apps/server/src/index.ts` chama `runMigrations()` no `boot()` dentro de try/catch. Validado: um banco fresco recebe `kits`/`kit_components`/`projects` via migrate. O drizzle rastreia por timestamp em `__drizzle_migrations`; o banco compartilhado tem um marco alto (no-op, seguro).
+- **INICIAR não pede mais chave no modo `queue`**: `scripts/iniciar.ps1` só exige `ANTHROPIC_API_KEY` se `EXECUTION_MODE=api`. No MVP (queue) o app não usa a chave, então travar o primeiro início pedindo uma (inclusive de um amigo sem chave) não fazia sentido.
