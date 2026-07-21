@@ -122,6 +122,26 @@ export type LibraryComponentImpact = {
   usadoEmKits: Array<{ id: string; name: string }>;
 };
 
+// ── Rejeitados (não passaram na validação; vão para a Revisão) ────────────────
+
+export type RejectedSegment = {
+  id: string;
+  designSystemId: string;
+  category: string;
+  kind: string;
+  name: string;
+  htmlSnippet: string;
+  position: number;
+  /** Por que o algoritmo não teve confiança neste bloco. */
+  motivos: string[];
+};
+
+export type RejeitadosGrupo = {
+  designSystemId: string;
+  designSystemName: string;
+  itens: RejectedSegment[];
+};
+
 // ── Layout / blueprints ──────────────────────────────────────────────────────
 
 export type LayoutSlot = { role: string; label: string; hint: string; required: boolean };
@@ -236,6 +256,8 @@ export const previewSegmentUrl = (segId: string, bg?: 'claro' | 'escuro'): strin
   `/api/preview/segment/${segId}${bg ? `?bg=${bg}` : ''}`;
 export const previewComponentUrl = (cmpId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/component/${cmpId}${bg ? `?bg=${bg}` : ''}`;
+export const previewRejeitadoUrl = (dsId: string, segId: string, bg?: 'claro' | 'escuro'): string =>
+  `/api/preview/rejeitado/${dsId}/${segId}${bg ? `?bg=${bg}` : ''}`;
 
 /** URL estática de uma versão gerada de um site (iframe de Meus sites / nova aba). */
 export const siteUrl = (prjId: string, versao: string): string =>
@@ -304,6 +326,9 @@ export const api = {
       body: JSON.stringify({ name }),
     }),
   libraryImpact: (id: string) => jsonFetch<LibraryComponentImpact>(`/api/library/${id}/impacto`),
+
+  // ── Rejeitados (Revisão) ────────────────────────────────────────────────
+  listRejeitados: () => jsonFetch<{ grupos: RejeitadosGrupo[]; total: number }>('/api/rejeitados'),
 
   // ── Kits (Design Systems finais) ────────────────────────────────────────
   listKits: () => jsonFetch<{ items: KitRecord[] }>('/api/kits'),

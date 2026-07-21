@@ -68,3 +68,33 @@ export const SegmentsManifest = z.object({
   segments: z.array(SegmentRecord),
 });
 export type SegmentsManifest = z.infer<typeof SegmentsManifest>;
+
+/**
+ * Um candidato que NÃO passou na validação e por isso ficou de fora da Galeria.
+ *
+ * A Galeria é para o que o algoritmo realmente conseguiu interpretar. O que ele
+ * não entendeu — um invólucro vazio, um fragmento sem substância, um bloco que
+ * não dá para dizer o que é — não some calado: fica aqui, com o motivo, para a
+ * pessoa revisar depois. Sites mais novos e fora do padrão vão cair mais aqui, e
+ * isso é esperado.
+ */
+export const RejectedSegment = z.object({
+  id: z.string().startsWith('seg_'),
+  designSystemId: z.string().startsWith('ds_'),
+  category: ComponentCategory,
+  kind: ComponentKind,
+  name: z.string().min(1),
+  htmlSnippet: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  /** Por que o algoritmo não teve confiança neste bloco. */
+  motivos: z.array(z.string()),
+});
+export type RejectedSegment = z.infer<typeof RejectedSegment>;
+
+/** rejeitados.json em vault/{ds}/segments/ — o par do manifest, para o que ficou de fora. */
+export const RejeitadosManifest = z.object({
+  designSystemId: z.string().startsWith('ds_'),
+  generatedAt: z.number().int().positive(),
+  rejeitados: z.array(RejectedSegment),
+});
+export type RejeitadosManifest = z.infer<typeof RejeitadosManifest>;

@@ -5,8 +5,9 @@ import { type DesignSystemRecord, type SegmentRecord, api, previewSegmentUrl } f
 import { cn } from '@/lib/cn';
 import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Heart, Loader2, Sparkles, Sun, Trash2 } from 'lucide-react';
+import { AlertTriangle, Heart, Loader2, Sparkles, Sun, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * A ordem não é alfabética nem casual: os sistemas vêm primeiro.
@@ -243,6 +244,9 @@ function SegmentsView({
     queryFn: () => api.listSegments(dsId),
   });
   const dsInfo = useQuery({ queryKey: ['ds', dsId], queryFn: () => api.getDesignSystem(dsId) });
+  const navigate = useNavigate();
+  const rejeitados = useQuery({ queryKey: ['rejeitados'], queryFn: api.listRejeitados });
+  const rejDoDs = rejeitados.data?.grupos.find((g) => g.designSystemId === dsId)?.itens.length ?? 0;
 
   const qc = useQueryClient();
   const classify = useMutation({
@@ -298,6 +302,24 @@ function SegmentsView({
               <span className="ds-data">{dsInfo.data?.assetsFaltando.slice(0, 3).join(', ')}</span>
               ). Sem eles as prévias aparecem sem estilo. Extraia este site de novo.
             </div>
+          )}
+          {rejDoDs > 0 && (
+            <button
+              type="button"
+              onClick={() => navigate('/revisao')}
+              className="ds-tag mt-2 flex items-center gap-2 rounded-md border px-3 py-2 text-left text-[11px] leading-relaxed"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+            >
+              <AlertTriangle
+                size={13}
+                className="shrink-0"
+                style={{ color: 'var(--color-signal)' }}
+              />
+              <span>
+                <strong style={{ color: 'var(--color-fg)' }}>{rejDoDs}</strong> bloco(s) o algoritmo
+                não conseguiu interpretar e ficaram de fora da Galeria. Ver na Revisão →
+              </span>
+            </button>
           )}
         </div>
         <button

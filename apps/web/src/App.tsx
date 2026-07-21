@@ -5,6 +5,7 @@ import { KitsPage } from '@/routes/Kits';
 import { LibraryPage } from '@/routes/Library';
 import { MeusProjetosPage } from '@/routes/MeusProjetos';
 import { ProjectsPage } from '@/routes/Projects';
+import { RevisaoPage } from '@/routes/Revisao';
 import { SettingsPage } from '@/routes/Settings';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
@@ -28,6 +29,7 @@ export function App() {
             <Route index element={<Navigate to="/extract" replace />} />
             <Route path="/extract" element={<ExtractPage />} />
             <Route path="/gallery" element={<GalleryPage />} />
+            <Route path="/revisao" element={<RevisaoPage />} />
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/design-systems" element={<KitsPage />} />
             <Route path="/projects" element={<ProjectsPage />} />

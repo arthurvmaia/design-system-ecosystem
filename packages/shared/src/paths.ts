@@ -33,6 +33,9 @@ export const vaultExtractedDir = (id: DesignSystemId): string => join(vaultDsDir
 export const vaultSegmentsDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'segments');
 export const vaultSegmentsManifest = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'manifest.json');
+/** Candidatos que não passaram na validação — o par do manifest. */
+export const vaultRejeitadosPath = (id: DesignSystemId): string =>
+  join(vaultSegmentsDir(id), 'rejeitados.json');
 
 // ── Library ────────────────────────────────────────────────────────────────
 export const libraryDir = (): string => join(getRoot(), 'library');

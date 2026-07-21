@@ -2,7 +2,16 @@ import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useUiStore } from '@/lib/store';
 import { useQuery } from '@tanstack/react-query';
-import { Compass, Layers, Library, Package, Settings, UploadCloud, Wand2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Compass,
+  Layers,
+  Library,
+  Package,
+  Settings,
+  UploadCloud,
+  Wand2,
+} from 'lucide-react';
 import type React from 'react';
 import { NavLink } from 'react-router-dom';
 import { BrandMark } from './BrandMark';
@@ -10,6 +19,12 @@ import { BrandMark } from './BrandMark';
 const primaryNav = [
   { to: '/extract', label: 'Extrair', icon: UploadCloud, description: 'Nova extração' },
   { to: '/gallery', label: 'Galeria', icon: Compass, description: 'Triagem de candidatos' },
+  {
+    to: '/revisao',
+    label: 'Revisão',
+    icon: AlertTriangle,
+    description: 'O que não foi interpretado',
+  },
   { to: '/library', label: 'Biblioteca', icon: Library, description: 'Acervo curado' },
   { to: '/design-systems', label: 'Design Systems', icon: Layers, description: 'Kits finais' },
   { to: '/projects', label: 'Gerar site', icon: Wand2, description: 'A partir de um kit' },
@@ -148,6 +163,7 @@ function NavItem({
           {isActive && <span className="ds-active-bar" aria-hidden />}
           <Icon size={16} strokeWidth={1.75} />
           <span style={{ fontFamily: 'var(--font-body)' }}>{label}</span>
+          {label === 'Revisão' && <BadgeRevisao />}
           {label === 'Biblioteca' && <BadgeBiblioteca />}
           {label === 'Design Systems' && <BadgeKits />}
           {label === 'Meus sites' && <BadgeMeusProjetos />}
@@ -189,6 +205,12 @@ function BadgeBiblioteca() {
 function BadgeKits() {
   const { data } = useQuery({ queryKey: ['kits'], queryFn: api.listKits });
   return <Badge valor={data?.items.length ?? 0} />;
+}
+
+/** Quantos candidatos ficaram de fora da Galeria e esperam revisão. */
+function BadgeRevisao() {
+  const { data } = useQuery({ queryKey: ['rejeitados'], queryFn: api.listRejeitados });
+  return <Badge valor={data?.total ?? 0} />;
 }
 
 /** Conta quantos projetos já têm site gerado em disco. */

@@ -4,10 +4,13 @@ import { join } from 'node:path';
 import {
   type ComponentCategory,
   type ComponentKind,
+  type RejectedSegment,
+  type RejeitadosManifest,
   type SegmentRecord,
   type SegmentsManifest,
   newSegmentId,
   vaultExtractedDir,
+  vaultRejeitadosPath,
   vaultSegmentsDir,
   vaultSegmentsManifest,
 } from '@ds/shared';
@@ -451,6 +454,64 @@ const inferCategory = (name: string, node: HTMLElement): ComponentCategory => {
   return 'other';
 };
 
+/** Tags que carregam substância própria — mídia ou controle. */
+const TAGS_MIDIA = new Set([
+  'img',
+  'svg',
+  'video',
+  'iframe',
+  'canvas',
+  'picture',
+  'button',
+  'input',
+  'select',
+  'textarea',
+]);
+
+const temMidia = (nodes: HTMLElement[]): boolean =>
+  nodes.some(
+    (n) =>
+      TAGS_MIDIA.has(n.tagName.toLowerCase()) ||
+      n.querySelector([...TAGS_MIDIA].join(',')) !== null,
+  );
+
+/**
+ * O bloco vale a Galeria?
+ *
+ * A Galeria é para o que o algoritmo realmente conseguiu interpretar. Passa só o
+ * que dá para reconhecer como componente: tem texto de verdade OU tem
+ * mídia/controle. O resto — invólucro vazio, fragmento sem substância, bloco que
+ * não dá para nomear — é reprovado COM o motivo e vai para a Revisão, em vez de
+ * sujar a Galeria. Conservador de propósito: na dúvida, aprova. Site novo e fora
+ * do padrão vai cair mais aqui, e isso é esperado.
+ */
+const validarSegmento = (
+  nodes: HTMLElement[],
+  snippet: string,
+  category: ComponentCategory,
+): { ok: boolean; motivos: string[] } => {
+  const texto = nodes
+    .map((n) => n.textContent)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const temTexto = texto.length >= 12;
+  const midia = temMidia(nodes);
+
+  const motivos: string[] = [];
+  if (!temTexto && !midia) {
+    motivos.push('Bloco sem texto nem mídia visível — parece um invólucro vazio ou uma decoração.');
+  }
+  if (snippet.length < 60 && !midia) {
+    motivos.push('Fragmento pequeno demais para ser um componente reutilizável.');
+  }
+  if (category === 'other' && !temTexto && !midia) {
+    motivos.push('Não foi possível identificar o que este bloco representa.');
+  }
+
+  return { ok: motivos.length === 0, motivos: [...new Set(motivos)] };
+};
+
 /**
  * Junta o CSS que o design system carrega — arquivos do vault e `<style>`
  * inline. As animações declaradas em `@keyframes` só aparecem aqui: no HTML há
@@ -484,6 +545,8 @@ const lerCssDoVault = (extractedDir: string, html: string): string => {
 export type SegmentationResult = {
   designSystemId: `ds_${string}`;
   segments: SegmentRecord[];
+  /** Candidatos que não passaram na validação — vão para a Revisão, não a Galeria. */
+  rejected: RejectedSegment[];
   manifestPath: string;
 };
 
@@ -508,6 +571,7 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
   const candidatos = coletarCandidatos(body);
 
   const segments: SegmentRecord[] = [];
+  const rejeitados: RejectedSegment[] = [];
   let position = 0;
 
   for (const { nodes, rotulo } of candidatos) {
@@ -525,6 +589,23 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
     const category =
       nodes.length > 1 && grupoTemH1(nodes) ? 'hero' : inferCategory(rotulo ?? '', principal);
     const name = rotulo ? prettify(rotulo) : nomeDoCandidato(nodes, category, position);
+
+    // Validação: só o que dá para reconhecer como componente entra na Galeria.
+    // O que não passa vai para a Revisão, com o motivo — não some calado.
+    const veredito = validarSegmento(nodes, snippet, category);
+    if (!veredito.ok) {
+      rejeitados.push({
+        id: newSegmentId(),
+        designSystemId,
+        category,
+        kind: 'component' satisfies ComponentKind,
+        name,
+        htmlSnippet: snippet,
+        position: rejeitados.length,
+        motivos: veredito.motivos,
+      });
+      continue;
+    }
 
     segments.push({
       id: newSegmentId(),
@@ -569,9 +650,22 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
   const manifestPath = vaultSegmentsManifest(designSystemId);
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 
+  // rejeitados.json: o par do manifest, para a tela de Revisão.
+  const rejeitadosManifest: RejeitadosManifest = {
+    designSystemId,
+    generatedAt: Date.now(),
+    rejeitados,
+  };
+  writeFileSync(
+    vaultRejeitadosPath(designSystemId),
+    JSON.stringify(rejeitadosManifest, null, 2),
+    'utf8',
+  );
+
   return {
     designSystemId,
     segments,
+    rejected: rejeitados,
     manifestPath,
   };
 };

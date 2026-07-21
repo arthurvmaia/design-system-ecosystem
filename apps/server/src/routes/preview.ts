@@ -1,7 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb, tables } from '@ds/indexer';
-import { libraryComponentBundleDir, vaultExtractedDir } from '@ds/shared';
+import {
+  RejeitadosManifest,
+  libraryComponentBundleDir,
+  vaultExtractedDir,
+  vaultRejeitadosPath,
+} from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 
@@ -230,6 +235,63 @@ previewRoute.get('/component/:cmpId', (c) => {
       bodyAttrs,
       corpo,
       base,
+      bg: c.req.query('bg'),
+    }),
+  );
+});
+
+/** Prévia de um candidato REJEITADO (não está no banco — vive no rejeitados.json). */
+previewRoute.get('/rejeitado/:dsId/:segId', (c) => {
+  const dsId = c.req.param('dsId');
+  const segId = c.req.param('segId');
+  if (!dsId.startsWith('ds_')) return responderHtml(fallback('ID inválido', '', ''), 404);
+
+  const path = vaultRejeitadosPath(dsId as `ds_${string}`);
+  if (!existsSync(path)) {
+    return responderHtml(
+      fallback('Nada rejeitado aqui', 'Este design system não tem candidatos rejeitados.', ''),
+      404,
+    );
+  }
+
+  let rejeitados: Array<{ id: string; name: string; htmlSnippet: string }> = [];
+  try {
+    rejeitados = RejeitadosManifest.parse(JSON.parse(readFileSync(path, 'utf8'))).rejeitados;
+  } catch {
+    return responderHtml(fallback('Arquivo ilegível', 'rejeitados.json corrompido.', ''), 404);
+  }
+
+  const rej = rejeitados.find((r) => r.id === segId);
+  if (!rej) {
+    return responderHtml(
+      fallback(
+        'Componente não encontrado',
+        'Este bloco rejeitado não existe mais.',
+        'Re-segmente.',
+      ),
+      404,
+    );
+  }
+
+  const html = lerHtmlDoVault(dsId as `ds_${string}`);
+  if (html === null) {
+    return responderHtml(
+      fallback(
+        'Extração incompleta',
+        'O design-system.html não está no disco, então não há CSS para renderizar.',
+        'Extraia este site de novo.',
+      ),
+      404,
+    );
+  }
+
+  return responderHtml(
+    compor({
+      titulo: rej.name,
+      head: extrairHead(html),
+      bodyAttrs: extrairBodyAttrs(html),
+      corpo: rej.htmlSnippet,
+      base: `/vault/${dsId}/`,
       bg: c.req.query('bg'),
     }),
   );
