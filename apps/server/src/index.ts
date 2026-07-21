@@ -1,6 +1,6 @@
 import 'dotenv/config';
 
-import { ensureDataTree, getDb } from '@ds/indexer';
+import { ensureDataTree, getDb, runMigrations } from '@ds/indexer';
 import { getRoot } from '@ds/shared/paths';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -59,6 +59,16 @@ const port = Number(process.env.PORT ?? 8787);
 const boot = () => {
   ensureDataTree();
   getDb(); // aquece a conexão e roda os PRAGMAs
+
+  // Aplica migrations pendentes no boot. Garante que um banco criado antes de
+  // uma migration nova (ex.: a de kits) receba as tabelas que faltam, em vez de
+  // estourar "no such table" na primeira operação. Idempotente; se falhar,
+  // avisa e segue — não vale derrubar o servidor por causa disso.
+  try {
+    runMigrations();
+  } catch (err) {
+    console.warn('Aviso: migrations no boot falharam:', err instanceof Error ? err.message : err);
+  }
 
   console.log('Design System Ecosystem server');
   console.log(`  data root : ${getRoot()}`);
