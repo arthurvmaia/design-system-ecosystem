@@ -184,7 +184,12 @@ if ($motivo) {
 }
 Ok 'Dependencias instaladas'
 
-# --- 4. Chave da Anthropic --------------------------------------------------
+# --- 4. Chave da Anthropic (so no modo api) ---------------------------------
+# No modo `queue` (padrao do MVP) o trabalho roda no Claude Code pela SUA
+# ASSINATURA e a chave da Anthropic NUNCA e lida pelo app. Pedir uma chave no
+# primeiro inicio so travava quem so quer rodar o MVP - inclusive um amigo que
+# recebeu o projeto e nao tem chave nenhuma. Entao a chave so e exigida quando o
+# .env esta explicitamente em EXECUTION_MODE=api (producao, que consome creditos).
 $envPath      = Join-Path $raiz 'apps\server\.env'
 $exemploPath  = Join-Path $raiz 'apps\server\.env.example'
 
@@ -197,24 +202,29 @@ if (-not (Test-Path $envPath)) {
 # comentarios do .env um pouco mais a cada execucao.
 $utf8SemBom = New-Object System.Text.UTF8Encoding($false)
 $conteudo = [System.IO.File]::ReadAllText($envPath, [System.Text.Encoding]::UTF8)
-$temChave = $conteudo -match '(?m)^ANTHROPIC_API_KEY=\s*sk-'
+$modoApi = $conteudo -match '(?m)^\s*EXECUTION_MODE\s*=\s*api\b'
 
-if (-not $temChave) {
-    Titulo 'Configurando a chave da Anthropic'
-    Write-Host '  Cole abaixo a chave da API da Anthropic (comeca com sk-ant-).' -ForegroundColor Gray
-    Write-Host '  Voce pega em: https://console.anthropic.com/settings/keys' -ForegroundColor Gray
-    Write-Host ''
-    $chave = (Read-Host '  Chave').Trim()
+if ($modoApi) {
+    $temChave = $conteudo -match '(?m)^ANTHROPIC_API_KEY=\s*sk-'
+    if (-not $temChave) {
+        Titulo 'Configurando a chave da Anthropic'
+        Write-Host '  Cole abaixo a chave da API da Anthropic (comeca com sk-ant-).' -ForegroundColor Gray
+        Write-Host '  Voce pega em: https://console.anthropic.com/settings/keys' -ForegroundColor Gray
+        Write-Host ''
+        $chave = (Read-Host '  Chave').Trim()
 
-    if ($chave -notmatch '^sk-ant-') {
-        Parar 'Essa chave nao parece valida (precisa comecar com sk-ant-). Clique no INICIAR de novo.'
+        if ($chave -notmatch '^sk-ant-') {
+            Parar 'Essa chave nao parece valida (precisa comecar com sk-ant-). Clique no INICIAR de novo.'
+        }
+
+        $conteudo = $conteudo -replace '(?m)^ANTHROPIC_API_KEY=.*$', "ANTHROPIC_API_KEY=$chave"
+        [System.IO.File]::WriteAllText($envPath, $conteudo, $utf8SemBom)
+        Ok 'Chave salva'
     }
-
-    $conteudo = $conteudo -replace '(?m)^ANTHROPIC_API_KEY=.*$', "ANTHROPIC_API_KEY=$chave"
-    [System.IO.File]::WriteAllText($envPath, $conteudo, $utf8SemBom)
-    Ok 'Chave salva'
+    Ok 'Chave da Anthropic configurada'
+} else {
+    Ok 'Modo assinatura (queue) - nao precisa de chave da Anthropic'
 }
-Ok 'Chave da Anthropic configurada'
 
 # --- 5. Banco de dados ------------------------------------------------------
 $dbPath = Join-Path $env:USERPROFILE 'design-system-ecosystem\ecosystem.db'
