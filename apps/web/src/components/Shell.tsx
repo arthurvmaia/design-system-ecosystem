@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom';
+import { AmbientEmbers } from './AmbientEmbers';
 import { Sidebar } from './Sidebar';
 import { Toaster } from './Toaster';
 import { TopBar } from './TopBar';
@@ -20,6 +21,7 @@ export function Shell() {
     <div className="relative flex h-screen w-screen overflow-hidden">
       <div className="ds-ambient ds-ambient-1" aria-hidden="true" />
       <div className="ds-ambient ds-ambient-2" aria-hidden="true" />
+      <AmbientEmbers />
 
       <Sidebar />
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">

@@ -97,6 +97,7 @@ function pageLabel(pathname: string): { section: string; title: string } {
   if (pathname.startsWith('/gallery')) return { section: '02 · Descoberta', title: 'Galeria' };
   if (pathname.startsWith('/library')) return { section: '03 · Curadoria', title: 'Biblioteca' };
   if (pathname.startsWith('/projects')) return { section: '04 · Saída', title: 'Projetos' };
+  if (pathname.startsWith('/revisao')) return { section: 'Auxiliar', title: 'Pendências' };
   if (pathname.startsWith('/settings')) return { section: 'Sistema', title: 'Configurações' };
   return { section: '', title: 'Início' };
 }

@@ -39,7 +39,7 @@ export function RevisaoPage() {
         className="ds-slide-up text-[10px] uppercase tracking-[0.28em]"
         style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}
       >
-        Revisão
+        Pendências · área de exceções
       </div>
       <h1
         className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"

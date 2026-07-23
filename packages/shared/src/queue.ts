@@ -196,6 +196,23 @@ export const getJob = (id: string): QueueJob | null => {
   return null;
 };
 
+/**
+ * Anexa dados ao `result` de um job que AINDA está pendente, sem fechá-lo.
+ *
+ * Usado pela extração para gravar o `designSystemId` produzido: o `fila:concluir`
+ * lê `job.result.designSystemId` para saber o que segmentar. Separar produzir de
+ * concluir mantém o mesmo desenho de sempre — um passo entrega, o outro valida e
+ * fecha.
+ */
+export const setJobResult = (id: string, result: Record<string, unknown>): QueueJob | null => {
+  const pendingPath = join(queuePendingDir(), `${id}.json`);
+  if (!existsSync(pendingPath)) return null;
+  const job = JSON.parse(readFileSync(pendingPath, 'utf8')) as QueueJob;
+  const updated: QueueJob = { ...job, result: { ...(job.result ?? {}), ...result } };
+  writeFileSync(pendingPath, JSON.stringify(updated, null, 2), 'utf8');
+  return updated;
+};
+
 /** Move um job de pendente para concluído, anexando resultado ou erro. */
 export const finishJob = (
   id: string,

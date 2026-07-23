@@ -35,24 +35,24 @@ Os arquivos ficam em `~/design-system-ecosystem/queue/pendente/*.json`. Cada job
 
 ### `extract`
 
-O `payload` traz `kind: 'url' | 'html'`.
-
-1. Busque o HTML (WebFetch para URL, ou use o HTML do payload).
-2. **Siga `packages/extractor/src/prompt.ts` literalmente** — os 6 STEPs, na ordem. Esse prompt está na `PROMPT_VERSION = 3` e é o que define a qualidade da extração. Não improvise um processo próprio.
-3. Escreva a saída em `~/design-system-ecosystem/vault/<ds_id>/extracted/`, na mesma estrutura que o extrator da API produz. O `design-system.html` vai nessa pasta, e os assets em `extracted/assets/{css,js,images/svg}/`.
-4. Registre o design system no banco e finalize o job (abaixo).
-
-**Não segmente à mão.** O `fila:concluir` roda a segmentação sozinho ao fechar o job, usando o mesmo código do modo `api`. Extrair sem segmentar deixa a Galeria com "0 de 0 segmentos" e nada para curar — por isso os dois passos ficam amarrados num comando só, em vez de dependerem de alguém lembrar.
-
-**Grave os assets antes do HTML.** Os STEPs 2 a 4 existem para produzir arquivos; o STEP 5 só escreve os `<link>` e `<script>` que apontam para eles. Escrever o HTML primeiro e deixar os assets para depois é o erro que gera um design system que abre sem estilo nenhum — e o `fila:concluir` agora recusa fechar um job assim, listando o que ficou faltando.
-
-**Reporte o progresso a cada STEP.** Uma extração leva minutos e a interface fica parada enquanto isso. Depois de terminar cada STEP:
+O `payload` traz `kind: 'url' | 'html'`. **Não faça à mão** — a extração é um comando determinístico. Dois passos:
 
 ```powershell
-pnpm fila:progresso <job_id> <0-100>
+pnpm extrair <job_id>        # renderiza o DOM real por navegador e grava no vault
+pnpm fila:concluir <job_id>  # valida, segmenta, indexa e fecha o job
 ```
 
-Use a proporção do prompt: STEP 1 ≈ 15, STEP 2 ≈ 35, STEP 3 ≈ 50, STEP 4 ≈ 65, STEP 5 ≈ 90, STEP 6 ≈ 95. Não precisa ser exato — precisa andar.
+O `pnpm extrair` abre a URL num navegador de verdade (Playwright), espera o conteúdo dinâmico, rola a página para disparar lazy-load, torna as referências absolutas e grava o `design-system.html` no vault já registrando o design system no banco. É isso que faz **qualquer URL** funcionar — inclusive sites que respondem 403 a fetch estático ou que montam tudo por JavaScript (SPA). Ele reporta o progresso sozinho.
+
+**Não use WebFetch nem siga os 6 STEPs do `prompt.ts` à mão.** Aquele processo (reescrever/traduzir o HTML via LLM) só enxergava o HTML servido e perdia justamente os sites pesados. O `prompt.ts` continua existindo para o modo `api`, mas no modo `queue` a captura fiel vem do navegador, não de reconstrução manual.
+
+**Sem Playwright instalado**, o `pnpm extrair` cai para fetch estático e avisa — sites protegidos/SPA podem vir incompletos. Para a captura completa, instale uma vez:
+
+```powershell
+pnpm --filter @ds/explorer exec playwright install chromium
+```
+
+**Captura profunda (opcional).** Para descobrir os estados interativos (accordion aberto, dropdown, modal em portal) e baixar os assets localmente, rode `pnpm explorar <url>` — é o passo caro que grava um manifesto rico em `vault/<ds>/capture/`. A extração normal não precisa dele: a fidelidade de cada segmento (o selo da Galeria) já sai da análise estática no `fila:concluir`.
 
 ### `classify`
 
@@ -106,6 +106,8 @@ pnpm typecheck        # tsc em todos os pacotes
 pnpm lint             # biome
 pnpm db:migrate       # aplica migrations
 pnpm fila             # lista a fila
+pnpm extrair          # extrai um job de URL por navegador (renderiza o DOM real) — passo 1 do modo queue
+pnpm explorar         # captura profunda: descobre estados interativos e baixa assets (opcional)
 pnpm fila:escolher    # lista numerado e devolve os ids escolhidos (usado pelo PROCESSAR.bat)
 pnpm fila:progresso   # reporta 0-100 de um job em andamento
 pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
@@ -117,7 +119,8 @@ pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
 
 - `apps/web` — React 19 + Vite + Tailwind v4. Paleta obsidian/crimson/bone. Fluxo: Extrair → Galeria (triagem) → Biblioteca (acervo) → Design Systems (kits finais) → Gerar site (wizard a partir de um kit) → Meus sites (`/meus-projetos`, fim da linha: só o que tem site em disco, com prévia via `/site`, `.zip` e edição).
 - `apps/server` — Hono. `EXECUTION_MODE=queue|api` decide se registra em disco ou chama a API.
-- `packages/extractor` — loop agêntico com tools de arquivo. `prompt.ts` é o ativo.
+- `packages/explorer` — motor de captura por navegador (Playwright opcional). `renderPage` faz a extração fiel de qualquer URL (usada pelo `pnpm extrair`); `explorePage` faz a captura profunda de estados/assets; `assessFidelity` dá o nível de suporte/avisos de cada componente. Degrada para estático sem o navegador. Ver `docs/CAPTURE.md`.
+- `packages/extractor` — loop agêntico com tools de arquivo (modo `api`). `prompt.ts` é o ativo.
 - `packages/classifier` — categoriza segmentos em lote.
 - `packages/generator` — compõe sites a partir da biblioteca; dois modos (blueprint/criativo).
 - `packages/shared` — schemas Zod, paths, fila. Fonte da verdade dos contratos.

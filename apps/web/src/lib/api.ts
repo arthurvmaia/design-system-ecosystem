@@ -17,6 +17,27 @@ export type DesignSystemRecord = {
   errorMessage: string | null;
 };
 
+/** Níveis de suporte que a Galeria mostra como selo. */
+export type ComponentSupport = 'completo' | 'parcial' | 'visual' | 'externo' | 'nao-suportado';
+
+export type ComponentInteraction = {
+  kind: string;
+  support: ComponentSupport;
+  description?: string;
+};
+
+/**
+ * Avaliação de fidelidade de um segmento. É como a Galeria deixa de esconder a
+ * falha: um componente que só saiu visual, ou que depende de JS, diz aqui.
+ */
+export type SegmentFidelity = {
+  support: ComponentSupport;
+  renderMode: string;
+  fidelity: number;
+  warnings: string[];
+  interactions: ComponentInteraction[];
+};
+
 export type SegmentRecord = {
   id: string;
   designSystemId: string;
@@ -27,6 +48,8 @@ export type SegmentRecord = {
   previewPath: string | null;
   position: number;
   inLibrary: boolean;
+  /** Presente quando a segmentação gerou avaliação (extrações novas). */
+  fidelity?: SegmentFidelity | null;
 };
 
 export type TaskEvent = { timestamp: number; level: 'info' | 'warn' | 'error'; message: string };

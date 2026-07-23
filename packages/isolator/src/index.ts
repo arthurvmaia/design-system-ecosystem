@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { animationNamesUsed, assessFidelity, fontFamiliesUsed, varNamesUsed } from '@ds/explorer';
+import type { FidelityAssessment } from '@ds/shared';
 import { parse } from 'node-html-parser';
 import postcss from 'postcss';
 import parser from 'postcss-selector-parser';
@@ -27,12 +29,20 @@ export type IsolationResult = {
   html: string;
   css: string;
   referencedAssets: string[];
+  /**
+   * Avaliação de fidelidade do componente isolado — selo, avisos e interações.
+   * Cumpre a regra de não esconder a falha: um componente que perdeu o JS ou
+   * que depende de canvas diz isso aqui.
+   */
+  fidelity: FidelityAssessment;
   stats: {
     inputClasses: number;
     cssRulesTotal: number;
     cssRulesKept: number;
     cssBytesTotal: number;
     cssBytesKept: number;
+    /** Definições reintroduzidas por serem referenciadas (keyframes/font-face/vars). */
+    depsPreserved: number;
   };
 };
 
@@ -130,12 +140,87 @@ const isolarBloco = (
   });
 
   parsed.walkAtRules((atRule) => {
-    if (['media', 'supports'].includes(atRule.name) && (atRule.nodes?.length ?? 0) === 0) {
+    const nome = atRule.name.toLowerCase();
+    // keyframes e font-face saem SEMPRE do bloco isolado: o filtro por seletor
+    // esvaziaria os passos `from/to` e deixaria um `@keyframes` oco que
+    // sobrescreveria o bom. `coletarDependenciasCss` traz de volta só os usados.
+    if (nome === 'keyframes' || nome === '-webkit-keyframes' || nome === 'font-face') {
+      atRule.remove();
+      return;
+    }
+    if (['media', 'supports'].includes(nome) && (atRule.nodes?.length ?? 0) === 0) {
       atRule.remove();
     }
   });
 
   return { css: parsed.toString(), total, kept };
+};
+
+const normFamily = (raw: string): string =>
+  raw
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .toLowerCase();
+
+/**
+ * Reintroduz as definições sem seletor casável que o componente usa: os
+ * `@keyframes` de uma animação referenciada, os `@font-face` de uma fonte usada
+ * e as variáveis `:root` lidas via `var()`. É o que faz a animação de fato rodar
+ * e a fonte de fato carregar no preview isolado — antes, filtradas por não terem
+ * um seletor que casasse, elas sumiam e a animação ficava sem `@keyframes`.
+ *
+ * Só traz o que é referenciado pelo CSS mantido — nem tudo, nem nada.
+ */
+const coletarDependenciasCss = (
+  originalCss: string,
+  cssKept: string,
+): { css: string; count: number } => {
+  const anim = animationNamesUsed(cssKept);
+  const fonts = fontFamiliesUsed(cssKept);
+  const vars = varNamesUsed(cssKept);
+  if (anim.size === 0 && fonts.size === 0 && vars.size === 0) return { css: '', count: 0 };
+
+  const blocos: string[] = [];
+  const rootDecls: string[] = [];
+  let count = 0;
+  try {
+    const parsed = postcss.parse(originalCss);
+    parsed.walkAtRules((at) => {
+      if (/^(-webkit-)?keyframes$/i.test(at.name) && anim.has(at.params.trim())) {
+        blocos.push(at.toString());
+        count++;
+      }
+      if (at.name.toLowerCase() === 'font-face') {
+        let fam = '';
+        at.walkDecls('font-family', (d) => {
+          fam = normFamily(d.value);
+        });
+        if (fam !== '' && fonts.has(fam)) {
+          blocos.push(at.toString());
+          count++;
+        }
+      }
+    });
+    if (vars.size > 0) {
+      parsed.walkRules((rule) => {
+        if (!/(^|,)\s*(:root|html)\b/.test(rule.selector)) return;
+        rule.walkDecls((d) => {
+          if (d.prop.startsWith('--') && vars.has(d.prop)) {
+            rootDecls.push(`${d.prop}: ${d.value}`);
+            count++;
+          }
+        });
+      });
+    }
+  } catch {
+    // CSS que o postcss não engole: sem preservação de deps, degrada.
+    return { css: '', count: 0 };
+  }
+
+  const partes: string[] = [];
+  if (rootDecls.length > 0) partes.push(`:root{${[...new Set(rootDecls)].join(';')}}`);
+  partes.push(...blocos);
+  return { css: partes.join('\n'), count };
 };
 
 /**
@@ -170,19 +255,29 @@ export const isolateComponent = (opts: IsolateOptions): IsolationResult => {
     }
   }
 
-  const cssOut = partes.join('\n\n');
+  const cssKept = partes.join('\n\n');
+
+  // Reintroduz keyframes/font-face/vars que o CSS mantido referencia mas que o
+  // filtro por seletor descartou. Vem ANTES do resto para valer como base.
+  const originalCss = files.map((f) => f.css).join('\n');
+  const deps = coletarDependenciasCss(originalCss, cssKept);
+  const cssOut = deps.css !== '' ? `${deps.css}\n\n${cssKept}` : cssKept;
+
   const referencedAssets = collectAssetPaths(opts.html, cssOut);
+  const fidelity = assessFidelity(opts.html, cssOut, { bundledAssets: false });
 
   return {
     html: opts.html,
     css: cssOut,
     referencedAssets,
+    fidelity,
     stats: {
       inputClasses: used.classes.size,
       cssRulesTotal: rulesTotal,
       cssRulesKept: rulesKept,
       cssBytesTotal,
       cssBytesKept: cssOut.length,
+      depsPreserved: deps.count,
     },
   };
 };

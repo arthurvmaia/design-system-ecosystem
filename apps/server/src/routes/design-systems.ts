@@ -3,7 +3,14 @@ import { join } from 'node:path';
 import { runExtraction } from '@ds/extractor';
 import { getDb, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
-import { CreateDesignSystemInput, listarAssetsFaltando, vaultExtractedDir } from '@ds/shared';
+import {
+  CreateDesignSystemInput,
+  SegmentsManifest,
+  listarAssetsFaltando,
+  vaultExtractedDir,
+  vaultSegmentsManifest,
+} from '@ds/shared';
+import type { SegmentInsight } from '@ds/shared';
 import { enqueueJob } from '@ds/shared';
 import { zValidator } from '@hono/zod-validator';
 import { asc, desc, eq } from 'drizzle-orm';
@@ -44,6 +51,22 @@ designSystemsRoute.get('/:id', (c) => {
   return c.json({ item: row, assetsFaltando });
 });
 
+/**
+ * Avaliações de fidelidade por segmento, do manifesto no vault. Ficam em JSON
+ * (não no banco) para não exigir migration: a rota junta ao vivo. Manifesto
+ * antigo sem `insights` simplesmente devolve um mapa vazio.
+ */
+const lerInsights = (dsId: string): Map<string, SegmentInsight> => {
+  const path = vaultSegmentsManifest(dsId as `ds_${string}`);
+  if (!existsSync(path)) return new Map();
+  try {
+    const manifest = SegmentsManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
+    return new Map((manifest.insights ?? []).map((i) => [i.segmentId, i]));
+  } catch {
+    return new Map();
+  }
+};
+
 designSystemsRoute.get('/:id/segments', (c) => {
   const db = getDb();
   const id = c.req.param('id');
@@ -53,7 +76,9 @@ designSystemsRoute.get('/:id/segments', (c) => {
     .where(eq(tables.segments.designSystemId, id))
     .orderBy(asc(tables.segments.position))
     .all();
-  return c.json({ items: rows });
+  const insights = lerInsights(id);
+  const items = rows.map((r) => ({ ...r, fidelity: insights.get(r.id) ?? null }));
+  return c.json({ items });
 });
 
 /**

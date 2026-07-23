@@ -12,7 +12,10 @@
     "db:generate": "pnpm --filter @ds/indexer db:generate",
     "db:migrate": "pnpm --filter @ds/indexer db:migrate",
     "fila": "tsx scripts/fila.ts",
+    "extrair": "tsx scripts/extrair.ts",
+    "explorar": "tsx scripts/explorar.ts",
     "segmentar": "tsx scripts/segmentar.ts",
+    "test": "node --import tsx --test \"packages/**/src/**/*.test.ts\" \"apps/**/src/**/*.test.ts\"",
     "testar:segmentacao": "tsx scripts/testar-segmentacao.ts",
     "fila:escolher": "tsx scripts/selecionar.ts",
     "fila:progresso": "tsx scripts/fila-progresso.ts",
@@ -32,6 +35,7 @@
     "pnpm": ">=9.0.0"
   },
   "dependencies": {
+    "@ds/explorer": "workspace:^",
     "@ds/indexer": "workspace:^",
     "@ds/segmenter": "workspace:^",
     "@ds/shared": "workspace:^"

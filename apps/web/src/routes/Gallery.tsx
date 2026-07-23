@@ -1,7 +1,13 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
-import { type DesignSystemRecord, type SegmentRecord, api, previewSegmentUrl } from '@/lib/api';
+import {
+  type DesignSystemRecord,
+  type SegmentFidelity,
+  type SegmentRecord,
+  api,
+  previewSegmentUrl,
+} from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +29,8 @@ const CATEGORIES = [
   'button',
   'card',
   'interaction',
+  'background',
+  'overlay',
   'hero',
   'header',
   'nav',
@@ -42,6 +50,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   button: 'Botões',
   card: 'Cards',
   interaction: 'Animações',
+  background: 'Fundos',
+  overlay: 'Overlays',
   hero: 'Hero',
   header: 'Cabeçalho',
   nav: 'Navegação',
@@ -54,6 +64,96 @@ const CATEGORY_LABEL: Record<string, string> = {
   form: 'Forms',
   other: 'Outros',
 };
+
+/** Selo de fidelidade: só aparece quando o componente NÃO saiu completo. */
+const SUPORTE_LABEL: Record<string, string> = {
+  completo: 'Completo',
+  parcial: 'Parcial',
+  visual: 'Visual',
+  externo: 'Dep. externa',
+  'nao-suportado': 'Não suportado',
+};
+const SUPORTE_COR: Record<string, string> = {
+  completo: '#16a34a',
+  parcial: '#d97706',
+  visual: '#2563eb',
+  externo: '#ea580c',
+  'nao-suportado': '#dc2626',
+};
+
+function FidelityBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
+  if (!fidelity || fidelity.support === 'completo') return null;
+  const cor = SUPORTE_COR[fidelity.support] ?? '#78716c';
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+      style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
+      title={fidelity.warnings.join(' · ')}
+    >
+      <AlertTriangle size={9} />
+      {SUPORTE_LABEL[fidelity.support] ?? fidelity.support}
+    </span>
+  );
+}
+
+/**
+ * Painel de fidelidade no detalhe: diz o nível de suporte, os avisos e as
+ * interações conhecidas. É a promessa de "não esconder a falha" cumprida na UI —
+ * a pessoa vê o que o componente reproduz e o que não reproduz antes de curtir.
+ */
+function FidelityPanel({ fidelity }: { fidelity?: SegmentFidelity | null }) {
+  if (!fidelity) return null;
+  const semRessalva =
+    fidelity.support === 'completo' &&
+    fidelity.warnings.length === 0 &&
+    fidelity.interactions.length === 0;
+  if (semRessalva) return null;
+  const cor = SUPORTE_COR[fidelity.support] ?? '#78716c';
+
+  return (
+    <div className="border-b px-6 py-3" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.1em]"
+          style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
+        >
+          {SUPORTE_LABEL[fidelity.support] ?? fidelity.support}
+        </span>
+        <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+          render: {fidelity.renderMode}
+        </span>
+        {fidelity.interactions.map((it) => (
+          <span
+            key={`${it.kind}-${it.support}`}
+            className="ds-tag rounded-full border px-2 py-0.5 text-[10px]"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+            title={it.description}
+          >
+            {it.kind} · {SUPORTE_LABEL[it.support] ?? it.support}
+          </span>
+        ))}
+      </div>
+      {fidelity.warnings.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {fidelity.warnings.map((w) => (
+            <li
+              key={w}
+              className="flex items-start gap-1.5 text-[11px] leading-relaxed"
+              style={{ color: 'var(--color-fg-muted)' }}
+            >
+              <AlertTriangle
+                size={11}
+                className="mt-0.5 shrink-0"
+                style={{ color: 'var(--color-signal)' }}
+              />
+              <span>{w}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * Quais categorias são leitura transversal do site, e não uma fatia dele.
@@ -123,6 +223,8 @@ function DsSidebar({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['design-systems'] });
       qc.invalidateQueries({ queryKey: ['library'] });
+      // Apagar uma extração remove os rejeitados dela — o contador de Pendências muda.
+      qc.invalidateQueries({ queryKey: ['rejeitados'] });
       toast.ok('Extração removida da Galeria.');
       setConfirming(null);
     },
@@ -317,7 +419,7 @@ function SegmentsView({
               />
               <span>
                 <strong style={{ color: 'var(--color-fg)' }}>{rejDoDs}</strong> bloco(s) o algoritmo
-                não conseguiu interpretar e ficaram de fora da Galeria. Ver na Revisão →
+                não conseguiu interpretar e foram para Pendências. Ver pendências →
               </span>
             </button>
           )}
@@ -481,6 +583,7 @@ function SegmentCard({
                 <span className="truncate">
                   {CATEGORY_LABEL[segment.category] ?? segment.category}
                 </span>
+                <FidelityBadge fidelity={segment.fidelity} />
               </div>
             </div>
             <div className="ml-3 flex shrink-0 items-center gap-1.5">
@@ -608,6 +711,7 @@ function SegmentDetail({
             </button>
           </div>
         </div>
+        <FidelityPanel fidelity={segment.fidelity} />
         <div className="p-4">
           <PreviewFrame
             key={bg ?? 'auto'}

@@ -10,7 +10,6 @@ import {
   newComponentId,
   vaultExtractedDir,
 } from '@ds/shared';
-import { extractTokens } from '@ds/tokens';
 import { zValidator } from '@hono/zod-validator';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -98,21 +97,30 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
   const bundleDir = libraryComponentBundleDir(componentId);
   mkdirSync(bundleDir, { recursive: true });
 
-  // Fase 5: isolamento pragmático.
+  // Fase 5: isolamento pragmático (agora preserva keyframes/font-face/vars e
+  // calcula a fidelidade do componente).
   const cssDir = join(vaultExtractedDir(seg.designSystemId as `ds_${string}`), 'assets/css');
   const isolation = isolateComponent({ html: seg.htmlSnippet, cssDir });
 
   writeFileSync(join(bundleDir, 'index.html'), isolation.html, 'utf8');
 
-  // Fase 6: extrai tokens do CSS isolado.
-  const tokenized = extractTokens(isolation.css);
-  writeFileSync(join(bundleDir, 'styles.css'), tokenized.css, 'utf8');
-  writeFileSync(join(bundleDir, 'tokens.json'), JSON.stringify(tokenized.tokens, null, 2), 'utf8');
+  // O CSS do bundle preserva as cores originais para o preview ser fiel. A
+  // Galeria NÃO gera paleta de identidade — cor vira tema depois, na geração do
+  // site. Por isso não há mais extração de tokens nem `tokens.json` aqui.
+  writeFileSync(join(bundleDir, 'styles.css'), isolation.css, 'utf8');
   writeFileSync(
     join(bundleDir, 'isolation.json'),
     JSON.stringify(isolation.stats, null, 2),
     'utf8',
   );
+
+  // Dependências de asset conhecidas, para a Biblioteca saber o que o componente
+  // ainda precisa (e o gerador tratar depois).
+  const dependencies = isolation.referencedAssets.map((ref) => ({
+    type: 'shared-asset' as const,
+    ref,
+    bundled: false,
+  }));
 
   writeFileSync(
     libraryComponentMetadata(componentId),
@@ -131,6 +139,9 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
         tags: [],
         notes: null,
         bundleHash,
+        // Preserva estados/eventos/limitações do componente (não uma paleta).
+        fidelity: isolation.fidelity,
+        dependencies,
       },
       null,
       2,
@@ -146,7 +157,9 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
     name: seg.name,
     bundlePath: libraryComponentDir(componentId),
     bundleHash,
-    tokensJson: JSON.stringify(tokenized.tokens),
+    // Sem paleta: a coluna existe por compat, mas a Galeria não persiste
+    // identidade visual. O tema é responsabilidade da tela de geração.
+    tokensJson: null,
     addedAt: Date.now(),
     notes: null,
   };

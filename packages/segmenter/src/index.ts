@@ -1,11 +1,13 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { assessFidelity } from '@ds/explorer';
 import {
   type ComponentCategory,
   type ComponentKind,
   type RejectedSegment,
   type RejeitadosManifest,
+  type SegmentInsight,
   type SegmentRecord,
   type SegmentsManifest,
   newSegmentId,
@@ -60,7 +62,16 @@ const filhosUteis = (node: HTMLElement): HTMLElement[] =>
  * Um candidato a segmento. Quase sempre um nó só, mas às vezes vários — ver
  * `ehBloco` e o agrupamento de conteúdo solto em `coletarCandidatos`.
  */
-type Candidato = { nodes: HTMLElement[]; rotulo: string | null };
+type Candidato = {
+  nodes: HTMLElement[];
+  rotulo: string | null;
+  /**
+   * Categoria forçada, quando o candidato foi PROMOVIDO por ser um efeito de
+   * fundo ou um overlay que a heurística de enfeite descartaria. Ver
+   * `promoverComo`.
+   */
+  hint?: ComponentCategory;
+};
 
 /**
  * Tags que declaram "eu sou uma seção". Quando o autor da página escreveu isto,
@@ -208,6 +219,70 @@ const ehEnfeite = (node: HTMLElement): boolean => {
 };
 
 /**
+ * Classes que denunciam um efeito visual de fundo — o que a regra de enfeite
+ * apagava e o usuário quer de volta. Um background animado, uma malha de
+ * gradiente, um campo de partículas: são vazios de texto, mas são exatamente o
+ * componente. Genérico de propósito (sem nome de site).
+ */
+const CLASSE_DE_EFEITO =
+  /\b(animate-|gradient|glow|blur|orb|particle|shader|aurora|beam|noise|grain|spotlight|mesh|blob|wave|ray|sparkle|parallax|marquee|ticker|bg-grid|bg-dot|starfield|canvas)\b/i;
+
+/**
+ * Classes/atributos que denunciam um overlay revelado por interação — modal,
+ * dropdown, tooltip, drawer. No HTML estático eles nascem `display:none` e a
+ * regra de escondido os derrubava. São conteúdo legítimo que aparece depois de
+ * um clique/hover, e a Galeria deve oferecê-los (com o aviso de que dependem de
+ * interação).
+ */
+const CLASSE_DE_OVERLAY =
+  /\b(modal|dialog|drawer|popover|tooltip|dropdown|lightbox|overlay|toast|snackbar|sheet|flyout|offcanvas)\b/i;
+
+const ehCanvas = (node: HTMLElement): boolean =>
+  node.tagName.toLowerCase() === 'canvas' || node.querySelector('canvas') !== null;
+
+/**
+ * Um nó que a heurística de enfeite descartaria merece virar segmento? Se sim,
+ * com que categoria. Devolve `null` quando é enfeite de verdade (divisor,
+ * espaçador de 35 bytes) — esse continua saindo.
+ *
+ * A diferença entre "brilho roxo de 83 bytes que não é nada" e "background de
+ * shader que é o hero do site" não está no tamanho: está nos sinais de efeito
+ * (canvas, classe de animação/gradiente posicionado) e de overlay.
+ */
+const promoverComo = (node: HTMLElement): ComponentCategory | null => {
+  const cls = node.getAttribute('class') ?? '';
+  const style = node.getAttribute('style') ?? '';
+  const rawAttrs = node.rawAttrs ?? '';
+
+  // Overlay oculto: modal/menu/tooltip que aparece por interação.
+  if (
+    CLASSE_DE_OVERLAY.test(cls) ||
+    node.getAttribute('role') === 'dialog' ||
+    node.getAttribute('aria-modal') === 'true' ||
+    /data-(modal|dialog|drawer|popover|tooltip|dropdown|menu|state|headlessui|radix)/i.test(
+      rawAttrs,
+    )
+  ) {
+    return 'overlay';
+  }
+
+  // Canvas é sempre um efeito visual, mesmo vazio (o desenho vem do JS).
+  if (ehCanvas(node)) return 'background';
+
+  // Classe de efeito de fundo (animação/gradiente/partícula…).
+  if (CLASSE_DE_EFEITO.test(cls)) return 'background';
+
+  // Gradiente/imagem de fundo num elemento posicionado que cobre área.
+  const temFundoRico = /gradient|url\(|radial-|conic-|mask|filter/i.test(`${style} ${cls}`);
+  const cobreArea = /\b(absolute|fixed|inset-0|w-full|h-full|min-h-|h-screen)\b/i.test(
+    `${cls} ${style}`,
+  );
+  if (temFundoRico && cobreArea) return 'background';
+
+  return null;
+};
+
+/**
  * Encontra as seções, descendo pelos embrulhos até achá-las.
  *
  * Página moderna quase nunca põe as seções direto no `<body>`. Duas formas
@@ -283,9 +358,17 @@ const coletarCandidatos = (container: HTMLElement, profundidade = 0): Candidato[
       continue;
     }
 
-    // Enfeite não é componente e também não é embrulho: some antes dos dois
-    // testes. Sem isto a Galeria enche de brilho de fundo de 83 bytes.
+    // Enfeite: some antes dos dois testes — MAS só o enfeite de verdade. Um
+    // efeito de fundo ou um overlay oculto é promovido a segmento próprio em vez
+    // de descartado. Era aqui que os backgrounds animados e os modais sumiam.
     if (rotulo === null && ehEnfeite(c)) {
+      const hint = promoverComo(c);
+      if (hint !== null) {
+        fecharSolto();
+        saida.push({ nodes: [c], rotulo: null, hint });
+        rotulo = null;
+        continue;
+      }
       continue;
     }
 
@@ -327,6 +410,8 @@ const coletarCandidatos = (container: HTMLElement, profundidade = 0): Candidato[
  */
 const CATEGORIA_PT: Record<string, string> = {
   hero: 'Destaque',
+  background: 'Efeito de fundo',
+  overlay: 'Sobreposição',
   header: 'Cabeçalho',
   nav: 'Navegação',
   footer: 'Rodapé',
@@ -545,9 +630,31 @@ const lerCssDoVault = (extractedDir: string, html: string): string => {
 export type SegmentationResult = {
   designSystemId: `ds_${string}`;
   segments: SegmentRecord[];
+  /** Avaliação de fidelidade por segmento (selo + avisos). Par do `segments`. */
+  insights: SegmentInsight[];
   /** Candidatos que não passaram na validação — vão para a Revisão, não a Galeria. */
   rejected: RejectedSegment[];
   manifestPath: string;
+};
+
+/**
+ * Avalia a fidelidade de um segmento. Chama a função pura de `@ds/explorer`
+ * sobre o HTML do segmento. Passa `css` vazio de propósito: a detecção de
+ * animação/JS deve sair das classes DO segmento, não do CSS global do site
+ * (senão todo segmento herdaria "tem animação" de qualquer `@keyframes` solto).
+ */
+const fazerInsight = (segmentId: `seg_${string}`, htmlSnippet: string): SegmentInsight => ({
+  segmentId,
+  ...assessFidelity(htmlSnippet, '', { bundledAssets: false }),
+});
+
+/**
+ * Kind derivado da categoria para os segmentos promovidos. Um efeito de fundo é
+ * `effect`; um overlay é um `component` (é conteúdo que aparece).
+ */
+const kindDaCategoria = (category: ComponentCategory): ComponentKind => {
+  if (category === 'background') return 'effect';
+  return 'component';
 };
 
 /**
@@ -571,10 +678,11 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
   const candidatos = coletarCandidatos(body);
 
   const segments: SegmentRecord[] = [];
+  const insights: SegmentInsight[] = [];
   const rejeitados: RejectedSegment[] = [];
   let position = 0;
 
-  for (const { nodes, rotulo } of candidatos) {
+  for (const { nodes, rotulo, hint } of candidatos) {
     const principal = nodes[0];
     if (principal === undefined) continue;
 
@@ -584,40 +692,46 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
       .trim();
     if (snippet.length < 30) continue;
 
-    // Categoria primeiro (não depende do nome de exibição), para o nome poder
-    // cair no rótulo da categoria em PT quando a seção não tiver título visível.
+    // Categoria: um candidato PROMOVIDO (efeito de fundo, overlay) já traz a sua
+    // via `hint` e não passa pela heurística de seção nem pela validação de
+    // texto/mídia — um background animado é, por natureza, vazio de texto.
     const category =
-      nodes.length > 1 && grupoTemH1(nodes) ? 'hero' : inferCategory(rotulo ?? '', principal);
+      hint ??
+      (nodes.length > 1 && grupoTemH1(nodes) ? 'hero' : inferCategory(rotulo ?? '', principal));
     const name = rotulo ? prettify(rotulo) : nomeDoCandidato(nodes, category, position);
 
-    // Validação: só o que dá para reconhecer como componente entra na Galeria.
-    // O que não passa vai para a Revisão, com o motivo — não some calado.
-    const veredito = validarSegmento(nodes, snippet, category);
-    if (!veredito.ok) {
-      rejeitados.push({
-        id: newSegmentId(),
-        designSystemId,
-        category,
-        kind: 'component' satisfies ComponentKind,
-        name,
-        htmlSnippet: snippet,
-        position: rejeitados.length,
-        motivos: veredito.motivos,
-      });
-      continue;
+    if (hint === undefined) {
+      // Validação: só o que dá para reconhecer como componente entra na Galeria.
+      // O que não passa vai para a Revisão, com o motivo — não some calado.
+      const veredito = validarSegmento(nodes, snippet, category);
+      if (!veredito.ok) {
+        rejeitados.push({
+          id: newSegmentId(),
+          designSystemId,
+          category,
+          kind: 'component' satisfies ComponentKind,
+          name,
+          htmlSnippet: snippet,
+          position: rejeitados.length,
+          motivos: veredito.motivos,
+        });
+        continue;
+      }
     }
 
+    const id = newSegmentId();
     segments.push({
-      id: newSegmentId(),
+      id,
       designSystemId,
       category,
-      kind: 'component' satisfies ComponentKind,
+      kind: kindDaCategoria(category),
       name,
       htmlSnippet: snippet,
       previewPath: null,
       position,
       inLibrary: false,
     });
+    insights.push(fazerInsight(id, snippet));
     position++;
   }
 
@@ -625,8 +739,9 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
   // botões, cards, interações). Vêm depois das seções de propósito — são a
   // leitura transversal do mesmo material, não mais um pedaço dele.
   for (const padrao of extrairPadroes(body, lerCssDoVault(extractedDir, html))) {
+    const id = newSegmentId();
     segments.push({
-      id: newSegmentId(),
+      id,
       designSystemId,
       category: padrao.category,
       kind: padrao.kind,
@@ -636,6 +751,7 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
       position,
       inLibrary: false,
     });
+    insights.push(fazerInsight(id, padrao.htmlSnippet));
     position++;
   }
 
@@ -646,6 +762,7 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
     designSystemId,
     generatedAt: Date.now(),
     segments,
+    insights,
   };
   const manifestPath = vaultSegmentsManifest(designSystemId);
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
@@ -665,6 +782,7 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
   return {
     designSystemId,
     segments,
+    insights,
     rejected: rejeitados,
     manifestPath,
   };

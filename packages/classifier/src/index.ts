@@ -11,6 +11,8 @@ const CATEGORIES = [
   'header',
   'nav',
   'footer',
+  'background',
+  'overlay',
   'card',
   'feature',
   'pricing',

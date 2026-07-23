@@ -1,0 +1,97 @@
+import assert from 'node:assert/strict';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { segmentDesignSystem } from './index.js';
+
+/**
+ * Validação de largura sobre a página de teste `kitchen-sink.html`, que reúne
+ * todos os cenários do pedido. Não checa só status 200: confere o CONTEÚDO
+ * estrutural extraído — que os cenários que antes sumiam agora viram segmentos
+ * com a fidelidade certa.
+ */
+
+const FIXTURE = fileURLToPath(
+  new URL('../../../fixtures/test-pages/kitchen-sink.html', import.meta.url),
+);
+
+const setup = (): { root: string; dsId: `ds_${string}` } => {
+  const root = mkdtempSync(join(tmpdir(), 'ds-kitchen-'));
+  process.env.DS_ECOSYSTEM_ROOT = root;
+  const dsId = 'ds_01KITCHENSINK000000000000A' as `ds_${string}`;
+  const extracted = join(root, 'vault', dsId, 'extracted');
+  mkdirSync(extracted, { recursive: true });
+  copyFileSync(FIXTURE, join(extracted, 'design-system.html'));
+  return { root, dsId };
+};
+
+test('a página de teste existe e é lida', () => {
+  const html = readFileSync(FIXTURE, 'utf8');
+  assert.match(html, /<canvas/);
+  assert.match(html, /role="dialog"/);
+});
+
+test('extrai os cenários visuais que antes sumiam (canvas, aurora, modal)', () => {
+  const { root, dsId } = setup();
+  try {
+    const res = segmentDesignSystem(dsId);
+    const cats = new Set(res.segments.map((s) => s.category));
+    assert.ok(cats.has('background'), 'background animado presente');
+    assert.ok(cats.has('overlay'), 'modal/overlay presente');
+    // O canvas de partículas é um dos backgrounds.
+    assert.ok(res.segments.some((s) => s.htmlSnippet.includes('<canvas')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cada cenário interativo recebe a fidelidade correta', () => {
+  const { root, dsId } = setup();
+  try {
+    const res = segmentDesignSystem(dsId);
+    const insightDe = (pred: (html: string) => boolean) => {
+      const seg = res.segments.find((s) => pred(s.htmlSnippet));
+      return res.insights.find((i) => i.segmentId === seg?.id);
+    };
+
+    // Canvas → visual.
+    const canvas = insightDe((h) => h.includes('id="particles"'));
+    assert.equal(canvas?.renderMode, 'canvas');
+    assert.equal(canvas?.support, 'visual');
+
+    // Accordion → parcial, com interação toggle.
+    const faq = insightDe((h) => h.includes('accordion-trigger'));
+    assert.equal(faq?.support, 'parcial');
+    assert.ok(faq?.interactions.some((i) => i.kind === 'toggle'));
+
+    // Tabs → parcial, com interação tab (mesmo sem o script no snippet).
+    const tabs = insightDe((h) => h.includes('role="tab"'));
+    assert.equal(tabs?.support, 'parcial');
+    assert.ok(tabs?.interactions.some((i) => i.kind === 'tab'));
+
+    // SVG animado → renderMode svg-animado.
+    const svg = insightDe((h) => h.includes('<animate'));
+    assert.equal(svg?.renderMode, 'svg-animado');
+
+    // Seção estática (planos) → completo.
+    const preco = insightDe((h) => h.includes('id="preco"'));
+    assert.equal(preco?.support, 'completo');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('nenhuma paleta de identidade é gerada na segmentação', () => {
+  const { root, dsId } = setup();
+  try {
+    segmentDesignSystem(dsId);
+    // O manifesto de segmentos não deve conter tokens de marca.
+    const manifest = readFileSync(join(root, 'vault', dsId, 'segments', 'manifest.json'), 'utf8');
+    assert.doesNotMatch(manifest, /"--primary"/);
+    assert.doesNotMatch(manifest, /defaultTheme/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

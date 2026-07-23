@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FidelityAssessment } from './capture.js';
 import { ComponentCategory, ComponentKind } from './segment.js';
 
 /** Tipos de dependência de um componente da library. */
@@ -60,6 +61,26 @@ export const ComponentMetadata = z.object({
   tags: z.array(z.string()),
   notes: z.string().nullable(),
   bundleHash: z.string().length(64),
+  /**
+   * Avaliação de fidelidade do componente (selo + avisos + interações). Opcional
+   * para tolerar bundles gravados antes desta versão. É o que cumpre a regra de
+   * "não esconder a falha": um componente que só saiu como visual diz isso aqui.
+   */
+  fidelity: FidelityAssessment.optional(),
+  /**
+   * Dependências técnicas conhecidas (libs, fontes, scripts externos) que o
+   * componente precisa e que podem não estar embutidas. Ausente = sem deps
+   * declaradas.
+   */
+  dependencies: z
+    .array(
+      z.object({
+        type: z.enum(['font', 'image', 'svg', 'js-lib', 'css-lib', 'script', 'shared-asset']),
+        ref: z.string(),
+        bundled: z.boolean(),
+      }),
+    )
+    .optional(),
 });
 export type ComponentMetadata = z.infer<typeof ComponentMetadata>;
 

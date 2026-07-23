@@ -30,6 +30,16 @@ export const vaultDir = (): string => join(getRoot(), 'vault');
 export const vaultDsDir = (id: DesignSystemId): string => join(vaultDir(), id);
 export const vaultSourceDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'source');
 export const vaultExtractedDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'extracted');
+/**
+ * Saída do motor de exploração (`@ds/explorer`): o manifesto rico da captura por
+ * navegador e os assets baixados. Fica separado de `extracted/` porque é
+ * material de origem diferente — o snapshot instrumentado, não o HTML reescrito.
+ */
+export const vaultCaptureDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'capture');
+export const vaultCaptureManifest = (id: DesignSystemId): string =>
+  join(vaultCaptureDir(id), 'manifest.json');
+export const vaultCaptureAssetsDir = (id: DesignSystemId): string =>
+  join(vaultCaptureDir(id), 'assets');
 export const vaultSegmentsDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'segments');
 export const vaultSegmentsManifest = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'manifest.json');

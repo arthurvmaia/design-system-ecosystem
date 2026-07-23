@@ -8,6 +8,7 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": { "typecheck": "tsc --noEmit", "clean": "node ../../scripts/limpar.mjs" },
   "dependencies": {
+    "@ds/explorer": "workspace:*",
     "@ds/shared": "workspace:*",
     "node-html-parser": "^6.1.13",
     "postcss": "^8.4.49",

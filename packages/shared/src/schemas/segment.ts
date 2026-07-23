@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FidelityAssessment } from './capture.js';
 
 /**
  * Categorias de componente. A lista fica versionada aqui para que o classifier
@@ -19,6 +20,8 @@ import { z } from 'zod';
 export const ComponentCategory = z.enum([
   'typography',
   'interaction',
+  'background',
+  'overlay',
   'hero',
   'header',
   'nav',
@@ -61,11 +64,39 @@ export const SegmentRecord = z.object({
 });
 export type SegmentRecord = z.infer<typeof SegmentRecord>;
 
+/**
+ * Enriquecimento de um segmento com a avaliação de fidelidade e os estados
+ * descobertos. Mora ao lado do `SegmentRecord`, e não dentro dele, de propósito:
+ * o `SegmentRecord` é a forma exata da tabela `segments` do SQLite, e misturar
+ * campos que a tabela não tem quebraria o insert. A ligação é por `id`.
+ *
+ * Fica no manifesto (JSON no vault) — nada de coluna nova, nada de migration.
+ * A rota de segmentos lê o manifesto e junta isto às linhas do banco na
+ * resposta. Manifesto antigo sem `insights` continua válido.
+ */
+export const SegmentInsight = FidelityAssessment.extend({
+  /** Liga ao `SegmentRecord.id`. */
+  segmentId: z.string().startsWith('seg_'),
+  /** Estados descobertos pela exploração, quando houve captura por navegador. */
+  states: z
+    .array(
+      z.object({
+        id: z.string(),
+        trigger: z.string(),
+        label: z.string(),
+      }),
+    )
+    .optional(),
+});
+export type SegmentInsight = z.infer<typeof SegmentInsight>;
+
 /** Manifest.json em vault/{ds}/segments/. */
 export const SegmentsManifest = z.object({
   designSystemId: z.string().startsWith('ds_'),
   generatedAt: z.number().int().positive(),
   segments: z.array(SegmentRecord),
+  /** Avaliações de fidelidade por segmento. Ausente em manifestos antigos. */
+  insights: z.array(SegmentInsight).optional(),
 });
 export type SegmentsManifest = z.infer<typeof SegmentsManifest>;
 

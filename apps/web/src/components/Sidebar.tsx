@@ -1,49 +1,33 @@
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import {
+  type NavItemDef,
+  PENDENCIAS_ROUTE,
+  pendenciasBadge,
+  primaryNav,
+  secondaryNav,
+} from '@/lib/nav';
 import { useUiStore } from '@/lib/store';
 import { useQuery } from '@tanstack/react-query';
-import {
-  AlertTriangle,
-  Compass,
-  Layers,
-  Library,
-  Package,
-  Settings,
-  UploadCloud,
-  Wand2,
-} from 'lucide-react';
 import type React from 'react';
 import { NavLink } from 'react-router-dom';
 import { BrandMark } from './BrandMark';
 
-const primaryNav = [
-  { to: '/extract', label: 'Extrair', icon: UploadCloud, description: 'Nova extração' },
-  { to: '/gallery', label: 'Galeria', icon: Compass, description: 'Triagem de candidatos' },
-  {
-    to: '/revisao',
-    label: 'Revisão',
-    icon: AlertTriangle,
-    description: 'O que não foi interpretado',
-  },
-  { to: '/library', label: 'Biblioteca', icon: Library, description: 'Acervo curado' },
-  { to: '/design-systems', label: 'Design Systems', icon: Layers, description: 'Kits finais' },
-  { to: '/projects', label: 'Gerar site', icon: Wand2, description: 'A partir de um kit' },
-  {
-    to: '/meus-projetos',
-    label: 'Meus sites',
-    icon: Package,
-    description: 'Prontos para baixar',
-  },
-] as const;
-
-const secondaryNav = [
-  { to: '/settings', label: 'Configurações', icon: Settings, description: null },
-] as const;
+const ITEM_BASE =
+  'group relative flex items-center gap-3 rounded-md px-3 py-2.5 text-[13px] transition-all duration-300';
+const ITEM_INATIVO =
+  'text-[var(--color-fg-muted)] hover:translate-x-[2px] hover:bg-white/[0.04] hover:text-[var(--color-fg)]';
+const ITEM_ATIVO = 'ds-glass-static text-[var(--color-fg)]';
 
 /**
  * Navegação fixa. É vidro, não uma coluna pintada: o fundo é preto translúcido
  * com blur, então as manchas de luz ambiente atravessam a coluna em vez de
  * morrerem atrás dela.
+ *
+ * Duas zonas com pesos diferentes: as funcionalidades PRINCIPAIS (fluxo de
+ * criar/organizar/gerar) na lista de cima; as AUXILIARES (Pendências e
+ * Configurações — exceção e operação) no rodapé, separadas por um divisor. A
+ * config das duas listas mora em `@/lib/nav`.
  */
 export function Sidebar() {
   const runningTasks = useUiStore((s) => s.runningTasks);
@@ -51,10 +35,7 @@ export function Sidebar() {
   return (
     <aside
       className="ds-backdrop relative z-20 flex h-full w-[260px] shrink-0 flex-col border-r"
-      style={{
-        borderColor: 'var(--color-border)',
-        backgroundColor: 'rgba(6, 6, 6, 0.55)',
-      }}
+      style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(6, 6, 6, 0.55)' }}
     >
       {/* Cabeçalho da marca. */}
       <div
@@ -64,26 +45,32 @@ export function Sidebar() {
         <BrandMark />
       </div>
 
-      {/* Nav primária. */}
+      {/* Nav primária — as funcionalidades principais. */}
       <nav className="flex-1 overflow-y-auto py-6">
         <div className="px-3">
           <SectionLabel>Fluxo</SectionLabel>
           <ul className="mt-3 flex flex-col gap-1">
             {primaryNav.map((item) => (
               <li key={item.to}>
-                <NavItem to={item.to} icon={item.icon} label={item.label} />
+                <NavItem item={item} />
               </li>
             ))}
           </ul>
         </div>
       </nav>
 
-      {/* Nav secundária. */}
+      {/* Nav auxiliar — exceção e operação. Separada por divisor, com menos peso. */}
       <div className="px-3 pb-3">
-        <ul className="flex flex-col gap-1">
+        <div className="mx-3 mb-2 border-t" style={{ borderColor: 'var(--color-border)' }} />
+        <SectionLabel>Auxiliar</SectionLabel>
+        <ul className="mt-2 flex flex-col gap-1">
           {secondaryNav.map((item) => (
             <li key={item.to}>
-              <NavItem to={item.to} icon={item.icon} label={item.label} />
+              {item.to === PENDENCIAS_ROUTE ? (
+                <PendenciasNavItem item={item} />
+              ) : (
+                <NavItem item={item} />
+              )}
             </li>
           ))}
         </ul>
@@ -132,48 +119,88 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * O item ativo vira vidro e ganha a barra vermelha na borda. O inativo desliza
- * 2px para a direita sob o cursor — numa lista vertical estreita, o empurrão
- * lateral lê melhor que o `scale` que a referência usa nos cards.
+ * Item genérico da navegação. O ativo vira vidro e ganha a barra vermelha na
+ * borda; o inativo desliza 2px sob o cursor. O `title` dá tooltip (útil se um dia
+ * a coluna recolher para ícones).
  */
-function NavItem({
-  to,
-  icon: Icon,
-  label,
-}: {
-  to: string;
-  icon: typeof UploadCloud;
-  label: string;
-}) {
+function NavItem({ item }: { item: NavItemDef }) {
+  const Icon = item.icon;
   return (
     <NavLink
-      to={to}
-      className={({ isActive }) =>
-        cn(
-          'group relative flex items-center gap-3 rounded-md px-3 py-2.5 text-[13px]',
-          'transition-all duration-300',
-          isActive
-            ? 'ds-glass-static text-[var(--color-fg)]'
-            : 'text-[var(--color-fg-muted)] hover:translate-x-[2px] hover:bg-white/[0.04] hover:text-[var(--color-fg)]',
-        )
-      }
+      to={item.to}
+      title={item.description ?? item.label}
+      className={({ isActive }) => cn(ITEM_BASE, isActive ? ITEM_ATIVO : ITEM_INATIVO)}
     >
       {({ isActive }) => (
         <>
           {isActive && <span className="ds-active-bar" aria-hidden />}
           <Icon size={16} strokeWidth={1.75} />
-          <span style={{ fontFamily: 'var(--font-body)' }}>{label}</span>
-          {label === 'Revisão' && <BadgeRevisao />}
-          {label === 'Biblioteca' && <BadgeBiblioteca />}
-          {label === 'Design Systems' && <BadgeKits />}
-          {label === 'Meus sites' && <BadgeMeusProjetos />}
+          <span style={{ fontFamily: 'var(--font-body)' }}>{item.label}</span>
+          <BadgeInfoDaRota to={item.to} />
         </>
       )}
     </NavLink>
   );
 }
 
-function Badge({ valor }: { valor: number }) {
+/**
+ * O item de Pendências: a área de exceção. Discreto quando não há nada; com selo
+ * de destaque moderado (crimson) e ícone aceso quando há itens aguardando. O
+ * `aria-label` anuncia a quantidade para o leitor de tela — não depende de cor.
+ */
+function PendenciasNavItem({ item }: { item: NavItemDef }) {
+  const q = useQuery({ queryKey: ['rejeitados'], queryFn: api.listRejeitados });
+  const badge = pendenciasBadge({
+    total: q.data?.total,
+    isError: q.isError,
+    isPending: q.isPending,
+  });
+  const Icon = item.icon;
+
+  return (
+    <NavLink
+      to={item.to}
+      title={item.description ?? item.label}
+      aria-label={badge.rotuloAcessivel}
+      className={({ isActive }) => cn(ITEM_BASE, isActive ? ITEM_ATIVO : ITEM_INATIVO)}
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && <span className="ds-active-bar" aria-hidden />}
+          <Icon
+            size={16}
+            strokeWidth={1.75}
+            style={badge.destaque ? { color: 'var(--color-signal)' } : undefined}
+          />
+          <span style={{ fontFamily: 'var(--font-body)' }}>{item.label}</span>
+          {badge.mostrar && (
+            <span
+              aria-hidden
+              className="ds-data ml-auto rounded-full border px-2 py-0.5 text-[10px] font-medium"
+              style={{
+                backgroundColor: 'rgba(198, 40, 40, 0.16)',
+                borderColor: 'rgba(198, 40, 40, 0.4)',
+                color: 'var(--color-crimson-3)',
+              }}
+            >
+              {badge.valor}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+/** Selos informativos (contagem neutra) das rotas principais. */
+function BadgeInfoDaRota({ to }: { to: string }) {
+  if (to === '/library') return <BadgeBiblioteca />;
+  if (to === '/design-systems') return <BadgeKits />;
+  if (to === '/meus-projetos') return <BadgeMeusProjetos />;
+  return null;
+}
+
+function BadgeInfo({ valor }: { valor: number }) {
   if (valor === 0) return null;
   return (
     <span
@@ -198,19 +225,13 @@ function BadgeBiblioteca() {
       return res.json() as Promise<{ items: unknown[] }>;
     },
   });
-  return <Badge valor={data?.items.length ?? 0} />;
+  return <BadgeInfo valor={data?.items.length ?? 0} />;
 }
 
 /** Conta os kits (Design Systems finais). Compartilha o cache com a página Kits. */
 function BadgeKits() {
   const { data } = useQuery({ queryKey: ['kits'], queryFn: api.listKits });
-  return <Badge valor={data?.items.length ?? 0} />;
-}
-
-/** Quantos candidatos ficaram de fora da Galeria e esperam revisão. */
-function BadgeRevisao() {
-  const { data } = useQuery({ queryKey: ['rejeitados'], queryFn: api.listRejeitados });
-  return <Badge valor={data?.total ?? 0} />;
+  return <BadgeInfo valor={data?.items.length ?? 0} />;
 }
 
 /** Conta quantos projetos já têm site gerado em disco. */
@@ -224,5 +245,5 @@ function BadgeMeusProjetos() {
     },
     refetchInterval: 10_000,
   });
-  return <Badge valor={data?.total ?? 0} />;
+  return <BadgeInfo valor={data?.total ?? 0} />;
 }
