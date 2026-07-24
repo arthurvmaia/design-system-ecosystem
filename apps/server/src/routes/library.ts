@@ -1,17 +1,24 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { getDb, tables } from '@ds/indexer';
 import { isolateComponent } from '@ds/isolator';
 import {
+  CaptureManifest,
+  type CapturedAsset,
   type SegmentInsight,
   SegmentStatesFile,
   SegmentsManifest,
   type StoredState,
+  coletarAssetRefs,
+  construirIndiceAssets,
   libraryComponentBundleDir,
   libraryComponentDir,
   libraryComponentMetadata,
   newComponentId,
+  reescreverParaLocal,
+  vaultCaptureAssetsDir,
+  vaultCaptureManifest,
   vaultExtractedDir,
   vaultSegmentStates,
   vaultSegmentsManifest,
@@ -116,15 +123,62 @@ const lerEstadosDoSegmento = (dsId: `ds_${string}`, segId: string): StoredState[
   }
 };
 
+/** Índice de assets locais da captura de um design system. */
+const lerCaptureAssets = (
+  dsId: `ds_${string}`,
+): { index: Map<string, string>; assets: CapturedAsset[] } => {
+  const path = vaultCaptureManifest(dsId);
+  if (!existsSync(path)) return { index: new Map(), assets: [] };
+  try {
+    const m = CaptureManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
+    const locais = (m.assets ?? []).filter((a) => !a.status || a.status === 'local');
+    return { index: construirIndiceAssets(locais), assets: locais };
+  } catch {
+    return { index: new Map(), assets: [] };
+  }
+};
+
 /**
- * Cria os arquivos do bundle de um segmento (isolamento + metadata) e devolve o
- * record pronto para inserir. Compartilhado entre o "curtir" único e o em lote —
- * a mesma peça vira componente do mesmo jeito, não importa por qual caminho, e
- * com EXATAMENTE os mesmos metadados (seção 11 do pedido).
+ * Copia para o bundle (content-addressed) os assets locais que o componente
+ * referencia. É o que faz o componente sobreviver à exclusão da extração: os
+ * arquivos passam a ser DELE, não da pasta temporária. Devolve o índice
+ * originUrl→localPath só dos copiados, para reescrever as refs.
+ */
+const copiarAssetsParaBundle = (
+  dsId: `ds_${string}`,
+  bundleDir: string,
+  textos: string[],
+): { index: Map<string, string>; assets: CapturedAsset[] } => {
+  const { index: captureIdx, assets: todos } = lerCaptureAssets(dsId);
+  if (captureIdx.size === 0) return { index: new Map(), assets: [] };
+  const refs = new Set(textos.flatMap((t) => coletarAssetRefs(t)));
+  const usados = new Map<string, string>();
+  const assets: CapturedAsset[] = [];
+  const origem = vaultCaptureAssetsDir(dsId);
+  for (const ref of refs) {
+    const localPath = captureIdx.get(ref);
+    if (!localPath || usados.has(ref)) continue;
+    const src = join(origem, localPath);
+    if (!existsSync(src)) continue;
+    const dest = join(bundleDir, 'assets', localPath);
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(src, dest);
+    usados.set(ref, localPath);
+    const a = todos.find((x) => x.localPath === localPath);
+    if (a && !assets.includes(a)) assets.push(a);
+  }
+  return { index: usados, assets };
+};
+
+/**
+ * Cria os arquivos do bundle de um segmento (isolamento + assets locais +
+ * metadata) e devolve o record pronto para inserir. Compartilhado entre o
+ * "curtir" único e o em lote — a mesma peça vira componente do mesmo jeito, com
+ * EXATAMENTE os mesmos metadados (seção 11/15 do pedido).
  *
- * Preserva o que a exploração descobriu: os estados capturados (índice +, quando
- * há, o HTML em `bundle/states.json` para o preview reproduzir), o pipeline de
- * interações, as dependências, o selo honesto, a confiança e as limitações.
+ * Preserva o que a exploração descobriu: os estados capturados, o pipeline, as
+ * dependências, o selo honesto E os assets locais copiados para o bundle (o HTML/
+ * CSS/estados passam a apontar para a rota do bundle, não para a origem).
  */
 const montarComponente = (seg: SegmentRow) => {
   const componentId = newComponentId();
@@ -136,24 +190,39 @@ const montarComponente = (seg: SegmentRow) => {
   const cssDir = join(vaultExtractedDir(seg.designSystemId as `ds_${string}`), 'assets/css');
   const isolation = isolateComponent({ html: seg.htmlSnippet, cssDir });
 
-  writeFileSync(join(bundleDir, 'index.html'), isolation.html, 'utf8');
-  writeFileSync(join(bundleDir, 'styles.css'), isolation.css, 'utf8');
+  const dsId = seg.designSystemId as `ds_${string}`;
+  const insight = lerInsightDoSegmento(dsId, seg.id);
+  const estados = lerEstadosDoSegmento(dsId, seg.id);
+
+  // Copia os assets locais para o bundle e reescreve tudo para a rota do bundle.
+  const textos = [
+    isolation.html,
+    isolation.css,
+    ...estados.flatMap((s) => [s.html, s.portalHtml ?? '']),
+  ];
+  const bundleAssets = copiarAssetsParaBundle(dsId, bundleDir, textos);
+  const prefixo = `/api/library-asset/${componentId}/`;
+  const local = (t: string): string => reescreverParaLocal(t, bundleAssets.index, prefixo).text;
+
+  writeFileSync(join(bundleDir, 'index.html'), local(isolation.html), 'utf8');
+  writeFileSync(join(bundleDir, 'styles.css'), local(isolation.css), 'utf8');
   writeFileSync(
     join(bundleDir, 'isolation.json'),
     JSON.stringify(isolation.stats, null, 2),
     'utf8',
   );
 
-  const dsId = seg.designSystemId as `ds_${string}`;
-  const insight = lerInsightDoSegmento(dsId, seg.id);
-  const estados = lerEstadosDoSegmento(dsId, seg.id);
-
-  // Estados COM HTML vão para o bundle: é o que sobrevive à origem e deixa o
-  // componente reproduzir os estados na Biblioteca, como na Galeria.
-  if (estados.length > 0) {
+  // Estados COM HTML (reescritos p/ local) vão para o bundle: sobrevivem à origem
+  // e deixam o componente reproduzir os estados na Biblioteca, como na Galeria.
+  const estadosLocal = estados.map((s) => ({
+    ...s,
+    html: local(s.html),
+    portalHtml: s.portalHtml ? local(s.portalHtml) : undefined,
+  }));
+  if (estadosLocal.length > 0) {
     writeFileSync(
       join(bundleDir, 'states.json'),
-      JSON.stringify({ segmentId: seg.id, generatedAt: Date.now(), states: estados }, null, 2),
+      JSON.stringify({ segmentId: seg.id, generatedAt: Date.now(), states: estadosLocal }, null, 2),
       'utf8',
     );
   }
@@ -185,6 +254,8 @@ const montarComponente = (seg: SegmentRow) => {
         // quando existe; senão o do isolamento estático.
         fidelity: insight ?? isolation.fidelity,
         dependencies,
+        // Assets locais copiados para o bundle (content-addressed).
+        assets: bundleAssets.assets,
         states: insight?.states ?? [],
         pipeline: insight?.pipeline ?? [],
         confidence: insight?.confidence ?? null,
