@@ -17,6 +17,7 @@ import {
   renderWithBrowser,
 } from './browser.js';
 import { type ExplorerLimits, resolveLimits } from './config.js';
+import { localizeCss } from './css-localize.js';
 import { inferirInteracoes } from './interaction-map.js';
 
 /**
@@ -64,8 +65,11 @@ const buildElements = (raw: RawCapture, css: string, bundled: boolean): Captured
       trigger: s.trigger,
       label: s.label || s.trigger,
       signature: s.signature,
-      html: s.html,
-      portalHtml: s.portalHtml,
+      // Absolutiza as refs do estado (como o design-system.html): o `outerHTML`
+      // capturado traz as URLs como escritas (`/b.png`), e sem isto elas não
+      // casam com o índice absoluto de assets — e quebrariam no preview.
+      html: absolutizeRefs(s.html, raw.url),
+      portalHtml: s.portalHtml ? absolutizeRefs(s.portalHtml, raw.url) : undefined,
     }));
     const assessment = assessFidelity(el.initialHtml, css, {
       hasCapturedStates: states.length > 0,
@@ -110,10 +114,25 @@ const localize = async (
   if (!opts.assetSink) return { assets: [], stats: { found: 0, saved: 0, bytes: 0 } };
   const refs = extractAssetRefs(html, css, baseUrl);
   const fetcher = opts.fetcher ?? createSecureHttpFetcher(limits);
-  const res = await localizeAssets(refs, fetcher, opts.assetSink, limits);
+  // CSS externo (`<link rel=stylesheet>`) é processado à parte: resolve os
+  // `url()`/`@import` INTERNOS relativos ao próprio arquivo e reescreve para
+  // local. Os demais assets (imagens/fontes/inline-css) vão pelo caminho normal.
+  const cssRefs = refs.filter((r) => r.kind === 'css' && r.absolute !== null);
+  const outros = refs.filter((r) => r.kind !== 'css');
+  const cssRes = await localizeCss(
+    cssRefs.map((r) => r.absolute as string),
+    fetcher,
+    opts.assetSink,
+    limits,
+  );
+  const res = await localizeAssets(outros, fetcher, opts.assetSink, limits);
   return {
-    assets: res.assets,
-    stats: { found: res.stats.found, saved: res.stats.saved, bytes: res.stats.bytes },
+    assets: [...res.assets, ...cssRes.assets],
+    stats: {
+      found: res.stats.found + cssRefs.length,
+      saved: res.stats.saved + cssRes.assets.length,
+      bytes: res.stats.bytes,
+    },
   };
 };
 

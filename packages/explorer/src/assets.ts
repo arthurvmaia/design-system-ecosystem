@@ -131,7 +131,7 @@ export const extractAssetRefs = (html: string, css: string, baseUrl: string | nu
 };
 
 /** Extensão preferida a partir do MIME ou da URL, sem o ponto. */
-const extPara = (url: string, mime: string): string => {
+export const extPara = (url: string, mime: string): string => {
   const porMime = MIME_EXT[mime.split(';')[0]?.trim().toLowerCase() ?? ''];
   if (porMime) return porMime;
   const m = url.split(/[?#]/)[0]?.match(/\.([a-z0-9]{2,5})$/i);
@@ -300,8 +300,12 @@ export const localizeAssets = async (
       const sha256 = createHash('sha256').update(fetched.bytes).digest('hex');
       const existente = porHash.get(sha256);
       if (existente) {
-        // Já baixamos este conteúdo por outra URL: reaproveita o arquivo.
+        // Já baixamos este conteúdo por outra URL: reaproveita o arquivo E
+        // registra a URL como alias, para o índice reescrever as duas.
         rewriteMap.set(ref.raw, existente.localPath);
+        if (ref.absolute !== existente.originalUrl) {
+          existente.aliases = [...(existente.aliases ?? []), ref.absolute];
+        }
         continue;
       }
       const kind = classifyByMime(fetched.mimeType, ref.absolute);

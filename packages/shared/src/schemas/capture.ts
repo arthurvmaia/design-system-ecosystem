@@ -168,6 +168,12 @@ export const CapturedAsset = z.object({
   kind: CapturedAssetKind,
   /** Estado. Ausente em manifestos antigos → tratar como `local` (estavam salvos). */
   status: AssetStatus.optional(),
+  /**
+   * Outras URLs de origem que apontam para ESTE mesmo conteúdo (dedup por hash).
+   * Sem isto, um placeholder repetido em duas URLs perdia a segunda no índice e
+   * quebrava no preview.
+   */
+  aliases: z.array(z.string()).optional(),
 });
 export type CapturedAsset = z.infer<typeof CapturedAsset>;
 

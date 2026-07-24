@@ -61,6 +61,7 @@ export {
   mimeCoerente,
   permiteLocal,
 } from './asset-safety.js';
+export { type CssLimits, type CssLocalizeResult, localizeCss } from './css-localize.js';
 export {
   keyframeNames,
   animationNamesUsed,

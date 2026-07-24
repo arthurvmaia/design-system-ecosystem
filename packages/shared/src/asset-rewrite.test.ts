@@ -35,6 +35,17 @@ test('construirIndiceAssets: só assets locais entram; inclui resolvedUrl', () =
   assert.equal(idx.has('https://cdn.x/b.png'), false, 'failed não entra');
 });
 
+test('aliases: URLs de conteúdo duplicado (dedup) todas entram no índice', () => {
+  const idx = construirIndiceAssets([
+    asset('https://cdn.x/a.png', 'image/dup.png', {
+      aliases: ['https://cdn.x/b.png', 'https://cdn.x/c.png'],
+    }),
+  ]);
+  assert.equal(idx.get('https://cdn.x/a.png'), 'image/dup.png');
+  assert.equal(idx.get('https://cdn.x/b.png'), 'image/dup.png', 'alias b entra no índice');
+  assert.equal(idx.get('https://cdn.x/c.png'), 'image/dup.png', 'alias c entra no índice');
+});
+
 test('reescreve img src para a rota local', () => {
   const idx = construirIndiceAssets([asset('https://cdn.x/a.png', 'image/aa.png')]);
   const r = reescreverParaLocal('<img src="https://cdn.x/a.png" alt="x">', idx, P);
@@ -109,4 +120,35 @@ test('reescreve <image href> e xlink:href de SVG', () => {
   const idx = construirIndiceAssets([asset('https://cdn.x/pic.png', 'image/pic.png')]);
   const r = reescreverParaLocal('<image href="https://cdn.x/pic.png" x="0"/>', idx, P);
   assert.match(r.text, /href="\/api\/asset\/ds_1\/image\/pic\.png"/);
+});
+
+test('SVG sprite: <use href> preserva o #fragmento, busca o arquivo sem ele', () => {
+  const idx = construirIndiceAssets([
+    asset('https://cdn.x/icons.svg', 'svg/ic.svg', { kind: 'svg', mimeType: 'image/svg+xml' }),
+  ]);
+  const r = reescreverParaLocal('<svg><use href="https://cdn.x/icons.svg#menu"/></svg>', idx, P);
+  assert.match(r.text, /href="\/api\/asset\/ds_1\/svg\/ic\.svg#menu"/);
+  assert.equal(r.locais, 1);
+});
+
+test('SVG sprite: <use xlink:href> com fragmento', () => {
+  const idx = construirIndiceAssets([
+    asset('https://cdn.x/sprite.svg', 'svg/sp.svg', { kind: 'svg', mimeType: 'image/svg+xml' }),
+  ]);
+  const r = reescreverParaLocal('<use xlink:href="https://cdn.x/sprite.svg#logo"/>', idx, P);
+  assert.match(r.text, /xlink:href="\/api\/asset\/ds_1\/svg\/sp\.svg#logo"/);
+});
+
+test('CSS url(...) com fragmento (filtro SVG) preserva o #', () => {
+  const idx = construirIndiceAssets([
+    asset('https://cdn.x/filters.svg', 'svg/f.svg', { kind: 'svg', mimeType: 'image/svg+xml' }),
+  ]);
+  const r = reescreverParaLocal('.a{filter:url("https://cdn.x/filters.svg#blur")}', idx, P);
+  assert.match(r.text, /url\("\/api\/asset\/ds_1\/svg\/f\.svg#blur"\)/);
+});
+
+test('query string faz parte da chave do índice (baixada com ela)', () => {
+  const idx = construirIndiceAssets([asset('https://cdn.x/a.png?v=2', 'image/av2.png')]);
+  const r = reescreverParaLocal('<img src="https://cdn.x/a.png?v=2">', idx, P);
+  assert.match(r.text, /src="\/api\/asset\/ds_1\/image\/av2\.png"/);
 });

@@ -37,6 +37,10 @@ export type ExplorerLimits = {
   assetTimeoutMs: number;
   /** Redirects máximos por download (proteção contra loop/SSRF por redirect). */
   maxRedirects: number;
+  /** Profundidade máxima de `@import` aninhado ao processar CSS externo. */
+  maxCssDepth: number;
+  /** Teto de arquivos CSS processados numa captura (proteção contra explosão). */
+  maxCssFiles: number;
   /** Orçamento total da exploração (ms) — corta a sessão inteira. */
   totalBudgetMs: number;
 };
@@ -55,6 +59,8 @@ export const DEFAULT_LIMITS: ExplorerLimits = {
   assetConcurrency: 6,
   assetTimeoutMs: 15_000,
   maxRedirects: 3,
+  maxCssDepth: 5,
+  maxCssFiles: 40,
   totalBudgetMs: 120_000,
 };
 
@@ -99,6 +105,8 @@ export const resolveLimits = (overrides: Partial<ExplorerLimits> = {}): Explorer
     assetConcurrency: numFromEnv('DS_EXPLORER_ASSET_CONCURRENCY', DEFAULT_LIMITS.assetConcurrency),
     assetTimeoutMs: numFromEnv('DS_EXPLORER_ASSET_TIMEOUT_MS', DEFAULT_LIMITS.assetTimeoutMs),
     maxRedirects: numFromEnv('DS_EXPLORER_MAX_REDIRECTS', DEFAULT_LIMITS.maxRedirects),
+    maxCssDepth: numFromEnv('DS_EXPLORER_MAX_CSS_DEPTH', DEFAULT_LIMITS.maxCssDepth),
+    maxCssFiles: numFromEnv('DS_EXPLORER_MAX_CSS_FILES', DEFAULT_LIMITS.maxCssFiles),
     totalBudgetMs: numFromEnv('DS_EXPLORER_TOTAL_BUDGET_MS', DEFAULT_LIMITS.totalBudgetMs),
   };
   return { ...fromEnv, ...overrides };
