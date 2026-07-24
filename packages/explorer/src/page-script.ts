@@ -175,6 +175,33 @@ export const OUTER_HTML_FN = `
 }
 `;
 
+/**
+ * HTML do BLOCO que contém o elemento — o escopo em que a mudança visual
+ * acontece. `(ref) => string`.
+ *
+ * Por que não só o outerHTML do elemento: clicar num gatilho de accordion muda a
+ * classe do CONTAINER (o painel irmão aparece por CSS), não do botão; trocar de
+ * aba muda o painel irmão. O estado do botão sozinho não reproduz nada disso. O
+ * bloco semântico mais alto (section/article/…) que o envolve casa com o
+ * segmento e carrega a consequência visual inteira — é o que o preview troca.
+ */
+export const BLOCK_HTML_FN = `
+(ref) => {
+  const el = document.querySelector('[data-dsx-ref="' + ref + '"]');
+  if (!el) return '';
+  const BLOCOS = { SECTION:1, ARTICLE:1, MAIN:1, HEADER:1, FOOTER:1, NAV:1, ASIDE:1, FORM:1, LI:1 };
+  let scope = el;
+  let node = el;
+  let hops = 0;
+  while (node.parentElement && node.parentElement.tagName !== 'BODY' && node.parentElement.tagName !== 'HTML' && hops < 8) {
+    node = node.parentElement;
+    hops++;
+    if (BLOCOS[node.tagName] || node.id) scope = node;
+  }
+  return scope.outerHTML.slice(0, 20000);
+}
+`;
+
 /** Remove os atributos de instrumentação de um HTML capturado. */
 export const stripInstrumentation = (html: string): string =>
   html.replace(/\s*data-dsx-(?:ref|listen)="[^"]*"/gi, '');

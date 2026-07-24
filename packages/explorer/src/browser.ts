@@ -3,6 +3,7 @@ import type { ExplorerLimits } from './config.js';
 import type { ElementDescriptor } from './descriptor.js';
 import { probesPara } from './interaction-map.js';
 import {
+  BLOCK_HTML_FN,
   COLLECT_DESCRIPTORS_FN,
   INIT_LISTENER_TRACKER,
   OUTER_HTML_FN,
@@ -322,8 +323,11 @@ export const exploreWithBrowser = async (
             const diff = diffSnapshots(base, after);
             const sig = stateSignature(after);
             if (diff.changed && registrarEstado(vistos, sig, limits.maxStatesPerElement)) {
+              // Estado = HTML do BLOCO (section/…) que contém o elemento, não só
+              // do elemento: é onde a mudança visual mora (painel do accordion,
+              // aba trocada) e é o que o preview troca para reproduzir de verdade.
               const html = stripInstrumentation(
-                (await page.evaluate(buildCall(OUTER_HTML_FN, d.ref))) as string,
+                (await page.evaluate(buildCall(BLOCK_HTML_FN, d.ref))) as string,
               );
               const portalHtml = afterRaw.portalHtml
                 ? stripInstrumentation(afterRaw.portalHtml)
