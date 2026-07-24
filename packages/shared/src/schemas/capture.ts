@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TelemetriaRelatorio } from './telemetria.js';
 
 /**
  * Contratos da captura por navegador e da avaliação de fidelidade.
@@ -297,5 +298,11 @@ export const CaptureManifest = z.object({
   stats: CaptureStats,
   /** Avisos de nível de página (deps não suportadas, limites atingidos). */
   warnings: z.array(z.string()),
+  /**
+   * Telemetria da captura: duração por fase, contadores e — o que importa para a
+   * Galeria — se a extração saiu PARCIAL por orçamento de tempo, em que fase e
+   * por quê. Ausente em manifestos anteriores a esta fase.
+   */
+  telemetry: TelemetriaRelatorio.optional(),
 });
 export type CaptureManifest = z.infer<typeof CaptureManifest>;

@@ -100,6 +100,7 @@ export const localizeCss = async (
   fetcher: AssetFetcher,
   sink: (localPath: string, bytes: Uint8Array) => void,
   limits: CssLimits,
+  signal?: AbortSignal,
 ): Promise<CssLocalizeResult> => {
   const emProgresso = new Set<string>(); // detecção de ciclo A→B→A
   const cssMap = new Map<string, string>();
@@ -140,6 +141,7 @@ export const localizeCss = async (
   };
 
   const processarCss = async (cssUrl: string, depth: number): Promise<string | null> => {
+    if (signal?.aborted) return null; // fase cortada: para de descer
     const jaFeito = cssMap.get(cssUrl);
     if (jaFeito) return jaFeito;
     if (emProgresso.has(cssUrl)) {
@@ -205,6 +207,9 @@ export const localizeCss = async (
     }
   };
 
-  for (const u of cssUrls) await processarCss(u, 0);
+  for (const u of cssUrls) {
+    if (signal?.aborted) break;
+    await processarCss(u, 0);
+  }
   return { assets, cssMap, warnings };
 };

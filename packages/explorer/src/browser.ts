@@ -20,7 +20,13 @@ import {
   registrarEstado,
   stateSignature,
 } from './state-diff.js';
-import { type Contador, corridaComTimeout } from './telemetria.js';
+import {
+  type Contador,
+  FASE,
+  type Telemetria,
+  corridaComTimeout,
+  urlParaLog,
+} from './telemetria.js';
 
 /**
  * O que a instrumentação devolve: como o `StateSnapshot`, mas com o HTML cru do
@@ -348,14 +354,16 @@ export const exploreWithBrowser = async (
   url: string,
   limits: ExplorerLimits,
   log: ExplorerLog,
+  tel: Telemetria,
 ): Promise<RawCapture> => {
   const pw = await tryLoadPlaywright();
   if (pw === null) throw new PlaywrightUnavailableError();
 
-  const deadline = Date.now() + limits.totalBudgetMs;
   const viewport = { width: 1440, height: 900 };
   const warnings: string[] = [];
-  const browser = await pw.chromium.launch({ headless: true });
+  const browser = await tel.medir(FASE.abrirNavegador, () =>
+    pw.chromium.launch({ headless: true }),
+  );
 
   try {
     const ctx = await browser.newContext({ userAgent: UA, viewport });
@@ -363,17 +371,24 @@ export const exploreWithBrowser = async (
     const page = await ctx.newPage();
     // Observa a rede ANTES do goto: retém os bytes que o navegador baixar (assets
     // que um fetch separado não pegaria por 403 anti-bot). Passivo — não pede nada.
-    const rede = capturarRede(page, limits);
+    // `tel` é o contador (requests/downloads).
+    const rede = capturarRede(page, limits, tel);
 
-    log('carregando', { url });
+    log('carregando', { url: urlParaLog(url) });
     // `domcontentloaded` em vez de `networkidle`: num site pesado (analytics,
     // websockets, mídia) o networkidle nunca assenta e consome todo o orçamento
-    // no load. O scroll + settle abaixo dá conta do conteúdo lazy.
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: limits.pageLoadTimeoutMs });
-    await page.waitForTimeout(limits.settleAfterLoadMs);
+    // no load. O scroll + settle abaixo dá conta do conteúdo lazy. O timeout do
+    // goto é clampado ao que RESTA do total — nunca fura o orçamento.
+    const gotoTimeout = Math.max(1000, Math.min(limits.pageLoadTimeoutMs, tel.restanteTotal()));
+    await tel.medir(FASE.carregar, () =>
+      page.goto(url, { waitUntil: 'domcontentloaded', timeout: gotoTimeout }),
+    );
+    await tel.medir(FASE.estabilizar, () => page.waitForTimeout(limits.settleAfterLoadMs));
     log('scroll', {});
-    await page.evaluate(buildCall(AUTO_SCROLL_FN, Math.min(40, limits.maxDepth * 12)));
-    await page.waitForTimeout(limits.settleAfterInteractionMs);
+    await tel.medir(FASE.scrollLazy, async () => {
+      await page.evaluate(buildCall(AUTO_SCROLL_FN, Math.min(40, limits.maxDepth * 12)));
+      await page.waitForTimeout(limits.settleAfterInteractionMs);
+    });
 
     const finalHtml = stripInstrumentation(await page.content());
     const rawSheets = (await page.evaluate(buildCall(COLLECT_STYLESHEETS_FN))) as Array<{
@@ -391,6 +406,7 @@ export const exploreWithBrowser = async (
     const descriptors = (await page.evaluate(
       buildCall(COLLECT_DESCRIPTORS_FN, limits.maxElements),
     )) as ElementDescriptor[];
+    tel.inc('candidatos', descriptors.length);
     log('elementos', { total: descriptors.length });
 
     // Prioriza os que mais provavelmente têm ESTADO discreto (accordion, tab,
@@ -404,89 +420,99 @@ export const exploreWithBrowser = async (
     let interactionsTried = 0;
     let statesFound = 0;
 
-    for (const d of ordenados) {
-      if (Date.now() > deadline) {
-        warnings.push('Orçamento de tempo esgotado; a exploração parou antes do fim.');
-        break;
-      }
-      const sel = `[data-dsx-ref="${d.ref}"]`;
-      const loc = page.locator(sel);
-      if ((await loc.count()) === 0) continue;
+    // Loop de interações sob ORÇAMENTO COOPERATIVO: o sinal aborta no teto (da
+    // fase ou do total) e o loop encerra sozinho no próximo elemento — o que já
+    // foi capturado permanece (nada é descartado). Substitui o antigo `deadline`
+    // que só cobria este loop; agora o teto respeita o total real do processo.
+    await tel.faseCooperativa(FASE.interacoes, async (signal) => {
+      for (const d of ordenados) {
+        if (signal.aborted) {
+          warnings.push('Orçamento de tempo esgotado; a exploração parou antes do fim.');
+          break;
+        }
+        const sel = `[data-dsx-ref="${d.ref}"]`;
+        const loc = page.locator(sel);
+        if ((await loc.count()) === 0) continue;
 
-      const vistos = new Set<string>();
-      const states: RawState[] = [];
-      const baseRaw = (await page.evaluate(buildCall(SNAPSHOT_FN, d.ref))) as RawSnapshot | null;
-      if (baseRaw === null) continue;
-      const base = toSnapshot(baseRaw);
-      const baseSig = stateSignature(base);
-      vistos.add(baseSig);
-      const initialHtml = stripInstrumentation(
-        (await page.evaluate(buildCall(OUTER_HTML_FN, d.ref))) as string,
-      );
+        const vistos = new Set<string>();
+        const states: RawState[] = [];
+        const baseRaw = (await page.evaluate(buildCall(SNAPSHOT_FN, d.ref))) as RawSnapshot | null;
+        if (baseRaw === null) continue;
+        const base = toSnapshot(baseRaw);
+        const baseSig = stateSignature(base);
+        vistos.add(baseSig);
+        const initialHtml = stripInstrumentation(
+          (await page.evaluate(buildCall(OUTER_HTML_FN, d.ref))) as string,
+        );
 
-      for (const probe of probesPara(d, url)) {
-        if (probe.kind === 'click' && clicks >= limits.maxClicks) continue;
-        interactionsTried++;
-        try {
-          if (probe.kind === 'hover') await loc.first().hover({ timeout: 2000, force: true });
-          else if (probe.kind === 'focus') await loc.first().focus({ timeout: 2000 });
-          else if (probe.kind === 'click') {
-            await loc.first().click({ timeout: 2000, trial: false });
-            clicks++;
-          }
-          await page.waitForTimeout(limits.settleAfterInteractionMs);
-
-          const afterRaw = (await page.evaluate(
-            buildCall(SNAPSHOT_FN, d.ref),
-          )) as RawSnapshot | null;
-          if (afterRaw !== null) {
-            const after = toSnapshot(afterRaw);
-            const diff = diffSnapshots(base, after);
-            const sig = stateSignature(after);
-            if (diff.changed && registrarEstado(vistos, sig, limits.maxStatesPerElement)) {
-              // Estado = HTML do BLOCO (section/…) que contém o elemento, não só
-              // do elemento: é onde a mudança visual mora (painel do accordion,
-              // aba trocada) e é o que o preview troca para reproduzir de verdade.
-              const html = stripInstrumentation(
-                (await page.evaluate(buildCall(BLOCK_HTML_FN, d.ref))) as string,
-              );
-              const portalHtml = afterRaw.portalHtml
-                ? stripInstrumentation(afterRaw.portalHtml)
-                : undefined;
-              states.push({
-                trigger: probe.kind === 'click' ? 'click' : (probe.kind as StateTrigger),
-                label: diff.abriuPortal ? 'com overlay' : diff.changes.slice(0, 2).join(' + '),
-                signature: sig,
-                html,
-                portalHtml,
-              });
-              statesFound++;
+        for (const probe of probesPara(d, url)) {
+          if (signal.aborted) break;
+          if (probe.kind === 'click' && clicks >= limits.maxClicks) continue;
+          interactionsTried++;
+          try {
+            if (probe.kind === 'hover') await loc.first().hover({ timeout: 2000, force: true });
+            else if (probe.kind === 'focus') await loc.first().focus({ timeout: 2000 });
+            else if (probe.kind === 'click') {
+              await loc.first().click({ timeout: 2000, trial: false });
+              clicks++;
             }
-          }
-        } catch {
-          // Interação falhou (elemento saiu do DOM, timeout): segue para a próxima.
-        } finally {
-          // Volta ao estado anterior: solta o hover/foco e fecha overlays.
-          await page.mouse.move(0, 0);
-          if (probe.kind === 'click') {
-            try {
-              await page.keyboard.press('Escape');
-            } catch {
-              // sem overlay para fechar
+            await page.waitForTimeout(limits.settleAfterInteractionMs);
+
+            const afterRaw = (await page.evaluate(
+              buildCall(SNAPSHOT_FN, d.ref),
+            )) as RawSnapshot | null;
+            if (afterRaw !== null) {
+              const after = toSnapshot(afterRaw);
+              const diff = diffSnapshots(base, after);
+              const sig = stateSignature(after);
+              if (diff.changed && registrarEstado(vistos, sig, limits.maxStatesPerElement)) {
+                // Estado = HTML do BLOCO (section/…) que contém o elemento, não só
+                // do elemento: é onde a mudança visual mora (painel do accordion,
+                // aba trocada) e é o que o preview troca para reproduzir de verdade.
+                const html = stripInstrumentation(
+                  (await page.evaluate(buildCall(BLOCK_HTML_FN, d.ref))) as string,
+                );
+                const portalHtml = afterRaw.portalHtml
+                  ? stripInstrumentation(afterRaw.portalHtml)
+                  : undefined;
+                states.push({
+                  trigger: probe.kind === 'click' ? 'click' : (probe.kind as StateTrigger),
+                  label: diff.abriuPortal ? 'com overlay' : diff.changes.slice(0, 2).join(' + '),
+                  signature: sig,
+                  html,
+                  portalHtml,
+                });
+                statesFound++;
+              }
+            }
+          } catch {
+            // Interação falhou (elemento saiu do DOM, timeout): segue para a próxima.
+          } finally {
+            // Volta ao estado anterior: solta o hover/foco e fecha overlays.
+            await page.mouse.move(0, 0);
+            if (probe.kind === 'click') {
+              try {
+                await page.keyboard.press('Escape');
+              } catch {
+                // sem overlay para fechar
+              }
             }
           }
         }
+
+        elements.push({ descriptor: d, initialHtml, states });
       }
+    });
 
-      elements.push({ descriptor: d, initialHtml, states });
-    }
-
+    tel.inc('acoes', interactionsTried);
+    tel.inc('estados', statesFound);
     log('estados', { statesFound, interactionsTried, clicks });
 
     // Garante que os corpos observados terminaram de ser lidos ANTES de fechar o
     // navegador — depois disso os bytes vivem em memória, sem depender da origem.
-    // Drenagem com timeout próprio: nunca segura mais que `faseDrenarMs`.
-    await rede.aguardar(limits.faseDrenarMs);
+    // Drenagem com timeout próprio, clampado ao que resta do total.
+    const drenoTimeout = Math.min(limits.faseDrenarMs, Math.max(0, tel.restanteTotal()));
+    await tel.medir(FASE.drenarRede, () => rede.aguardar(drenoTimeout));
     log('rede', { capturados: rede.mapa.size });
 
     return {
@@ -501,6 +527,6 @@ export const exploreWithBrowser = async (
       warnings,
     };
   } finally {
-    await browser.close();
+    await tel.medir(FASE.fechar, () => browser.close());
   }
 };

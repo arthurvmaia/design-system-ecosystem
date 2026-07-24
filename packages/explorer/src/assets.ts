@@ -291,6 +291,7 @@ export const localizeAssets = async (
   fetcher: AssetFetcher,
   sink: (localPath: string, bytes: Uint8Array) => void,
   limits: Pick<ExplorerLimits, 'assetConcurrency' | 'maxAssetBytes'>,
+  signal?: AbortSignal,
 ): Promise<LocalizationResult> => {
   const baixaveis = refs.filter((r) => r.absolute !== null);
   const rewriteMap = new Map<string, string>();
@@ -301,7 +302,9 @@ export const localizeAssets = async (
 
   let cursor = 0;
   const worker = async (): Promise<void> => {
-    while (cursor < baixaveis.length) {
+    // Para de puxar novos itens quando a fase é cortada (o fetch em voo já aborta
+    // pelo próprio sinal); o que já baixou permanece.
+    while (cursor < baixaveis.length && !signal?.aborted) {
       const ref = baixaveis[cursor++];
       if (!ref || ref.absolute === null) continue;
       const fetched = await fetcher(ref.absolute);

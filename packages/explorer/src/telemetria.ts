@@ -195,6 +195,50 @@ export class Telemetria {
     }
   }
 
+  /**
+   * Mede uma fase SEM cortar (para ops que já têm o próprio timeout — goto,
+   * launch, close, drenagem). Só cronometra e registra; erro é propagado.
+   */
+  async medir<T>(nome: string, fn: () => Promise<T>): Promise<T> {
+    const t0 = this.now();
+    try {
+      return await fn();
+    } finally {
+      this.registrar(nome, this.now() - t0);
+    }
+  }
+
+  /**
+   * Roda uma fase COOPERATIVA sob orçamento: passa um `AbortSignal` que aborta no
+   * teto e AGUARDA o `fn` até o fim — o `fn` deve checar o sinal e encerrar
+   * sozinho (o loop de interações, os workers de download). Diferente de `fase`,
+   * NÃO abandona o `fn` (nada roda solto no navegador depois). Erro real do `fn`
+   * é propagado; o corte por tempo vira parcial via o próprio sinal.
+   */
+  async faseCooperativa<T>(
+    nome: string,
+    fn: (signal: AbortSignal) => Promise<T>,
+    override?: number,
+  ): Promise<T> {
+    const teto = this.tetoFase(nome, override);
+    const ac = new AbortController();
+    const t0 = this.now();
+    const timer = setTimeout(() => ac.abort(new OrcamentoExcedido(nome)), teto);
+    try {
+      return await fn(ac.signal);
+    } finally {
+      clearTimeout(timer);
+      const abortada = ac.signal.aborted;
+      this.fasesReg.push({
+        nome,
+        ms: this.now() - t0,
+        abortada,
+        motivo: abortada ? 'orçamento da fase' : undefined,
+      });
+      if (abortada) this.marcarParcial(nome, `orçamento da fase esgotado (${teto}ms)`);
+    }
+  }
+
   /** Registra uma fase JÁ medida por fora (ex.: passos do pipeline em outro pacote). */
   registrar(nome: string, ms: number, abortada = false, motivo?: string): void {
     this.fasesReg.push({ nome, ms: Math.max(0, Math.round(ms)), abortada, motivo });

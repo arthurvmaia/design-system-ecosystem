@@ -20,6 +20,7 @@ import {
 import { type ExplorerLimits, resolveLimits } from './config.js';
 import { localizeCss } from './css-localize.js';
 import { inferirInteracoes } from './interaction-map.js';
+import { type Contador, FASE, Telemetria, resolveOrcamento } from './telemetria.js';
 
 /**
  * Orquestrador de alto nível: transforma a captura crua do navegador num
@@ -62,6 +63,11 @@ export type ExploreOptions = {
    * os assets que os segmentos referenciam.
    */
   htmlParaAssets?: string;
+  /**
+   * Telemetria injetável (o pipeline cria uma e mede também segmentar/validar; os
+   * testes injetam com orçamento curto). Ausente → uma nova é criada por aqui.
+   */
+  telemetria?: Telemetria;
 };
 
 const noop: ExplorerLog = () => {};
@@ -129,6 +135,8 @@ const localize = async (
   opts: ExploreOptions,
   limits: ExplorerLimits,
   rede?: Map<string, FetchedAsset>,
+  signal?: AbortSignal,
+  contador?: Contador,
 ): Promise<{
   assets: CaptureManifest['assets'];
   stats: { found: number; saved: number; bytes: number };
@@ -136,7 +144,8 @@ const localize = async (
   if (!opts.assetSink) return { assets: [], stats: { found: 0, saved: 0, bytes: 0 } };
   const refs = extractAssetRefs(html, css, baseUrl);
   // Fetcher injetado (teste) vence sempre. Senão: rede-do-navegador → HTTP seguro.
-  const seguro = createSecureHttpFetcher(limits);
+  // O fetcher HTTP recebe o SINAL da fase (corte por orçamento) e o contador.
+  const seguro = createSecureHttpFetcher(limits, { signal, contador });
   const fetcher = opts.fetcher ?? (rede ? fetcherComRede(rede, seguro) : seguro);
   // CSS externo (`<link rel=stylesheet>`) é processado à parte: resolve os
   // `url()`/`@import` INTERNOS relativos ao próprio arquivo e reescreve para
@@ -148,8 +157,9 @@ const localize = async (
     fetcher,
     opts.assetSink,
     limits,
+    signal,
   );
-  const res = await localizeAssets(outros, fetcher, opts.assetSink, limits);
+  const res = await localizeAssets(outros, fetcher, opts.assetSink, limits, signal);
   return {
     assets: [...res.assets, ...cssRes.assets],
     stats: {
@@ -167,9 +177,17 @@ const cssFromSheets = (raw: RawCapture): string =>
     .map((s) => s.content ?? '')
     .join('\n');
 
+/** Mensagem honesta de corte por tempo, para a Galeria mostrar em vez de erro. */
+const avisoParcial = (tel: Telemetria): string => {
+  const r = tel.relatorio();
+  return `Extração PARCIAL por orçamento de tempo (fase "${r.faseInterrompida ?? '?'}"). O que foi capturado até o corte foi preservado — nada foi descartado.`;
+};
+
 /**
  * Explora uma URL e devolve o manifesto rico. Nunca lança por falta de
- * Playwright: cai para `estatico`.
+ * Playwright: cai para `estatico`. Todo o processo roda sob a `Telemetria`: cada
+ * fase é medida e orçada, e o corte por tempo produz um resultado PARCIAL válido
+ * (nada do que já foi capturado é descartado).
  */
 export const explorePage = async (
   url: string,
@@ -177,12 +195,15 @@ export const explorePage = async (
 ): Promise<CaptureManifest> => {
   const limits = resolveLimits(opts.limits);
   const log = opts.log ?? noop;
+  const { orcamento, avisos } = resolveOrcamento(limits);
+  for (const a of avisos) log('orcamento', { aviso: a });
+  const tel = opts.telemetria ?? new Telemetria(orcamento);
   const started = Date.now();
 
   let raw: RawCapture | null = null;
   const warnings: string[] = [];
   try {
-    raw = await exploreWithBrowser(url, limits, log);
+    raw = await exploreWithBrowser(url, limits, log, tel);
   } catch (err) {
     if (err instanceof PlaywrightUnavailableError) {
       warnings.push(
@@ -195,53 +216,66 @@ export const explorePage = async (
   }
 
   if (raw !== null) {
-    opts.onRenderedHtml?.(raw.finalHtml);
-    const css = cssFromSheets(raw);
+    const cap = raw; // const: o TS mantém o narrowing dentro da closure abaixo
+    opts.onRenderedHtml?.(cap.finalHtml);
+    const css = cssFromSheets(cap);
     // Localiza a partir do design-system.html quando o chamador o fornece — é o
-    // HTML autoritativo (o que é segmentado); o render interno pode ter menos.
-    const { assets, stats } = await localize(
-      opts.htmlParaAssets ?? raw.finalHtml,
-      css,
-      raw.url,
-      opts,
-      limits,
-      raw.network,
+    // HTML autoritativo (o que é segmentado); o render interno pode ter menos. A
+    // fase é orçada: se estourar, o que já baixou fica e o resto vira externo.
+    const { assets, stats } = await tel.faseCooperativa(FASE.assetsRede, (signal) =>
+      localize(
+        opts.htmlParaAssets ?? cap.finalHtml,
+        css,
+        cap.url,
+        opts,
+        limits,
+        cap.network,
+        signal,
+        tel,
+      ),
     );
+    tel.inc('assetsLocais', assets.length);
     const bundled = assets.length > 0;
-    const elements = buildElements(raw, css, bundled);
+    const elements = buildElements(cap, css, bundled);
+    const parcial = tel.parcial ? [avisoParcial(tel)] : [];
     return {
       version: 1,
-      url: raw.url,
+      url: cap.url,
       capturedAt: Date.now(),
       strategy: 'playwright',
       exploration: {
         mode: opts.exploration?.mode ?? 'deep',
         reasons: opts.exploration?.reasons ?? [],
         durationMs: Date.now() - started,
-        limitsHit: raw.warnings.filter((w) => /orçamento|limite/i.test(w)),
+        limitsHit: [...cap.warnings.filter((w) => /orçamento|limite/i.test(w)), ...parcial],
         errors: [],
       },
-      viewport: raw.viewport,
-      stylesheets: raw.stylesheets.map((s) => ({ href: s.href, inline: s.inline, bytes: s.bytes })),
+      viewport: cap.viewport,
+      stylesheets: cap.stylesheets.map((s) => ({ href: s.href, inline: s.inline, bytes: s.bytes })),
       assets,
       elements,
       stats: {
         durationMs: Date.now() - started,
-        elementsAnalyzed: raw.stats.elementsAnalyzed,
-        interactionsTried: raw.stats.interactionsTried,
-        statesFound: raw.stats.statesFound,
+        elementsAnalyzed: cap.stats.elementsAnalyzed,
+        interactionsTried: cap.stats.interactionsTried,
+        statesFound: cap.stats.statesFound,
         assetsFound: stats.found,
         assetsSaved: stats.saved,
         assetsBytes: stats.bytes,
       },
-      warnings: [...warnings, ...raw.warnings],
+      warnings: [...warnings, ...cap.warnings, ...parcial],
+      telemetry: tel.relatorio(),
     };
   }
 
   // Caminho estático: só o HTML servido, sem estados.
   const html = opts.staticHtml ?? (await fetchStatic(url));
   opts.onRenderedHtml?.(html);
-  const { assets, stats } = await localize(opts.htmlParaAssets ?? html, '', url, opts, limits);
+  const { assets, stats } = await tel.faseCooperativa(FASE.assetsRede, (signal) =>
+    localize(opts.htmlParaAssets ?? html, '', url, opts, limits, undefined, signal, tel),
+  );
+  tel.inc('assetsLocais', assets.length);
+  const parcial = tel.parcial ? [avisoParcial(tel)] : [];
   return {
     version: 1,
     url,
@@ -251,7 +285,7 @@ export const explorePage = async (
       mode: 'quick',
       reasons: opts.exploration?.reasons ?? [],
       durationMs: Date.now() - started,
-      limitsHit: [],
+      limitsHit: parcial,
       errors: warnings,
     },
     viewport: { width: 1440, height: 900 },
@@ -267,7 +301,8 @@ export const explorePage = async (
       assetsSaved: stats.saved,
       assetsBytes: stats.bytes,
     },
-    warnings,
+    warnings: [...warnings, ...parcial],
+    telemetry: tel.relatorio(),
   };
 };
 
