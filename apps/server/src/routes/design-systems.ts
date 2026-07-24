@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { getModels } from '../lib/anthropic.js';
 import { isQueueMode } from '../lib/execution-mode.js';
 import { enqueueTask } from '../lib/task-queue.js';
+import { validarPreviews } from '../lib/validate-preview.js';
 
 export const designSystemsRoute = new Hono();
 
@@ -226,6 +227,31 @@ designSystemsRoute.post(
 );
 
 /**
+ * Revalida os previews de uma extração (idempotente). O fluxo normal já valida
+ * automaticamente ao extrair/segmentar; este endpoint existe para revalidar sob
+ * demanda — por exemplo, depois de subir a versão do validador — sem reextrair.
+ * A listagem NÃO fica bloqueada: é outra requisição, tratada em paralelo.
+ */
+designSystemsRoute.post('/:id/validate', async (c) => {
+  const id = c.req.param('id');
+  if (!id.startsWith('ds_')) return c.json({ error: 'invalid_id' }, 400);
+  try {
+    const val = await validarPreviews(id as `ds_${string}`);
+    return c.json({
+      status: val.status,
+      validadas: val.results.filter((r) => r.ok).length,
+      interacoes: val.results.length,
+      segmentos: val.segments.length,
+    });
+  } catch (err) {
+    return c.json(
+      { error: 'validation_failed', message: err instanceof Error ? err.message : String(err) },
+      500,
+    );
+  }
+});
+
+/**
  * Inicia uma extração + segmentação. Retorna o task_id imediatamente.
  */
 designSystemsRoute.post('/', zValidator('json', CreateDesignSystemInput), (c) => {
@@ -320,6 +346,20 @@ designSystemsRoute.post('/', zValidator('json', CreateDesignSystemInput), (c) =>
         .run();
     });
     onEvent('info', `Segmentação: ${segmentResult.segments.length} candidatos`);
+
+    // Validação automática do replay: fecha a lacuna de produção — promove
+    // `replayable`→`validated` o que reproduz de verdade no navegador. Não
+    // derruba a extração se falhar (a Galeria só não mostra `validated`).
+    try {
+      onEvent('info', 'Validando previews (navegador)');
+      const val = await validarPreviews(result.designSystemId, {
+        log: (m) => onEvent('info', m),
+      });
+      const validadas = val.results.filter((r) => r.ok).length;
+      onEvent('info', `Validação: ${val.status} — ${validadas} interação(ões) validada(s)`);
+    } catch (err) {
+      onEvent('warn', `Validação de preview falhou: ${err instanceof Error ? err.message : err}`);
+    }
 
     return { ...result, segmentCount: segmentResult.segments.length };
   });

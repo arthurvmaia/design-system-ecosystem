@@ -126,6 +126,14 @@ export const SegmentStatesFile = z.object({
 export type SegmentStatesFile = z.infer<typeof SegmentStatesFile>;
 
 /**
+ * Versão do validador de preview e do próprio preview. Sobem quando a lógica de
+ * reprodução (validador) ou a composição do preview mudam — o que INVALIDA
+ * validações antigas por hash (ver `previewHash`).
+ */
+export const VALIDATOR_VERSION = 1;
+export const PREVIEW_VERSION = 1;
+
+/**
  * Resultado de uma validação de reprodução em navegador: qual segmento, qual
  * interação, se passou. É o que promove uma interação de `replayable` para
  * `validated` — só depois que o replay foi executado e conferido de verdade.
@@ -138,11 +146,45 @@ export const ResultadoValidacaoSegmento = z.object({
 });
 export type ResultadoValidacaoSegmento = z.infer<typeof ResultadoValidacaoSegmento>;
 
+/**
+ * Estado da validação de uma extração. Diferencia honestamente (regra 18): não
+ * executada NÃO é "não suportado"; falha NÃO é "não validado".
+ */
+export const ValidationStatus = z.enum([
+  'pendente',
+  'em-andamento',
+  'concluida',
+  'parcial',
+  'falha',
+  'nao-executada',
+]);
+export type ValidationStatus = z.infer<typeof ValidationStatus>;
+
+/**
+ * Metadados por segmento, para o cache por hash: só revalida quem mudou. O
+ * `previewHash` cobre HTML+estados+dependências+versões; se bater, reaproveita.
+ */
+export const SegmentValidationMeta = z.object({
+  segmentId: z.string().startsWith('seg_'),
+  previewHash: z.string(),
+  validatedAt: z.number().int().positive(),
+  durationMs: z.number().int().nonnegative(),
+  error: z.string().optional(),
+});
+export type SegmentValidationMeta = z.infer<typeof SegmentValidationMeta>;
+
 /** validation.json em vault/{ds}/segments/ — o registro do que foi validado em navegador. */
 export const SegmentValidationFile = z.object({
   designSystemId: z.string().startsWith('ds_'),
   generatedAt: z.number().int().positive(),
+  /** Estado geral da validação desta extração. Default para arquivos antigos. */
+  status: ValidationStatus.default('concluida'),
+  pipelineVersion: z.number().int().optional(),
+  validatorVersion: z.number().int().optional(),
+  durationMs: z.number().int().nonnegative().default(0),
   results: z.array(ResultadoValidacaoSegmento),
+  /** Meta por segmento (hash/tempo), para o cache. Ausente em arquivos antigos. */
+  segments: z.array(SegmentValidationMeta).default([]),
 });
 export type SegmentValidationFile = z.infer<typeof SegmentValidationFile>;
 

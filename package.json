@@ -38,6 +38,7 @@
     "@ds/explorer": "workspace:^",
     "@ds/indexer": "workspace:^",
     "@ds/segmenter": "workspace:^",
+    "@ds/server": "workspace:^",
     "@ds/shared": "workspace:^"
   }
 }

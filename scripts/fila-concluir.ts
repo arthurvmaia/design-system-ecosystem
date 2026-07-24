@@ -3,9 +3,11 @@
  *
  * Uso: pnpm fila:concluir <job_id> [--erro "mensagem"]
  *
- * Este script NÃO executa trabalho e NÃO chama a API. Ele só registra que um
- * job terminou, validando que o que foi produzido existe em disco antes de
- * marcar como concluído — para um job não ser fechado sem entrega.
+ * Este script NÃO chama a API da Anthropic. Ele registra que um job terminou,
+ * validando que o que foi produzido existe em disco antes de marcar como
+ * concluído — para um job não ser fechado sem entrega. Ao fechar uma extração,
+ * ele também segmenta e roda a validação do replay no navegador (passo do
+ * processamento, não trabalho de LLM) para promover o que reproduz de verdade.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -160,5 +162,32 @@ if (paraSegmentar !== null) {
   }
 }
 
-finishJob(jobId, { result: { fechadoEm: new Date().toISOString() } });
-console.log(`\nConcluído: ${job.label}\n`);
+/**
+ * Validação automática do replay (navegador) + fechamento. Num `main` async
+ * (não top-level await: o tsx transpila os scripts para CJS). A validação é
+ * passo do processamento, logo após os segmentos indexados — sem comando extra
+ * do usuário. Reusa a previewRoute de produção e não bloqueia o fechamento: se
+ * falhar ou o navegador faltar, os segmentos seguem `replayable` e a validação
+ * pode rodar depois; nunca vira `unsupported` por indisponibilidade.
+ */
+const finalizar = async (): Promise<void> => {
+  if (paraSegmentar !== null) {
+    try {
+      const { validarPreviews } = await import('@ds/server/validate');
+      console.log('\nValidando previews (navegador)…');
+      const val = await validarPreviews(paraSegmentar);
+      const validadas = val.results.filter((r) => r.ok).length;
+      console.log(`  ${val.status}: ${validadas} interação(ões) validada(s).`);
+    } catch (err) {
+      console.log(`  validação pulada: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  finishJob(jobId, { result: { fechadoEm: new Date().toISOString() } });
+  console.log(`\nConcluído: ${job.label}\n`);
+};
+
+finalizar().catch((err) => {
+  console.error(`\nFalha ao concluir: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+});
