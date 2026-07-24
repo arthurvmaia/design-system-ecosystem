@@ -74,6 +74,9 @@ const capturarProfundo = async (
   try {
     const manifest = await explorePage(url, {
       exploration: { mode: 'deep', reasons: decisao.reasons },
+      // Localiza os assets a partir do design-system.html (o que é segmentado),
+      // não do render interno da exploração — que pode ter menos (lazy-load).
+      htmlParaAssets: html,
       assetSink: (localPath, bytes) => {
         const dest = join(assetsDir, localPath);
         mkdirSync(dirname(dest), { recursive: true });

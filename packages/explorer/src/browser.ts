@@ -1,4 +1,6 @@
 import type { StateTrigger } from '@ds/shared';
+import { mimeCoerente, urlAssetSegura } from './asset-safety.js';
+import { type FetchedAsset, classifyByMime, classifyByUrl } from './assets.js';
 import type { ExplorerLimits } from './config.js';
 import type { ElementDescriptor } from './descriptor.js';
 import { probesPara } from './interaction-map.js';
@@ -82,6 +84,13 @@ export type RawCapture = {
   stylesheets: Array<{ href: string | null; inline: boolean; bytes: number; content?: string }>;
   viewport: { width: number; height: number };
   elements: RawElementCapture[];
+  /**
+   * Bytes que o PRÓPRIO navegador baixou durante o render, por URL. É a via que
+   * faz assets de sites com proteção anti-bot (Cloudflare etc.) serem
+   * localizados: o Chromium passou a proteção na sessão real; um fetch HTTP
+   * separado tomaria 403. O localize consulta este mapa antes de ir à rede.
+   */
+  network: Map<string, FetchedAsset>;
   stats: {
     elementsAnalyzed: number;
     interactionsTried: number;
@@ -98,6 +107,15 @@ type PwLocator = {
   focus: (opts?: { timeout?: number }) => Promise<void>;
   click: (opts?: { timeout?: number; force?: boolean; trial?: boolean }) => Promise<void>;
 };
+type PwRequest = { url: () => string; resourceType: () => string };
+type PwResponse = {
+  url: () => string;
+  status: () => number;
+  ok: () => boolean;
+  headers: () => Record<string, string>;
+  body: () => Promise<Uint8Array>;
+  request: () => PwRequest;
+};
 type PwPage = {
   goto: (url: string, opts: { waitUntil: string; timeout: number }) => Promise<unknown>;
   content: () => Promise<string>;
@@ -105,6 +123,7 @@ type PwPage = {
   // biome-ignore lint/suspicious/noExplicitAny: evaluate é genérico por natureza
   evaluate: (expression: string) => Promise<any>;
   locator: (selector: string) => PwLocator;
+  on: (event: 'response', handler: (response: PwResponse) => void) => void;
   mouse: { move: (x: number, y: number) => Promise<void> };
   keyboard: { press: (key: string) => Promise<void> };
   waitForTimeout: (ms: number) => Promise<void>;
@@ -222,6 +241,77 @@ const prioridade = (d: ElementDescriptor): number => {
   return s;
 };
 
+/** Tipos de recurso do navegador que valem como asset mesmo sem MIME conclusivo. */
+const RECURSO_ASSET = new Set(['image', 'font', 'media', 'stylesheet']);
+
+/**
+ * Captura os bytes que o PRÓPRIO navegador baixou — a via genérica para assets
+ * de sites com proteção anti-bot (Cloudflare etc.), que respondem 403 a um fetch
+ * HTTP separado mas servem normalmente para a sessão real do Chromium. Observa
+ * cada `response` e guarda o corpo dos que são asset (imagem/fonte/css/svg/vídeo/
+ * js/json), com os MESMOS guardas do fetcher seguro: só host público, nada de
+ * `text/html`, teto por asset e teto total de memória. O localize consulta este
+ * mapa primeiro e só cai no HTTP para o que o navegador não tiver carregado.
+ *
+ * Não inicia requisição nenhuma: é observação passiva do que o Chromium já ia
+ * baixar de qualquer forma — não amplia a superfície de SSRF do render.
+ */
+const capturarRede = (
+  page: PwPage,
+  limits: ExplorerLimits,
+): { mapa: Map<string, FetchedAsset>; aguardar: () => Promise<void> } => {
+  const mapa = new Map<string, FetchedAsset>();
+  const emVoo: Array<Promise<void>> = [];
+  let total = 0;
+  page.on('response', (res) => {
+    emVoo.push(
+      (async () => {
+        try {
+          if (!res.ok()) return; // 3xx/4xx/5xx: não é corpo de asset
+          const reqUrl = res.request().url();
+          // Mesmo guarda de SSRF do fetcher seguro: não retém resposta de rede
+          // interna, ainda que a página a tenha referenciado.
+          if (!urlAssetSegura(reqUrl)) return;
+          const mime = res.headers()['content-type'] ?? '';
+          if (/^\s*text\/html/i.test(mime)) return; // é página, não asset
+          // Só o que parece asset — por MIME, ou pelo tipo de recurso do navegador
+          // (cobre CDN sem extensão nem content-type conclusivo).
+          if (
+            classifyByMime(mime, reqUrl) === 'other' &&
+            !RECURSO_ASSET.has(res.request().resourceType())
+          ) {
+            return;
+          }
+          if (total >= limits.maxCaptureBytes) return; // teto de memória atingido
+          if (Number(res.headers()['content-length'] ?? '0') > limits.maxAssetBytes) return;
+          const bytes = await res.body();
+          if (bytes.byteLength > limits.maxAssetBytes) return;
+          if (!mimeCoerente(mime || 'application/octet-stream', classifyByUrl(reqUrl))) return;
+          total += bytes.byteLength;
+          const asset: FetchedAsset = {
+            status: res.status(),
+            mimeType: mime || 'application/octet-stream',
+            bytes,
+          };
+          // Indexa pela URL pedida (a que está no DOM) E pela final (pós-redirect),
+          // para o localize acertar seja qual for a que o segmento referencia.
+          mapa.set(reqUrl, asset);
+          const finalUrl = res.url();
+          if (finalUrl !== reqUrl) mapa.set(finalUrl, asset);
+        } catch {
+          // body() indisponível (redirect, corpo já liberado, alvo fechado): ignora.
+        }
+      })(),
+    );
+  });
+  return {
+    mapa,
+    aguardar: async () => {
+      await Promise.allSettled(emVoo);
+    },
+  };
+};
+
 /**
  * Explora a página com o navegador. Lança `PlaywrightUnavailableError` se o
  * Playwright não estiver instalado.
@@ -243,6 +333,9 @@ export const exploreWithBrowser = async (
     const ctx = await browser.newContext({ userAgent: UA, viewport });
     await ctx.addInitScript({ content: INIT_LISTENER_TRACKER });
     const page = await ctx.newPage();
+    // Observa a rede ANTES do goto: retém os bytes que o navegador baixar (assets
+    // que um fetch separado não pegaria por 403 anti-bot). Passivo — não pede nada.
+    const rede = capturarRede(page, limits);
 
     log('carregando', { url });
     // `domcontentloaded` em vez de `networkidle`: num site pesado (analytics,
@@ -362,6 +455,11 @@ export const exploreWithBrowser = async (
 
     log('estados', { statesFound, interactionsTried, clicks });
 
+    // Garante que os corpos observados terminaram de ser lidos ANTES de fechar o
+    // navegador — depois disso os bytes vivem em memória, sem depender da origem.
+    await rede.aguardar();
+    log('rede', { capturados: rede.mapa.size });
+
     return {
       strategy: 'playwright',
       url: page.url(),
@@ -369,6 +467,7 @@ export const exploreWithBrowser = async (
       stylesheets,
       viewport,
       elements,
+      network: rede.mapa,
       stats: { elementsAnalyzed: descriptors.length, interactionsTried, statesFound },
       warnings,
     };

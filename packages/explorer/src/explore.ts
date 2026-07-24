@@ -3,6 +3,7 @@ import type { CaptureManifest, CapturedElement, CapturedState } from '@ds/shared
 import { assessFidelity } from './assess.js';
 import {
   type AssetFetcher,
+  type FetchedAsset,
   absolutizeRefs,
   createSecureHttpFetcher,
   extractAssetRefs,
@@ -53,6 +54,14 @@ export type ExploreOptions = {
    * decide via `decidirProfundidade` e repassa aqui.
    */
   exploration?: { mode: 'quick' | 'deep'; reasons: string[] };
+  /**
+   * HTML a partir do qual LOCALIZAR os assets. Por padrão é o render interno da
+   * exploração, mas esse pode divergir do `design-system.html` que de fato é
+   * segmentado (site com lazy-load monta imagens diferentes entre renders). O
+   * chamador passa aqui o design-system.html para o manifesto cobrir exatamente
+   * os assets que os segmentos referenciam.
+   */
+  htmlParaAssets?: string;
 };
 
 const noop: ExplorerLog = () => {};
@@ -100,6 +109,18 @@ const buildElements = (raw: RawCapture, css: string, bundled: boolean): Captured
     };
   });
 
+/**
+ * Fetcher que consulta primeiro os bytes que o NAVEGADOR já baixou (mapa de
+ * rede da captura) e só cai no HTTP para o que ele não tiver carregado. É o que
+ * faz sites com proteção anti-bot terem os assets localizados: o Chromium passou
+ * a proteção na sessão real; um fetch HTTP separado tomaria 403. Os bytes do
+ * mapa já passaram pelos mesmos guardas de segurança na captura.
+ */
+const fetcherComRede =
+  (rede: Map<string, FetchedAsset>, fallback: AssetFetcher): AssetFetcher =>
+  async (url) =>
+    rede.get(url) ?? (await fallback(url));
+
 /** Localiza os assets referenciados no HTML+CSS e devolve o CSS reescrito. */
 const localize = async (
   html: string,
@@ -107,13 +128,16 @@ const localize = async (
   baseUrl: string | null,
   opts: ExploreOptions,
   limits: ExplorerLimits,
+  rede?: Map<string, FetchedAsset>,
 ): Promise<{
   assets: CaptureManifest['assets'];
   stats: { found: number; saved: number; bytes: number };
 }> => {
   if (!opts.assetSink) return { assets: [], stats: { found: 0, saved: 0, bytes: 0 } };
   const refs = extractAssetRefs(html, css, baseUrl);
-  const fetcher = opts.fetcher ?? createSecureHttpFetcher(limits);
+  // Fetcher injetado (teste) vence sempre. Senão: rede-do-navegador → HTTP seguro.
+  const seguro = createSecureHttpFetcher(limits);
+  const fetcher = opts.fetcher ?? (rede ? fetcherComRede(rede, seguro) : seguro);
   // CSS externo (`<link rel=stylesheet>`) é processado à parte: resolve os
   // `url()`/`@import` INTERNOS relativos ao próprio arquivo e reescreve para
   // local. Os demais assets (imagens/fontes/inline-css) vão pelo caminho normal.
@@ -173,7 +197,16 @@ export const explorePage = async (
   if (raw !== null) {
     opts.onRenderedHtml?.(raw.finalHtml);
     const css = cssFromSheets(raw);
-    const { assets, stats } = await localize(raw.finalHtml, css, raw.url, opts, limits);
+    // Localiza a partir do design-system.html quando o chamador o fornece — é o
+    // HTML autoritativo (o que é segmentado); o render interno pode ter menos.
+    const { assets, stats } = await localize(
+      opts.htmlParaAssets ?? raw.finalHtml,
+      css,
+      raw.url,
+      opts,
+      limits,
+      raw.network,
+    );
     const bundled = assets.length > 0;
     const elements = buildElements(raw, css, bundled);
     return {
@@ -208,7 +241,7 @@ export const explorePage = async (
   // Caminho estático: só o HTML servido, sem estados.
   const html = opts.staticHtml ?? (await fetchStatic(url));
   opts.onRenderedHtml?.(html);
-  const { assets, stats } = await localize(html, '', url, opts, limits);
+  const { assets, stats } = await localize(opts.htmlParaAssets ?? html, '', url, opts, limits);
   return {
     version: 1,
     url,

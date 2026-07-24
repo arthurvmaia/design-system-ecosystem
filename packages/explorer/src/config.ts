@@ -41,6 +41,12 @@ export type ExplorerLimits = {
   maxCssDepth: number;
   /** Teto de arquivos CSS processados numa captura (proteção contra explosão). */
   maxCssFiles: number;
+  /**
+   * Teto TOTAL de bytes guardados da rede do navegador (proteção de memória).
+   * A captura observa o que o Chromium baixou e retém em memória para localizar
+   * sem novo fetch — este é o freio para não estourar a RAM num site pesado.
+   */
+  maxCaptureBytes: number;
   /** Orçamento total da exploração (ms) — corta a sessão inteira. */
   totalBudgetMs: number;
 };
@@ -61,6 +67,7 @@ export const DEFAULT_LIMITS: ExplorerLimits = {
   maxRedirects: 3,
   maxCssDepth: 5,
   maxCssFiles: 40,
+  maxCaptureBytes: 200 * 1024 * 1024,
   totalBudgetMs: 120_000,
 };
 
@@ -107,6 +114,7 @@ export const resolveLimits = (overrides: Partial<ExplorerLimits> = {}): Explorer
     maxRedirects: numFromEnv('DS_EXPLORER_MAX_REDIRECTS', DEFAULT_LIMITS.maxRedirects),
     maxCssDepth: numFromEnv('DS_EXPLORER_MAX_CSS_DEPTH', DEFAULT_LIMITS.maxCssDepth),
     maxCssFiles: numFromEnv('DS_EXPLORER_MAX_CSS_FILES', DEFAULT_LIMITS.maxCssFiles),
+    maxCaptureBytes: numFromEnv('DS_EXPLORER_MAX_CAPTURE_BYTES', DEFAULT_LIMITS.maxCaptureBytes),
     totalBudgetMs: numFromEnv('DS_EXPLORER_TOTAL_BUDGET_MS', DEFAULT_LIMITS.totalBudgetMs),
   };
   return { ...fromEnv, ...overrides };
