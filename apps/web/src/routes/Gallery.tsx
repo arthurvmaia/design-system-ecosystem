@@ -508,6 +508,24 @@ function SegmentsView({
           <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
             {filtered.length} de {segments.data?.items.length ?? 0} segmentos
           </div>
+          {segments.data?.capturaParcial && (
+            <div
+              className="mt-2 flex items-start gap-2 rounded-md px-3 py-2 text-[11px] leading-relaxed"
+              style={{ backgroundColor: 'rgba(120, 90, 20, 0.22)', color: 'var(--color-fg)' }}
+            >
+              <AlertTriangle
+                size={13}
+                className="mt-0.5 shrink-0"
+                style={{ color: 'var(--color-signal)' }}
+              />
+              <span>
+                Extração <strong>parcial por tempo</strong>: o orçamento esgotou na fase “
+                <span className="ds-data">{segments.data.capturaParcial.fase}</span>” (
+                {(segments.data.capturaParcial.totalMs / 1000).toFixed(0)}s). O que foi capturado
+                até ali foi preservado — extraia de novo para completar.
+              </span>
+            </div>
+          )}
           {(dsInfo.data?.assetsFaltando.length ?? 0) > 0 && (
             <div
               className="mt-2 rounded-md px-3 py-2 text-[11px] leading-relaxed"

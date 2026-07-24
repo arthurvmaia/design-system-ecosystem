@@ -363,7 +363,10 @@ export const api = {
   designSystemImpact: (id: string) =>
     jsonFetch<DesignSystemImpact>(`/api/design-systems/${id}/impacto`),
   listSegments: (dsId: string) =>
-    jsonFetch<{ items: SegmentRecord[] }>(`/api/design-systems/${dsId}/segments`),
+    jsonFetch<{
+      items: SegmentRecord[];
+      capturaParcial?: { fase: string; motivo?: string; totalMs: number };
+    }>(`/api/design-systems/${dsId}/segments`),
   deleteSegment: (dsId: string, segId: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/design-systems/${dsId}/segments/${segId}`, {
       method: 'DELETE',

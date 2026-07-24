@@ -251,6 +251,18 @@ export const InteracaoNaoAssociada = z.object({
 });
 export type InteracaoNaoAssociada = z.infer<typeof InteracaoNaoAssociada>;
 
+/**
+ * Sinaliza que a CAPTURA saiu parcial por orçamento de tempo — o que a Galeria
+ * mostra como "parcial por tempo" em vez de fingir estar completa (regra 10). O
+ * que foi capturado é válido; só não é tudo.
+ */
+export const CapturaParcial = z.object({
+  fase: z.string(),
+  motivo: z.string().optional(),
+  totalMs: z.number().int().nonnegative(),
+});
+export type CapturaParcial = z.infer<typeof CapturaParcial>;
+
 /** Manifest.json em vault/{ds}/segments/. */
 export const SegmentsManifest = z.object({
   designSystemId: z.string().startsWith('ds_'),
@@ -260,6 +272,8 @@ export const SegmentsManifest = z.object({
   insights: z.array(SegmentInsight).optional(),
   /** Interações capturadas sem associação confiável. Ausente em manifestos antigos. */
   naoAssociados: z.array(InteracaoNaoAssociada).optional(),
+  /** Presente quando a captura foi cortada por tempo (extração parcial). */
+  capturaParcial: CapturaParcial.optional(),
 });
 export type SegmentsManifest = z.infer<typeof SegmentsManifest>;
 

@@ -64,17 +64,23 @@ designSystemsRoute.get('/:id', (c) => {
  */
 const lerManifesto = (
   dsId: string,
-): { insights: Map<string, SegmentInsight>; naoAssociados: InteracaoNaoAssociada[] } => {
+): {
+  insights: Map<string, SegmentInsight>;
+  naoAssociados: InteracaoNaoAssociada[];
+  capturaParcial: SegmentsManifest['capturaParcial'];
+} => {
   const path = vaultSegmentsManifest(dsId as `ds_${string}`);
-  if (!existsSync(path)) return { insights: new Map(), naoAssociados: [] };
+  if (!existsSync(path))
+    return { insights: new Map(), naoAssociados: [], capturaParcial: undefined };
   try {
     const manifest = SegmentsManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
     return {
       insights: new Map((manifest.insights ?? []).map((i) => [i.segmentId, i])),
       naoAssociados: manifest.naoAssociados ?? [],
+      capturaParcial: manifest.capturaParcial,
     };
   } catch {
-    return { insights: new Map(), naoAssociados: [] };
+    return { insights: new Map(), naoAssociados: [], capturaParcial: undefined };
   }
 };
 
@@ -124,7 +130,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
     .where(eq(tables.segments.designSystemId, id))
     .orderBy(asc(tables.segments.position))
     .all();
-  const { insights, naoAssociados } = lerManifesto(id);
+  const { insights, naoAssociados, capturaParcial } = lerManifesto(id);
   const validacoes = lerValidacoes(id);
   // Resumo na listagem (contagens por estado de interação); o detalhe pesado —
   // o HTML dos estados — só é servido pela rota de preview.
@@ -137,7 +143,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
       resumo: insight?.pipeline ? resumirPipeline(insight.pipeline) : null,
     };
   });
-  return c.json({ items, naoAssociados });
+  return c.json({ items, naoAssociados, capturaParcial });
 });
 
 /**

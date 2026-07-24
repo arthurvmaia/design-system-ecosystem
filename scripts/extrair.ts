@@ -25,6 +25,7 @@ import { decidirProfundidade, explorePage, renderPage, resolveDepthMode } from '
 import { getDb, tables } from '@ds/indexer';
 import {
   type DesignSystemId,
+  type TelemetriaRelatorio,
   getJob,
   newDesignSystemId,
   reportarProgresso,
@@ -36,6 +37,32 @@ import {
   vaultSourceDir,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
+
+/**
+ * Relatório agregado da telemetria (regra 15): duração por fase, contadores e —
+ * o que importa — se a extração saiu PARCIAL por tempo. É onde se vê a causa do
+ * antigo "7 minutos" e a diferença antes/depois do orçamento por fase.
+ */
+const imprimirTelemetria = (t: TelemetriaRelatorio | undefined): void => {
+  if (!t) return;
+  console.log(
+    `\n  Telemetria — total ${(t.totalMs / 1000).toFixed(1)}s${t.parcial ? ' (PARCIAL)' : ''}:`,
+  );
+  for (const f of [...t.fases].sort((a, b) => b.ms - a.ms).slice(0, 8)) {
+    console.log(
+      `    ${f.nome.padEnd(16)} ${Math.round(f.ms)}ms${f.abortada ? '  (cortada por orçamento)' : ''}`,
+    );
+  }
+  const c = t.contadores;
+  console.log(
+    `    requests=${c.requests ?? 0} downloadsOk=${c.downloadsOk ?? 0} fallbacksHttp=${c.fallbacksHttp ?? 0} timeouts=${c.timeouts ?? 0} candidatos=${c.candidatos ?? 0} estados=${c.estados ?? 0} assetsLocais=${c.assetsLocais ?? 0}`,
+  );
+  if (t.parcial) {
+    console.log(
+      `    ⚠ PARCIAL na fase "${t.faseInterrompida}" — ${t.motivo}. O capturado foi preservado.`,
+    );
+  }
+};
 
 const nomeDaUrl = (url: string): string => {
   try {
@@ -50,6 +77,8 @@ type ExploracaoResumo = {
   reasons: string[];
   statesFound?: number;
   erro?: string;
+  /** A captura saiu parcial por orçamento de tempo (regra 10). */
+  parcial?: boolean;
 };
 
 /**
@@ -90,7 +119,13 @@ const capturarProfundo = async (
     console.log(
       `  ${manifest.stats.statesFound} estados em ${manifest.elements.length} elementos — manifesto gravado.`,
     );
-    return { mode: 'deep', reasons: decisao.reasons, statesFound: manifest.stats.statesFound };
+    imprimirTelemetria(manifest.telemetry);
+    return {
+      mode: 'deep',
+      reasons: decisao.reasons,
+      statesFound: manifest.stats.statesFound,
+      parcial: manifest.telemetry?.parcial ?? false,
+    };
   } catch (err) {
     const erro = err instanceof Error ? err.message : String(err);
     console.log(`  exploração profunda falhou (${erro}) — extração segue sem estados.`);

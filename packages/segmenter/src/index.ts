@@ -855,6 +855,15 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
   // carimbo de versão — o comportamento estático de sempre continua válido.
   const naoAssociados = consumirCaptura(designSystemId, segments, insights);
 
+  // Captura parcial por tempo: lê a telemetria do manifesto de captura e a
+  // propaga para a Galeria mostrar "parcial por tempo" em vez de fingir completo.
+  const capMan = lerCaptureManifest(designSystemId);
+  const tel = capMan?.telemetry;
+  const capturaParcial =
+    tel?.parcial === true
+      ? { fase: tel.faseInterrompida ?? '?', motivo: tel.motivo, totalMs: tel.totalMs }
+      : undefined;
+
   // Escreve manifest.
   const segmentsDir = vaultSegmentsDir(designSystemId);
   mkdirSync(segmentsDir, { recursive: true });
@@ -864,6 +873,7 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
     segments,
     insights,
     naoAssociados: naoAssociados.length > 0 ? naoAssociados : undefined,
+    capturaParcial,
   };
   const manifestPath = vaultSegmentsManifest(designSystemId);
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
