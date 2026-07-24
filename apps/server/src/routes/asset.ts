@@ -50,6 +50,10 @@ const HEADERS_SEGURANCA = {
   'X-Content-Type-Options': 'nosniff',
   // Content-addressed: o conteúdo nunca muda para o mesmo nome → cache longo.
   'Cache-Control': 'public, max-age=31536000, immutable',
+  // FONTES exigem CORS; o preview roda com origem OPACA (sandbox), então precisa
+  // do ACAO. Os assets são públicos e content-addressed (sem credenciais/segredo),
+  // então liberar a leitura cross-origin é seguro.
+  'Access-Control-Allow-Origin': '*',
 } as const;
 
 /**

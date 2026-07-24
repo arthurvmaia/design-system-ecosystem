@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import {
+  CSS_PROCESSOR_VERSION,
   CaptureManifest,
   PIPELINE_VERSION,
   PREVIEW_VERSION,
@@ -84,7 +85,7 @@ export const resolveValidatorLimits = (o: Partial<ValidatorLimits> = {}): Valida
 export const previewHash = (htmlSnippet: string, statesJson: string, depsJson: string): string =>
   createHash('sha256')
     .update(
-      `p${PREVIEW_VERSION}|v${VALIDATOR_VERSION}|r${REWRITER_VERSION}|s${PIPELINE_VERSION}|${htmlSnippet}|${statesJson}|${depsJson}`,
+      `p${PREVIEW_VERSION}|v${VALIDATOR_VERSION}|r${REWRITER_VERSION}|c${CSS_PROCESSOR_VERSION}|s${PIPELINE_VERSION}|${htmlSnippet}|${statesJson}|${depsJson}`,
     )
     .digest('hex')
     .slice(0, 32);

@@ -65,7 +65,27 @@ const lerReescritor = (dsId: string): ((t: string) => string) | null => {
 
 export const previewRoute = new Hono();
 
-const CSP_SANDBOX = 'sandbox allow-scripts';
+/**
+ * CSP do preview. O `sandbox allow-scripts` (sem `allow-same-origin`,
+ * `allow-forms`, `allow-popups`, `allow-top-navigation`, `allow-downloads`) já
+ * bloqueia acesso ao app/cookies, envio de formulário, popup, navegação superior
+ * e download — a lista de AÇÕES perigosas. Somamos diretivas explícitas que
+ * fecham o vetor de exfiltração e o conteúdo ativo indesejado:
+ *
+ * - `connect-src 'none'`  → sem fetch/XHR/WebSocket (o replay não faz nenhum).
+ * - `form-action 'none'`  → nenhum destino de formulário.
+ * - `base-uri 'none'`     → ninguém sequestra a base.
+ * - `object-src 'none'`   → sem plugins/objetos.
+ * - `frame-src 'none'`    → sem frames externos aninhados.
+ *
+ * Não restringimos `img/font/style/media/script` por origem: sob a origem OPACA
+ * do sandbox, `'self'` não casa com os próprios assets locais (servidos pela rota
+ * do vault, que para o documento opaco é outra origem), e travar por origem
+ * quebraria os assets locais, o fallback externo declarado e o CSS/JS inline do
+ * replay. O bloqueio de exfiltração real é o `connect-src 'none'`.
+ */
+const CSP_SANDBOX =
+  "sandbox allow-scripts; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'";
 
 /**
  * Estilo neutro que entra ANTES do head do site, para perder de qualquer regra
@@ -333,7 +353,9 @@ previewRoute.get('/segment/:segId', (c) => {
       head: `${reescreve(extrairHead(html))}${replay ? replay.head : ''}`,
       bodyAttrs: extrairBodyAttrs(html),
       corpo: replay ? replay.corpo : corpo,
-      base: rw ? null : `/vault/${seg.designSystemId}/`,
+      // Sem <base>: o design-system.html é absolutizado (refs absolutas), então a
+      // base é inerte — e a CSP `base-uri 'none'` recusaria o elemento.
+      base: null,
       bg: c.req.query('bg'),
     }),
   );
@@ -373,7 +395,10 @@ previewRoute.get('/component/:cmpId', (c) => {
     );
   }
 
-  const corpo = readFileSync(bundleHtmlPath, 'utf8');
+  // Prefere o HTML CRU (classes/ids originais) para o CSS externo do head casar;
+  // cai no isolado (index.html) para componentes antigos sem raw.html.
+  const rawPath = join(bundleDir, 'raw.html');
+  const corpo = readFileSync(existsSync(rawPath) ? rawPath : bundleHtmlPath, 'utf8');
   const cssPath = join(bundleDir, 'styles.css');
   const cssBundle = existsSync(cssPath) ? readFileSync(cssPath, 'utf8') : '';
 
@@ -381,10 +406,17 @@ previewRoute.get('/component/:cmpId', (c) => {
   // (Tailwind CDN, Lucide). Se a extração já foi apagada, o styles.css filtrado
   // do bundle ainda carrega a maior parte do estilo — o componente sobrevive à
   // origem, só perde o que era do runtime.
+  // Head PORTÁTIL: quando o bundle tem `head.html` (CSS externo + fontes já
+  // reescritos para a rota do bundle), usa-o — o componente funciona mesmo com a
+  // extração de origem apagada. Senão, cai no head da origem (componente antigo).
+  const bundleHeadPath = join(bundleDir, 'head.html');
   const htmlOrigem = cmp.designSystemId ? lerHtmlDoVault(cmp.designSystemId) : null;
-  const head = htmlOrigem ? extrairHead(htmlOrigem) : '';
+  const head = existsSync(bundleHeadPath)
+    ? readFileSync(bundleHeadPath, 'utf8')
+    : htmlOrigem
+      ? extrairHead(htmlOrigem)
+      : '';
   const bodyAttrs = htmlOrigem ? extrairBodyAttrs(htmlOrigem) : '';
-  const base = cmp.designSystemId && htmlOrigem ? `/vault/${cmp.designSystemId}/` : null;
 
   return responderHtml(
     compor({
@@ -392,7 +424,8 @@ previewRoute.get('/component/:cmpId', (c) => {
       head: `${head}\n<style>${cssBundle}</style>`,
       bodyAttrs,
       corpo,
-      base,
+      // Bundle usa URLs locais absolutas (/api/library-asset/...); sem <base>.
+      base: null,
       bg: c.req.query('bg'),
     }),
   );
@@ -449,7 +482,7 @@ previewRoute.get('/rejeitado/:dsId/:segId', (c) => {
       head: extrairHead(html),
       bodyAttrs: extrairBodyAttrs(html),
       corpo: rej.htmlSnippet,
-      base: `/vault/${dsId}/`,
+      base: null,
       bg: c.req.query('bg'),
     }),
   );

@@ -131,7 +131,7 @@ export type SegmentStatesFile = z.infer<typeof SegmentStatesFile>;
  * validações antigas por hash (ver `previewHash`).
  */
 export const VALIDATOR_VERSION = 1;
-export const PREVIEW_VERSION = 1;
+export const PREVIEW_VERSION = 2;
 
 /**
  * Resultado de uma validação de reprodução em navegador: qual segmento, qual
