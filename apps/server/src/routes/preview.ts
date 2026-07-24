@@ -3,9 +3,12 @@ import { join } from 'node:path';
 import { getDb, tables } from '@ds/indexer';
 import {
   RejeitadosManifest,
+  SegmentStatesFile,
+  type StoredState,
   libraryComponentBundleDir,
   vaultExtractedDir,
   vaultRejeitadosPath,
+  vaultSegmentStates,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -111,6 +114,114 @@ ${opts.corpo}
 </html>`;
 };
 
+/** Lê os estados capturados de um segmento (o HTML de cada estado, no vault). */
+const lerEstados = (dsId: string, segId: string): StoredState[] => {
+  const path = vaultSegmentStates(dsId as `ds_${string}`, segId);
+  if (!existsSync(path)) return [];
+  try {
+    return SegmentStatesFile.parse(JSON.parse(readFileSync(path, 'utf8'))).states;
+  } catch {
+    return [];
+  }
+};
+
+/** Impede que HTML capturado feche o `<script>` do runtime de replay. */
+const escaparParaScript = (json: string): string =>
+  json.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--');
+
+const ROTULO_TRIGGER: Record<string, string> = {
+  hover: 'Passe o mouse',
+  focus: 'Foco',
+  click: 'Clique',
+  scroll: 'Ao rolar',
+  timer: 'Automático',
+  initial: 'Inicial',
+};
+
+/**
+ * Envolve o corpo do preview com o runtime de REPLAY dos estados capturados.
+ *
+ * Reprodução honesta: em vez de depender do JS do site (que pode não religar num
+ * fragmento), aplica os SNAPSHOTS que a exploração capturou — troca o HTML do
+ * alvo para o estado escolhido, ou revela o portal (modal/menu) que a interação
+ * abriu. Hover/foco puros já rodam pelo CSS incluído; os botões cobrem o que é
+ * dirigido por JS. "Reiniciar" restaura o estado inicial de verdade.
+ */
+const montarReplay = (corpo: string, states: StoredState[]): { corpo: string; head: string } => {
+  const dados = states.map((s) => ({
+    id: s.id,
+    label: s.label || ROTULO_TRIGGER[s.trigger] || s.trigger,
+    trigger: s.trigger,
+    method: s.method ?? 'swap-html',
+    html: s.html,
+    portalHtml: s.portalHtml ?? null,
+  }));
+
+  const botoes = dados
+    .map(
+      (s) =>
+        `<button type="button" class="ds-rp-btn" data-estado="${s.id}" aria-pressed="false">${
+          ROTULO_TRIGGER[s.trigger] ?? 'Ver'
+        }: ${escaparHtml(s.label)}</button>`,
+    )
+    .join('');
+
+  const head = `<style>
+#ds-rp-bar{position:fixed;top:0;left:0;right:0;z-index:2147483000;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:8px 12px;background:rgba(10,10,14,.92);color:#e7e5e4;font:500 12px/1.3 system-ui,sans-serif;backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,.08)}
+#ds-rp-bar .ds-rp-tit{opacity:.7;margin-right:2px}
+.ds-rp-btn{cursor:pointer;border:1px solid rgba(255,255,255,.16);background:transparent;color:inherit;border-radius:999px;padding:4px 10px;font:inherit}
+.ds-rp-btn[aria-pressed="true"]{background:#b91c1c;border-color:#b91c1c;color:#fff}
+.ds-rp-btn.ds-rp-reset{background:rgba(255,255,255,.08)}
+#ds-rp-msg{opacity:.7;margin-left:auto}
+#ds-rp-alvo{padding-top:52px}
+#ds-rp-portal:empty{display:none}
+</style>`;
+
+  const runtime = `<script>(function(){
+  var estados = ${escaparParaScript(JSON.stringify(dados))};
+  var alvo = document.getElementById('ds-rp-alvo');
+  var portal = document.getElementById('ds-rp-portal');
+  var msg = document.getElementById('ds-rp-msg');
+  if(!alvo){return;}
+  var inicial = alvo.innerHTML;
+  function marcar(id){ document.querySelectorAll('.ds-rp-btn[data-estado]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-estado')===id?'true':'false'); }); }
+  function reiniciar(){ try{ alvo.innerHTML=inicial; if(portal){portal.innerHTML='';} marcar(''); msg.textContent='Estado inicial.'; }catch(e){ msg.textContent='Erro ao reiniciar.'; } }
+  function aplicar(st){
+    try{
+      if(st.method==='portal' && st.portalHtml){ if(portal){portal.innerHTML=st.portalHtml;} }
+      else if(st.html){ alvo.innerHTML=st.html; if(portal && st.portalHtml){portal.innerHTML=st.portalHtml;} }
+      else if(portal && st.portalHtml){ portal.innerHTML=st.portalHtml; }
+      marcar(st.id); msg.textContent='Reproduzindo: '+st.label;
+    }catch(e){ msg.textContent='Não foi possível reproduzir este estado.'; }
+  }
+  document.querySelectorAll('.ds-rp-btn').forEach(function(b){
+    b.addEventListener('click', function(){
+      var id=b.getAttribute('data-estado');
+      if(id==='__reset__'){ reiniciar(); return; }
+      var st=null; for(var i=0;i<estados.length;i++){ if(estados[i].id===id){st=estados[i];break;} }
+      if(st){ aplicar(st); }
+    });
+  });
+  msg.textContent = estados.length + ' estado(s) capturado(s).';
+})();</script>`;
+
+  const barra = `<div id="ds-rp-bar" role="toolbar" aria-label="Interações capturadas">
+<span class="ds-rp-tit">Interações capturadas:</span>
+<button type="button" class="ds-rp-btn ds-rp-reset" data-estado="__reset__">Reiniciar</button>
+${botoes}
+<span id="ds-rp-msg" aria-live="polite"></span>
+</div>
+<div id="ds-rp-portal"></div>
+<div id="ds-rp-alvo">${corpo}</div>`;
+
+  return { corpo: `${barra}\n${runtime}`, head };
+};
+
+/** Escapa texto para uso seguro dentro do rótulo de um botão. */
+const escaparHtml = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 /**
  * Página de fallback: aparece dentro do iframe no lugar da prévia. Nunca um
  * retângulo vazio — sempre a causa e o que fazer a respeito.
@@ -169,12 +280,19 @@ previewRoute.get('/segment/:segId', (c) => {
     );
   }
 
+  // Modo replay (`?replay=1`): quando o segmento tem estados capturados, injeta a
+  // barra de interações e o runtime que os reproduz. Sem o parâmetro, a prévia
+  // fica limpa — é a que o card da Galeria usa como miniatura.
+  const querReplay = c.req.query('replay') === '1';
+  const estados = querReplay ? lerEstados(seg.designSystemId, seg.id) : [];
+  const replay = estados.length > 0 ? montarReplay(seg.htmlSnippet, estados) : null;
+
   return responderHtml(
     compor({
       titulo: seg.name,
-      head: extrairHead(html),
+      head: `${extrairHead(html)}${replay ? replay.head : ''}`,
       bodyAttrs: extrairBodyAttrs(html),
-      corpo: seg.htmlSnippet,
+      corpo: replay ? replay.corpo : seg.htmlSnippet,
       base: `/vault/${seg.designSystemId}/`,
       bg: c.req.query('bg'),
     }),
