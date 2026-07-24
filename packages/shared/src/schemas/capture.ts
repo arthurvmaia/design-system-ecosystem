@@ -178,14 +178,28 @@ export const Box = z.object({
 });
 export type Box = z.infer<typeof Box>;
 
+/**
+ * Assinatura para religar um elemento capturado a um segmento do
+ * `design-system.html`. O `ref` (`data-dsx-ref`) vale só dentro da sessão de
+ * captura; o que sobrevive entre renders é o id e as classes do elemento. É por
+ * eles que o segmenter associa os estados descobertos ao segmento certo.
+ */
+export const ElementMatch = z.object({
+  id: z.string().nullable(),
+  classes: z.array(z.string()),
+});
+export type ElementMatch = z.infer<typeof ElementMatch>;
+
 /** Um elemento interativo descoberto, com seus estados e sua avaliação. */
 export const CapturedElement = z.object({
-  /** Caminho estável tipo seletor, para religar ao DOM. */
+  /** Caminho estável tipo seletor, para religar ao DOM na sessão de captura. */
   ref: z.string(),
   tag: z.string(),
   role: z.string().nullable(),
   box: Box,
   label: z.string(),
+  /** Como religar este elemento a um segmento (id/classes). Opcional em manifestos antigos. */
+  match: ElementMatch.optional(),
   interactions: z.array(InteractionKind),
   states: z.array(CapturedState),
   assessment: FidelityAssessment,
@@ -219,11 +233,29 @@ export type CaptureStats = z.infer<typeof CaptureStats>;
  * lê quando existe e enriquece os segmentos; quando não existe, cai no
  * comportamento estático de sempre.
  */
+/**
+ * Como a página foi explorada. `quick` = só render + varredura estática;
+ * `deep` = descoberta de estados interativos. A decisão é automática (ver
+ * `decidirProfundidade`), e os motivos ficam registrados para auditoria.
+ */
+export const ExplorationInfo = z.object({
+  mode: z.enum(['quick', 'deep']),
+  /** Sinais que motivaram a profundidade (canvas, sticky, lottie…). */
+  reasons: z.array(z.string()),
+  durationMs: z.number().int().nonnegative(),
+  /** Limites que foram atingidos (tempo, cliques…). */
+  limitsHit: z.array(z.string()).default([]),
+  errors: z.array(z.string()).default([]),
+});
+export type ExplorationInfo = z.infer<typeof ExplorationInfo>;
+
 export const CaptureManifest = z.object({
   version: z.literal(1),
   url: z.string().nullable(),
   capturedAt: z.number().int().positive(),
   strategy: z.enum(['playwright', 'estatico']),
+  /** Rápida ou profunda, e por quê. Ausente em manifestos anteriores a esta fase. */
+  exploration: ExplorationInfo.optional(),
   viewport: z.object({ width: z.number().int(), height: z.number().int() }),
   stylesheets: z.array(CapturedStylesheet),
   assets: z.array(CapturedAsset),

@@ -1,4 +1,5 @@
 export * from './capture.js';
+export * from './interaction-support.js';
 export * from './design-system.js';
 export * from './segment.js';
 export * from './library.js';

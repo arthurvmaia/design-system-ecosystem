@@ -120,13 +120,30 @@ export const SNAPSHOT_FN = `
       attrs[a.name] = a.value;
     }
   }
-  const overlays = document.querySelectorAll('[role="dialog"],[aria-modal="true"],.modal,.tooltip,.dropdown,[data-portal],[data-radix-popper-content-wrapper],[data-state="open"]');
+  // Overlays/portais: casa por role/aria/data e por classe PARCIAL (modal-portal,
+  // overlay-x…), não só a classe exata. Filtra para conteúdo de verdade — um
+  // container posicionado que cobre área, ou um dialog — e exclui os gatilhos
+  // (o botão \"abrir modal\" também tem \"modal\" na classe, mas não é o portal).
+  const overlays = document.querySelectorAll(
+    '[role="dialog"],[aria-modal="true"],[data-portal],[data-radix-popper-content-wrapper],[data-state="open"],[class*="modal"],[class*="overlay"],[class*="drawer"],[class*="lightbox"],[class*="popover"],[class*="dropdown"],[class*="tooltip"]'
+  );
   let portalHtml = '';
+  const vistosPortais = new Set();
   for (const o of overlays) {
+    const otag = o.tagName.toLowerCase();
+    if (otag === 'button' || otag === 'a' || otag === 'input' || otag === 'label') continue;
+    if (o === el || el.contains(o)) continue;
     const ocs = getComputedStyle(o);
-    if (ocs.display !== 'none' && ocs.visibility !== 'hidden' && Number(ocs.opacity) > 0.01) {
-      portalHtml += o.outerHTML.slice(0, 4000);
-    }
+    if (ocs.display === 'none' || ocs.visibility === 'hidden' || Number(ocs.opacity) <= 0.01) continue;
+    const orect = o.getBoundingClientRect();
+    const posicionado = ocs.position === 'fixed' || ocs.position === 'absolute';
+    const ehDialog = o.getAttribute('role') === 'dialog' || o.getAttribute('aria-modal') === 'true';
+    const cobre = orect.width >= 80 && orect.height >= 50;
+    if (!((posicionado && cobre) || ehDialog)) continue;
+    const html = o.outerHTML.slice(0, 4000);
+    if (vistosPortais.has(html)) continue;
+    vistosPortais.add(html);
+    portalHtml += html;
   }
   // Assinatura da subárvore: um hash barato do outerHTML (com o tamanho dobrado
   // dentro). É o que faz um reveal em FILHO (hover que muda a classe de um filho,

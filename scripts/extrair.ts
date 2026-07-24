@@ -12,13 +12,16 @@
  * trava. NÃO chama a API da Anthropic e NÃO dispara nada sozinho: é iniciado por
  * uma pessoa, processando um job que ela escolheu.
  *
- * Para a captura PROFUNDA (descoberta de estados interativos), use `pnpm
- * explorar <url>` — é o passo caro e opcional, separado da extração.
+ * A captura PROFUNDA (descoberta de estados interativos) entra AUTOMATICAMENTE
+ * quando o HTML renderizado tem sinais que a merecem (canvas, sticky, lottie,
+ * gsap…). A decisão é de `decidirProfundidade`, e o modo pode ser forçado ou
+ * desligado por `DS_EXPLORER_DEPTH=force|off` para dev/teste. O manifesto vai
+ * para `vault/<ds>/capture/manifest.json`; o segmenter o consome no fila:concluir.
  */
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { renderPage } from '@ds/explorer';
+import { dirname, join } from 'node:path';
+import { decidirProfundidade, explorePage, renderPage, resolveDepthMode } from '@ds/explorer';
 import { getDb, tables } from '@ds/indexer';
 import {
   type DesignSystemId,
@@ -26,6 +29,9 @@ import {
   newDesignSystemId,
   reportarProgresso,
   setJobResult,
+  vaultCaptureAssetsDir,
+  vaultCaptureDir,
+  vaultCaptureManifest,
   vaultExtractedDir,
   vaultSourceDir,
 } from '@ds/shared';
@@ -36,6 +42,56 @@ const nomeDaUrl = (url: string): string => {
     return new URL(url).hostname.replace(/^www\./, '');
   } catch {
     return url.slice(0, 60);
+  }
+};
+
+type ExploracaoResumo = {
+  mode: 'quick' | 'deep';
+  reasons: string[];
+  statesFound?: number;
+  erro?: string;
+};
+
+/**
+ * Captura profunda opcional. Decide pela profundidade a partir do HTML JÁ
+ * renderizado e, quando vale, roda o explorer para descobrir estados e escrever
+ * o manifesto no vault (`capture/manifest.json`), que o segmenter consome no
+ * fila:concluir. Nunca derruba a extração: falha vira aviso e a extração segue.
+ */
+const capturarProfundo = async (
+  dsId: DesignSystemId,
+  url: string,
+  html: string,
+): Promise<ExploracaoResumo> => {
+  const decisao = decidirProfundidade(html, resolveDepthMode());
+  if (!decisao.deep) {
+    console.log('Exploração: rápida (sem sinais de comportamento complexo).');
+    return { mode: 'quick', reasons: [] };
+  }
+
+  console.log(`Exploração PROFUNDA — motivos: ${decisao.reasons.join(', ') || 'forçada'}`);
+  const assetsDir = vaultCaptureAssetsDir(dsId);
+  try {
+    const manifest = await explorePage(url, {
+      exploration: { mode: 'deep', reasons: decisao.reasons },
+      assetSink: (localPath, bytes) => {
+        const dest = join(assetsDir, localPath);
+        mkdirSync(dirname(dest), { recursive: true });
+        writeFileSync(dest, bytes);
+      },
+      log: (evento, dados) =>
+        console.log(`  [explorer:${evento}] ${dados ? JSON.stringify(dados) : ''}`),
+    });
+    mkdirSync(vaultCaptureDir(dsId), { recursive: true });
+    writeFileSync(vaultCaptureManifest(dsId), JSON.stringify(manifest, null, 2), 'utf8');
+    console.log(
+      `  ${manifest.stats.statesFound} estados em ${manifest.elements.length} elementos — manifesto gravado.`,
+    );
+    return { mode: 'deep', reasons: decisao.reasons, statesFound: manifest.stats.statesFound };
+  } catch (err) {
+    const erro = err instanceof Error ? err.message : String(err);
+    console.log(`  exploração profunda falhou (${erro}) — extração segue sem estados.`);
+    return { mode: 'quick', reasons: decisao.reasons, erro };
   }
 };
 
@@ -141,12 +197,24 @@ const main = async (): Promise<void> => {
     db.insert(tables.designSystems).values(row).run();
   }
 
-  // Anexa o id ao job para o fila:concluir segmentar.
-  setJobResult(jobId, { designSystemId: dsId, strategy });
-  reportarProgresso(jobId, 90);
+  reportarProgresso(jobId, 78);
+
+  // Captura profunda automática (só faz sentido com URL viva; HTML colado não
+  // tem navegador para explorar).
+  const exploration: ExploracaoResumo =
+    kind !== 'html' && typeof url === 'string'
+      ? await capturarProfundo(dsId, url, html)
+      : { mode: 'quick', reasons: [] };
+
+  // Anexa o id + a exploração ao job para o fila:concluir segmentar.
+  setJobResult(jobId, { designSystemId: dsId, strategy, exploration });
+  reportarProgresso(jobId, 92);
 
   console.log(`\nExtraído (${strategy}): ${dsId}`);
   console.log(`  ${html.length} bytes de HTML renderizado no vault.`);
+  if (exploration.mode === 'deep') {
+    console.log(`  captura profunda: ${exploration.statesFound ?? 0} estados descobertos.`);
+  }
   console.log('\nAgora feche o job (valida, segmenta e indexa):');
   console.log(`  pnpm fila:concluir ${jobId}`);
 };

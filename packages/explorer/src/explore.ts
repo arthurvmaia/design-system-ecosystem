@@ -46,6 +46,12 @@ export type ExploreOptions = {
    * `design-system.html` e roda o segmenter em cima.
    */
   onRenderedHtml?: (html: string) => void;
+  /**
+   * Metadados da decisão de profundidade, para registrar no manifesto por que a
+   * captura profunda rodou (canvas, sticky, lottie…). O chamador (`extrair`)
+   * decide via `decidirProfundidade` e repassa aqui.
+   */
+  exploration?: { mode: 'quick' | 'deep'; reasons: string[] };
 };
 
 const noop: ExplorerLog = () => {};
@@ -81,6 +87,9 @@ const buildElements = (raw: RawCapture, css: string, bundled: boolean): Captured
       role: el.descriptor.role,
       box: el.descriptor.box,
       label: el.descriptor.ariaLabel ?? el.descriptor.text.slice(0, 60) ?? el.descriptor.tag,
+      // Assinatura de religação: id e classes sobrevivem entre renders; o `ref`
+      // (data-dsx-ref) não. É por aqui que o segmenter associa ao segmento certo.
+      match: { id: el.descriptor.id, classes: el.descriptor.classes },
       interactions: [...new Set(assessment.interactions.map((i) => i.kind))],
       states,
       assessment,
@@ -153,6 +162,13 @@ export const explorePage = async (
       url: raw.url,
       capturedAt: Date.now(),
       strategy: 'playwright',
+      exploration: {
+        mode: opts.exploration?.mode ?? 'deep',
+        reasons: opts.exploration?.reasons ?? [],
+        durationMs: Date.now() - started,
+        limitsHit: raw.warnings.filter((w) => /orçamento|limite/i.test(w)),
+        errors: [],
+      },
       viewport: raw.viewport,
       stylesheets: raw.stylesheets.map((s) => ({ href: s.href, inline: s.inline, bytes: s.bytes })),
       assets,
@@ -179,6 +195,13 @@ export const explorePage = async (
     url,
     capturedAt: Date.now(),
     strategy: 'estatico',
+    exploration: {
+      mode: 'quick',
+      reasons: opts.exploration?.reasons ?? [],
+      durationMs: Date.now() - started,
+      limitsHit: [],
+      errors: warnings,
+    },
     viewport: { width: 1440, height: 900 },
     stylesheets: [],
     assets,

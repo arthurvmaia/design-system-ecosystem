@@ -3,20 +3,27 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { assessFidelity } from '@ds/explorer';
 import {
+  CaptureManifest,
   type ComponentCategory,
   type ComponentKind,
   type RejectedSegment,
   type RejeitadosManifest,
   type SegmentInsight,
   type SegmentRecord,
+  type SegmentStatesFile,
   type SegmentsManifest,
   newSegmentId,
+  vaultCaptureManifest,
   vaultExtractedDir,
   vaultRejeitadosPath,
+  vaultSegmentStates,
+  vaultSegmentStatesDir,
   vaultSegmentsDir,
   vaultSegmentsManifest,
 } from '@ds/shared';
 import { HTMLElement, parse } from 'node-html-parser';
+import { type NaoAssociado, associarManifesto } from './associar.js';
+import { enriquecerInsight, temAssetExterno } from './enriquecer.js';
 import { extrairPadroes } from './padroes.js';
 
 /**
@@ -657,6 +664,81 @@ const kindDaCategoria = (category: ComponentCategory): ComponentKind => {
   return 'component';
 };
 
+/** Lê o manifesto de captura do vault, se existir e for válido. */
+const lerCaptureManifest = (designSystemId: `ds_${string}`): CaptureManifest | null => {
+  const path = vaultCaptureManifest(designSystemId);
+  if (!existsSync(path)) return null;
+  try {
+    return CaptureManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
+  } catch {
+    // Manifesto ilegível não derruba a segmentação — cai no comportamento estático.
+    return null;
+  }
+};
+
+/**
+ * Liga o manifesto de captura aos segmentos.
+ *
+ * É o passo que faz os estados descobertos DEIXAREM de ser descartados: associa
+ * cada elemento capturado ao segmento certo (por id/classes/conteúdo, com
+ * confiança), reescreve o insight daquele segmento com os estados, o pipeline de
+ * interação, as dependências e o selo honesto, e grava o HTML dos estados no
+ * vault para o preview. Mutação in-place de `insights`.
+ *
+ * Devolve as interações que não puderam ser associadas com confiança — não são
+ * grudadas em lugar nenhum; viram caso para a Revisão.
+ */
+const consumirCaptura = (
+  designSystemId: `ds_${string}`,
+  segments: SegmentRecord[],
+  insights: SegmentInsight[],
+): NaoAssociado[] => {
+  const manifest = lerCaptureManifest(designSystemId);
+
+  if (manifest === null) {
+    // Sem captura: só carimba a versão do pipeline, preservando dado antigo.
+    for (let i = 0; i < insights.length; i++) {
+      const insight = insights[i];
+      if (insight === undefined) continue;
+      insights[i] = enriquecerInsight(insight, undefined, undefined);
+    }
+    return [];
+  }
+
+  const assoc = associarManifesto(manifest.elements, segments);
+  const snippetPorId = new Map(segments.map((s) => [s.id, s.htmlSnippet]));
+
+  const statesDir = vaultSegmentStatesDir(designSystemId);
+  let escreveuEstado = false;
+
+  for (let i = 0; i < insights.length; i++) {
+    const insight = insights[i];
+    if (insight === undefined) continue;
+    const enr = assoc.porSegmento.get(insight.segmentId);
+    const externos = temAssetExterno(snippetPorId.get(insight.segmentId) ?? '');
+    insights[i] = enriquecerInsight(insight, enr, manifest.version, { temAssetExterno: externos });
+
+    if (enr && enr.storedStates.length > 0) {
+      if (!escreveuEstado) {
+        mkdirSync(statesDir, { recursive: true });
+        escreveuEstado = true;
+      }
+      const arquivo: SegmentStatesFile = {
+        segmentId: insight.segmentId,
+        generatedAt: Date.now(),
+        states: enr.storedStates,
+      };
+      writeFileSync(
+        vaultSegmentStates(designSystemId, insight.segmentId),
+        JSON.stringify(arquivo, null, 2),
+        'utf8',
+      );
+    }
+  }
+
+  return assoc.naoAssociados;
+};
+
 /**
  * Roda a segmentação a partir do vault de um design system já extraído.
  */
@@ -755,6 +837,12 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
     position++;
   }
 
+  // Consome o manifesto de captura (quando existe): liga os estados/interações
+  // descobertos aos segmentos, com confiança, e grava o HTML dos estados no
+  // vault para o preview reproduzir. Sem manifesto, os insights só ganham o
+  // carimbo de versão — o comportamento estático de sempre continua válido.
+  const naoAssociados = consumirCaptura(designSystemId, segments, insights);
+
   // Escreve manifest.
   const segmentsDir = vaultSegmentsDir(designSystemId);
   mkdirSync(segmentsDir, { recursive: true });
@@ -763,6 +851,7 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
     generatedAt: Date.now(),
     segments,
     insights,
+    naoAssociados: naoAssociados.length > 0 ? naoAssociados : undefined,
   };
   const manifestPath = vaultSegmentsManifest(designSystemId);
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
@@ -787,6 +876,16 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
     manifestPath,
   };
 };
+
+export {
+  type Associacao,
+  type EnriquecimentoSegmento,
+  type NaoAssociado,
+  type ResultadoAssociacao,
+  associarElemento,
+  associarManifesto,
+} from './associar.js';
+export { enriquecerInsight, montarDimensoes } from './enriquecer.js';
 
 /**
  * Retorna o head do design-system.html isolado (para injeção em preview iframe).

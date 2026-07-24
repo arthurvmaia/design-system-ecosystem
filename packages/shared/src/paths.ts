@@ -43,6 +43,15 @@ export const vaultCaptureAssetsDir = (id: DesignSystemId): string =>
 export const vaultSegmentsDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'segments');
 export const vaultSegmentsManifest = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'manifest.json');
+/**
+ * HTML dos estados capturados de um segmento. Fica fora do manifesto de
+ * propósito: o manifesto é o índice (leve, lido em toda listagem), e o HTML de
+ * cada estado pode ser pesado. Banco/manifesto indexam; o vault guarda o blob.
+ */
+export const vaultSegmentStatesDir = (id: DesignSystemId): string =>
+  join(vaultSegmentsDir(id), 'states');
+export const vaultSegmentStates = (id: DesignSystemId, segId: string): string =>
+  join(vaultSegmentStatesDir(id), `${segId}.json`);
 /** Candidatos que não passaram na validação — o par do manifest. */
 export const vaultRejeitadosPath = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'rejeitados.json');

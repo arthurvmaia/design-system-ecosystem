@@ -77,3 +77,9 @@ export {
   renderWithBrowser,
 } from './browser.js';
 export { type ExploreOptions, type RenderResult, explorePage, renderPage } from './explore.js';
+export {
+  type DepthMode,
+  type DepthDecision,
+  decidirProfundidade,
+  resolveDepthMode,
+} from './depth.js';

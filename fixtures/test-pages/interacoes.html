@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fixture de interações — captura profunda</title>
+    <style>
+      :root {
+        --bg: #0b0b0e;
+        --fg: #f5f5f4;
+        --acc: #b91c1c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        padding: 40px;
+        line-height: 1.5;
+      }
+      section {
+        margin: 0 auto 48px;
+        max-width: 720px;
+      }
+      h2 {
+        font-size: 18px;
+        margin: 0 0 12px;
+      }
+
+      /* 1. HOVER — transform + sombra + revela filho */
+      .hover-card {
+        padding: 24px;
+        border: 1px solid #333;
+        border-radius: 12px;
+        transition: transform 0.25s, box-shadow 0.25s;
+        cursor: pointer;
+      }
+      .hover-card:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 20px 40px rgba(185, 28, 28, 0.4);
+      }
+      .hover-card .revelado {
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: max-height 0.25s, opacity 0.25s;
+      }
+      .hover-card:hover .revelado {
+        max-height: 80px;
+        opacity: 1;
+      }
+
+      /* 2. ACCORDION — classe .aberto por clique */
+      .acc-trigger {
+        width: 100%;
+        text-align: left;
+        background: #16161c;
+        color: var(--fg);
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 14px 16px;
+        cursor: pointer;
+        font: inherit;
+      }
+      .acc-painel {
+        display: none;
+        padding: 14px 16px;
+        border: 1px solid #333;
+        border-top: 0;
+      }
+      .acc-item.aberto .acc-painel {
+        display: block;
+      }
+
+      /* 3. TABS */
+      .tab-btn {
+        background: transparent;
+        color: #a8a29e;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        padding: 8px 14px;
+        cursor: pointer;
+        font: inherit;
+      }
+      .tab-btn[aria-selected='true'] {
+        color: var(--fg);
+        border-bottom-color: var(--acc);
+      }
+      .tab-panel {
+        display: none;
+        padding: 16px 0;
+      }
+      .tab-panel.ativo {
+        display: block;
+      }
+
+      /* 4. MODAL em portal (anexado ao body) */
+      .modal-abre {
+        background: var(--acc);
+        color: #fff;
+        border: 0;
+        border-radius: 8px;
+        padding: 12px 20px;
+        cursor: pointer;
+        font: inherit;
+      }
+      .modal-portal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .modal-portal .caixa {
+        background: #16161c;
+        padding: 32px;
+        border-radius: 12px;
+        border: 1px solid var(--acc);
+        max-width: 360px;
+      }
+
+      /* 5. Animação CSS */
+      @keyframes pulsar {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.7;
+        }
+        50% {
+          transform: scale(1.15);
+          opacity: 1;
+        }
+      }
+      .pulso {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: var(--acc);
+        animation: pulsar 1.6s ease-in-out infinite;
+      }
+
+      /* 6. Scroll reveal */
+      .reveal {
+        opacity: 0;
+        transform: translateY(24px);
+        transition: opacity 0.5s, transform 0.5s;
+      }
+      .reveal.visivel {
+        opacity: 1;
+        transform: none;
+      }
+      .espaco {
+        height: 90vh;
+      }
+    </style>
+  </head>
+  <body>
+    <section>
+      <h2>Hover</h2>
+      <div class="hover-card" id="card-hover">
+        Passe o mouse aqui
+        <div class="revelado">Conteúdo revelado no hover.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Accordion</h2>
+      <div class="acc-item" id="acc-1">
+        <button class="acc-trigger" id="acc-trigger-1" aria-expanded="false">Qual o prazo de entrega?</button>
+        <div class="acc-painel">Entregamos em até cinco dias úteis.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Tabs</h2>
+      <div role="tablist">
+        <button class="tab-btn" id="tab-1" aria-selected="true" data-tab="p1">Visão geral</button>
+        <button class="tab-btn" id="tab-2" aria-selected="false" data-tab="p2">Detalhes</button>
+      </div>
+      <div class="tab-panel ativo" id="p1">Painel de visão geral.</div>
+      <div class="tab-panel" id="p2">Painel de detalhes.</div>
+    </section>
+
+    <section>
+      <h2>Modal em portal</h2>
+      <button class="modal-abre" id="abre-modal">Abrir contato</button>
+    </section>
+
+    <section>
+      <h2>Animação CSS</h2>
+      <div class="pulso" id="pulso"></div>
+    </section>
+
+    <div class="espaco"></div>
+    <section>
+      <h2>Scroll reveal</h2>
+      <div class="reveal" id="reveal-1">Aparece ao entrar na viewport.</div>
+    </section>
+
+    <script>
+      // Accordion: alterna a classe .aberto e aria-expanded no clique.
+      document.getElementById('acc-trigger-1').addEventListener('click', function () {
+        var item = document.getElementById('acc-1');
+        var aberto = item.classList.toggle('aberto');
+        this.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+      });
+
+      // Tabs: troca o painel ativo e o aria-selected.
+      for (const btn of document.querySelectorAll('.tab-btn')) {
+        btn.addEventListener('click', function () {
+          for (const b of document.querySelectorAll('.tab-btn'))
+            b.setAttribute('aria-selected', 'false');
+          for (const p of document.querySelectorAll('.tab-panel')) p.classList.remove('ativo');
+          this.setAttribute('aria-selected', 'true');
+          document.getElementById(this.dataset.tab).classList.add('ativo');
+        });
+      }
+
+      // Modal em portal: cria o overlay direto no body (fora da subtree do botão).
+      document.getElementById('abre-modal').addEventListener('click', function () {
+        if (document.querySelector('.modal-portal')) return;
+        var portal = document.createElement('div');
+        portal.className = 'modal-portal';
+        portal.innerHTML =
+          '<div class="caixa"><h3>Fale conosco</h3><p>Formulário de contato aqui.</p></div>';
+        document.body.appendChild(portal);
+      });
+
+      // Scroll reveal.
+      new IntersectionObserver(function (entries) {
+        for (const e of entries) if (e.isIntersecting) e.target.classList.add('visivel');
+      }).observe(document.getElementById('reveal-1'));
+    </script>
+  </body>
+</html>

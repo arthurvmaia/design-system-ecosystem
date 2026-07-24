@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { FidelityAssessment } from './capture.js';
+import {
+  Confidence,
+  FidelityDimensions,
+  InteractionStatus,
+  SegmentInteraction,
+} from './interaction-support.js';
 
 /**
  * Categorias de componente. A lista fica versionada aqui para que o classifier
@@ -50,6 +56,13 @@ export type ComponentCategory = z.infer<typeof ComponentCategory>;
 export const ComponentKind = z.enum(['component', 'layout', 'animation', 'effect', 'asset']);
 export type ComponentKind = z.infer<typeof ComponentKind>;
 
+/**
+ * Versão do pipeline de segmentação. Sobe quando a forma dos insights muda de um
+ * jeito que a leitura precise saber. Vai gravado em cada insight para que dado
+ * antigo continue interpretável (a rota aplica defaults seguros no que faltar).
+ */
+export const PIPELINE_VERSION = 2;
+
 /** Entrada da tabela segments. Um segmento é um componente candidato antes da curadoria. */
 export const SegmentRecord = z.object({
   id: z.string().startsWith('seg_'),
@@ -74,21 +87,106 @@ export type SegmentRecord = z.infer<typeof SegmentRecord>;
  * A rota de segmentos lê o manifesto e junta isto às linhas do banco na
  * resposta. Manifesto antigo sem `insights` continua válido.
  */
+/**
+ * Um estado capturado, ligado ao segmento. Metadados só — o HTML de cada estado
+ * (que pode ser pesado) fica no vault, em `segments/states/<segId>.json`, e o
+ * preview o lê de lá. É a regra do usuário: banco/manifesto como índice, vault
+ * como armazenamento do artefato pesado.
+ */
+export const SegmentState = z.object({
+  id: z.string(),
+  trigger: z.string(),
+  label: z.string(),
+  /** Como a reprodução aplica este estado no preview. */
+  method: z.enum(['swap-html', 'toggle-class', 'portal', 'css']).optional(),
+  /** Este estado abre conteúdo em portal (modal/menu fora da subtree). */
+  hasPortal: z.boolean().optional(),
+});
+export type SegmentState = z.infer<typeof SegmentState>;
+
+/**
+ * Um estado capturado COM o HTML — o que o preview precisa para reproduzir.
+ * Mora no vault (`segments/states/<segId>.json`), não no manifesto, porque o
+ * HTML pode ser pesado. O `SegmentState` (sem HTML) é o índice no manifesto.
+ */
+export const StoredState = SegmentState.extend({
+  /** HTML do elemento naquele estado. */
+  html: z.string(),
+  /** HTML do conteúdo em portal (modal/menu) que o estado revelou, se houve. */
+  portalHtml: z.string().optional(),
+});
+export type StoredState = z.infer<typeof StoredState>;
+
+/** Arquivo de estados de um segmento no vault. */
+export const SegmentStatesFile = z.object({
+  segmentId: z.string().startsWith('seg_'),
+  generatedAt: z.number().int().positive(),
+  states: z.array(StoredState),
+});
+export type SegmentStatesFile = z.infer<typeof SegmentStatesFile>;
+
+/** Um elemento relacionado FORA da subtree do segmento (modal em portal, overlay). */
+export const RelatedElement = z.object({
+  kind: z.enum(['portal', 'overlay', 'externo']),
+  label: z.string(),
+  /** Estado capturado que o revela, quando houver. */
+  stateId: z.string().optional(),
+});
+export type RelatedElement = z.infer<typeof RelatedElement>;
+
+/** Dependência de runtime/asset que o segmento precisa para se comportar. */
+export const SegmentDependency = z.object({
+  type: z.enum(['external-script', 'runtime', 'shared-asset', 'font']),
+  ref: z.string(),
+  /** Nome do runtime (lottie/gsap/three…), quando aplicável. */
+  runtime: z.string().optional(),
+  /** Já foi embutida no bundle? */
+  bundled: z.boolean().default(false),
+});
+export type SegmentDependency = z.infer<typeof SegmentDependency>;
+
 export const SegmentInsight = FidelityAssessment.extend({
   /** Liga ao `SegmentRecord.id`. */
   segmentId: z.string().startsWith('seg_'),
   /** Estados descobertos pela exploração, quando houve captura por navegador. */
-  states: z
-    .array(
-      z.object({
-        id: z.string(),
-        trigger: z.string(),
-        label: z.string(),
-      }),
-    )
-    .optional(),
+  states: z.array(SegmentState).optional(),
+  /**
+   * Interações no modelo de pipeline (detected→…→validated). Mais rico que o
+   * `interactions` herdado do `FidelityAssessment` (que é só kind+support): aqui
+   * cada uma diz onde parou e com que confiança foi associada.
+   */
+  pipeline: z.array(SegmentInteraction).optional(),
+  /** Fidelidade por dimensão. O selo (`support`) é calculado a partir dela. */
+  dimensions: FidelityDimensions.optional(),
+  /** Confiança geral da associação captura↔segmento. */
+  confidence: Confidence.optional(),
+  /** Elementos relacionados fora da subtree (modal em portal, overlay). */
+  related: z.array(RelatedElement).optional(),
+  /** Dependências de runtime/asset. */
+  dependencies: z.array(SegmentDependency).optional(),
+  /** Limitações honestas, prontas para a UI. */
+  limitations: z.array(z.string()).optional(),
+  /** Versão do manifesto de captura que gerou este insight. */
+  manifestVersion: z.number().int().optional(),
+  /** Versão do pipeline de segmentação (`PIPELINE_VERSION`). */
+  pipelineVersion: z.number().int().optional(),
 });
 export type SegmentInsight = z.infer<typeof SegmentInsight>;
+
+/** Estado mais avançado da interação, exportado para reuso. */
+export { InteractionStatus };
+
+/**
+ * Uma interação capturada pelo explorer que NÃO pôde ser ligada a nenhum
+ * segmento com confiança. Registrada em vez de descartada ou grudada no
+ * lugar errado — é o caso para a Revisão/Pendências (seção 3 do pedido).
+ */
+export const InteracaoNaoAssociada = z.object({
+  label: z.string(),
+  kind: z.string(),
+  motivo: z.string(),
+});
+export type InteracaoNaoAssociada = z.infer<typeof InteracaoNaoAssociada>;
 
 /** Manifest.json em vault/{ds}/segments/. */
 export const SegmentsManifest = z.object({
@@ -97,6 +195,8 @@ export const SegmentsManifest = z.object({
   segments: z.array(SegmentRecord),
   /** Avaliações de fidelidade por segmento. Ausente em manifestos antigos. */
   insights: z.array(SegmentInsight).optional(),
+  /** Interações capturadas sem associação confiável. Ausente em manifestos antigos. */
+  naoAssociados: z.array(InteracaoNaoAssociada).optional(),
 });
 export type SegmentsManifest = z.infer<typeof SegmentsManifest>;
 
