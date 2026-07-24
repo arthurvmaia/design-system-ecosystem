@@ -265,6 +265,7 @@ export const explorePage = async (
       },
       warnings: [...warnings, ...cap.warnings, ...parcial],
       telemetry: tel.relatorio(),
+      scroll: [],
     };
   }
 
@@ -303,6 +304,7 @@ export const explorePage = async (
     },
     warnings: [...warnings, ...parcial],
     telemetry: tel.relatorio(),
+    scroll: [],
   };
 };
 

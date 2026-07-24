@@ -108,3 +108,11 @@ export {
   sinalComTimeout,
   urlParaLog,
 } from './telemetria.js';
+export {
+  type ScrollSample,
+  type ScrollElementSamples,
+  classificarScroll,
+  confiancaScroll,
+  parseTransform,
+  parseBlur,
+} from './scroll-classify.js';

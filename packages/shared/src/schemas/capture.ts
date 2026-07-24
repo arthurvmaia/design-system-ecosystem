@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ScrollBehavior } from './scroll.js';
 import { TelemetriaRelatorio } from './telemetria.js';
 
 /**
@@ -304,5 +305,11 @@ export const CaptureManifest = z.object({
    * por quê. Ausente em manifestos anteriores a esta fase.
    */
   telemetry: TelemetriaRelatorio.optional(),
+  /**
+   * Comportamentos controlados por scroll descobertos (reveal, parallax, sticky,
+   * progress-*). Ligados ao segmento depois, pela assinatura do alvo. Ausente em
+   * manifestos anteriores a esta fase.
+   */
+  scroll: z.array(ScrollBehavior).optional(),
 });
 export type CaptureManifest = z.infer<typeof CaptureManifest>;
