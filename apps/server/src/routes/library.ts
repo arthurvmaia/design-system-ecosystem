@@ -144,6 +144,32 @@ const lerCaptureAssets = (
  * arquivos passam a ser DELE, não da pasta temporária. Devolve o índice
  * originUrl→localPath só dos copiados, para reescrever as refs.
  */
+/** O conteúdo do `<head>` do design-system.html (sem `<base>`/`<title>`). */
+const lerHeadDoVault = (dsId: `ds_${string}`): string => {
+  const path = join(vaultExtractedDir(dsId), 'design-system.html');
+  if (!existsSync(path)) return '';
+  try {
+    const html = readFileSync(path, 'utf8');
+    const m = /<head[^>]*>([\s\S]*?)<\/head>/i.exec(html);
+    return (m?.[1] ?? '').replace(/<base[^>]*>/gi, '').replace(/<title[\s\S]*?<\/title>/gi, '');
+  } catch {
+    return '';
+  }
+};
+
+const semFragmento = (u: string): string => {
+  const i = u.indexOf('#');
+  return i >= 0 ? u.slice(0, i) : u;
+};
+
+/** Resolve um ref RELATIVO de dentro de um CSS (base `css/`) para um localPath. */
+const relDeCssParaLocal = (rel: string): string | null => {
+  const r = semFragmento(rel);
+  if (r.startsWith('../')) return r.slice(3); // ../image/x.png → image/x.png
+  if (!r.includes('/') && r.endsWith('.css')) return `css/${r}`; // vizinho.css → css/vizinho.css
+  return null; // absoluto/data/externo — não é arquivo local do bundle
+};
+
 const copiarAssetsParaBundle = (
   dsId: `ds_${string}`,
   bundleDir: string,
@@ -151,21 +177,36 @@ const copiarAssetsParaBundle = (
 ): { index: Map<string, string>; assets: CapturedAsset[] } => {
   const { index: captureIdx, assets: todos } = lerCaptureAssets(dsId);
   if (captureIdx.size === 0) return { index: new Map(), assets: [] };
-  const refs = new Set(textos.flatMap((t) => coletarAssetRefs(t)));
+  const origem = vaultCaptureAssetsDir(dsId);
   const usados = new Map<string, string>();
   const assets: CapturedAsset[] = [];
-  const origem = vaultCaptureAssetsDir(dsId);
-  for (const ref of refs) {
-    const localPath = captureIdx.get(ref);
-    if (!localPath || usados.has(ref)) continue;
+  const copiados = new Set<string>();
+
+  /** Copia um arquivo local + (se CSS) os que ele referencia relativamente. */
+  const copiarArquivo = (localPath: string): void => {
+    if (copiados.has(localPath)) return;
     const src = join(origem, localPath);
-    if (!existsSync(src)) continue;
+    if (!existsSync(src)) return;
+    copiados.add(localPath);
     const dest = join(bundleDir, 'assets', localPath);
     mkdirSync(dirname(dest), { recursive: true });
     copyFileSync(src, dest);
-    usados.set(ref, localPath);
     const a = todos.find((x) => x.localPath === localPath);
     if (a && !assets.includes(a)) assets.push(a);
+    // Transitivo: um CSS aponta para ../<kind>/<hash> e <hash>.css (relativos a css/).
+    if (localPath.endsWith('.css')) {
+      for (const rel of coletarAssetRefs(readFileSync(src, 'utf8'))) {
+        const alvo = relDeCssParaLocal(rel);
+        if (alvo) copiarArquivo(alvo);
+      }
+    }
+  };
+
+  for (const ref of new Set(textos.flatMap((t) => coletarAssetRefs(t)))) {
+    const localPath = captureIdx.get(semFragmento(ref));
+    if (!localPath) continue;
+    usados.set(semFragmento(ref), localPath);
+    copiarArquivo(localPath);
   }
   return { index: usados, assets };
 };
@@ -193,9 +234,14 @@ const montarComponente = (seg: SegmentRow) => {
   const dsId = seg.designSystemId as `ds_${string}`;
   const insight = lerInsightDoSegmento(dsId, seg.id);
   const estados = lerEstadosDoSegmento(dsId, seg.id);
+  // Head da extração (fontes, runtime, <link> de CSS externo). Incluído para que
+  // o CSS externo e seus assets transitivos sejam copiados e o componente fique
+  // portátil — não dependa mais do head da origem.
+  const headOrigem = lerHeadDoVault(dsId);
 
   // Copia os assets locais para o bundle e reescreve tudo para a rota do bundle.
   const textos = [
+    headOrigem,
     isolation.html,
     isolation.css,
     ...estados.flatMap((s) => [s.html, s.portalHtml ?? '']),
@@ -206,6 +252,12 @@ const montarComponente = (seg: SegmentRow) => {
 
   writeFileSync(join(bundleDir, 'index.html'), local(isolation.html), 'utf8');
   writeFileSync(join(bundleDir, 'styles.css'), local(isolation.css), 'utf8');
+  // HTML CRU reescrito: preserva as classes/ids originais para o CSS EXTERNO (que
+  // mira esses seletores) casar no preview. O isolado (index.html) fica para o
+  // gerador; o preview do componente usa este.
+  writeFileSync(join(bundleDir, 'raw.html'), local(seg.htmlSnippet), 'utf8');
+  // Head portátil: o CSS externo (<link>) e as fontes já apontam para o bundle.
+  if (headOrigem) writeFileSync(join(bundleDir, 'head.html'), local(headOrigem), 'utf8');
   writeFileSync(
     join(bundleDir, 'isolation.json'),
     JSON.stringify(isolation.stats, null, 2),
