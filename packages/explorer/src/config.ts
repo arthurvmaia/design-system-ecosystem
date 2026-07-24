@@ -33,6 +33,10 @@ export type ExplorerLimits = {
   maxRetries: number;
   /** Downloads de asset em paralelo. */
   assetConcurrency: number;
+  /** Timeout de cada download de asset (ms). */
+  assetTimeoutMs: number;
+  /** Redirects máximos por download (proteção contra loop/SSRF por redirect). */
+  maxRedirects: number;
   /** Orçamento total da exploração (ms) — corta a sessão inteira. */
   totalBudgetMs: number;
 };
@@ -49,6 +53,8 @@ export const DEFAULT_LIMITS: ExplorerLimits = {
   maxAnimationsObserved: 40,
   maxRetries: 2,
   assetConcurrency: 6,
+  assetTimeoutMs: 15_000,
+  maxRedirects: 3,
   totalBudgetMs: 120_000,
 };
 
@@ -91,6 +97,8 @@ export const resolveLimits = (overrides: Partial<ExplorerLimits> = {}): Explorer
     ),
     maxRetries: numFromEnv('DS_EXPLORER_MAX_RETRIES', DEFAULT_LIMITS.maxRetries),
     assetConcurrency: numFromEnv('DS_EXPLORER_ASSET_CONCURRENCY', DEFAULT_LIMITS.assetConcurrency),
+    assetTimeoutMs: numFromEnv('DS_EXPLORER_ASSET_TIMEOUT_MS', DEFAULT_LIMITS.assetTimeoutMs),
+    maxRedirects: numFromEnv('DS_EXPLORER_MAX_REDIRECTS', DEFAULT_LIMITS.maxRedirects),
     totalBudgetMs: numFromEnv('DS_EXPLORER_TOTAL_BUDGET_MS', DEFAULT_LIMITS.totalBudgetMs),
   };
   return { ...fromEnv, ...overrides };

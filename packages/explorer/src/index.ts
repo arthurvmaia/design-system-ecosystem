@@ -46,12 +46,21 @@ export {
   resolveRef,
   parseSrcset,
   extractAssetRefs,
+  type SecureFetchLimits,
   hashedLocalPath,
   createHttpFetcher,
+  createSecureHttpFetcher,
   localizeAssets,
   rewriteReferences,
   absolutizeRefs,
 } from './assets.js';
+export {
+  type MotivoBloqueio,
+  avaliarUrlAsset,
+  urlAssetSegura,
+  mimeCoerente,
+  permiteLocal,
+} from './asset-safety.js';
 export {
   keyframeNames,
   animationNamesUsed,

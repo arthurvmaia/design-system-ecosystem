@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { CapturedAsset, CapturedAssetKind } from '@ds/shared';
+import { mimeCoerente, urlAssetSegura } from './asset-safety.js';
 import type { ExplorerLimits } from './config.js';
 
 /**
@@ -150,7 +151,7 @@ export type FetchedAsset = {
 /** Assinatura do downloader injetável. */
 export type AssetFetcher = (url: string) => Promise<FetchedAsset | null>;
 
-/** Downloader real sobre `fetch`. Respeita o teto de tamanho. */
+/** Downloader real sobre `fetch`. Respeita o teto de tamanho. Legado; prefira `createSecureHttpFetcher`. */
 export const createHttpFetcher =
   (maxBytes: number): AssetFetcher =>
   async (url: string): Promise<FetchedAsset | null> => {
@@ -168,6 +169,87 @@ export const createHttpFetcher =
       };
     } catch {
       return null;
+    }
+  };
+
+/** Lê o corpo com teto rígido no tamanho DECODIFICADO (guarda de bomba de descompressão). */
+const lerComTeto = async (res: Response, maxBytes: number): Promise<Uint8Array | null> => {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    return buf.byteLength > maxBytes ? null : buf;
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
+  return out;
+};
+
+export type SecureFetchLimits = Pick<
+  ExplorerLimits,
+  'maxAssetBytes' | 'assetTimeoutMs' | 'maxRedirects'
+>;
+
+/**
+ * Downloader SEGURO. Bloqueia SSRF (localhost/rede privada/metadata/protocolo)
+ * na URL inicial E em cada redirect; teto de tamanho no corpo decodificado;
+ * timeout; NÃO envia cookies/auth; recusa `text/html` (é página, não asset).
+ * É o que o fluxo de produção deve usar.
+ */
+export const createSecureHttpFetcher =
+  (limits: SecureFetchLimits): AssetFetcher =>
+  async (url: string): Promise<FetchedAsset | null> => {
+    if (!urlAssetSegura(url)) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), limits.assetTimeoutMs);
+    try {
+      let atual = url;
+      for (let hop = 0; hop <= limits.maxRedirects; hop++) {
+        if (!urlAssetSegura(atual)) return null; // re-checa cada salto
+        const res = await fetch(atual, {
+          redirect: 'manual',
+          signal: controller.signal,
+          // Sem credenciais: nada de cookies, Authorization ou tokens vão à origem.
+          headers: { Accept: '*/*', 'User-Agent': 'ds-asset-fetcher/1' },
+        });
+        if (res.status >= 300 && res.status < 400) {
+          const loc = res.headers.get('location');
+          if (!loc) return null;
+          atual = new URL(loc, atual).href;
+          continue;
+        }
+        if (!res.ok) return null;
+        const len = Number(res.headers.get('content-length') ?? '0');
+        if (len > limits.maxAssetBytes) return null;
+        const mime = res.headers.get('content-type') ?? 'application/octet-stream';
+        // Conteúdo disfarçado: a URL promete imagem/fonte mas volta HTML/outro.
+        if (!mimeCoerente(mime, classifyByUrl(atual))) return null;
+        const bytes = await lerComTeto(res, limits.maxAssetBytes);
+        if (bytes === null) return null;
+        return { status: res.status, mimeType: mime, bytes };
+      }
+      return null; // redirects demais
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
     }
   };
 
@@ -223,15 +305,18 @@ export const localizeAssets = async (
         continue;
       }
       const kind = classifyByMime(fetched.mimeType, ref.absolute);
-      const localPath = hashedLocalPath(sha256, kind, extPara(ref.absolute, fetched.mimeType));
+      const ext = extPara(ref.absolute, fetched.mimeType);
+      const localPath = hashedLocalPath(sha256, kind, ext);
       sink(localPath, fetched.bytes);
       const asset: CapturedAsset = {
         originalUrl: ref.absolute,
         localPath,
         sha256,
         mimeType: fetched.mimeType.split(';')[0]?.trim() ?? 'application/octet-stream',
+        ext,
         bytes: fetched.bytes.byteLength,
         kind,
+        status: 'local',
       };
       porHash.set(sha256, asset);
       rewriteMap.set(ref.raw, localPath);

@@ -130,16 +130,44 @@ export const CapturedAssetKind = z.enum([
 ]);
 export type CapturedAssetKind = z.infer<typeof CapturedAssetKind>;
 
+/**
+ * Estado honesto de um asset — não um booleano `downloaded`.
+ * - `local`       — baixado e disponível no vault.
+ * - `external`    — continua na origem (não baixado por escolha/fallback).
+ * - `blocked`     — a política de segurança barrou (SSRF, protocolo).
+ * - `failed`      — o download falhou (rede, 404, timeout).
+ * - `unsupported` — formato ainda não tratado.
+ * - `missing`     — referenciado mas não encontrado.
+ */
+export const AssetStatus = z.enum([
+  'local',
+  'external',
+  'blocked',
+  'failed',
+  'unsupported',
+  'missing',
+]);
+export type AssetStatus = z.infer<typeof AssetStatus>;
+
+/** Versão do contrato de asset — sobe quando a forma muda. */
+export const ASSET_MODEL_VERSION = 1;
+
 /** Um asset baixado e reescrito, endereçado por conteúdo (sha256). */
 export const CapturedAsset = z.object({
   /** URL absoluta original, para auditoria e cache. */
   originalUrl: z.string(),
+  /** URL absoluta resolvida de fato (após redirects), quando difere. */
+  resolvedUrl: z.string().optional(),
   /** Caminho relativo dentro da pasta de captura, já deduplicado. */
   localPath: z.string(),
   sha256: z.string(),
   mimeType: z.string(),
+  /** Extensão coerente com o MIME (sem ponto). */
+  ext: z.string().optional(),
   bytes: z.number().int().nonnegative(),
   kind: CapturedAssetKind,
+  /** Estado. Ausente em manifestos antigos → tratar como `local` (estavam salvos). */
+  status: AssetStatus.optional(),
 });
 export type CapturedAsset = z.infer<typeof CapturedAsset>;
 

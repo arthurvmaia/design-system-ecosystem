@@ -4,7 +4,7 @@ import { assessFidelity } from './assess.js';
 import {
   type AssetFetcher,
   absolutizeRefs,
-  createHttpFetcher,
+  createSecureHttpFetcher,
   extractAssetRefs,
   localizeAssets,
   rewriteReferences,
@@ -109,7 +109,7 @@ const localize = async (
 }> => {
   if (!opts.assetSink) return { assets: [], stats: { found: 0, saved: 0, bytes: 0 } };
   const refs = extractAssetRefs(html, css, baseUrl);
-  const fetcher = opts.fetcher ?? createHttpFetcher(limits.maxAssetBytes);
+  const fetcher = opts.fetcher ?? createSecureHttpFetcher(limits);
   const res = await localizeAssets(refs, fetcher, opts.assetSink, limits);
   return {
     assets: res.assets,
