@@ -2,16 +2,42 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb, tables } from '@ds/indexer';
 import {
+  CaptureManifest,
   RejeitadosManifest,
   SegmentStatesFile,
   type StoredState,
+  assetRoutePrefix,
+  construirIndiceAssets,
   libraryComponentBundleDir,
+  reescreverParaLocal,
+  vaultCaptureManifest,
   vaultExtractedDir,
   vaultRejeitadosPath,
   vaultSegmentStates,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+
+/**
+ * Reescritor de refs para o LOCAL. Lê o índice de assets do manifesto de captura
+ * e devolve uma função que troca as URLs da origem pela rota do vault. Quando não
+ * há manifesto/assets (extração antiga ou rápida), devolve `null` — o preview cai
+ * no comportamento de sempre (refs da origem via `<base>`), sem quebrar.
+ */
+const lerReescritor = (dsId: string): ((t: string) => string) | null => {
+  const path = vaultCaptureManifest(dsId as `ds_${string}`);
+  if (!existsSync(path)) return null;
+  try {
+    const manifest = CaptureManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
+    const locais = (manifest.assets ?? []).filter((a) => !a.status || a.status === 'local');
+    if (locais.length === 0) return null;
+    const index = construirIndiceAssets(locais);
+    const prefix = assetRoutePrefix(dsId);
+    return (t: string) => reescreverParaLocal(t, index, prefix).text;
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Composição de previews.
@@ -280,20 +306,34 @@ previewRoute.get('/segment/:segId', (c) => {
     );
   }
 
+  // Assets locais: reescreve head/corpo/estados para a rota do vault quando há
+  // cópias no manifesto. `<base>` é solta quando reescrevemos (as refs viram
+  // absolutas: /api/asset/... locais, ou origem para o que sobrou externo).
+  const rw = lerReescritor(seg.designSystemId);
+  const reescreve = (t: string): string => (rw ? rw(t) : t);
+
   // Modo replay (`?replay=1`): quando o segmento tem estados capturados, injeta a
   // barra de interações e o runtime que os reproduz. Sem o parâmetro, a prévia
-  // fica limpa — é a que o card da Galeria usa como miniatura.
+  // fica limpa — é a que o card da Galeria usa como miniatura. Os estados também
+  // passam pela reescrita, para o conteúdo revelado (accordion/modal) usar local.
   const querReplay = c.req.query('replay') === '1';
-  const estados = querReplay ? lerEstados(seg.designSystemId, seg.id) : [];
-  const replay = estados.length > 0 ? montarReplay(seg.htmlSnippet, estados) : null;
+  const estados = querReplay
+    ? lerEstados(seg.designSystemId, seg.id).map((s) => ({
+        ...s,
+        html: reescreve(s.html),
+        portalHtml: s.portalHtml ? reescreve(s.portalHtml) : undefined,
+      }))
+    : [];
+  const corpo = reescreve(seg.htmlSnippet);
+  const replay = estados.length > 0 ? montarReplay(corpo, estados) : null;
 
   return responderHtml(
     compor({
       titulo: seg.name,
-      head: `${extrairHead(html)}${replay ? replay.head : ''}`,
+      head: `${reescreve(extrairHead(html))}${replay ? replay.head : ''}`,
       bodyAttrs: extrairBodyAttrs(html),
-      corpo: replay ? replay.corpo : seg.htmlSnippet,
-      base: `/vault/${seg.designSystemId}/`,
+      corpo: replay ? replay.corpo : corpo,
+      base: rw ? null : `/vault/${seg.designSystemId}/`,
       bg: c.req.query('bg'),
     }),
   );

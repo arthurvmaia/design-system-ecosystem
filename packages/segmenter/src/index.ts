@@ -12,7 +12,10 @@ import {
   type SegmentRecord,
   type SegmentStatesFile,
   type SegmentsManifest,
+  assetRoutePrefix,
+  construirIndiceAssets,
   newSegmentId,
+  reescreverParaLocal,
   vaultCaptureManifest,
   vaultExtractedDir,
   vaultRejeitadosPath,
@@ -23,7 +26,7 @@ import {
 } from '@ds/shared';
 import { HTMLElement, parse } from 'node-html-parser';
 import { type NaoAssociado, associarManifesto } from './associar.js';
-import { enriquecerInsight, temAssetExterno } from './enriquecer.js';
+import { enriquecerInsight } from './enriquecer.js';
 import { extrairPadroes } from './padroes.js';
 
 /**
@@ -708,6 +711,11 @@ const consumirCaptura = (
   const assoc = associarManifesto(manifest.elements, segments);
   const snippetPorId = new Map(segments.map((s) => [s.id, s.htmlSnippet]));
 
+  // Índice de assets locais: quantos assets de cada segmento têm cópia no vault.
+  // É o que dá a fidelidade REAL de `assets`/`portabilidade` (local x externo).
+  const assetIndex = construirIndiceAssets(manifest.assets ?? []);
+  const prefix = assetRoutePrefix(designSystemId);
+
   const statesDir = vaultSegmentStatesDir(designSystemId);
   let escreveuEstado = false;
 
@@ -715,8 +723,12 @@ const consumirCaptura = (
     const insight = insights[i];
     if (insight === undefined) continue;
     const enr = assoc.porSegmento.get(insight.segmentId);
-    const externos = temAssetExterno(snippetPorId.get(insight.segmentId) ?? '');
-    insights[i] = enriquecerInsight(insight, enr, manifest.version, { temAssetExterno: externos });
+    const snippet = snippetPorId.get(insight.segmentId) ?? '';
+    const { locais, externos } = reescreverParaLocal(snippet, assetIndex, prefix);
+    insights[i] = enriquecerInsight(insight, enr, manifest.version, {
+      assetsLocais: locais,
+      assetsExternos: externos,
+    });
 
     if (enr && enr.storedStates.length > 0) {
       if (!escreveuEstado) {

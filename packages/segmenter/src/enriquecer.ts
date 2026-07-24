@@ -76,13 +76,20 @@ export const temAssetExterno = (html: string): boolean =>
     html,
   );
 
-export type OpcoesDimensoes = { temAssetExterno?: boolean };
+export type OpcoesDimensoes = {
+  /** Quantos assets do segmento têm cópia local no vault. */
+  assetsLocais?: number;
+  /** Quantos assets do segmento seguem externos (não localizados). */
+  assetsExternos?: number;
+  /** Fallback heurístico quando não há índice de assets (extração antiga/rápida). */
+  temAssetExterno?: boolean;
+};
 
 /**
  * Monta as dimensões de fidelidade. Visual/estrutura/css são fortes (temos o DOM
- * real e o CSS isolado); assets/portabilidade dependem do que o segmento
- * referencia (texto puro é portátil; imagem da origem, não); validação fica de
- * fora quando não houve execução conferida.
+ * real e o CSS isolado); `assets`/`portabilidade` saem da localização REAL (quantos
+ * assets viraram locais x quantos seguem na origem); validação fica de fora quando
+ * não houve execução conferida.
  */
 export const montarDimensoes = (
   base: SegmentInsight,
@@ -91,7 +98,8 @@ export const montarDimensoes = (
 ): FidelityDimensions => {
   const caps = base.capabilities;
   const temRuntimeExterno = enr.pipeline.some((i) => i.status === 'external-runtime');
-  const externos = opts.temAssetExterno ?? false;
+  const externos = opts.assetsExternos ?? (opts.temAssetExterno ? 1 : 0);
+  const locais = opts.assetsLocais ?? 0;
 
   const animacao: SupportLevel = caps.hasLottie
     ? 'externo'
@@ -99,15 +107,18 @@ export const montarDimensoes = (
       ? 'externo'
       : 'completo'; // CSS puro/estático roda por inclusão do keyframe no preview
 
+  // Assets locais → portátil; algum externo → parcial; só externos → externo;
+  // nenhum asset → completo (nada a carregar).
+  const assets: SupportLevel = externos > 0 ? (locais > 0 ? 'parcial' : 'externo') : 'completo';
+
   const dims: FidelityDimensions = {
     visual: 'completo',
     estrutura: 'completo',
     css: 'completo',
-    // Asset da origem não é portátil (regra da seção 10); sem asset, é completo.
-    assets: externos ? 'externo' : 'completo',
+    assets,
     animacao,
     runtime: temRuntimeExterno || caps.dependsOnExternalScript ? 'externo' : 'completo',
-    portabilidade: externos ? 'parcial' : 'completo',
+    portabilidade: externos > 0 ? 'parcial' : 'completo',
   };
 
   const hover = nivelDoEixo('hover', enr.pipeline);
@@ -123,29 +134,44 @@ export const montarDimensoes = (
  * O insight final de um segmento COM captura associada. Quando não houve captura
  * (`enr` ausente), devolve o base só carimbando a versão do pipeline.
  */
+const ENR_VAZIO: EnriquecimentoSegmento = {
+  states: [],
+  storedStates: [],
+  pipeline: [],
+  related: [],
+  dependencies: [],
+  confidence: 'nenhuma',
+  limitations: [],
+};
+
 export const enriquecerInsight = (
   base: SegmentInsight,
   enr: EnriquecimentoSegmento | undefined,
   manifestVersion: number | undefined,
   opts: OpcoesDimensoes = {},
 ): SegmentInsight => {
-  if (!enr || (enr.pipeline.length === 0 && enr.states.length === 0)) {
+  const temInteracao = enr !== undefined && (enr.pipeline.length > 0 || enr.states.length > 0);
+  const temAssetInfo = opts.assetsLocais !== undefined || opts.assetsExternos !== undefined;
+  // Sem interação E sem índice de assets (extração antiga/rápida): só carimba a
+  // versão, preservando o dado antigo.
+  if (!temInteracao && !temAssetInfo) {
     return { ...base, pipelineVersion: PIPELINE_VERSION, manifestVersion };
   }
 
-  const dims = montarDimensoes(base, enr, opts);
-  const support = recomputarSelo(dims, enr.pipeline);
-  const limitations = [...new Set([...base.warnings, ...enr.limitations])];
+  const e = enr ?? ENR_VAZIO;
+  const dims = montarDimensoes(base, e, opts);
+  const support = recomputarSelo(dims, e.pipeline);
+  const limitations = [...new Set([...base.warnings, ...e.limitations])];
 
   return {
     ...base,
     support,
-    states: enr.states,
-    pipeline: enr.pipeline,
+    states: e.states.length > 0 ? e.states : undefined,
+    pipeline: e.pipeline.length > 0 ? e.pipeline : undefined,
     dimensions: dims,
-    confidence: enr.confidence,
-    related: enr.related.length > 0 ? enr.related : undefined,
-    dependencies: enr.dependencies.length > 0 ? enr.dependencies : undefined,
+    confidence: e.confidence !== 'nenhuma' ? e.confidence : undefined,
+    related: e.related.length > 0 ? e.related : undefined,
+    dependencies: e.dependencies.length > 0 ? e.dependencies : undefined,
     limitations: limitations.length > 0 ? limitations : undefined,
     warnings: limitations,
     manifestVersion,

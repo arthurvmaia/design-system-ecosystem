@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import {
+  CaptureManifest,
   PIPELINE_VERSION,
   PREVIEW_VERSION,
+  REWRITER_VERSION,
   type ResultadoValidacaoSegmento,
   type SegmentInteraction,
   SegmentStatesFile,
@@ -11,6 +13,10 @@ import {
   SegmentsManifest,
   VALIDATOR_VERSION,
   type ValidationStatus,
+  assetRoutePrefix,
+  construirIndiceAssets,
+  reescreverParaLocal,
+  vaultCaptureManifest,
   vaultSegmentStates,
   vaultSegmentValidation,
   vaultSegmentsManifest,
@@ -78,7 +84,7 @@ export const resolveValidatorLimits = (o: Partial<ValidatorLimits> = {}): Valida
 export const previewHash = (htmlSnippet: string, statesJson: string, depsJson: string): string =>
   createHash('sha256')
     .update(
-      `p${PREVIEW_VERSION}|v${VALIDATOR_VERSION}|s${PIPELINE_VERSION}|${htmlSnippet}|${statesJson}|${depsJson}`,
+      `p${PREVIEW_VERSION}|v${VALIDATOR_VERSION}|r${REWRITER_VERSION}|s${PIPELINE_VERSION}|${htmlSnippet}|${statesJson}|${depsJson}`,
     )
     .digest('hex')
     .slice(0, 32);
@@ -167,10 +173,26 @@ const lerEstadosJson = (dsId: `ds_${string}`, segId: string): string => {
   }
 };
 
+/** Índice de assets locais do manifesto de captura (vazio se não houver). */
+const lerIndiceAssets = (dsId: `ds_${string}`): Map<string, string> => {
+  const path = vaultCaptureManifest(dsId);
+  if (!existsSync(path)) return new Map();
+  try {
+    const m = CaptureManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
+    return construirIndiceAssets(m.assets ?? []);
+  } catch {
+    return new Map();
+  }
+};
+
 /** Monta os candidatos: segmentos com interação reproduzível E estado capturado. */
 export const montarCandidatos = (dsId: `ds_${string}`): CandidatoValidacao[] => {
   const manifest = lerManifesto(dsId);
   if (!manifest) return [];
+  // O que é validado é o preview REESCRITO (assets locais). O hash tem de refletir
+  // a reescrita — muda a localização de um asset, o hash muda e revalida.
+  const index = lerIndiceAssets(dsId);
+  const prefix = assetRoutePrefix(dsId);
   const candidatos: CandidatoValidacao[] = [];
   for (const insight of manifest.insights ?? []) {
     const pipeline = insight.pipeline ?? [];
@@ -178,14 +200,19 @@ export const montarCandidatos = (dsId: `ds_${string}`): CandidatoValidacao[] => 
     if (!temReplay) continue;
     const seg = manifest.segments.find((s) => s.id === insight.segmentId);
     if (!seg) continue;
-    const statesJson = lerEstadosJson(dsId, insight.segmentId);
+    const snippetRw = reescreverParaLocal(seg.htmlSnippet, index, prefix).text;
+    const statesRw = reescreverParaLocal(
+      lerEstadosJson(dsId, insight.segmentId),
+      index,
+      prefix,
+    ).text;
     const depsJson = JSON.stringify(insight.dependencies ?? []);
     candidatos.push({
       segmentId: insight.segmentId,
       htmlSnippet: seg.htmlSnippet,
       states: (insight.states ?? []).map((s) => ({ id: s.id })),
       pipeline,
-      previewHash: previewHash(seg.htmlSnippet, statesJson, depsJson),
+      previewHash: previewHash(snippetRw, statesRw, depsJson),
     });
   }
   return candidatos;
