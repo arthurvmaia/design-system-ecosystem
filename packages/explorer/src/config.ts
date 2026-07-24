@@ -47,8 +47,37 @@ export type ExplorerLimits = {
    * sem novo fetch — este é o freio para não estourar a RAM num site pesado.
    */
   maxCaptureBytes: number;
-  /** Orçamento total da exploração (ms) — corta a sessão inteira. */
+  /**
+   * Orçamento do LOOP DE INTERAÇÕES (ms). Historicamente chamado de "total", mas
+   * cobre só o loop — o total REAL do processo é `orcamentoTotalMs`.
+   */
   totalBudgetMs: number;
+
+  // ── Orçamento por fase (ms) — o controle que impede uma fase de consumir o
+  // processo inteiro. Cada fase roda sob o MENOR entre o seu teto e o que resta
+  // do total, então a soma nunca fura o total (ver Telemetria.tetoFase). ──
+  /** Teto REAL do processo inteiro — render, scroll, interações, assets, drenagem. */
+  orcamentoTotalMs: number;
+  /** Carregamento inicial da página (goto). */
+  faseCarregarMs: number;
+  /** Estabilização pós-load (conteúdo assíncrono assentar). */
+  faseEstabilizarMs: number;
+  /** Scroll usado para disparar lazy-load. */
+  faseScrollLazyMs: number;
+  /** Amostragem de scroll (captura de comportamentos por progresso). */
+  faseScrollAmostraMs: number;
+  /** Exploração de hover/focus/click + captura de estados. */
+  faseInteracoesMs: number;
+  /** Localização de assets (rede do navegador + fallback HTTP). */
+  faseAssetsMs: number;
+  /** Drenagem das respostas de rede pendentes. */
+  faseDrenarMs: number;
+  /** Timeout INDIVIDUAL de leitura do corpo de uma resposta (evita corpo infinito). */
+  drainBodyTimeoutMs: number;
+  /** Segmentação do design-system.html. */
+  faseSegmentarMs: number;
+  /** Validação de previews em navegador. */
+  faseValidarMs: number;
 };
 
 export const DEFAULT_LIMITS: ExplorerLimits = {
@@ -69,6 +98,17 @@ export const DEFAULT_LIMITS: ExplorerLimits = {
   maxCssFiles: 40,
   maxCaptureBytes: 200 * 1024 * 1024,
   totalBudgetMs: 120_000,
+  orcamentoTotalMs: 180_000,
+  faseCarregarMs: 30_000,
+  faseEstabilizarMs: 3_000,
+  faseScrollLazyMs: 8_000,
+  faseScrollAmostraMs: 45_000,
+  faseInteracoesMs: 90_000,
+  faseAssetsMs: 45_000,
+  faseDrenarMs: 10_000,
+  drainBodyTimeoutMs: 8_000,
+  faseSegmentarMs: 20_000,
+  faseValidarMs: 120_000,
 };
 
 const numFromEnv = (key: string, fallback: number): number => {
@@ -116,6 +156,29 @@ export const resolveLimits = (overrides: Partial<ExplorerLimits> = {}): Explorer
     maxCssFiles: numFromEnv('DS_EXPLORER_MAX_CSS_FILES', DEFAULT_LIMITS.maxCssFiles),
     maxCaptureBytes: numFromEnv('DS_EXPLORER_MAX_CAPTURE_BYTES', DEFAULT_LIMITS.maxCaptureBytes),
     totalBudgetMs: numFromEnv('DS_EXPLORER_TOTAL_BUDGET_MS', DEFAULT_LIMITS.totalBudgetMs),
+    orcamentoTotalMs: numFromEnv('DS_EXPLORER_ORCAMENTO_TOTAL_MS', DEFAULT_LIMITS.orcamentoTotalMs),
+    faseCarregarMs: numFromEnv('DS_EXPLORER_FASE_CARREGAR_MS', DEFAULT_LIMITS.faseCarregarMs),
+    faseEstabilizarMs: numFromEnv(
+      'DS_EXPLORER_FASE_ESTABILIZAR_MS',
+      DEFAULT_LIMITS.faseEstabilizarMs,
+    ),
+    faseScrollLazyMs: numFromEnv(
+      'DS_EXPLORER_FASE_SCROLL_LAZY_MS',
+      DEFAULT_LIMITS.faseScrollLazyMs,
+    ),
+    faseScrollAmostraMs: numFromEnv(
+      'DS_EXPLORER_FASE_SCROLL_AMOSTRA_MS',
+      DEFAULT_LIMITS.faseScrollAmostraMs,
+    ),
+    faseInteracoesMs: numFromEnv('DS_EXPLORER_FASE_INTERACOES_MS', DEFAULT_LIMITS.faseInteracoesMs),
+    faseAssetsMs: numFromEnv('DS_EXPLORER_FASE_ASSETS_MS', DEFAULT_LIMITS.faseAssetsMs),
+    faseDrenarMs: numFromEnv('DS_EXPLORER_FASE_DRENAR_MS', DEFAULT_LIMITS.faseDrenarMs),
+    drainBodyTimeoutMs: numFromEnv(
+      'DS_EXPLORER_DRAIN_BODY_TIMEOUT_MS',
+      DEFAULT_LIMITS.drainBodyTimeoutMs,
+    ),
+    faseSegmentarMs: numFromEnv('DS_EXPLORER_FASE_SEGMENTAR_MS', DEFAULT_LIMITS.faseSegmentarMs),
+    faseValidarMs: numFromEnv('DS_EXPLORER_FASE_VALIDAR_MS', DEFAULT_LIMITS.faseValidarMs),
   };
   return { ...fromEnv, ...overrides };
 };

@@ -94,3 +94,15 @@ export {
   decidirProfundidade,
   resolveDepthMode,
 } from './depth.js';
+export {
+  type Orcamento,
+  type FaseNome,
+  type FaseResultado,
+  type Now,
+  FASE,
+  OrcamentoExcedido,
+  Telemetria,
+  resolveOrcamento,
+  sinalComTimeout,
+  urlParaLog,
+} from './telemetria.js';
