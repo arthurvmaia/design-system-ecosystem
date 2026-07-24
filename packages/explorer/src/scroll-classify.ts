@@ -260,24 +260,24 @@ export const classificarScroll = (el: ScrollElementSamples): ScrollBehavior[] =>
     );
   }
 
-  // ── classes que entram/saem num limiar → class-toggle ──────────────────────
-  const primeiroSet = new Set(q0.classes);
-  const ultimoSet = new Set(qN.classes);
-  const adicionadas = [...ultimoSet].filter((c) => !primeiroSet.has(c));
-  const removidas = [...primeiroSet].filter((c) => !ultimoSet.has(c));
-  if (adicionadas.length > 0 || removidas.length > 0) {
-    // Acha o progresso em que a mudança acontece (primeiro quadro com o novo set).
-    const virada = relev.find((s) => {
-      const set = new Set(s.classes);
-      return adicionadas.some((c) => set.has(c)) || removidas.some((c) => !set.has(c));
-    });
+  // ── classes que VARIAM ao longo do scroll → class-toggle ───────────────────
+  // Compara todos os quadros (não só o primeiro/último): uma classe que aparece
+  // em ALGUNS e some em outros é um toggle por viewport — mesmo que a fixture a
+  // adicione ao entrar e remova ao sair (primeiro e último quadros iguais).
+  const contagem = new Map<string, number>();
+  for (const s of relev)
+    for (const c of new Set(s.classes)) contagem.set(c, (contagem.get(c) ?? 0) + 1);
+  const variam = [...contagem.entries()]
+    .filter(([, n]) => n > 0 && n < relev.length)
+    .map(([c]) => c);
+  if (variam.length > 0) {
+    const virada = relev.find((s) => variam.some((c) => s.classes.includes(c)));
     out.push(
       behavior('class-toggle', el, relev, {
         trigger: 'viewport',
         scrub: false,
         confidence: 'alta',
-        classesAdicionadas: adicionadas.length > 0 ? adicionadas : undefined,
-        classesRemovidas: removidas.length > 0 ? removidas : undefined,
+        classesAdicionadas: variam,
         start: virada?.scrollProgress ?? q0.scrollProgress,
         limitations: ['Toggle de classe reproduzido por IntersectionObserver no limiar medido.'],
       }),

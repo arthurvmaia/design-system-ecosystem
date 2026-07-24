@@ -1,4 +1,4 @@
-import type { StateTrigger } from '@ds/shared';
+import type { ScrollBehavior, StateTrigger } from '@ds/shared';
 import { mimeCoerente, urlAssetSegura } from './asset-safety.js';
 import { type FetchedAsset, classifyByMime, classifyByUrl } from './assets.js';
 import type { ExplorerLimits } from './config.js';
@@ -13,6 +13,7 @@ import {
   buildCall,
   stripInstrumentation,
 } from './page-script.js';
+import { amostrarScroll } from './scroll-capture.js';
 import {
   type StateSnapshot,
   diffSnapshots,
@@ -98,6 +99,8 @@ export type RawCapture = {
    * separado tomaria 403. O localize consulta este mapa antes de ir à rede.
    */
   network: Map<string, FetchedAsset>;
+  /** Comportamentos de scroll descobertos pela amostragem (reveal, parallax…). */
+  scroll: ScrollBehavior[];
   stats: {
     elementsAnalyzed: number;
     interactionsTried: number;
@@ -508,6 +511,14 @@ export const exploreWithBrowser = async (
     tel.inc('estados', statesFound);
     log('estados', { statesFound, interactionsTried, clicks });
 
+    // Amostragem de scroll: rola a página em pontos controlados e classifica os
+    // efeitos (reveal, parallax, sticky, progress-*). Fase orçada e cooperativa —
+    // o sinal corta e o que já foi medido permanece. A página volta ao topo.
+    const scroll = await tel.faseCooperativa(FASE.scrollAmostra, (signal) =>
+      amostrarScroll(page, limits, signal, log),
+    );
+    log('scroll', { comportamentos: scroll.length });
+
     // Garante que os corpos observados terminaram de ser lidos ANTES de fechar o
     // navegador — depois disso os bytes vivem em memória, sem depender da origem.
     // Drenagem com timeout próprio, clampado ao que resta do total.
@@ -523,6 +534,7 @@ export const exploreWithBrowser = async (
       viewport,
       elements,
       network: rede.mapa,
+      scroll,
       stats: { elementsAnalyzed: descriptors.length, interactionsTried, statesFound },
       warnings,
     };

@@ -265,7 +265,7 @@ export const explorePage = async (
       },
       warnings: [...warnings, ...cap.warnings, ...parcial],
       telemetry: tel.relatorio(),
-      scroll: [],
+      scroll: cap.scroll,
     };
   }
 

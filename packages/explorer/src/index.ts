@@ -116,3 +116,4 @@ export {
   parseTransform,
   parseBlur,
 } from './scroll-classify.js';
+export { type PaginaAmostravel, amostrarScroll } from './scroll-capture.js';

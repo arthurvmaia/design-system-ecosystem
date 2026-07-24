@@ -78,6 +78,14 @@ export type ExplorerLimits = {
   faseSegmentarMs: number;
   /** Validação de previews em navegador. */
   faseValidarMs: number;
+
+  // ── Amostragem de scroll ──
+  /** Teto de elementos candidatos marcados para amostragem de scroll. */
+  maxScrollCandidates: number;
+  /** Espera após rolar até um ponto, antes de amostrar (assentar o efeito). */
+  scrollSettleMs: number;
+  /** Teto de pontos de scroll amostrados (fixos + adaptativos). */
+  maxScrollSamples: number;
 };
 
 export const DEFAULT_LIMITS: ExplorerLimits = {
@@ -109,6 +117,9 @@ export const DEFAULT_LIMITS: ExplorerLimits = {
   drainBodyTimeoutMs: 8_000,
   faseSegmentarMs: 20_000,
   faseValidarMs: 120_000,
+  maxScrollCandidates: 120,
+  scrollSettleMs: 150,
+  maxScrollSamples: 14,
 };
 
 const numFromEnv = (key: string, fallback: number): number => {
@@ -179,6 +190,12 @@ export const resolveLimits = (overrides: Partial<ExplorerLimits> = {}): Explorer
     ),
     faseSegmentarMs: numFromEnv('DS_EXPLORER_FASE_SEGMENTAR_MS', DEFAULT_LIMITS.faseSegmentarMs),
     faseValidarMs: numFromEnv('DS_EXPLORER_FASE_VALIDAR_MS', DEFAULT_LIMITS.faseValidarMs),
+    maxScrollCandidates: numFromEnv(
+      'DS_EXPLORER_MAX_SCROLL_CANDIDATES',
+      DEFAULT_LIMITS.maxScrollCandidates,
+    ),
+    scrollSettleMs: numFromEnv('DS_EXPLORER_SCROLL_SETTLE_MS', DEFAULT_LIMITS.scrollSettleMs),
+    maxScrollSamples: numFromEnv('DS_EXPLORER_MAX_SCROLL_SAMPLES', DEFAULT_LIMITS.maxScrollSamples),
   };
   return { ...fromEnv, ...overrides };
 };
