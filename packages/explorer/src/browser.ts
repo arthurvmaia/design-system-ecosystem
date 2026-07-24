@@ -20,6 +20,7 @@ import {
   registrarEstado,
   stateSignature,
 } from './state-diff.js';
+import { type Contador, corridaComTimeout } from './telemetria.js';
 
 /**
  * O que a instrumentação devolve: como o `StateSnapshot`, mas com o HTML cru do
@@ -256,13 +257,17 @@ const RECURSO_ASSET = new Set(['image', 'font', 'media', 'stylesheet']);
  * Não inicia requisição nenhuma: é observação passiva do que o Chromium já ia
  * baixar de qualquer forma — não amplia a superfície de SSRF do render.
  */
-const capturarRede = (
+export const capturarRede = (
   page: PwPage,
   limits: ExplorerLimits,
-): { mapa: Map<string, FetchedAsset>; aguardar: () => Promise<void> } => {
+  contador?: Contador,
+): { mapa: Map<string, FetchedAsset>; aguardar: (timeoutMs: number) => Promise<void> } => {
   const mapa = new Map<string, FetchedAsset>();
   const emVoo: Array<Promise<void>> = [];
   let total = 0;
+  // Sinal de drenagem: quando `aguardar` encerra, aborta as leituras de corpo
+  // ainda pendentes — cada uma resolve na hora e limpa seu timer (sem vazar).
+  const drenar = new AbortController();
   page.on('response', (res) => {
     emVoo.push(
       (async () => {
@@ -282,9 +287,23 @@ const capturarRede = (
           ) {
             return;
           }
+          contador?.inc('requests');
           if (total >= limits.maxCaptureBytes) return; // teto de memória atingido
           if (Number(res.headers()['content-length'] ?? '0') > limits.maxAssetBytes) return;
-          const bytes = await res.body();
+          // Timeout INDIVIDUAL na leitura do corpo: uma resposta que nunca termina
+          // (stream infinito) devolve null e é abandonada — não segura a drenagem
+          // (regras 6/18). Cada corpo é independente: um travado não bloqueia os
+          // outros (regra 7). O sinal de drenagem também a corta, se a espera geral
+          // encerrar antes.
+          const bytes = await corridaComTimeout(
+            res.body(),
+            limits.drainBodyTimeoutMs,
+            drenar.signal,
+          );
+          if (bytes === null) {
+            contador?.inc('timeouts');
+            return;
+          }
           if (bytes.byteLength > limits.maxAssetBytes) return;
           if (!mimeCoerente(mime || 'application/octet-stream', classifyByUrl(reqUrl))) return;
           total += bytes.byteLength;
@@ -298,6 +317,7 @@ const capturarRede = (
           mapa.set(reqUrl, asset);
           const finalUrl = res.url();
           if (finalUrl !== reqUrl) mapa.set(finalUrl, asset);
+          contador?.inc('downloadsOk');
         } catch {
           // body() indisponível (redirect, corpo já liberado, alvo fechado): ignora.
         }
@@ -306,8 +326,16 @@ const capturarRede = (
   });
   return {
     mapa,
-    aguardar: async () => {
-      await Promise.allSettled(emVoo);
+    // Drenagem com TIMEOUT PRÓPRIO (regra 6): mesmo que algum corpo escape ao
+    // teto individual, a espera inteira não passa de `timeoutMs`. Ao encerrar,
+    // aborta as leituras pendentes — nada de timer vivo. O que já foi capturado
+    // permanece no mapa; o pendente é abandonado.
+    aguardar: async (timeoutMs: number) => {
+      try {
+        await corridaComTimeout(Promise.allSettled(emVoo), timeoutMs);
+      } finally {
+        drenar.abort();
+      }
     },
   };
 };
@@ -457,7 +485,8 @@ export const exploreWithBrowser = async (
 
     // Garante que os corpos observados terminaram de ser lidos ANTES de fechar o
     // navegador — depois disso os bytes vivem em memória, sem depender da origem.
-    await rede.aguardar();
+    // Drenagem com timeout próprio: nunca segura mais que `faseDrenarMs`.
+    await rede.aguardar(limits.faseDrenarMs);
     log('rede', { capturados: rede.mapa.size });
 
     return {

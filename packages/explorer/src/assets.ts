@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { CapturedAsset, CapturedAssetKind } from '@ds/shared';
 import { mimeCoerente, urlAssetSegura } from './asset-safety.js';
 import type { ExplorerLimits } from './config.js';
+import { type Contador, sinalComTimeout } from './telemetria.js';
 
 /**
  * Localização de assets — o que faz um componente sobreviver fora da página.
@@ -207,25 +208,36 @@ export type SecureFetchLimits = Pick<
   'maxAssetBytes' | 'assetTimeoutMs' | 'maxRedirects'
 >;
 
+/** Opções do fetcher seguro: sinal da FASE (corte por orçamento) e contadores. */
+export type SecureFetchOpts = {
+  /** Sinal da fase — aborta junto com o timeout individual do fetch. */
+  signal?: AbortSignal;
+  /** Contadores agregados (fallbacksHttp, downloadsOk, downloadsAbortados, timeouts). */
+  contador?: Contador;
+};
+
 /**
  * Downloader SEGURO. Bloqueia SSRF (localhost/rede privada/metadata/protocolo)
  * na URL inicial E em cada redirect; teto de tamanho no corpo decodificado;
- * timeout; NÃO envia cookies/auth; recusa `text/html` (é página, não asset).
- * É o que o fluxo de produção deve usar.
+ * timeout INDIVIDUAL combinado com o sinal da fase (aborta no que vier primeiro);
+ * NÃO envia cookies/auth; recusa `text/html` (é página, não asset). É o que o
+ * fluxo de produção usa como fallback quando o navegador não trouxe o asset.
  */
 export const createSecureHttpFetcher =
-  (limits: SecureFetchLimits): AssetFetcher =>
+  (limits: SecureFetchLimits, opts: SecureFetchOpts = {}): AssetFetcher =>
   async (url: string): Promise<FetchedAsset | null> => {
     if (!urlAssetSegura(url)) return null;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), limits.assetTimeoutMs);
+    opts.contador?.inc('fallbacksHttp');
+    // Timeout do fetch combinado com o sinal da fase: um download lento é cortado
+    // sozinho (regra 7) sem segurar a fase, e o corte da fase também o alcança.
+    const { signal, limpar } = sinalComTimeout(opts.signal, limits.assetTimeoutMs);
     try {
       let atual = url;
       for (let hop = 0; hop <= limits.maxRedirects; hop++) {
         if (!urlAssetSegura(atual)) return null; // re-checa cada salto
         const res = await fetch(atual, {
           redirect: 'manual',
-          signal: controller.signal,
+          signal,
           // Sem credenciais: nada de cookies, Authorization ou tokens vão à origem.
           headers: { Accept: '*/*', 'User-Agent': 'ds-asset-fetcher/1' },
         });
@@ -243,13 +255,19 @@ export const createSecureHttpFetcher =
         if (!mimeCoerente(mime, classifyByUrl(atual))) return null;
         const bytes = await lerComTeto(res, limits.maxAssetBytes);
         if (bytes === null) return null;
+        opts.contador?.inc('downloadsOk');
         return { status: res.status, mimeType: mime, bytes };
       }
       return null; // redirects demais
     } catch {
+      // Abortado (timeout individual ou corte da fase) ou erro de rede: não trava.
+      if (signal.aborted) {
+        opts.contador?.inc('downloadsAbortados');
+        opts.contador?.inc('timeouts');
+      }
       return null;
     } finally {
-      clearTimeout(timer);
+      limpar();
     }
   };
 

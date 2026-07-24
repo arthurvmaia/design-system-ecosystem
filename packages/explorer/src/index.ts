@@ -96,12 +96,14 @@ export {
 } from './depth.js';
 export {
   type Orcamento,
+  type Contador,
   type FaseNome,
   type FaseResultado,
   type Now,
   FASE,
   OrcamentoExcedido,
   Telemetria,
+  corridaComTimeout,
   resolveOrcamento,
   sinalComTimeout,
   urlParaLog,

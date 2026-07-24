@@ -43,6 +43,15 @@ export type FaseNome = (typeof FASE)[keyof typeof FASE];
 
 export type Now = () => number;
 
+/**
+ * Interface mínima de contador. A `Telemetria` a satisfaz; camadas de baixo
+ * nível (fetcher, captura de rede) recebem só isto, e os testes usam um stub —
+ * sem acoplar o download ao relógio inteiro.
+ */
+export interface Contador {
+  inc(chave: ContadorChave, n?: number): void;
+}
+
 /** Teto total (real, do processo inteiro) e teto por fase, em ms. */
 export type Orcamento = {
   total: number;
@@ -275,6 +284,40 @@ export const resolveOrcamento = (
   }
   return { orcamento, avisos };
 };
+
+/**
+ * Corre uma promise contra um timeout (e, opcionalmente, um `AbortSignal`).
+ * Resolve o valor se chegar a tempo, `null` se estourar OU o sinal abortar — e
+ * ABANDONA a original (settle tardio é engolido), SEMPRE limpando o timer. É o
+ * que garante que um corpo de resposta que nunca termina não segure o pipeline
+ * (regras 6 e 18), e que a drenagem, ao encerrar, CANCELE as leituras pendentes
+ * (o sinal) sem deixar timer vivo. Rejeição ANTES do corte é propagada.
+ */
+export const corridaComTimeout = <T>(
+  p: Promise<T>,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T | null> =>
+  new Promise<T | null>((resolve, reject) => {
+    let pronto = false;
+    const fim = (acao: () => void): void => {
+      if (pronto) return;
+      pronto = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      acao();
+    };
+    const timer = setTimeout(() => fim(() => resolve(null)), timeoutMs);
+    const onAbort = (): void => fim(() => resolve(null));
+    if (signal) {
+      if (signal.aborted) return fim(() => resolve(null));
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    p.then(
+      (v) => fim(() => resolve(v)),
+      (e) => fim(() => reject(e)),
+    );
+  });
 
 /**
  * Redação para log seguro de URL: tira credenciais (userinfo) e a query string,
