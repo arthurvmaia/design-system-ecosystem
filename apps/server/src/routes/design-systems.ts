@@ -7,14 +7,16 @@ import {
   CreateDesignSystemInput,
   SegmentsManifest,
   listarAssetsFaltando,
+  resumirPipeline,
   vaultExtractedDir,
   vaultSegmentsManifest,
 } from '@ds/shared';
-import type { SegmentInsight } from '@ds/shared';
+import type { InteracaoNaoAssociada, SegmentInsight } from '@ds/shared';
 import { enqueueJob } from '@ds/shared';
 import { zValidator } from '@hono/zod-validator';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { getModels } from '../lib/anthropic.js';
 import { isQueueMode } from '../lib/execution-mode.js';
 import { enqueueTask } from '../lib/task-queue.js';
@@ -52,18 +54,23 @@ designSystemsRoute.get('/:id', (c) => {
 });
 
 /**
- * Avaliações de fidelidade por segmento, do manifesto no vault. Ficam em JSON
- * (não no banco) para não exigir migration: a rota junta ao vivo. Manifesto
- * antigo sem `insights` simplesmente devolve um mapa vazio.
+ * Insights de fidelidade + interações não associadas, do manifesto no vault.
+ * Ficam em JSON (não no banco) para não exigir migration: a rota junta ao vivo.
+ * Manifesto antigo sem esses campos simplesmente devolve vazios.
  */
-const lerInsights = (dsId: string): Map<string, SegmentInsight> => {
+const lerManifesto = (
+  dsId: string,
+): { insights: Map<string, SegmentInsight>; naoAssociados: InteracaoNaoAssociada[] } => {
   const path = vaultSegmentsManifest(dsId as `ds_${string}`);
-  if (!existsSync(path)) return new Map();
+  if (!existsSync(path)) return { insights: new Map(), naoAssociados: [] };
   try {
     const manifest = SegmentsManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
-    return new Map((manifest.insights ?? []).map((i) => [i.segmentId, i]));
+    return {
+      insights: new Map((manifest.insights ?? []).map((i) => [i.segmentId, i])),
+      naoAssociados: manifest.naoAssociados ?? [],
+    };
   } catch {
-    return new Map();
+    return { insights: new Map(), naoAssociados: [] };
   }
 };
 
@@ -76,9 +83,18 @@ designSystemsRoute.get('/:id/segments', (c) => {
     .where(eq(tables.segments.designSystemId, id))
     .orderBy(asc(tables.segments.position))
     .all();
-  const insights = lerInsights(id);
-  const items = rows.map((r) => ({ ...r, fidelity: insights.get(r.id) ?? null }));
-  return c.json({ items });
+  const { insights, naoAssociados } = lerManifesto(id);
+  // Resumo na listagem (contagens por estado de interação); o detalhe pesado —
+  // o HTML dos estados — só é servido pela rota de preview.
+  const items = rows.map((r) => {
+    const insight = insights.get(r.id) ?? null;
+    return {
+      ...r,
+      fidelity: insight,
+      resumo: insight?.pipeline ? resumirPipeline(insight.pipeline) : null,
+    };
+  });
+  return c.json({ items, naoAssociados });
 });
 
 /**
@@ -136,6 +152,36 @@ designSystemsRoute.delete('/:dsId/segments/:segId', (c) => {
   db.delete(tables.segments).where(eq(tables.segments.id, segId)).run();
   return c.json({ deleted: true });
 });
+
+const BatchDeleteInput = z.object({
+  segmentIds: z.array(z.string().startsWith('seg_')).min(1).max(500),
+});
+
+/**
+ * Exclui vários segmentos da Galeria de uma vez.
+ *
+ * Seguro por construção: o `and` exige que o segmento pertença A ESTA extração
+ * (não dá para apagar segmento de outro ds pelo id), e as cópias já curadas na
+ * Biblioteca sobrevivem — o schema faz `segmentId` virar null no componente, sem
+ * apagar o componente, os kits ou os projetos que o usam. Devolve quantos foram
+ * de fato removidos (sucesso parcial: ids inexistentes só não contam).
+ */
+designSystemsRoute.post(
+  '/:dsId/segments/batch-delete',
+  zValidator('json', BatchDeleteInput),
+  (c) => {
+    const dsId = c.req.param('dsId');
+    const { segmentIds } = c.req.valid('json');
+    const db = getDb();
+
+    const res = db
+      .delete(tables.segments)
+      .where(and(inArray(tables.segments.id, segmentIds), eq(tables.segments.designSystemId, dsId)))
+      .run();
+
+    return c.json({ deleted: res.changes });
+  },
+);
 
 /**
  * Inicia uma extração + segmentação. Retorna o task_id imediatamente.

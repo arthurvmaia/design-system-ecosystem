@@ -1,19 +1,26 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb, tables } from '@ds/indexer';
 import { isolateComponent } from '@ds/isolator';
 import {
+  type SegmentInsight,
+  SegmentStatesFile,
+  SegmentsManifest,
+  type StoredState,
   libraryComponentBundleDir,
   libraryComponentDir,
   libraryComponentMetadata,
   newComponentId,
   vaultExtractedDir,
+  vaultSegmentStates,
+  vaultSegmentsManifest,
 } from '@ds/shared';
 import { zValidator } from '@hono/zod-validator';
 import { desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { planBatchLike } from '../lib/batch.js';
 
 export const libraryRoute = new Hono();
 
@@ -84,29 +91,52 @@ libraryRoute.get('/:id/impacto', (c) => {
 
 const AddInput = z.object({ segmentId: z.string().startsWith('seg_') });
 
-libraryRoute.post('/', zValidator('json', AddInput), (c) => {
-  const { segmentId } = c.req.valid('json');
-  const db = getDb();
+type SegmentRow = typeof tables.segments.$inferSelect;
 
-  const seg = db.select().from(tables.segments).where(eq(tables.segments.id, segmentId)).get();
-  if (!seg) return c.json({ error: 'segment_not_found' }, 404);
+/** O insight de um segmento no manifesto do vault, quando existe. */
+const lerInsightDoSegmento = (dsId: `ds_${string}`, segId: string): SegmentInsight | null => {
+  const path = vaultSegmentsManifest(dsId);
+  if (!existsSync(path)) return null;
+  try {
+    const manifest = SegmentsManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
+    return (manifest.insights ?? []).find((i) => i.segmentId === segId) ?? null;
+  } catch {
+    return null;
+  }
+};
 
+/** Os estados capturados de um segmento (com HTML), quando existem. */
+const lerEstadosDoSegmento = (dsId: `ds_${string}`, segId: string): StoredState[] => {
+  const path = vaultSegmentStates(dsId, segId);
+  if (!existsSync(path)) return [];
+  try {
+    return SegmentStatesFile.parse(JSON.parse(readFileSync(path, 'utf8'))).states;
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Cria os arquivos do bundle de um segmento (isolamento + metadata) e devolve o
+ * record pronto para inserir. Compartilhado entre o "curtir" único e o em lote —
+ * a mesma peça vira componente do mesmo jeito, não importa por qual caminho, e
+ * com EXATAMENTE os mesmos metadados (seção 11 do pedido).
+ *
+ * Preserva o que a exploração descobriu: os estados capturados (índice +, quando
+ * há, o HTML em `bundle/states.json` para o preview reproduzir), o pipeline de
+ * interações, as dependências, o selo honesto, a confiança e as limitações.
+ */
+const montarComponente = (seg: SegmentRow) => {
   const componentId = newComponentId();
   const bundleHash = createHash('sha256').update(seg.htmlSnippet).digest('hex');
 
   const bundleDir = libraryComponentBundleDir(componentId);
   mkdirSync(bundleDir, { recursive: true });
 
-  // Fase 5: isolamento pragmático (agora preserva keyframes/font-face/vars e
-  // calcula a fidelidade do componente).
   const cssDir = join(vaultExtractedDir(seg.designSystemId as `ds_${string}`), 'assets/css');
   const isolation = isolateComponent({ html: seg.htmlSnippet, cssDir });
 
   writeFileSync(join(bundleDir, 'index.html'), isolation.html, 'utf8');
-
-  // O CSS do bundle preserva as cores originais para o preview ser fiel. A
-  // Galeria NÃO gera paleta de identidade — cor vira tema depois, na geração do
-  // site. Por isso não há mais extração de tokens nem `tokens.json` aqui.
   writeFileSync(join(bundleDir, 'styles.css'), isolation.css, 'utf8');
   writeFileSync(
     join(bundleDir, 'isolation.json'),
@@ -114,13 +144,29 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
     'utf8',
   );
 
-  // Dependências de asset conhecidas, para a Biblioteca saber o que o componente
-  // ainda precisa (e o gerador tratar depois).
-  const dependencies = isolation.referencedAssets.map((ref) => ({
-    type: 'shared-asset' as const,
-    ref,
-    bundled: false,
-  }));
+  const dsId = seg.designSystemId as `ds_${string}`;
+  const insight = lerInsightDoSegmento(dsId, seg.id);
+  const estados = lerEstadosDoSegmento(dsId, seg.id);
+
+  // Estados COM HTML vão para o bundle: é o que sobrevive à origem e deixa o
+  // componente reproduzir os estados na Biblioteca, como na Galeria.
+  if (estados.length > 0) {
+    writeFileSync(
+      join(bundleDir, 'states.json'),
+      JSON.stringify({ segmentId: seg.id, generatedAt: Date.now(), states: estados }, null, 2),
+      'utf8',
+    );
+  }
+
+  // Dependências: as do isolamento (assets) + as que a exploração associou (runtime).
+  const dependencies = [
+    ...isolation.referencedAssets.map((ref) => ({
+      type: 'shared-asset' as const,
+      ref,
+      bundled: false,
+    })),
+    ...(insight?.dependencies ?? []),
+  ];
 
   writeFileSync(
     libraryComponentMetadata(componentId),
@@ -130,25 +176,28 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
         name: seg.name,
         category: seg.category,
         kind: seg.kind,
-        origin: {
-          designSystemId: seg.designSystemId,
-          segmentId: seg.id,
-          sourceUrl: null,
-        },
+        origin: { designSystemId: seg.designSystemId, segmentId: seg.id, sourceUrl: null },
         addedAt: Date.now(),
         tags: [],
         notes: null,
         bundleHash,
-        // Preserva estados/eventos/limitações do componente (não uma paleta).
-        fidelity: isolation.fidelity,
+        // Fidelidade honesta: o insight da exploração (com dimensões/pipeline)
+        // quando existe; senão o do isolamento estático.
+        fidelity: insight ?? isolation.fidelity,
         dependencies,
+        states: insight?.states ?? [],
+        pipeline: insight?.pipeline ?? [],
+        confidence: insight?.confidence ?? null,
+        limitations: insight?.limitations ?? [],
+        manifestVersion: insight?.manifestVersion ?? null,
+        pipelineVersion: insight?.pipelineVersion ?? null,
       },
       null,
       2,
     ),
   );
 
-  const record = {
+  return {
     id: componentId,
     segmentId: seg.id,
     designSystemId: seg.designSystemId,
@@ -157,13 +206,31 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
     name: seg.name,
     bundlePath: libraryComponentDir(componentId),
     bundleHash,
-    // Sem paleta: a coluna existe por compat, mas a Galeria não persiste
-    // identidade visual. O tema é responsabilidade da tela de geração.
+    // Sem paleta: a Galeria não persiste identidade visual. Tema é da geração.
     tokensJson: null,
     addedAt: Date.now(),
     notes: null,
   };
+};
 
+libraryRoute.post('/', zValidator('json', AddInput), (c) => {
+  const { segmentId } = c.req.valid('json');
+  const db = getDb();
+
+  const seg = db.select().from(tables.segments).where(eq(tables.segments.id, segmentId)).get();
+  if (!seg) return c.json({ error: 'segment_not_found' }, 404);
+
+  // Idempotente: já na Biblioteca não cria cópia nova.
+  if (seg.inLibrary) {
+    const existente = db
+      .select()
+      .from(tables.libraryComponents)
+      .where(eq(tables.libraryComponents.segmentId, segmentId))
+      .get();
+    return c.json({ item: existente ?? null, already: true }, 200);
+  }
+
+  const record = montarComponente(seg);
   db.transaction((tx) => {
     tx.insert(tables.libraryComponents).values(record).run();
     tx.update(tables.segments)
@@ -173,6 +240,42 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
   });
 
   return c.json({ item: record }, 201);
+});
+
+const BatchAddInput = z.object({
+  segmentIds: z.array(z.string().startsWith('seg_')).min(1).max(200),
+});
+
+/**
+ * Curtir vários de uma vez. Idempotente (pula os que já estão na Biblioteca),
+ * numa transação só, com sucesso parcial: devolve o que entrou, o que já estava
+ * e o que não existe mais. Um endpoint em vez de dezenas de requests.
+ */
+libraryRoute.post('/batch', zValidator('json', BatchAddInput), (c) => {
+  const { segmentIds } = c.req.valid('json');
+  const db = getDb();
+
+  const segs = db
+    .select()
+    .from(tables.segments)
+    .where(inArray(tables.segments.id, segmentIds))
+    .all();
+
+  const plano = planBatchLike(segmentIds, segs);
+  const records = plano.toAdd.map(montarComponente);
+  const addedIds = plano.toAdd.map((s) => s.id);
+
+  db.transaction((tx) => {
+    for (const r of records) tx.insert(tables.libraryComponents).values(r).run();
+    if (addedIds.length > 0) {
+      tx.update(tables.segments)
+        .set({ inLibrary: true })
+        .where(inArray(tables.segments.id, addedIds))
+        .run();
+    }
+  });
+
+  return c.json({ added: addedIds, already: plano.already, missing: plano.missing });
 });
 
 const PatchInput = z.object({

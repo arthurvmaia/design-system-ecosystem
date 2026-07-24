@@ -26,9 +26,54 @@ export type ComponentInteraction = {
   description?: string;
 };
 
+/** Estado de uma interação no pipeline (detectada → … → validada). */
+export type InteractionStatus =
+  | 'detected'
+  | 'captured'
+  | 'associated'
+  | 'replayable'
+  | 'validated'
+  | 'unsupported'
+  | 'external-runtime';
+
+export type Confidence = 'alta' | 'media' | 'baixa' | 'nenhuma';
+
+/** Uma interação de um segmento no modelo de pipeline. */
+export type SegmentPipelineItem = {
+  kind: string;
+  status: InteractionStatus;
+  confidence: Confidence;
+  stateIds: string[];
+  runtime?: string;
+  note?: string;
+};
+
+/** Metadados de um estado capturado (o HTML fica no vault, servido pelo preview). */
+export type SegmentStateMeta = {
+  id: string;
+  trigger: string;
+  label: string;
+  method?: string;
+  hasPortal?: boolean;
+};
+
+/** Contagens por estado de interação, para a listagem da Galeria. */
+export type PipelineResumo = {
+  detected: number;
+  captured: number;
+  associated: number;
+  replayable: number;
+  validated: number;
+  unsupported: number;
+  externalRuntime: number;
+  runtimes: string[];
+};
+
 /**
  * Avaliação de fidelidade de um segmento. É como a Galeria deixa de esconder a
- * falha: um componente que só saiu visual, ou que depende de JS, diz aqui.
+ * falha: um componente que só saiu visual, ou que depende de JS, diz aqui. Os
+ * campos novos (pipeline/estados/dimensões/confiança) chegam quando houve
+ * captura profunda; extrações antigas trazem só o básico.
  */
 export type SegmentFidelity = {
   support: ComponentSupport;
@@ -36,6 +81,13 @@ export type SegmentFidelity = {
   fidelity: number;
   warnings: string[];
   interactions: ComponentInteraction[];
+  pipeline?: SegmentPipelineItem[];
+  states?: SegmentStateMeta[];
+  confidence?: Confidence;
+  dimensions?: Partial<Record<string, ComponentSupport>>;
+  related?: { kind: string; label: string; stateId?: string }[];
+  dependencies?: { type: string; ref: string; runtime?: string; bundled?: boolean }[];
+  limitations?: string[];
 };
 
 export type SegmentRecord = {
@@ -50,6 +102,8 @@ export type SegmentRecord = {
   inLibrary: boolean;
   /** Presente quando a segmentação gerou avaliação (extrações novas). */
   fidelity?: SegmentFidelity | null;
+  /** Resumo das interações por estado (contagens). Presente na listagem nova. */
+  resumo?: PipelineResumo | null;
 };
 
 export type TaskEvent = { timestamp: number; level: 'info' | 'warn' | 'error'; message: string };
@@ -277,6 +331,13 @@ const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
  */
 export const previewSegmentUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/segment/${segId}${bg ? `?bg=${bg}` : ''}`;
+/**
+ * Prévia em modo REPLAY: injeta a barra de interações capturadas e o runtime que
+ * reproduz cada estado (com botão Reiniciar). Só faz efeito quando o segmento
+ * tem estados no vault; senão cai na prévia limpa.
+ */
+export const previewSegmentReplayUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
+  `/api/preview/segment/${segId}?replay=1${bg ? `&bg=${bg}` : ''}`;
 export const previewComponentUrl = (cmpId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/component/${cmpId}${bg ? `?bg=${bg}` : ''}`;
 export const previewRejeitadoUrl = (dsId: string, segId: string, bg?: 'claro' | 'escuro'): string =>
@@ -307,6 +368,12 @@ export const api = {
     jsonFetch<{ deleted: boolean }>(`/api/design-systems/${dsId}/segments/${segId}`, {
       method: 'DELETE',
     }),
+  /** Excluir vários segmentos da Galeria. Cópias na Biblioteca sobrevivem. */
+  deleteSegmentsBatch: (dsId: string, segmentIds: string[]) =>
+    jsonFetch<{ deleted: number }>(`/api/design-systems/${dsId}/segments/batch-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ segmentIds }),
+    }),
   createDesignSystem: (
     input:
       | { kind: 'url'; url: string; name?: string }
@@ -331,6 +398,12 @@ export const api = {
     jsonFetch<{ item: LibraryComponentRecord }>('/api/library', {
       method: 'POST',
       body: JSON.stringify({ segmentId }),
+    }),
+  /** Curtir vários de uma vez. Idempotente; devolve o que entrou/já estava/sumiu. */
+  addToLibraryBatch: (segmentIds: string[]) =>
+    jsonFetch<{ added: string[]; already: string[]; missing: string[] }>('/api/library/batch', {
+      method: 'POST',
+      body: JSON.stringify({ segmentIds }),
     }),
   removeFromLibrary: (id: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/library/${id}`, { method: 'DELETE' }),

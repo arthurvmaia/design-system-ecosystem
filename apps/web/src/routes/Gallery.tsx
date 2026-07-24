@@ -6,13 +6,21 @@ import {
   type SegmentFidelity,
   type SegmentRecord,
   api,
+  previewSegmentReplayUrl,
   previewSegmentUrl,
 } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import {
+  isAllSelected,
+  isIndeterminate,
+  prune,
+  toggleAllVisible,
+  toggle as toggleSel,
+} from '@/lib/selection';
 import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Heart, Loader2, Sparkles, Sun, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { AlertTriangle, Heart, Loader2, Play, Sparkles, Sun, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
@@ -81,6 +89,32 @@ const SUPORTE_COR: Record<string, string> = {
   'nao-suportado': '#dc2626',
 };
 
+/** Estado de uma interação no pipeline — rótulo e cor honestos para a UI. */
+const STATUS_LABEL: Record<string, string> = {
+  detected: 'detectada',
+  captured: 'capturada',
+  associated: 'associada',
+  replayable: 'reproduzível',
+  validated: 'validada',
+  unsupported: 'não suportada',
+  'external-runtime': 'runtime externo',
+};
+const STATUS_COR: Record<string, string> = {
+  detected: '#78716c',
+  captured: '#2563eb',
+  associated: '#d97706',
+  replayable: '#16a34a',
+  validated: '#16a34a',
+  unsupported: '#dc2626',
+  'external-runtime': '#ea580c',
+};
+const CONFIANCA_LABEL: Record<string, string> = {
+  alta: 'alta',
+  media: 'média',
+  baixa: 'baixa',
+  nenhuma: 'sem associação',
+};
+
 function FidelityBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
   if (!fidelity || fidelity.support === 'completo') return null;
   const cor = SUPORTE_COR[fidelity.support] ?? '#78716c';
@@ -103,10 +137,12 @@ function FidelityBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
  */
 function FidelityPanel({ fidelity }: { fidelity?: SegmentFidelity | null }) {
   if (!fidelity) return null;
+  const temPipeline = (fidelity.pipeline?.length ?? 0) > 0;
   const semRessalva =
     fidelity.support === 'completo' &&
     fidelity.warnings.length === 0 &&
-    fidelity.interactions.length === 0;
+    fidelity.interactions.length === 0 &&
+    !temPipeline;
   if (semRessalva) return null;
   const cor = SUPORTE_COR[fidelity.support] ?? '#78716c';
 
@@ -133,6 +169,31 @@ function FidelityPanel({ fidelity }: { fidelity?: SegmentFidelity | null }) {
           </span>
         ))}
       </div>
+      {temPipeline && fidelity.pipeline && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            interações:
+          </span>
+          {fidelity.pipeline.map((it) => {
+            const c = STATUS_COR[it.status] ?? '#78716c';
+            return (
+              <span
+                key={`${it.kind}-${it.status}`}
+                className="ds-tag rounded-full px-2 py-0.5 text-[10px]"
+                style={{ backgroundColor: `${c}18`, color: c, border: `1px solid ${c}44` }}
+                title={it.note ?? (it.runtime ? `depende de ${it.runtime}` : undefined)}
+              >
+                {it.kind} · {STATUS_LABEL[it.status] ?? it.status}
+              </span>
+            );
+          })}
+          {fidelity.confidence && fidelity.confidence !== 'nenhuma' && (
+            <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+              confiança: {CONFIANCA_LABEL[fidelity.confidence] ?? fidelity.confidence}
+            </span>
+          )}
+        </div>
+      )}
       {fidelity.warnings.length > 0 && (
         <ul className="mt-2 space-y-1">
           {fidelity.warnings.map((w) => (
@@ -181,6 +242,7 @@ export function GalleryPage() {
       <div className="min-w-0 flex-1 overflow-y-auto">
         {effectiveDs ? (
           <SegmentsView
+            key={effectiveDs}
             dsId={effectiveDs}
             category={category}
             onCategoryChange={setCategory}
@@ -372,6 +434,58 @@ function SegmentsView({
     return items;
   }, [segments.data, category, search]);
 
+  // ── Seleção em massa ───────────────────────────────────────────────────────
+  const visiveis = useMemo(() => filtered.map((s) => s.id), [filtered]);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [confirmExcluir, setConfirmExcluir] = useState(false);
+  const selTodosRef = useRef<HTMLInputElement>(null);
+
+  // Poda da seleção o que deixou de existir (após excluir ou re-segmentar).
+  useEffect(() => {
+    setSel((s) =>
+      prune(
+        s,
+        (segments.data?.items ?? []).map((x) => x.id),
+      ),
+    );
+  }, [segments.data]);
+
+  // O estado indeterminado do checkbox "todos" só existe via DOM.
+  useEffect(() => {
+    if (selTodosRef.current) selTodosRef.current.indeterminate = isIndeterminate(sel, visiveis);
+  }, [sel, visiveis]);
+
+  const curtirLote = useMutation({
+    mutationFn: () => api.addToLibraryBatch([...sel]),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['segments', dsId] });
+      qc.invalidateQueries({ queryKey: ['library'] });
+      const partes: string[] = [];
+      if (r.added.length > 0)
+        partes.push(
+          `${r.added.length} ${r.added.length === 1 ? 'item adicionado' : 'itens adicionados'} à Biblioteca`,
+        );
+      if (r.already.length > 0)
+        partes.push(`${r.already.length} já ${r.already.length === 1 ? 'estava' : 'estavam'}`);
+      toast.ok(partes.join(' · ') || 'Nada novo a adicionar.');
+      setSel(new Set());
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao curtir em lote.'),
+  });
+
+  const excluirLote = useMutation({
+    mutationFn: () => api.deleteSegmentsBatch(dsId, [...sel]),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['segments', dsId] });
+      toast.ok(`${r.deleted} ${r.deleted === 1 ? 'item excluído' : 'itens excluídos'} da Galeria.`);
+      setSel(new Set());
+      setConfirmExcluir(false);
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir em lote.'),
+  });
+
+  const selCount = sel.size;
+
   return (
     <div className="flex h-full flex-col">
       <div
@@ -448,6 +562,25 @@ function SegmentsView({
         className="flex items-center gap-2 border-b px-8 py-3"
         style={{ borderColor: 'var(--color-border)' }}
       >
+        <label
+          className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px]"
+          style={{ color: 'var(--color-fg-muted)' }}
+          title="Selecionar todos os segmentos visíveis"
+        >
+          <input
+            ref={selTodosRef}
+            type="checkbox"
+            checked={isAllSelected(sel, visiveis)}
+            onChange={() => setSel((s) => toggleAllVisible(s, visiveis))}
+            aria-label={`Selecionar todos os ${visiveis.length} segmentos visíveis`}
+            className="h-4 w-4 accent-[var(--color-crimson-4)]"
+          />
+          Todos
+        </label>
+        <span
+          className="mr-1 h-4 w-px shrink-0"
+          style={{ backgroundColor: 'var(--color-border)' }}
+        />
         <div className="flex flex-wrap gap-1.5">
           {CATEGORIES.map((c) => (
             <button
@@ -480,9 +613,62 @@ function SegmentsView({
         />
       </div>
 
+      {selCount > 0 && (
+        <section
+          aria-label="Ações em massa"
+          className="ds-backdrop flex flex-wrap items-center gap-3 border-b px-8 py-2.5"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(107, 20, 20, 0.16)' }}
+        >
+          <span className="ds-data text-[12px]" style={{ color: 'var(--color-fg)' }}>
+            {selCount} selecionado{selCount === 1 ? '' : 's'}
+          </span>
+          <button
+            type="button"
+            onClick={() => curtirLote.mutate()}
+            disabled={curtirLote.isPending}
+            className="ds-btn flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
+            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
+          >
+            {curtirLote.isPending ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Heart size={12} />
+            )}
+            Curtir selecionados
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmExcluir(true)}
+            disabled={excluirLote.isPending}
+            className="ds-tag flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] disabled:opacity-50"
+            style={{ borderColor: 'rgba(198,40,40,0.4)', color: 'var(--color-crimson-3)' }}
+          >
+            <Trash2 size={12} />
+            Excluir selecionados
+          </button>
+          <button
+            type="button"
+            onClick={() => setSel(new Set())}
+            className="ds-tag ml-auto flex items-center gap-1.5 rounded-full border border-transparent px-3 py-1.5 text-[12px]"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            <X size={12} />
+            Limpar seleção
+          </button>
+        </section>
+      )}
+
       <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map((seg, i) => (
-          <SegmentCard key={seg.id} segment={seg} dsId={dsId} index={i} onOpen={setDetalhe} />
+          <SegmentCard
+            key={seg.id}
+            segment={seg}
+            dsId={dsId}
+            index={i}
+            onOpen={setDetalhe}
+            selected={sel.has(seg.id)}
+            onToggle={() => setSel((s) => toggleSel(s, seg.id))}
+          />
         ))}
         {filtered.length === 0 && !segments.isLoading && (
           <div
@@ -495,6 +681,16 @@ function SegmentsView({
       </div>
 
       {detalhe && <SegmentDetail segment={detalhe} dsId={dsId} onClose={() => setDetalhe(null)} />}
+
+      <ConfirmPop
+        open={confirmExcluir}
+        title={`Excluir ${selCount} ${selCount === 1 ? 'item' : 'itens'} da Galeria?`}
+        busy={excluirLote.isPending}
+        confirmLabel={`Excluir ${selCount}`}
+        onConfirm={() => excluirLote.mutate()}
+        onClose={() => setConfirmExcluir(false)}
+        description="A Galeria é material de trabalho. O que já foi curado na Biblioteca não é afetado — só some da triagem. Re-segmentar a extração recria a lista completa."
+      />
     </div>
   );
 }
@@ -509,11 +705,15 @@ function SegmentCard({
   dsId,
   index,
   onOpen,
+  selected,
+  onToggle,
 }: {
   segment: SegmentRecord;
   dsId: string;
   index: number;
   onOpen: (s: SegmentRecord) => void;
+  selected: boolean;
+  onToggle: () => void;
 }) {
   const qc = useQueryClient();
   const [confirmDel, setConfirmDel] = useState(false);
@@ -542,7 +742,31 @@ function SegmentCard({
 
   return (
     <div className={`ds-scale-in ${delay}`}>
-      <div className="ds-card ds-glass-static group relative rounded-xl">
+      <div
+        className="ds-card ds-glass-static group relative rounded-xl"
+        style={
+          selected ? { outline: '2px solid var(--color-signal)', outlineOffset: '2px' } : undefined
+        }
+      >
+        <label
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          title={selected ? 'Desmarcar' : 'Selecionar'}
+          className={cn(
+            'absolute top-2.5 left-2.5 z-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md transition-opacity duration-200 focus-within:opacity-100',
+            // Sutil sempre (para ser tocável no mobile, sem hover) e pleno ao passar/selecionar.
+            selected ? 'opacity-100' : 'opacity-70 group-hover:opacity-100',
+          )}
+          style={{ backgroundColor: selected ? 'var(--color-primary)' : 'rgba(0,0,0,0.55)' }}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Selecionar "${segment.name}"`}
+            className="h-4 w-4 accent-[var(--color-crimson-4)]"
+          />
+        </label>
         <div className="ds-card-content overflow-hidden rounded-xl">
           <button
             type="button"
@@ -656,6 +880,8 @@ function SegmentDetail({
 }) {
   const qc = useQueryClient();
   const [bg, setBg] = useState<'claro' | 'escuro' | undefined>(undefined);
+  const [replay, setReplay] = useState(false);
+  const temEstados = (segment.fidelity?.states?.length ?? 0) > 0;
 
   const add = useMutation({
     mutationFn: () => api.addToLibrary(segment.id),
@@ -698,6 +924,22 @@ function SegmentDetail({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {temEstados && (
+              <button
+                type="button"
+                onClick={() => setReplay((v) => !v)}
+                aria-pressed={replay}
+                title="Reproduz os estados capturados (hover, clique, modal…) no preview isolado"
+                className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+                style={{
+                  borderColor: replay ? 'var(--color-primary)' : 'var(--color-border)',
+                  color: replay ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+                }}
+              >
+                <Play size={11} />
+                {replay ? 'Reproduzindo' : 'Reproduzir estados'}
+              </button>
+            )}
             <BgToggle bg={bg} onChange={setBg} />
             <button
               type="button"
@@ -714,8 +956,10 @@ function SegmentDetail({
         <FidelityPanel fidelity={segment.fidelity} />
         <div className="p-4">
           <PreviewFrame
-            key={bg ?? 'auto'}
-            src={previewSegmentUrl(segment.id, bg)}
+            key={`${bg ?? 'auto'}-${replay ? 'replay' : 'plano'}`}
+            src={
+              replay ? previewSegmentReplayUrl(segment.id, bg) : previewSegmentUrl(segment.id, bg)
+            }
             title={segment.name}
             aspect={16 / 11}
             interactive
