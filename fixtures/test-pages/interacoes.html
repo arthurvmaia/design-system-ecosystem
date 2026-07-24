@@ -64,6 +64,13 @@
         padding: 14px 16px;
         cursor: pointer;
         font: inherit;
+        outline: 0 solid transparent;
+      }
+      /* Foco observável — validado por teclado/foco no preview. */
+      .acc-trigger:focus,
+      .acc-trigger:focus-visible {
+        outline: 2px solid var(--acc);
+        outline-offset: 2px;
       }
       .acc-painel {
         display: none;

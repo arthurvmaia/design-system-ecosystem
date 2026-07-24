@@ -52,6 +52,13 @@ export const vaultSegmentStatesDir = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'states');
 export const vaultSegmentStates = (id: DesignSystemId, segId: string): string =>
   join(vaultSegmentStatesDir(id), `${segId}.json`);
+/**
+ * Registro do que foi validado em navegador (replay executado e conferido).
+ * Fica separado dos insights: os insights saem da segmentação; a validação é um
+ * passo posterior que promove `replayable` → `validated`.
+ */
+export const vaultSegmentValidation = (id: DesignSystemId): string =>
+  join(vaultSegmentsDir(id), 'validation.json');
 /** Candidatos que não passaram na validação — o par do manifest. */
 export const vaultRejeitadosPath = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'rejeitados.json');

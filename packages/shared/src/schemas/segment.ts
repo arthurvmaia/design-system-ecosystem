@@ -125,6 +125,27 @@ export const SegmentStatesFile = z.object({
 });
 export type SegmentStatesFile = z.infer<typeof SegmentStatesFile>;
 
+/**
+ * Resultado de uma validação de reprodução em navegador: qual segmento, qual
+ * interação, se passou. É o que promove uma interação de `replayable` para
+ * `validated` — só depois que o replay foi executado e conferido de verdade.
+ */
+export const ResultadoValidacaoSegmento = z.object({
+  segmentId: z.string().startsWith('seg_'),
+  kind: z.string(),
+  ok: z.boolean(),
+  detail: z.string().optional(),
+});
+export type ResultadoValidacaoSegmento = z.infer<typeof ResultadoValidacaoSegmento>;
+
+/** validation.json em vault/{ds}/segments/ — o registro do que foi validado em navegador. */
+export const SegmentValidationFile = z.object({
+  designSystemId: z.string().startsWith('ds_'),
+  generatedAt: z.number().int().positive(),
+  results: z.array(ResultadoValidacaoSegmento),
+});
+export type SegmentValidationFile = z.infer<typeof SegmentValidationFile>;
+
 /** Um elemento relacionado FORA da subtree do segmento (modal em portal, overlay). */
 export const RelatedElement = z.object({
   kind: z.enum(['portal', 'overlay', 'externo']),

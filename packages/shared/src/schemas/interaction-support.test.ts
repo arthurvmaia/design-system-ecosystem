@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { SegmentInteraction } from './interaction-support.js';
 import {
+  aplicarValidacoes,
   melhorStatus,
   recomputarSelo,
   resumirPipeline,
@@ -88,6 +89,34 @@ test('recomputarSelo: runtime externo → externo, nunca completo', () => {
 test('recomputarSelo: asset externo impede completo', () => {
   const selo = recomputarSelo({ visual: 'completo', assets: 'externo' }, []);
   assert.equal(selo, 'externo');
+});
+
+test('aplicarValidacoes: promove replayable→validated só no que passou de verdade', () => {
+  const { pipeline, limitacoes } = aplicarValidacoes(
+    [
+      it({ kind: 'click', status: 'replayable' }),
+      it({ kind: 'toggle', status: 'replayable' }),
+      it({ kind: 'modal', status: 'associated' }),
+    ],
+    [
+      { kind: 'click', ok: true },
+      { kind: 'toggle', ok: false, detail: 'não restaurou' },
+    ],
+  );
+  assert.equal(pipeline.find((p) => p.kind === 'click')?.status, 'validated');
+  // Falhou → mantém replayable, não promove.
+  assert.equal(pipeline.find((p) => p.kind === 'toggle')?.status, 'replayable');
+  // Sem resultado → intocado.
+  assert.equal(pipeline.find((p) => p.kind === 'modal')?.status, 'associated');
+  assert.ok(limitacoes.some((l) => l.includes('toggle')));
+});
+
+test('aplicarValidacoes: não promove o que não era replayable, mesmo com ok', () => {
+  const { pipeline } = aplicarValidacoes(
+    [it({ kind: 'click', status: 'associated' })],
+    [{ kind: 'click', ok: true }],
+  );
+  assert.equal(pipeline[0]?.status, 'associated', 'ok não inventa validação de associated');
 });
 
 test('resumirPipeline: conta por estado e junta runtimes', () => {

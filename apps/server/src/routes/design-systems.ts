@@ -5,13 +5,16 @@ import { getDb, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
 import {
   CreateDesignSystemInput,
+  SegmentValidationFile,
   SegmentsManifest,
+  aplicarValidacoes,
   listarAssetsFaltando,
   resumirPipeline,
   vaultExtractedDir,
+  vaultSegmentValidation,
   vaultSegmentsManifest,
 } from '@ds/shared';
-import type { InteracaoNaoAssociada, SegmentInsight } from '@ds/shared';
+import type { InteracaoNaoAssociada, ResultadoValidacaoSegmento, SegmentInsight } from '@ds/shared';
 import { enqueueJob } from '@ds/shared';
 import { zValidator } from '@hono/zod-validator';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
@@ -74,6 +77,43 @@ const lerManifesto = (
   }
 };
 
+/**
+ * Registros de validação em navegador, agrupados por segmento. É o que permite
+ * mostrar `validated` na Galeria — mas só onde a reprodução foi de fato
+ * executada e conferida. Ausente → nada é promovido (tudo continua no máximo
+ * `replayable`, que é a verdade honesta).
+ */
+const lerValidacoes = (dsId: string): Map<string, ResultadoValidacaoSegmento[]> => {
+  const path = vaultSegmentValidation(dsId as `ds_${string}`);
+  if (!existsSync(path)) return new Map();
+  try {
+    const file = SegmentValidationFile.parse(JSON.parse(readFileSync(path, 'utf8')));
+    const mapa = new Map<string, ResultadoValidacaoSegmento[]>();
+    for (const r of file.results) {
+      const atual = mapa.get(r.segmentId);
+      if (atual) atual.push(r);
+      else mapa.set(r.segmentId, [r]);
+    }
+    return mapa;
+  } catch {
+    return new Map();
+  }
+};
+
+/** Aplica os registros de validação ao insight, promovendo replayable→validated. */
+const comValidacoes = (
+  insight: SegmentInsight,
+  resultados: ResultadoValidacaoSegmento[] | undefined,
+): SegmentInsight => {
+  if (!insight.pipeline || !resultados || resultados.length === 0) return insight;
+  const { pipeline, limitacoes } = aplicarValidacoes(insight.pipeline, resultados);
+  return {
+    ...insight,
+    pipeline,
+    limitations: [...new Set([...(insight.limitations ?? []), ...limitacoes])],
+  };
+};
+
 designSystemsRoute.get('/:id/segments', (c) => {
   const db = getDb();
   const id = c.req.param('id');
@@ -84,10 +124,12 @@ designSystemsRoute.get('/:id/segments', (c) => {
     .orderBy(asc(tables.segments.position))
     .all();
   const { insights, naoAssociados } = lerManifesto(id);
+  const validacoes = lerValidacoes(id);
   // Resumo na listagem (contagens por estado de interação); o detalhe pesado —
   // o HTML dos estados — só é servido pela rota de preview.
   const items = rows.map((r) => {
-    const insight = insights.get(r.id) ?? null;
+    const bruto = insights.get(r.id) ?? null;
+    const insight = bruto ? comValidacoes(bruto, validacoes.get(r.id)) : null;
     return {
       ...r,
       fidelity: insight,

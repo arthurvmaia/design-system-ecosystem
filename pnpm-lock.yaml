@@ -85,6 +85,9 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.1
+      playwright:
+        specifier: ^1.61.1
+        version: 1.61.1
       tsx:
         specifier: ^4.19.2
         version: 4.23.1
@@ -3181,15 +3184,13 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  playwright-core@1.61.1:
-    optional: true
+  playwright-core@1.61.1: {}
 
   playwright@1.61.1:
     dependencies:
       playwright-core: 1.61.1
     optionalDependencies:
       fsevents: 2.3.2
-    optional: true
 
   postcss-selector-parser@7.1.4:
     dependencies:

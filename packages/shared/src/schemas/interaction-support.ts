@@ -158,6 +158,40 @@ export const FidelityDimensions = z
   .partial();
 export type FidelityDimensions = z.infer<typeof FidelityDimensions>;
 
+/** Resultado real de uma validação de reprodução (uma interação, um segmento). */
+export type ResultadoValidacao = { kind: string; ok: boolean; detail?: string };
+
+/**
+ * Promove interações para `validated` SÓ com base no resultado real da
+ * validação em navegador — por tipo e por segmento. A regra do usuário: nunca
+ * marcar tudo como validado porque um teste passou.
+ *
+ * - `ok:true` promove APENAS `replayable` → `validated` (não inventa validação
+ *   de algo que nem era reproduzível).
+ * - `ok:false` NÃO promove: mantém `replayable` e registra a falha como
+ *   limitação honesta, que a Galeria mostra.
+ * - Kind sem resultado fica intocado.
+ */
+export const aplicarValidacoes = (
+  pipeline: SegmentInteraction[],
+  resultados: ResultadoValidacao[],
+): { pipeline: SegmentInteraction[]; limitacoes: string[] } => {
+  const porKind = new Map(resultados.map((r) => [r.kind, r]));
+  const limitacoes: string[] = [];
+  const novo = pipeline.map((it) => {
+    const r = porKind.get(it.kind);
+    if (!r) return it;
+    if (r.ok) {
+      return it.status === 'replayable' ? { ...it, status: 'validated' as const } : it;
+    }
+    limitacoes.push(
+      `Validação da interação "${it.kind}" falhou${r.detail ? `: ${r.detail}` : ''} — mantida como reproduzível, não validada.`,
+    );
+    return it;
+  });
+  return { pipeline: novo, limitacoes };
+};
+
 /**
  * Resumo do pipeline de interações de um segmento — contagens por estado, para
  * a Galeria mostrar "3 detectadas, 2 reproduzíveis" sem receber o detalhe todo.
