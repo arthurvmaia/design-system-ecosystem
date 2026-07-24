@@ -6,6 +6,7 @@ import {
   type ProjectBranding,
   type ProjectContent,
   type ProjectLayout,
+  buildTypographyCss,
   libraryComponentBundleDir,
   pickCreativeDirection,
   projectGeneratedVersionDir,
@@ -220,22 +221,30 @@ const applySubstitutions = (html: string, subs?: Record<string, string>): string
   return out;
 };
 
-const buildBrandingCss = (branding: ProjectBranding): string => `
+/**
+ * CSS da marca aplicado ao site gerado.
+ *
+ * A tipografia sai de `buildTypographyCss` (fonte da verdade compartilhada):
+ * declara `--font-display`/`--font-body` com pilha de fallback e — o que faltava
+ * — aplica a fonte de títulos aos headings e a de corpo ao body. A importação da
+ * família em si entra por um `<link>` no head (ver `generateSite`), carregando
+ * só os pesos usados.
+ */
+export const buildBrandingCss = (branding: ProjectBranding): string => {
+  const typo = buildTypographyCss(branding.typography);
+  return `${typo.css}
 :root {
   --brand-primary: ${branding.palette.primary};
   ${branding.palette.secondary ? `--brand-secondary: ${branding.palette.secondary};` : ''}
   --brand-bg: ${branding.palette.background};
   --brand-fg: ${branding.palette.foreground};
   ${branding.palette.accent ? `--brand-accent: ${branding.palette.accent};` : ''}
-  --font-display: ${branding.typography.display};
-  --font-body: ${branding.typography.body};
-  ${branding.typography.mono ? `--font-mono: ${branding.typography.mono};` : ''}
 }
-
-/* Override dos --primary do componente para casar com brand. */
+/* Override dos --primary do componente para casar com a marca. */
 :root { --primary: var(--brand-primary); }
-body { background: var(--brand-bg); color: var(--brand-fg); font-family: var(--font-body); }
+body { background: var(--brand-bg); color: var(--brand-fg); }
 `;
+};
 
 /** Gera o site final e escreve em projects/{id}/generated/{iso}/ */
 export const generateSite = async (
@@ -273,13 +282,23 @@ export const generateSite = async (
   const brandingCss = buildBrandingCss(input.branding);
   writeFileSync(join(outputDir, 'assets/styles.css'), `${brandingCss}\n${concatCss}`, 'utf8');
 
+  // Importa as fontes escolhidas (só os pesos usados) via <link> no head — a
+  // aplicação aos títulos/corpo está no styles.css. Preconnect para acelerar.
+  const fontImportUrl = buildTypographyCss(input.branding.typography).importUrl;
+  const fontLinks = fontImportUrl
+    ? `<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link rel="stylesheet" href="${fontImportUrl}"/>
+`
+    : '';
+
   const finalHtml = `<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>${input.projectName}</title>
-<link rel="stylesheet" href="assets/styles.css"/>
+${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
 </head>
 <body>
 ${bodyHtml}

@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./schemas": "./src/schemas/index.ts",
+    "./fonts": "./src/fonts.ts",
     "./paths": "./src/paths.ts",
     "./ids": "./src/ids.ts"
   },
