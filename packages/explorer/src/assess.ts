@@ -28,6 +28,15 @@ export type AssessOptions = {
   knownInteractions?: InteractionKind[];
 };
 
+/**
+ * Aviso de asset não-embutido. Exportado como constante para o segmenter poder
+ * RECONCILIAR: quando a localização real prova que nenhum asset ficou externo, o
+ * aviso herdado da avaliação estática (que roda antes do download) é removido —
+ * a dimensão real de assets é a autoridade, não a heurística.
+ */
+export const AVISO_ASSETS_NA_ORIGEM =
+  'Assets ainda apontam para a origem; salve localmente para o componente sobreviver sozinho.';
+
 const has = (re: RegExp, ...inputs: string[]): boolean => inputs.some((s) => re.test(s));
 
 /** Detecta os sinais técnicos do componente a partir do HTML e do CSS. */
@@ -136,10 +145,7 @@ const buildWarnings = (caps: Required<ComponentCapabilities>, opts: AssessOption
     w.push(
       'O comportamento depende de JavaScript; sem captura de estados, só o estado inicial é garantido.',
     );
-  if (!opts.bundledAssets)
-    w.push(
-      'Assets ainda apontam para a origem; salve localmente para o componente sobreviver sozinho.',
-    );
+  if (!opts.bundledAssets) w.push(AVISO_ASSETS_NA_ORIGEM);
   return w;
 };
 

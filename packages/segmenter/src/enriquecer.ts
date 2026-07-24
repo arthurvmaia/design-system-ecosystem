@@ -1,3 +1,4 @@
+import { AVISO_ASSETS_NA_ORIGEM } from '@ds/explorer';
 import type {
   FidelityDimensions,
   InteractionKind,
@@ -161,7 +162,14 @@ export const enriquecerInsight = (
   const e = enr ?? ENR_VAZIO;
   const dims = montarDimensoes(base, e, opts);
   const support = recomputarSelo(dims, e.pipeline);
-  const limitations = [...new Set([...base.warnings, ...e.limitations])];
+  // A localização REAL é a autoridade sobre o eixo de assets. O `base` foi
+  // avaliado ANTES do download (sempre com bundledAssets=false), então herda o
+  // aviso "assets apontam para a origem". Se o índice prova que nenhum ficou
+  // externo, esse aviso é falso agora — remove. Se ainda há externo, permanece.
+  const externos = opts.assetsExternos ?? (opts.temAssetExterno ? 1 : 0);
+  const warningsBase =
+    externos === 0 ? base.warnings.filter((w) => w !== AVISO_ASSETS_NA_ORIGEM) : base.warnings;
+  const limitations = [...new Set([...warningsBase, ...e.limitations])];
 
   return {
     ...base,

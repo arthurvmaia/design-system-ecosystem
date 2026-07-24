@@ -72,6 +72,7 @@ export {
 } from './css.js';
 export {
   type AssessOptions,
+  AVISO_ASSETS_NA_ORIGEM,
   detectCapabilities,
   pickRenderMode,
   inferInteractions,

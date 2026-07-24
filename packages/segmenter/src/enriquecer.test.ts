@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { AVISO_ASSETS_NA_ORIGEM } from '@ds/explorer';
 import type { SegmentInsight } from '@ds/shared';
 import { PIPELINE_VERSION } from '@ds/shared';
 import type { EnriquecimentoSegmento } from './associar.js';
@@ -95,4 +96,30 @@ test('enriquecerInsight: interação só associada (sem estado) não é completo
     1,
   );
   assert.notEqual(out.support, 'completo');
+});
+
+test('reconciliação: assets todos locais removem o aviso herdado "apontam para a origem"', () => {
+  // O `base` vem da avaliação estática (sempre bundledAssets=false), então herda
+  // o aviso. Se a localização real prova 0 externos, o aviso é falso e some.
+  const out = enriquecerInsight(baseInsight({ warnings: [AVISO_ASSETS_NA_ORIGEM] }), enr(), 1, {
+    assetsLocais: 4,
+    assetsExternos: 0,
+  });
+  assert.equal(out.dimensions?.assets, 'completo');
+  assert.ok(
+    !(out.limitations ?? []).includes(AVISO_ASSETS_NA_ORIGEM),
+    'aviso de asset externo não deve sobreviver quando tudo é local',
+  );
+});
+
+test('reconciliação: com asset ainda externo o aviso permanece (honestidade)', () => {
+  const out = enriquecerInsight(baseInsight({ warnings: [AVISO_ASSETS_NA_ORIGEM] }), enr(), 1, {
+    assetsLocais: 1,
+    assetsExternos: 2,
+  });
+  assert.equal(out.dimensions?.assets, 'parcial');
+  assert.ok(
+    (out.limitations ?? []).includes(AVISO_ASSETS_NA_ORIGEM),
+    'com externo remanescente, o aviso é verdadeiro e deve ficar',
+  );
 });
