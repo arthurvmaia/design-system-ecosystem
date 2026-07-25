@@ -52,6 +52,11 @@ export const vaultSegmentStatesDir = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'states');
 export const vaultSegmentStates = (id: DesignSystemId, segId: string): string =>
   join(vaultSegmentStatesDir(id), `${segId}.json`);
+/** Comportamentos de scroll de um segmento (para o preview reproduzir). */
+export const vaultSegmentScrollDir = (id: DesignSystemId): string =>
+  join(vaultSegmentsDir(id), 'scroll');
+export const vaultSegmentScroll = (id: DesignSystemId, segId: string): string =>
+  join(vaultSegmentScrollDir(id), `${segId}.json`);
 /**
  * Registro do que foi validado em navegador (replay executado e conferido).
  * Fica separado dos insights: os insights saem da segmentação; a validação é um

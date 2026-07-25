@@ -10,6 +10,7 @@ import {
   type RejeitadosManifest,
   type SegmentInsight,
   type SegmentRecord,
+  type SegmentScrollFile,
   type SegmentStatesFile,
   type SegmentsManifest,
   assetRoutePrefix,
@@ -19,13 +20,15 @@ import {
   vaultCaptureManifest,
   vaultExtractedDir,
   vaultRejeitadosPath,
+  vaultSegmentScroll,
+  vaultSegmentScrollDir,
   vaultSegmentStates,
   vaultSegmentStatesDir,
   vaultSegmentsDir,
   vaultSegmentsManifest,
 } from '@ds/shared';
 import { HTMLElement, parse } from 'node-html-parser';
-import { type NaoAssociado, associarManifesto } from './associar.js';
+import { type NaoAssociado, associarManifesto, associarScroll } from './associar.js';
 import { enriquecerInsight } from './enriquecer.js';
 import { extrairPadroes } from './padroes.js';
 
@@ -709,6 +712,9 @@ const consumirCaptura = (
   }
 
   const assoc = associarManifesto(manifest.elements, segments);
+  // Scroll: liga os comportamentos descobertos ao segmento certo pela assinatura
+  // do alvo (id/classes). Baixa confiança fica detectada, não reproduzida.
+  const scrollAssoc = associarScroll(manifest.scroll ?? [], segments);
   const snippetPorId = new Map(segments.map((s) => [s.id, s.htmlSnippet]));
 
   // Índice de assets locais: quantos assets de cada segmento têm cópia no vault.
@@ -718,16 +724,19 @@ const consumirCaptura = (
 
   const statesDir = vaultSegmentStatesDir(designSystemId);
   let escreveuEstado = false;
+  let escreveuScroll = false;
 
   for (let i = 0; i < insights.length; i++) {
     const insight = insights[i];
     if (insight === undefined) continue;
     const enr = assoc.porSegmento.get(insight.segmentId);
+    const scrollDoSeg = scrollAssoc.porSegmento.get(insight.segmentId);
     const snippet = snippetPorId.get(insight.segmentId) ?? '';
     const { locais, externos } = reescreverParaLocal(snippet, assetIndex, prefix);
     insights[i] = enriquecerInsight(insight, enr, manifest.version, {
       assetsLocais: locais,
       assetsExternos: externos,
+      scroll: scrollDoSeg,
     });
 
     if (enr && enr.storedStates.length > 0) {
@@ -742,6 +751,24 @@ const consumirCaptura = (
       };
       writeFileSync(
         vaultSegmentStates(designSystemId, insight.segmentId),
+        JSON.stringify(arquivo, null, 2),
+        'utf8',
+      );
+    }
+
+    // Persiste os comportamentos de scroll do segmento para o preview reproduzir.
+    if (scrollDoSeg && scrollDoSeg.length > 0) {
+      if (!escreveuScroll) {
+        mkdirSync(vaultSegmentScrollDir(designSystemId), { recursive: true });
+        escreveuScroll = true;
+      }
+      const arquivo: SegmentScrollFile = {
+        segmentId: insight.segmentId,
+        generatedAt: Date.now(),
+        behaviors: scrollDoSeg,
+      };
+      writeFileSync(
+        vaultSegmentScroll(designSystemId, insight.segmentId),
         JSON.stringify(arquivo, null, 2),
         'utf8',
       );

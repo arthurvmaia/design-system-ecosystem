@@ -81,6 +81,24 @@ export const SCROLL_SAMPLE_FN = `
 export const SCROLL_HEIGHT_FN = `
 () => Math.max(0, (document.documentElement.scrollHeight || document.body.scrollHeight) - innerHeight)`;
 
+/**
+ * Detecta runtime de scroll EXTERNO (GSAP ScrollTrigger, Lenis, Locomotive,
+ * ScrollMagic) ou marcadores data-scroll. `() => string|null` — o nome do runtime
+ * ou null. É o que faz a fidelidade dizer honestamente "efeito por runtime
+ * externo, não reproduzido" em vez de fingir.
+ */
+export const SCROLL_RUNTIME_FN = `
+() => {
+  var w = window;
+  if (w.ScrollTrigger || (w.gsap && w.gsap.plugins && w.gsap.plugins.scrollTrigger)) return 'gsap-scrolltrigger';
+  if (w.gsap) return 'gsap';
+  if (w.Lenis || w.lenis) return 'lenis';
+  if (w.LocomotiveScroll || w.locomotive) return 'locomotive-scroll';
+  if (w.ScrollMagic) return 'scrollmagic';
+  if (document.querySelector('[data-scroll],[data-scroll-speed],[data-speed]')) return 'data-scroll';
+  return null;
+}`;
+
 /** Rola para uma posição absoluta (px) e devolve o scrollY real. `(y) => number`. */
 export const SCROLL_TO_FN = `
 (y) => { window.scrollTo(0, y); return window.scrollY || window.pageYOffset || 0; }`;

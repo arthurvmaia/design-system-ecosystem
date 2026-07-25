@@ -11,6 +11,7 @@ import {
 import {
   SCROLL_HEIGHT_FN,
   SCROLL_MARK_FN,
+  SCROLL_RUNTIME_FN,
   SCROLL_SAMPLE_FN,
   SCROLL_TO_FN,
 } from './scroll-script.js';
@@ -171,6 +172,38 @@ export const amostrarScroll = async (
     };
     behaviors.push(...classificarScroll(el));
   }
-  log('scroll-amostra:fim', { pontos: fracsFeitas.size, comportamentos: behaviors.length });
+
+  // Runtime de scroll EXTERNO (GSAP/Lenis/Locomotive/data-scroll): registra como
+  // externo — nunca reproduzido. É a honestidade da seção 10: o site tem
+  // comportamento de scroll por runtime que a representação portátil não cobre.
+  // Pulado no corte por tempo (não vale gastar o que restou do orçamento).
+  const runtime = signal.aborted
+    ? null
+    : ((await page.evaluate(buildCall(SCROLL_RUNTIME_FN))) as string | null);
+  if (runtime) {
+    behaviors.push({
+      id: `scb_ext_${runtime}`,
+      kind: 'external-scroll-runtime',
+      trigger: 'progress',
+      target: { id: null, classes: [] },
+      scrollContainer: 'window',
+      start: 0,
+      end: 1,
+      keyframes: [],
+      scrub: false,
+      pin: false,
+      confidence: 'baixa',
+      sourceRuntime: runtime,
+      limitations: [
+        `Scroll dirigido por runtime externo (${runtime}) — detectado, não reproduzido isoladamente.`,
+      ],
+    });
+  }
+
+  log('scroll-amostra:fim', {
+    pontos: fracsFeitas.size,
+    comportamentos: behaviors.length,
+    runtime: runtime ?? undefined,
+  });
   return behaviors;
 };

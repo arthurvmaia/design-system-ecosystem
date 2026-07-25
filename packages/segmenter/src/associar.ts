@@ -2,6 +2,7 @@ import type {
   CapturedElement,
   Confidence,
   RelatedElement,
+  ScrollBehavior,
   SegmentDependency,
   SegmentInteraction,
   SegmentState,
@@ -107,6 +108,73 @@ export const associarElemento = (
 
 const maisEspecifico = <T extends { htmlSnippet: string }>(xs: T[]): T =>
   xs.reduce((menor, s) => (s.htmlSnippet.length < menor.htmlSnippet.length ? s : menor));
+
+/**
+ * Associa um alvo (id + classes) a um segmento — só por id/classes (sem
+ * conteúdo, que um `ScrollBehavior` não tem). Mesma cadeia de confiança do
+ * `associarElemento`. Devolve `nenhuma` quando não há casamento confiável.
+ */
+export const associarPorMatch = (
+  match: { id: string | null; classes: string[] },
+  segments: ReadonlyArray<{ id: string; htmlSnippet: string }>,
+): Associacao => {
+  if (match.id) {
+    const casam = segments.filter((s) => contemId(s.htmlSnippet, match.id as string));
+    if (casam.length >= 1) {
+      return {
+        segmentId: maisEspecifico(casam).id,
+        confidence: casam.length === 1 ? 'alta' : 'media',
+        method: 'id',
+      };
+    }
+  }
+  const distintas = classesDistintas(match.classes);
+  if (distintas.length > 0) {
+    const casam = segments.filter((s) => distintas.every((c) => contemClasse(s.htmlSnippet, c)));
+    if (casam.length >= 1) {
+      return {
+        segmentId: maisEspecifico(casam).id,
+        confidence: distintas.length >= 2 && casam.length === 1 ? 'media' : 'baixa',
+        method: 'classes',
+      };
+    }
+  }
+  return { segmentId: '', confidence: 'nenhuma', method: 'nenhum' };
+};
+
+/**
+ * Liga comportamentos de scroll aos segmentos pela assinatura do alvo. Baixa
+ * confiança fica DETECTADA, não reproduzida (a regra: não associar só porque
+ * dois elementos estão próximos). Ajusta a confiança do comportamento à da
+ * associação (a pior). Comportamentos de runtime externo (target vazio) ficam à
+ * parte — não se ligam a um segmento.
+ */
+export const associarScroll = (
+  behaviors: ReadonlyArray<ScrollBehavior>,
+  segments: ReadonlyArray<{ id: string; htmlSnippet: string }>,
+): { porSegmento: Map<string, ScrollBehavior[]>; naoAssociados: ScrollBehavior[] } => {
+  const porSegmento = new Map<string, ScrollBehavior[]>();
+  const naoAssociados: ScrollBehavior[] = [];
+  for (const b of behaviors) {
+    if (b.kind === 'external-scroll-runtime' || (!b.target.id && b.target.classes.length === 0)) {
+      naoAssociados.push(b);
+      continue;
+    }
+    const assoc = associarPorMatch(b.target, segments);
+    if (assoc.confidence === 'nenhuma' || assoc.segmentId === '') {
+      naoAssociados.push(b);
+      continue;
+    }
+    const ajustado: ScrollBehavior = {
+      ...b,
+      confidence: piorConfianca(b.confidence, assoc.confidence),
+    };
+    const arr = porSegmento.get(assoc.segmentId) ?? [];
+    arr.push(ajustado);
+    porSegmento.set(assoc.segmentId, arr);
+  }
+  return { porSegmento, naoAssociados };
+};
 
 /** O enriquecimento que a associação produz para UM segmento. */
 export type EnriquecimentoSegmento = {

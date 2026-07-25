@@ -3,12 +3,42 @@ import type {
   FidelityDimensions,
   InteractionKind,
   InteractionStatus,
+  ScrollBehavior,
   SegmentInsight,
   SegmentInteraction,
   SupportLevel,
 } from '@ds/shared';
 import { PIPELINE_VERSION, recomputarSelo } from '@ds/shared';
 import type { EnriquecimentoSegmento } from './associar.js';
+
+/** Famílias de scroll que o preview desta fase sabe reproduzir de forma portátil. */
+const REPRO_SCROLL: ReadonlySet<ScrollBehavior['kind']> = new Set<ScrollBehavior['kind']>([
+  'viewport-reveal',
+  'viewport-hide',
+  'class-toggle',
+  'sticky',
+  'parallax',
+  'progress-transform',
+  'progress-opacity',
+  'progress-scale',
+  'progress-blur',
+  'section-theme',
+  'horizontal-scroll',
+]);
+
+/**
+ * Nível da dimensão `scroll` a partir dos comportamentos associados. Reproduzível
+ * fica `parcial` (capturado + portátil, mas AINDA não validado em navegador — a
+ * validação promove para `completo`); runtime externo é `externo`; o resto,
+ * `visual`. Sem comportamento → `undefined` (o eixo não se aplica).
+ */
+export const nivelScroll = (bs: ScrollBehavior[] | undefined): SupportLevel | undefined => {
+  if (!bs || bs.length === 0) return undefined;
+  if (bs.some((b) => b.kind === 'external-scroll-runtime')) return 'externo';
+  const repro = bs.filter((b) => REPRO_SCROLL.has(b.kind));
+  if (repro.length === 0) return 'visual';
+  return 'parcial';
+};
 
 /**
  * Transforma a avaliação estática de um segmento + o que a associação trouxe do
@@ -84,6 +114,8 @@ export type OpcoesDimensoes = {
   assetsExternos?: number;
   /** Fallback heurístico quando não há índice de assets (extração antiga/rápida). */
   temAssetExterno?: boolean;
+  /** Comportamentos de scroll associados a este segmento. */
+  scroll?: ScrollBehavior[];
 };
 
 /**
@@ -124,10 +156,14 @@ export const montarDimensoes = (
 
   const hover = nivelDoEixo('hover', enr.pipeline);
   const click = nivelDoEixo('click', enr.pipeline);
-  const scroll = nivelDoEixo('scroll', enr.pipeline);
+  const scrollInter = nivelDoEixo('scroll', enr.pipeline);
   if (hover) dims.hover = hover;
   if (click) dims.click = click;
-  if (scroll) dims.scroll = scroll;
+  // A dimensão scroll vem dos COMPORTAMENTOS capturados (fonte autoritativa);
+  // na falta deles, cai no que a interação inferiu.
+  const scrollComp = nivelScroll(opts.scroll);
+  if (scrollComp) dims.scroll = scrollComp;
+  else if (scrollInter) dims.scroll = scrollInter;
   return dims;
 };
 
@@ -153,9 +189,10 @@ export const enriquecerInsight = (
 ): SegmentInsight => {
   const temInteracao = enr !== undefined && (enr.pipeline.length > 0 || enr.states.length > 0);
   const temAssetInfo = opts.assetsLocais !== undefined || opts.assetsExternos !== undefined;
-  // Sem interação E sem índice de assets (extração antiga/rápida): só carimba a
-  // versão, preservando o dado antigo.
-  if (!temInteracao && !temAssetInfo) {
+  const temScroll = (opts.scroll?.length ?? 0) > 0;
+  // Sem interação, sem índice de assets E sem scroll (extração antiga/rápida): só
+  // carimba a versão, preservando o dado antigo.
+  if (!temInteracao && !temAssetInfo && !temScroll) {
     return { ...base, pipelineVersion: PIPELINE_VERSION, manifestVersion };
   }
 
@@ -169,7 +206,8 @@ export const enriquecerInsight = (
   const externos = opts.assetsExternos ?? (opts.temAssetExterno ? 1 : 0);
   const warningsBase =
     externos === 0 ? base.warnings.filter((w) => w !== AVISO_ASSETS_NA_ORIGEM) : base.warnings;
-  const limitations = [...new Set([...warningsBase, ...e.limitations])];
+  const scrollLims = (opts.scroll ?? []).flatMap((b) => b.limitations);
+  const limitations = [...new Set([...warningsBase, ...e.limitations, ...scrollLims])];
 
   return {
     ...base,
@@ -177,6 +215,7 @@ export const enriquecerInsight = (
     states: e.states.length > 0 ? e.states : undefined,
     pipeline: e.pipeline.length > 0 ? e.pipeline : undefined,
     dimensions: dims,
+    scroll: temScroll ? opts.scroll : undefined,
     confidence: e.confidence !== 'nenhuma' ? e.confidence : undefined,
     related: e.related.length > 0 ? e.related : undefined,
     dependencies: e.dependencies.length > 0 ? e.dependencies : undefined,

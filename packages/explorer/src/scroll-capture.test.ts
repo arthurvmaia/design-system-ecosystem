@@ -37,6 +37,7 @@ const fakePage = (frames: (p: number) => Any[]): PaginaAmostravel => ({
     }
     if (expr.includes('setAttribute')) return 1; // MARK → 1 candidato
     if (expr.includes('scrollHeight')) return 2000; // HEIGHT
+    if (expr.includes('ScrollTrigger')) return null; // RUNTIME → sem runtime externo
     const p = Number(expr.match(/"progress":([0-9.]+)/)?.[1] ?? 0);
     return frames(p); // SAMPLE
   },

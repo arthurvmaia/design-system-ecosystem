@@ -1,6 +1,17 @@
 import { z } from 'zod';
-import { ElementMatch } from './capture.js';
-import { Confidence } from './interaction-support.js';
+
+/**
+ * `target` e `confidence` são definidos INLINE (não importados de capture/
+ * interaction-support) de propósito: capture.ts referencia ScrollBehavior no
+ * manifesto, e importar de volta criaria um ciclo de inicialização de módulo.
+ * São estruturalmente idênticos ao `ElementMatch` e ao `Confidence` — o código
+ * que os consome (tipagem estrutural) trata como os mesmos.
+ */
+const ScrollTargetSchema = z.object({
+  id: z.string().nullable(),
+  classes: z.array(z.string()),
+});
+const ConfidenceScroll = z.enum(['alta', 'media', 'baixa', 'nenhuma']);
 
 /**
  * Representação PORTÁTIL de comportamento controlado por scroll.
@@ -73,7 +84,7 @@ export const ScrollBehavior = z.object({
   kind: ScrollBehaviorKind,
   trigger: ScrollTrigger,
   /** Religação ao segmento/elemento (id + classes distintivas). */
-  target: ElementMatch,
+  target: ScrollTargetSchema,
   scrollContainer: ScrollContainer.default('window'),
   /** Progresso de scroll (0-1 da página ou da seção) onde o efeito começa. */
   start: z.number().min(0).max(1),
@@ -90,7 +101,7 @@ export const ScrollBehavior = z.object({
   /** Para `class-toggle`: classes que entram/saem no limiar. */
   classesAdicionadas: z.array(z.string()).optional(),
   classesRemovidas: z.array(z.string()).optional(),
-  confidence: Confidence,
+  confidence: ConfidenceScroll,
   /** Runtime externo de que depende, quando `external-scroll-runtime`. */
   sourceRuntime: z.string().optional(),
   limitations: z.array(z.string()).default([]),

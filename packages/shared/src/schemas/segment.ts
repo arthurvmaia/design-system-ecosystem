@@ -6,6 +6,7 @@ import {
   InteractionStatus,
   SegmentInteraction,
 } from './interaction-support.js';
+import { ScrollBehavior } from './scroll.js';
 
 /**
  * Categorias de componente. A lista fica versionada aqui para que o classifier
@@ -125,6 +126,14 @@ export const SegmentStatesFile = z.object({
 });
 export type SegmentStatesFile = z.infer<typeof SegmentStatesFile>;
 
+/** Arquivo de comportamentos de scroll de um segmento no vault (para o preview). */
+export const SegmentScrollFile = z.object({
+  segmentId: z.string().startsWith('seg_'),
+  generatedAt: z.number().int().positive(),
+  behaviors: z.array(ScrollBehavior),
+});
+export type SegmentScrollFile = z.infer<typeof SegmentScrollFile>;
+
 /**
  * Versão do validador de preview e do próprio preview. Sobem quando a lógica de
  * reprodução (validador) ou a composição do preview mudam — o que INVALIDA
@@ -221,6 +230,8 @@ export const SegmentInsight = FidelityAssessment.extend({
   pipeline: z.array(SegmentInteraction).optional(),
   /** Fidelidade por dimensão. O selo (`support`) é calculado a partir dela. */
   dimensions: FidelityDimensions.optional(),
+  /** Comportamentos de scroll associados a este segmento (reveal, parallax…). */
+  scroll: z.array(ScrollBehavior).optional(),
   /** Confiança geral da associação captura↔segmento. */
   confidence: Confidence.optional(),
   /** Elementos relacionados fora da subtree (modal em portal, overlay). */
