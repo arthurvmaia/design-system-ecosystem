@@ -112,13 +112,31 @@ const comValidacoes = (
   insight: SegmentInsight,
   resultados: ResultadoValidacaoSegmento[] | undefined,
 ): SegmentInsight => {
-  if (!insight.pipeline || !resultados || resultados.length === 0) return insight;
-  const { pipeline, limitacoes } = aplicarValidacoes(insight.pipeline, resultados);
-  return {
-    ...insight,
-    pipeline,
-    limitations: [...new Set([...(insight.limitations ?? []), ...limitacoes])],
-  };
+  if (!resultados || resultados.length === 0) return insight;
+  let out = insight;
+  const limitacoesExtra: string[] = [];
+
+  // Interações (pipeline): replayable → validated pelo resultado real.
+  if (insight.pipeline && insight.pipeline.length > 0) {
+    const { pipeline, limitacoes } = aplicarValidacoes(insight.pipeline, resultados);
+    out = { ...out, pipeline };
+    limitacoesExtra.push(...limitacoes);
+  }
+
+  // Scroll: o efeito foi reproduzido e conferido em navegador → promove a
+  // dimensão de `parcial` para `completo`. Falha mantém `parcial` (honesto).
+  const rScroll = resultados.find((r) => r.kind === 'scroll');
+  if (rScroll && out.dimensions?.scroll === 'parcial') {
+    if (rScroll.ok) {
+      out = { ...out, dimensions: { ...out.dimensions, scroll: 'completo' } };
+    } else {
+      limitacoesExtra.push('Validação do scroll falhou — mantido como reproduzível, não validado.');
+    }
+  }
+
+  return limitacoesExtra.length > 0
+    ? { ...out, limitations: [...new Set([...(out.limitations ?? []), ...limitacoesExtra])] }
+    : out;
 };
 
 designSystemsRoute.get('/:id/segments', (c) => {

@@ -7,6 +7,7 @@ import {
   PREVIEW_VERSION,
   REWRITER_VERSION,
   type ResultadoValidacaoSegmento,
+  type ScrollBehavior,
   type SegmentInteraction,
   SegmentStatesFile,
   SegmentValidationFile,
@@ -40,6 +41,65 @@ import {
 
 // biome-ignore lint/suspicious/noExplicitAny: playwright é opcional e não tipado neste pacote
 type Any = any;
+
+// Globais do navegador, usados nos callbacks de evaluate (rodam na página).
+declare const document: Any;
+declare const getComputedStyle: (el: Any) => Any;
+
+/**
+ * Valida um efeito de SCROLL num frame: rola o alvo para dentro, confere que o
+ * estilo computado mudou (o efeito aconteceu) e que "Reiniciar" restaurou. Para
+ * sticky, confere que o runtime aplicou `position:sticky`. Retorna se passou.
+ */
+const validarScrollNoFrame = async (
+  page: Any,
+  abrir: () => Promise<Any>,
+  behaviors: ScrollBehavior[],
+  limits: ValidatorLimits,
+): Promise<boolean> => {
+  const frame = await abrir();
+  await frame.waitForSelector('#ds-sc-scroll', { timeout: limits.perPreviewTimeoutMs });
+  // Prefere um comportamento observável por mudança de estilo (não-sticky).
+  const alvoB = behaviors.find((b) => b.kind !== 'sticky') ?? behaviors[0];
+  if (!alvoB) return false;
+  const t = alvoB.target;
+  const sel = t.id ? `[id="${t.id}"]` : t.classes[0] ? `.${t.classes[0]}` : null;
+  if (!sel) return false;
+  try {
+    if (alvoB.kind === 'sticky') {
+      const pos = await frame.$eval(sel, (el: Any) => getComputedStyle(el).position);
+      return pos === 'sticky';
+    }
+    const snap = (): Promise<string> =>
+      frame.$eval(sel, (el: Any) => {
+        const c = getComputedStyle(el);
+        return `${c.opacity}|${c.transform}|${c.filter}|${el.className}`;
+      });
+    const inicial = await snap();
+    await frame.evaluate((s: string) => {
+      document.querySelector(s)?.scrollIntoView({ block: 'center' });
+    }, sel);
+    // Espera o efeito acontecer (IO/scrub são assíncronos): tenta por até ~1.6s.
+    let mudou = false;
+    for (let i = 0; i < 8 && !mudou; i++) {
+      await page.waitForTimeout(200);
+      mudou = (await snap()) !== inicial;
+    }
+    // Reset via evaluate (a barra é fixa num iframe alto — o click do Playwright
+    // pode não alcançá-la; disparar o handler direto é robusto e suficiente).
+    await frame.evaluate(() => {
+      document.getElementById('ds-sc-reset')?.click();
+    });
+    let restaurou = false;
+    for (let i = 0; i < 6 && !restaurou; i++) {
+      await page.waitForTimeout(200);
+      restaurou = (await snap()) === inicial;
+    }
+    return mudou && restaurou;
+  } catch {
+    return false;
+  }
+};
 
 export type ValidatorLimits = {
   perPreviewTimeoutMs: number;
@@ -95,6 +155,8 @@ export type CandidatoValidacao = {
   htmlSnippet: string;
   states: Array<{ id: string }>;
   pipeline: SegmentInteraction[];
+  /** Comportamentos de scroll a validar (reveal/parallax/sticky/progress-*). */
+  scroll: ScrollBehavior[];
   previewHash: string;
 };
 
@@ -198,7 +260,10 @@ export const montarCandidatos = (dsId: `ds_${string}`): CandidatoValidacao[] => 
   for (const insight of manifest.insights ?? []) {
     const pipeline = insight.pipeline ?? [];
     const temReplay = pipeline.some((p) => p.status === 'replayable' && p.stateIds.length > 0);
-    if (!temReplay) continue;
+    const scroll = insight.scroll ?? [];
+    const scrollReproduzivel = scroll.filter((b) => b.kind !== 'external-scroll-runtime');
+    // Vale validar se tem replay de estado OU comportamento de scroll reproduzível.
+    if (!temReplay && scrollReproduzivel.length === 0) continue;
     const seg = manifest.segments.find((s) => s.id === insight.segmentId);
     if (!seg) continue;
     const snippetRw = reescreverParaLocal(seg.htmlSnippet, index, prefix).text;
@@ -207,12 +272,17 @@ export const montarCandidatos = (dsId: `ds_${string}`): CandidatoValidacao[] => 
       index,
       prefix,
     ).text;
-    const depsJson = JSON.stringify(insight.dependencies ?? []);
+    // O scroll entra no hash: muda um comportamento, revalida.
+    const depsJson = JSON.stringify({
+      deps: insight.dependencies ?? [],
+      scroll: scrollReproduzivel,
+    });
     candidatos.push({
       segmentId: insight.segmentId,
       htmlSnippet: seg.htmlSnippet,
       states: (insight.states ?? []).map((s) => ({ id: s.id })),
       pipeline,
+      scroll: scrollReproduzivel,
       previewHash: previewHash(snippetRw, statesRw, depsJson),
     });
   }
@@ -423,49 +493,71 @@ const abrirNavegador = async (log: (m: string) => void): Promise<ContextoNavegad
       const t0 = Date.now();
       const results: ResultadoValidacaoSegmento[] = [];
       const page = await browser.newPage();
-      try {
-        const url = `${base}/api/preview/segment/${cand.segmentId}?replay=1`;
+      const abrir = async (sufixo: string): Promise<Any> => {
+        const url = `${base}/api/preview/segment/${cand.segmentId}${sufixo}`;
         await page.setContent(
           `<!doctype html><meta charset="utf-8"><iframe id="pf" src="${url}" sandbox="allow-scripts" style="width:1200px;height:900px;border:0"></iframe>`,
         );
         const handle = await page.waitForSelector('#pf', { timeout: limits.perPreviewTimeoutMs });
         const frame = await handle.contentFrame();
         if (!frame) throw new Error('iframe sem frame');
-        await frame.waitForSelector('#ds-rp-alvo', { timeout: limits.perPreviewTimeoutMs });
+        return frame;
+      };
+      try {
+        // ── Validação de ESTADOS (botões), quando há ──
+        if (cand.states.length > 0) {
+          const frame = await abrir('?replay=1');
+          await frame.waitForSelector('#ds-rp-alvo', { timeout: limits.perPreviewTimeoutMs });
+          const alvoHtml = (): Promise<string> =>
+            frame.$eval('#ds-rp-alvo', (el: Any) => el.innerHTML);
+          const portalCheio = (): Promise<boolean> =>
+            frame.$$eval('#ds-rp-portal > *', (e: Any[]) => e.length > 0);
+          const baseline = await alvoHtml();
 
-        const alvoHtml = (): Promise<string> =>
-          frame.$eval('#ds-rp-alvo', (el: Any) => el.innerHTML);
-        const portalCheio = (): Promise<boolean> =>
-          frame.$$eval('#ds-rp-portal > *', (e: Any[]) => e.length > 0);
-        const baseline = await alvoHtml();
-
-        const okPorState = new Map<string, boolean>();
-        for (const st of cand.states.slice(0, limits.maxInteractionsPerSegment)) {
-          let ok = false;
-          try {
-            await frame.click(`[data-estado="${st.id}"]`, { timeout: 3000 });
-            await page.waitForTimeout(120);
-            const mudou = (await alvoHtml()) !== baseline || (await portalCheio());
-            await frame.click('[data-estado="__reset__"]', { timeout: 3000 });
-            await page.waitForTimeout(120);
-            const restaurou = (await alvoHtml()) === baseline && !(await portalCheio());
-            ok = mudou && restaurou;
-          } catch {
-            ok = false;
+          const okPorState = new Map<string, boolean>();
+          for (const st of cand.states.slice(0, limits.maxInteractionsPerSegment)) {
+            let ok = false;
+            try {
+              await frame.click(`[data-estado="${st.id}"]`, { timeout: 3000 });
+              await page.waitForTimeout(120);
+              const mudou = (await alvoHtml()) !== baseline || (await portalCheio());
+              await frame.click('[data-estado="__reset__"]', { timeout: 3000 });
+              await page.waitForTimeout(120);
+              const restaurou = (await alvoHtml()) === baseline && !(await portalCheio());
+              ok = mudou && restaurou;
+            } catch {
+              ok = false;
+            }
+            okPorState.set(st.id, ok);
           }
-          okPorState.set(st.id, ok);
+
+          for (const it of cand.pipeline) {
+            if (it.status !== 'replayable') continue;
+            const seus = it.stateIds.filter((id) => okPorState.has(id));
+            if (seus.length === 0) continue;
+            const ok = seus.some((id) => okPorState.get(id) === true);
+            results.push({
+              segmentId: cand.segmentId,
+              kind: it.kind,
+              ok,
+              detail: ok ? undefined : 'reprodução não observável ou reset não restaurou',
+            });
+          }
         }
 
-        for (const it of cand.pipeline) {
-          if (it.status !== 'replayable') continue;
-          const seus = it.stateIds.filter((id) => okPorState.has(id));
-          if (seus.length === 0) continue;
-          const ok = seus.some((id) => okPorState.get(id) === true);
+        // ── Validação de SCROLL REAL, quando há comportamentos ──
+        if (cand.scroll.length > 0) {
+          const ok = await validarScrollNoFrame(
+            page,
+            () => abrir('?scroll=1'),
+            cand.scroll,
+            limits,
+          );
           results.push({
             segmentId: cand.segmentId,
-            kind: it.kind,
+            kind: 'scroll',
             ok,
-            detail: ok ? undefined : 'reprodução não observável ou reset não restaurou',
+            detail: ok ? undefined : 'efeito de scroll não observável ou reset não restaurou',
           });
         }
       } finally {
