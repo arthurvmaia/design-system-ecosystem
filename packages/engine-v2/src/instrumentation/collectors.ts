@@ -974,6 +974,83 @@ export const ALVO_NO_PONTO_FN = `
 }
 `;
 
+/**
+ * Sonda um ponto: identifica o alvo E o mede, numa só chamada.
+ *
+ * Por que combinado: a varredura passa por centenas de pontos, e cada
+ * `evaluate` é um round-trip com o navegador. Identificar num e medir noutro
+ * dobraria o custo da fase mais longa da captura — e o par
+ * (identificar, medir) só faz sentido junto, porque a medida tem de ser a do
+ * elemento que estava sob o ponteiro naquele instante.
+ *
+ * Assinatura: `(x, y) => Sonda | null`.
+ */
+export const SONDAR_PONTO_FN = `
+(x, y) => {
+  var vw = window.innerWidth || 1;
+  var vh = window.innerHeight || 1;
+  var px = Math.round(x * vw);
+  var py = Math.round(y * vh);
+  var el = null;
+  try { el = document.elementFromPoint(px, py); } catch (e) { return null; }
+  if (!el) return null;
+  var guard = 0;
+  while (el && el.shadowRoot && guard < 8) {
+    var dentro = null;
+    try { dentro = el.shadowRoot.elementFromPoint(px, py); } catch (e) { dentro = null; }
+    if (!dentro || dentro === el) break;
+    el = dentro;
+    guard++;
+  }
+  var cs;
+  try { cs = getComputedStyle(el); } catch (e) { return null; }
+  var r = el.getBoundingClientRect();
+  var refAttr = el.getAttribute ? el.getAttribute('${ATTR_REF}') : null;
+  var refPai = null;
+  var n = el.parentElement;
+  var h = 0;
+  while (refAttr === null && n && h < 30) {
+    var a = n.getAttribute ? n.getAttribute('${ATTR_REF}') : null;
+    if (a !== null) { refPai = parseInt(a, 10); break; }
+    n = n.parentElement;
+    h++;
+  }
+  var animacoes = 0;
+  try { animacoes = el.getAnimations ? el.getAnimations().length : 0; } catch (e) {}
+  var tag = el.tagName ? el.tagName.toLowerCase() : '';
+  return {
+    ref: refAttr === null ? null : parseInt(refAttr, 10),
+    refAncestral: refPai,
+    tag: tag,
+    // Sem DOM interno: canvas e vídeo desenham pixels, não filhos. É o caso em
+    // que uma região reativa NÃO corresponde a um elemento clicável.
+    semDomInterno: tag === 'canvas' || tag === 'video' || (tag === 'svg' && el.children.length === 0),
+    cursor: cs.cursor,
+    pointerEvents: cs.pointerEvents,
+    medida: {
+      transform: cs.transform,
+      opacity: cs.opacity,
+      filter: cs.filter,
+      backgroundColor: cs.backgroundColor,
+      backgroundImage: (cs.backgroundImage || '').slice(0, 200),
+      backgroundPosition: cs.backgroundPosition,
+      color: cs.color,
+      boxShadow: (cs.boxShadow || '').slice(0, 160),
+      borderColor: cs.borderColor,
+      classes: (el.getAttribute('class') || '').slice(0, 200),
+      childCount: el.childElementCount,
+      textLen: (el.textContent || '').length,
+      box: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+      visivel: cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.01,
+      animacoes: animacoes,
+      cursor: cs.cursor
+    },
+    box: { x: r.x, y: r.y, w: r.width, h: r.height },
+    normalizedBox: { x: r.x / vw, y: r.y / vh, w: r.width / vw, h: r.height / vh }
+  };
+}
+`;
+
 /** HTML de um ref (para gravar o estado). `(ref) => string`. */
 export const HTML_DO_REF_FN = `
 (ref) => {
@@ -1018,6 +1095,72 @@ export const PORTAL_HTML_FN = `
     }
   } catch (e) {}
   return out;
+}
+`;
+
+/**
+ * Traz um ref para a viewport e devolve o centro clicável dele.
+ *
+ * `scrollIntoView` com `block: 'center'` em vez de `nearest`: um elemento
+ * encostado na borda passa no teste de "está visível" mas o clique cai num
+ * header sticky ou num banner de cookies. O centro é a posição em que o clique
+ * de fato chega no elemento.
+ *
+ * Devolve `null` quando o elemento não é clicável (sumiu, tem `pointer-events:
+ * none`, ou está coberto por outro). Descobrir isso ANTES de clicar evita
+ * contabilizar como "ação sem efeito" o que foi um clique no elemento errado.
+ *
+ * Assinatura: `(ref) => Centro | null`.
+ */
+export const CENTRO_DO_REF_FN = `
+(ref) => {
+  var R = window['${REGISTRO_GLOBAL}'] || {};
+  var el = (R.els || [])[ref];
+  if (!el) { try { el = document.querySelector('[${ATTR_REF}="' + ref + '"]'); } catch (e) { el = null; } }
+  if (!el || !el.getBoundingClientRect) return null;
+  try { el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }); } catch (e) {}
+  var r = el.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return null;
+  var cs = getComputedStyle(el);
+  if (cs.display === 'none' || cs.visibility === 'hidden') return null;
+  var cx = Math.round(r.x + r.width / 2);
+  var cy = Math.round(r.y + r.height / 2);
+  var dentroDaViewport = cx >= 0 && cy >= 0 && cx < window.innerWidth && cy < window.innerHeight;
+  // Quem realmente recebe o clique naquele ponto?
+  var noTopo = null;
+  try { noTopo = document.elementFromPoint(cx, cy); } catch (e) {}
+  var alcancavel = !!noTopo && (noTopo === el || el.contains(noTopo) || noTopo.contains(el));
+  return {
+    x: cx,
+    y: cy,
+    box: { x: r.x, y: r.y, w: r.width, h: r.height },
+    dentroDaViewport: dentroDaViewport,
+    alcancavel: alcancavel,
+    pointerEvents: cs.pointerEvents,
+    scrollY: window.scrollY || 0
+  };
+}
+`;
+
+/** Foca um ref sem preencher nada. `(ref) => boolean`. */
+export const FOCAR_REF_FN = `
+(ref) => {
+  var R = window['${REGISTRO_GLOBAL}'] || {};
+  var el = (R.els || [])[ref];
+  if (!el) { try { el = document.querySelector('[${ATTR_REF}="' + ref + '"]'); } catch (e) { el = null; } }
+  if (!el || typeof el.focus !== 'function') return false;
+  try { el.focus({ preventScroll: true }); return document.activeElement === el; } catch (e) { return false; }
+}
+`;
+
+/** Solta o foco — parte da restauração de estado. `() => void`. */
+export const BLUR_FN = `
+() => {
+  try {
+    var ae = document.activeElement;
+    if (ae && ae !== document.body && typeof ae.blur === 'function') ae.blur();
+  } catch (e) {}
+  return true;
 }
 `;
 
