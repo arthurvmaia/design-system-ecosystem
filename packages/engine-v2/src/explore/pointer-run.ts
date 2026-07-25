@@ -131,7 +131,9 @@ export type ResultadoVarredura = {
 };
 
 const velocidadeParaPassos = (v: PointerSpeed | undefined): number =>
-  v === 'lento' ? 6 : v === 'rapido' ? 1 : 3;
+  // 2 passos no normal: o suficiente para haver DELTA (vários runtimes ignoram um
+  // salto único) sem pagar um round-trip de CDP a mais por ponto.
+  v === 'lento' ? 5 : v === 'rapido' ? 1 : 2;
 
 /**
  * Executa uma trajetória e mede as reações.
@@ -146,7 +148,10 @@ export const varrerPonteiro = async (
 ): Promise<ResultadoVarredura> => {
   const inicio = Date.now();
   const vp = page.viewport();
-  const assentar = opts.assentarMs ?? 35;
+  // 16ms = um quadro a 60fps. É o mínimo para o runtime processar o `mousemove`
+  // e repintar; mais que isso multiplica o custo da fase mais longa da captura
+  // pelo número de pontos, sem medir nada a mais.
+  const assentar = opts.assentarMs ?? 16;
   const passos = velocidadeParaPassos(opts.speed);
   const sondaCada = opts.sondaVisualCada ?? 16;
   const maxConfirmacoes = opts.maxConfirmacoes ?? 24;
@@ -267,7 +272,7 @@ export const varrerPonteiro = async (
 
     // Fora: o estado sem ponteiro.
     await moverPara(page, NEUTRO, { passos: 1 });
-    await page.esperar(90);
+    await page.esperar(60);
     let fora: Sonda | null = null;
     let foraPixels: Uint8Array | null = null;
     try {
@@ -280,7 +285,7 @@ export const varrerPonteiro = async (
     // Dentro: com o ponteiro no ponto.
     const t0 = Date.now();
     await moverPara(page, v.ponto, { passos });
-    await page.esperar(90);
+    await page.esperar(60);
     let dentro: Sonda | null = null;
     let dentroPixels: Uint8Array | null = null;
     try {

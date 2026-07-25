@@ -61,6 +61,7 @@ const assinatura = (over: Partial<RawAssinaturaEstado> = {}): RawAssinaturaEstad
   overlays: [],
   expandidos: 0,
   selecionados: 0,
+  detalhesAbertos: 0,
   focado: '',
   scrollY: 0,
   scrollX: 0,
@@ -189,6 +190,15 @@ test('variação mínima de HTML não conta como estado novo — contador não �
   const antes = assinatura({ htmlHash: 'a', htmlBytes: 100_000 });
   const depois = assinatura({ htmlHash: 'b', htmlBytes: 100_050 });
   assert.equal(houveMudanca(antes, depois).mudou, false);
+});
+
+test('<details open> conta como estado — accordion nativo sem ARIA', () => {
+  const antes = assinatura({ detalhesAbertos: 0 });
+  const depois = assinatura({ detalhesAbertos: 1 });
+  const r = houveMudanca(antes, depois);
+  assert.equal(r.mudou, true, 'o accordion nativo é a forma mais comum em site institucional');
+  assert.ok(r.motivos.some((m) => /<details>/.test(m)));
+  assert.notEqual(assinaturaDoEstado(antes), assinaturaDoEstado(depois));
 });
 
 test('overlay aparecendo é sempre mudança, com motivo', () => {

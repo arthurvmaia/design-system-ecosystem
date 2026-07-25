@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fixture V2 — composição</title>
+
+<!--
+  Fixture de COMPOSIÇÃO do motor V2.
+
+  Cada seção existe para exercitar um caso que o V1 perdia, e o nome da seção diz
+  qual. Nada aqui depende de rede externa: o CSS é inline, os assets são data URI
+  ou gerados por JS, e os runtimes são simulados com a MESMA assinatura que o
+  detector procura (global exposto, contexto gráfico criado, rAF em loop).
+
+  A intenção não é parecer um site bonito: é ser um caso de teste onde a resposta
+  certa é conhecida. As seções de ação perigosa existem para PROVAR que a política
+  barra — se a extração clicar nelas, o teste falha.
+-->
+
+<style>
+/* ── tokens ─────────────────────────────────────────────────────────── */
+:root{
+  --brand:#7c3aed;
+  --bone:#f5f5f4;
+  --obsidian:#0b0b0e;
+  --crimson:#b91c1c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--obsidian);color:var(--bone);font:16px/1.6 system-ui,-apple-system,sans-serif}
+
+/* ── layout ─────────────────────────────────────────────────────────── */
+section{position:relative;min-height:100vh;padding:64px 48px;overflow:hidden}
+h1,h2{margin:0 0 16px;line-height:1.1}
+h1{font-size:clamp(2rem,6vw,4.5rem)}
+h2{font-size:clamp(1.5rem,3vw,2.5rem)}
+.conteudo{position:relative;z-index:10;max-width:900px}
+
+/* ── componentes ────────────────────────────────────────────────────── */
+.btn{display:inline-block;padding:12px 24px;border-radius:8px;background:var(--brand);color:#fff;text-decoration:none;border:0;font:inherit;cursor:pointer}
+.card{padding:24px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:32px}
+
+/* ── animações ──────────────────────────────────────────────────────── */
+@keyframes girar{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes pulsar{0%,100%{opacity:.35}50%{opacity:.9}}
+@keyframes deslizar{from{background-position:0 0}to{background-position:400px 0}}
+.gira{animation:girar 4s linear infinite}
+.pulsa{animation:pulsar 2s ease-in-out infinite}
+
+/* ── interações ─────────────────────────────────────────────────────── */
+.btn:hover{background:#8b5cf6;transform:translateY(-2px)}
+.btn:focus-visible{outline:3px solid var(--bone);outline-offset:3px}
+.card:hover{border-color:var(--brand)}
+[aria-expanded="true"] + .painel{display:block}
+.painel{display:none;padding:16px 0}
+[role="tabpanel"][hidden]{display:none}
+.tema-claro{background:var(--bone);color:var(--obsidian)}
+
+/* ── camadas de fundo ───────────────────────────────────────────────── */
+/* Fundo por IMAGEM em folha de estilo — o caso que o V1 apagava por não ter CSSOM. */
+#hero-imagem .fundo-img{
+  position:absolute;inset:0;z-index:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Crect width='400' height='400' fill='%23111'/%3E%3Ccircle cx='200' cy='200' r='150' fill='%237c3aed' opacity='.5'/%3E%3C/svg%3E");
+  background-size:cover;background-position:center;
+}
+/* MÚLTIPLOS backgrounds + gradiente animado. */
+#gradiente-animado .fundo-multi{
+  position:absolute;inset:0;z-index:0;
+  background-image:
+    linear-gradient(120deg,rgba(124,58,237,.6),transparent 60%),
+    radial-gradient(circle at 30% 40%,rgba(185,28,28,.5),transparent 50%),
+    repeating-linear-gradient(45deg,rgba(255,255,255,.03) 0 10px,transparent 10px 20px);
+  animation:deslizar 6s linear infinite;
+}
+/* Véu de leitura por cima do fundo. */
+.veu{position:absolute;inset:0;z-index:5;background:linear-gradient(to top,rgba(0,0,0,.85),rgba(0,0,0,.2))}
+/* PSEUDO-ELEMENTOS que pintam. */
+#pseudos .caixa{position:relative;min-height:320px}
+#pseudos .caixa::before{
+  content:"";position:absolute;inset:0;z-index:0;
+  background:conic-gradient(from 0deg,var(--brand),transparent 40%,var(--crimson));
+  animation:girar 8s linear infinite;
+}
+#pseudos .caixa::after{
+  content:"";position:absolute;inset:20px;z-index:1;
+  background:rgba(11,11,14,.8);
+  mask-image:radial-gradient(circle at center,#000 40%,transparent 70%);
+}
+/* Elemento ABSOLUTO usado como fundo, sem texto. */
+#orbes .orbe{position:absolute;width:400px;height:400px;border-radius:50%;filter:blur(80px);z-index:0}
+#orbes .orbe-a{background:var(--brand);top:-100px;left:-100px}
+#orbes .orbe-b{background:var(--crimson);bottom:-120px;right:-80px}
+/* Divisor: enfeite de verdade, deve continuar sendo descartado. */
+.divisor{height:1px;background:rgba(255,255,255,.08)}
+
+/* ── sticky / scroll ────────────────────────────────────────────────── */
+#sticky .preso{position:sticky;top:24px;z-index:20;background:rgba(11,11,14,.9);padding:12px 16px;border-radius:8px}
+#sticky .alto{height:200vh}
+#horizontal .trilha{display:flex;gap:24px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:16px}
+#horizontal .trilha > *{flex:0 0 320px;scroll-snap-align:start}
+.revelar{opacity:0;transform:translateY(40px);transition:opacity .6s,transform .6s}
+.revelar.visivel{opacity:1;transform:none}
+#parallax .camada{position:absolute;inset:0;will-change:transform}
+
+/* ── mídia ──────────────────────────────────────────────────────────── */
+video{display:block;width:100%;max-width:640px;background:#000}
+/* `max-width:none` é necessário: a regra global de `video` limita a 640px e o
+   fundo deixaria de cobrir a seção — a detecção estaria certa e a fixture errada. */
+#video-fundo video{position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;z-index:0}
+canvas{display:block;width:100%;height:100%}
+#canvas2d canvas,#webgl canvas{position:absolute;inset:0;z-index:0}
+#particulas canvas{position:absolute;inset:0;z-index:0}
+
+/* ── modal ──────────────────────────────────────────────────────────── */
+#portal-modal{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.7)}
+#portal-modal[data-state="open"]{display:flex}
+#portal-modal .caixa{max-width:520px;background:#18181b;padding:32px;border-radius:16px}
+
+/* ── acessibilidade ─────────────────────────────────────────────────── */
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (prefers-reduced-motion:reduce){
+  .gira,.pulsa,#gradiente-animado .fundo-multi,#pseudos .caixa::before{animation:none}
+}
+</style>
+
+<!-- Bloco de DADOS: JSON-LD nunca deve virar arquivo .js. -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Organization","name":"Fixture V2"}
+</script>
+</head>
+<body>
+
+<!-- ══ navegação com menu que expande ═══════════════════════════════════ -->
+<header id="cabecalho">
+  <nav aria-label="Principal" style="display:flex;gap:24px;align-items:center;padding:16px 48px">
+    <strong>Fixture</strong>
+    <button id="btn-menu" class="btn" aria-expanded="false" aria-controls="menu-principal">Menu</button>
+    <div id="menu-principal" class="painel">
+      <a href="#hero-imagem">Hero</a>
+      <button id="btn-submenu" class="btn" aria-expanded="false" aria-controls="submenu">Mais</button>
+      <div id="submenu" class="painel"><a href="#webgl">WebGL</a></div>
+    </div>
+  </nav>
+</header>
+
+<!-- ══ hero com background-image de folha externa ═══════════════════════ -->
+<section id="hero-imagem">
+  <div class="fundo-img"></div>
+  <div class="veu"></div>
+  <div class="conteudo">
+    <h1>Hero com fundo em CSS</h1>
+    <p>O fundo vem de uma folha de estilo, não do atributo <code>style</code>.</p>
+    <a class="btn" href="#pseudos">Ver pseudo-elementos</a>
+  </div>
+</section>
+
+<!-- ══ gradiente animado em múltiplas camadas ══════════════════════════ -->
+<section id="gradiente-animado">
+  <div class="fundo-multi"></div>
+  <div class="conteudo"><h2>Gradiente animado</h2><p>Três camadas de background, uma delas animada.</p></div>
+</section>
+
+<!-- ══ pseudo-elementos animados ═══════════════════════════════════════ -->
+<section id="pseudos">
+  <div class="conteudo"><h2>Pseudo-elementos</h2>
+    <div class="caixa"><p style="position:relative;z-index:2">::before gira, ::after mascara.</p></div>
+  </div>
+</section>
+
+<!-- ══ orbes: absolutos, sem texto, cobrindo área ══════════════════════ -->
+<section id="orbes">
+  <div class="orbe orbe-a pulsa"></div>
+  <div class="orbe orbe-b"></div>
+  <div class="conteudo"><h2>Orbes de fundo</h2><p>Elementos absolutos sem texto, com blur.</p></div>
+  <div class="divisor"></div>
+</section>
+
+<!-- ══ canvas 2D animado ══════════════════════════════════════════════ -->
+<section id="canvas2d">
+  <canvas id="c2d" width="1440" height="900" aria-hidden="true"></canvas>
+  <div class="conteudo"><h2>Canvas 2D animado</h2><p>Desenhado por requestAnimationFrame.</p></div>
+</section>
+
+<!-- ══ WebGL ══════════════════════════════════════════════════════════ -->
+<section id="webgl">
+  <canvas id="cgl" width="1440" height="900" aria-hidden="true"></canvas>
+  <div class="conteudo"><h2>Cena WebGL</h2><p>Contexto webgl real, cor animada.</p></div>
+</section>
+
+<!-- ══ partículas que seguem o cursor ═════════════════════════════════ -->
+<section id="particulas">
+  <canvas id="cpart" width="1440" height="900" aria-hidden="true"></canvas>
+  <div class="conteudo"><h2>Partículas interativas</h2><p>Reagem à posição do ponteiro.</p></div>
+</section>
+
+<!-- ══ vídeo de fundo (sem fonte válida: a detecção deve ser honesta) ══ -->
+<section id="video-fundo">
+  <video autoplay muted loop playsinline poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='9'%3E%3Crect width='16' height='9' fill='%23222'/%3E%3C/svg%3E">
+    <source src="video-inexistente.mp4" type="video/mp4">
+  </video>
+  <div class="veu"></div>
+  <div class="conteudo"><h2>CTA com vídeo de fundo</h2><a class="btn" href="#faq">Continuar</a></div>
+</section>
+
+<!-- ══ imagens animadas e SVGs ════════════════════════════════════════ -->
+<section id="midias">
+  <div class="conteudo">
+    <h2>Mídias</h2>
+    <div class="grade">
+      <div class="card"><img id="gif" src="animado.gif" width="120" height="120" alt="GIF animado"></div>
+      <div class="card"><img id="webp" src="animado.webp" width="120" height="120" alt="WebP animado"></div>
+      <div class="card">
+        <!-- SVG com currentColor: deve ficar inline. -->
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-right" aria-label="Seta"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+      <div class="card">
+        <!-- SVG de cores fixas, pequeno: continua inline. -->
+        <svg width="48" height="48" viewBox="0 0 24 24"><rect width="24" height="24" fill="#7c3aed" rx="4"/></svg>
+      </div>
+      <div class="card">
+        <!-- SVG animado por SMIL. -->
+        <svg width="48" height="48" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#b91c1c"><animate attributeName="r" values="4;10;4" dur="2s" repeatCount="indefinite"/></circle></svg>
+      </div>
+      <div class="card">
+        <!-- Sprite + fragmento. -->
+        <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="icone-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2"/></symbol><linearGradient id="grad-a"><stop offset="0" stop-color="#7c3aed"/><stop offset="1" stop-color="#b91c1c"/></linearGradient></defs></svg>
+        <svg width="48" height="48"><use href="#icone-check"/></svg>
+        <svg width="48" height="48" viewBox="0 0 24 24"><rect width="24" height="24" fill="url(#grad-a)"/></svg>
+      </div>
+      <div class="card">
+        <!-- Lottie: elemento próprio + JSON de animação. -->
+        <div id="lottie-alvo" data-animation-path="animacao.json" style="width:120px;height:120px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ accordion + tabs ═══════════════════════════════════════════════ -->
+<section id="faq">
+  <div class="conteudo">
+    <h2>Perguntas frequentes</h2>
+    <button class="btn" aria-expanded="false" aria-controls="p1" data-accordion>O que é isto?</button>
+    <div id="p1" class="painel"><p>Uma fixture de teste.</p></div>
+    <button class="btn" aria-expanded="false" aria-controls="p2" data-accordion>Como funciona?</button>
+    <div id="p2" class="painel"><p>Exercitando cada caso do motor.</p></div>
+    <details><summary>Detalhe nativo</summary><p>Conteúdo do details.</p></details>
+
+    <div role="tablist" aria-label="Abas" style="margin-top:32px;display:flex;gap:8px">
+      <button role="tab" id="t1" aria-selected="true" aria-controls="tp1" class="btn">Aba 1</button>
+      <button role="tab" id="t2" aria-selected="false" aria-controls="tp2" class="btn">Aba 2</button>
+    </div>
+    <div role="tabpanel" id="tp1" aria-labelledby="t1"><p>Painel um.</p></div>
+    <div role="tabpanel" id="tp2" aria-labelledby="t2" hidden><p>Painel dois.</p></div>
+  </div>
+</section>
+
+<!-- ══ carousel + modal + tooltip + tema ══════════════════════════════ -->
+<section id="controles">
+  <div class="conteudo">
+    <h2>Controles</h2>
+    <div data-carousel style="display:flex;gap:16px;align-items:center">
+      <button class="btn" data-carousel-prev aria-label="Anterior">‹</button>
+      <div id="slide" class="card" style="flex:1">Slide 1</div>
+      <button class="btn" data-carousel-next aria-label="Próximo">›</button>
+    </div>
+    <button class="btn" id="abrir-modal" aria-haspopup="dialog" style="margin-top:24px">Abrir modal</button>
+    <button class="btn" id="tooltip-alvo" data-tooltip="Dica" style="margin-top:24px">Com tooltip</button>
+    <button class="btn" id="trocar-tema" data-theme role="switch" aria-checked="false" style="margin-top:24px">Alternar tema</button>
+  </div>
+</section>
+
+<!-- ══ sticky + reveal + parallax + scroll horizontal ═════════════════ -->
+<section id="sticky">
+  <div class="conteudo">
+    <div class="preso">Fico preso ao rolar</div>
+    <div class="alto">
+      <h2>Sticky</h2>
+      <div class="revelar card" style="margin-top:60vh">Apareço ao entrar na viewport</div>
+      <div class="revelar card" style="margin-top:40vh">Eu também</div>
+    </div>
+  </div>
+</section>
+
+<section id="parallax">
+  <div class="camada" data-speed="0.3" style="background:radial-gradient(circle at 20% 30%,rgba(124,58,237,.35),transparent 45%)"></div>
+  <div class="conteudo"><h2>Parallax por scroll</h2><p>A camada desloca em ritmo diferente.</p></div>
+</section>
+
+<section id="horizontal">
+  <div class="conteudo">
+    <h2>Scroll horizontal</h2>
+    <div class="trilha">
+      <div class="card">Um</div><div class="card">Dois</div><div class="card">Três</div><div class="card">Quatro</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ shadow DOM aberto e fechado ════════════════════════════════════ -->
+<section id="shadow">
+  <div class="conteudo">
+    <h2>Shadow DOM</h2>
+    <div id="shadow-aberto"></div>
+    <div id="shadow-fechado"></div>
+  </div>
+</section>
+
+<!-- ══ iframes ════════════════════════════════════════════════════════ -->
+<section id="iframes">
+  <div class="conteudo">
+    <h2>Iframes</h2>
+    <iframe title="Mesma origem" srcdoc="<p style='font:14px system-ui'>Conteúdo local</p>" width="320" height="120" style="border:1px solid #333"></iframe>
+    <iframe title="Outra origem" src="https://example.com/" width="320" height="120" style="border:1px solid #333"></iframe>
+  </div>
+</section>
+
+<!-- ══ carregamento por interação ═════════════════════════════════════ -->
+<section id="lazy">
+  <div class="conteudo">
+    <h2>Assets por interação</h2>
+    <button class="btn" id="carregar-hover">Passe o mouse</button>
+    <button class="btn" id="carregar-clique">Clique aqui</button>
+    <div id="destino-lazy" class="grade"></div>
+  </div>
+</section>
+
+<!-- ══ AÇÕES PERIGOSAS — a política DEVE barrar todas ═════════════════ -->
+<section id="perigo">
+  <div class="conteudo">
+    <h2>Ações que não devem ser executadas</h2>
+    <p class="sr-only">Se a extração acionar qualquer uma destas, o teste falha.</p>
+    <form id="form-perigo" action="/enviar" method="post" style="display:grid;gap:12px;max-width:420px">
+      <label>E-mail <input type="email" name="email" required></label>
+      <label>Senha <input type="password" name="senha"></label>
+      <label>Arquivo <input type="file" name="arquivo"></label>
+      <button type="submit" class="btn">Enviar formulário</button>
+    </form>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">
+      <button class="btn" data-perigo="compra">Finalizar compra</button>
+      <button class="btn" data-perigo="exclusao">Excluir conta</button>
+      <button class="btn" data-perigo="clipboard">Copiar código</button>
+      <button class="btn" data-perigo="permissao">Permitir notificações</button>
+      <button class="btn" data-perigo="instalacao">Instalar app</button>
+      <button class="btn" data-perigo="popup" id="abrir-popup">Abrir em nova aba</button>
+      <a class="btn" href="https://outro-dominio.invalid/pagina">Ir para outro site</a>
+      <a class="btn" href="arquivo.zip" download>Baixar arquivo</a>
+      <a class="btn" href="mailto:alguem@exemplo.test">Escrever e-mail</a>
+      <a class="btn" href="tel:+5511999999999">Ligar</a>
+      <a class="btn" href="#recursos">Âncora interna (segura)</a>
+    </div>
+  </div>
+</section>
+
+<!-- ══ resposta que nunca termina ═════════════════════════════════════ -->
+<section id="pendura">
+  <div class="conteudo">
+    <h2>Requisição pendurada</h2>
+    <img id="img-pendurada" src="/nunca-termina" width="1" height="1" alt="">
+    <p>A drenagem deve encerrar por timeout, sem travar a captura.</p>
+  </div>
+</section>
+
+<footer style="padding:48px" id="rodape">
+  <div class="divisor" style="margin-bottom:24px"></div>
+  <p>Fixture V2 — nenhuma marca real.</p>
+</footer>
+
+<!-- Portal do modal: no DOM fica no fim do body, longe da seção que ele cobre. -->
+<div id="portal-modal" role="dialog" aria-modal="true" aria-label="Modal de teste">
+  <div class="caixa">
+    <h2>Modal aberto</h2>
+    <p>Renderizado em portal, fora da seção que o abriu.</p>
+    <button class="btn" id="fechar-modal">Fechar</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     Runtimes. Cada um é montado com a MESMA assinatura que o detector
+     procura, para o teste medir o detector e não uma simulação frouxa.
+     ══════════════════════════════════════════════════════════════════════ -->
+<script>
+// Globais que o detector procura. `REVISION` é como o three expõe a versão.
+window.THREE = { REVISION: '160', Scene: function(){}, WebGLRenderer: function(){} };
+window.gsap = { version: '3.12.5', to: function(){ return {}; } };
+window.lottie = { version: '5.12.2', loadAnimation: function(){ return { play(){}, destroy(){} }; } };
+</script>
+
+<script>
+// ── canvas 2D em loop de rAF ────────────────────────────────────────────
+(function(){
+  var c = document.getElementById('c2d');
+  var ctx = c.getContext('2d');
+  var t = 0;
+  function quadro(){
+    t += 0.02;
+    ctx.clearRect(0,0,c.width,c.height);
+    for (var i = 0; i < 40; i++){
+      var x = (Math.sin(t + i) * 0.5 + 0.5) * c.width;
+      var y = (Math.cos(t * 0.7 + i) * 0.5 + 0.5) * c.height;
+      ctx.fillStyle = i % 2 ? 'rgba(124,58,237,.5)' : 'rgba(185,28,28,.4)';
+      ctx.beginPath(); ctx.arc(x, y, 40 + (i % 5) * 10, 0, Math.PI * 2); ctx.fill();
+    }
+    requestAnimationFrame(quadro);
+  }
+  quadro();
+})();
+
+// ── WebGL com cor animada ───────────────────────────────────────────────
+(function(){
+  var c = document.getElementById('cgl');
+  var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+  if (!gl) { c.setAttribute('data-webgl','indisponivel'); return; }
+  var t = 0;
+  function quadro(){
+    t += 0.01;
+    gl.viewport(0,0,c.width,c.height);
+    gl.clearColor(0.05 + Math.abs(Math.sin(t)) * 0.35, 0.02, 0.12 + Math.abs(Math.cos(t)) * 0.3, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    requestAnimationFrame(quadro);
+  }
+  quadro();
+})();
+
+// ── partículas que seguem o ponteiro ────────────────────────────────────
+(function(){
+  var c = document.getElementById('cpart');
+  var ctx = c.getContext('2d');
+  var mx = c.width / 2, my = c.height / 2;
+  var ps = [];
+  for (var i = 0; i < 90; i++) ps.push({x:Math.random()*c.width,y:Math.random()*c.height,vx:0,vy:0});
+  // Listener em `window`: é o que denuncia parallax/campo de mouse global.
+  window.addEventListener('pointermove', function(e){
+    var r = c.getBoundingClientRect();
+    mx = (e.clientX - r.left) * (c.width / Math.max(1, r.width));
+    my = (e.clientY - r.top) * (c.height / Math.max(1, r.height));
+  }, { passive: true });
+  function quadro(){
+    ctx.clearRect(0,0,c.width,c.height);
+    ctx.fillStyle = 'rgba(245,245,244,.8)';
+    for (var i = 0; i < ps.length; i++){
+      var p = ps[i];
+      var dx = mx - p.x, dy = my - p.y;
+      var d = Math.max(60, Math.hypot(dx,dy));
+      p.vx += (dx / d) * 0.6; p.vy += (dy / d) * 0.6;
+      p.vx *= 0.94; p.vy *= 0.94;
+      p.x += p.vx; p.y += p.vy;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+    }
+    requestAnimationFrame(quadro);
+  }
+  quadro();
+})();
+
+// ── tilt de card por hover (reação ao ponteiro sem runtime nomeado) ─────
+document.querySelectorAll('#midias .card').forEach(function(card){
+  card.addEventListener('pointermove', function(e){
+    var r = card.getBoundingClientRect();
+    var rx = ((e.clientY - r.top) / r.height - 0.5) * -12;
+    var ry = ((e.clientX - r.left) / r.width - 0.5) * 12;
+    card.style.transform = 'perspective(600px) rotateX(' + rx + 'deg) rotateY(' + ry + 'deg)';
+  });
+  card.addEventListener('pointerleave', function(){ card.style.transform = ''; });
+});
+</script>
+
+<script>
+// ── interações de estado ────────────────────────────────────────────────
+function alternarExpandido(botao){
+  var aberto = botao.getAttribute('aria-expanded') === 'true';
+  botao.setAttribute('aria-expanded', String(!aberto));
+}
+document.getElementById('btn-menu').addEventListener('click', function(){ alternarExpandido(this); });
+document.getElementById('btn-submenu').addEventListener('click', function(e){ e.stopPropagation(); alternarExpandido(this); });
+document.querySelectorAll('[data-accordion]').forEach(function(b){
+  b.addEventListener('click', function(){ alternarExpandido(this); });
+});
+
+document.querySelectorAll('[role="tab"]').forEach(function(tab){
+  tab.addEventListener('click', function(){
+    document.querySelectorAll('[role="tab"]').forEach(function(t){
+      t.setAttribute('aria-selected', String(t === tab));
+      var painel = document.getElementById(t.getAttribute('aria-controls'));
+      if (painel) painel.hidden = t !== tab;
+    });
+  });
+});
+
+var modal = document.getElementById('portal-modal');
+document.getElementById('abrir-modal').addEventListener('click', function(){
+  modal.setAttribute('data-state','open');
+  document.body.style.overflow = 'hidden';
+});
+function fecharModal(){
+  modal.removeAttribute('data-state');
+  document.body.style.overflow = '';
+}
+document.getElementById('fechar-modal').addEventListener('click', fecharModal);
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') fecharModal(); });
+
+var slide = 1;
+document.querySelector('[data-carousel-next]').addEventListener('click', function(){
+  slide = slide % 4 + 1;
+  document.getElementById('slide').textContent = 'Slide ' + slide;
+});
+document.querySelector('[data-carousel-prev]').addEventListener('click', function(){
+  slide = slide === 1 ? 4 : slide - 1;
+  document.getElementById('slide').textContent = 'Slide ' + slide;
+});
+
+document.getElementById('trocar-tema').addEventListener('click', function(){
+  var claro = document.documentElement.classList.toggle('tema-claro');
+  this.setAttribute('aria-checked', String(claro));
+});
+
+// ── reveal por IntersectionObserver ─────────────────────────────────────
+var io = new IntersectionObserver(function(entradas){
+  entradas.forEach(function(e){ if (e.isIntersecting) e.target.classList.add('visivel'); });
+}, { threshold: 0.2 });
+document.querySelectorAll('.revelar').forEach(function(el){ io.observe(el); });
+
+// ── parallax por scroll ─────────────────────────────────────────────────
+window.addEventListener('scroll', function(){
+  var s = document.getElementById('parallax');
+  if (!s) return;
+  var r = s.getBoundingClientRect();
+  var p = Math.max(-1, Math.min(1, r.top / window.innerHeight));
+  s.querySelector('.camada').style.transform = 'translateY(' + (p * 80) + 'px)';
+}, { passive: true });
+
+// ── shadow DOM ──────────────────────────────────────────────────────────
+(function(){
+  var aberto = document.getElementById('shadow-aberto').attachShadow({ mode: 'open' });
+  aberto.innerHTML = '<style>:host{display:block}.b{padding:12px 20px;border-radius:8px;background:#7c3aed;color:#fff;cursor:pointer;display:inline-block}</style>' +
+    '<div class="b" role="button" tabindex="0" aria-expanded="false">Botão em shadow aberto</div><p style="color:#f5f5f4">Conteúdo percorrível.</p>';
+  var b = aberto.querySelector('.b');
+  b.addEventListener('click', function(){
+    b.setAttribute('aria-expanded', b.getAttribute('aria-expanded') === 'true' ? 'false' : 'true');
+  });
+
+  var fechado = document.getElementById('shadow-fechado').attachShadow({ mode: 'closed' });
+  fechado.innerHTML = '<p style="color:#f5f5f4">Conteúdo NÃO percorrível (shadow fechado).</p>';
+})();
+
+// ── assets carregados por interação ─────────────────────────────────────
+function adicionar(rotulo, cor){
+  var d = document.createElement('div');
+  d.className = 'card';
+  d.textContent = rotulo;
+  var img = document.createElement('img');
+  img.width = 40; img.height = 40; img.alt = '';
+  img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' fill='" + cor + "'/%3E%3C/svg%3E";
+  d.appendChild(img);
+  document.getElementById('destino-lazy').appendChild(d);
+}
+document.getElementById('carregar-hover').addEventListener('mouseenter', function(){ adicionar('veio do hover', '%237c3aed'); });
+document.getElementById('carregar-clique').addEventListener('click', function(){ adicionar('veio do clique', '%23b91c1c'); });
+window.addEventListener('scroll', function(){
+  if (window.scrollY > 2000 && !window.__jaCarregou) {
+    window.__jaCarregou = true;
+    adicionar('veio do scroll', '%2316a34a');
+  }
+}, { passive: true });
+
+// ── ações perigosas: registram que foram acionadas ──────────────────────
+// Se qualquer uma disparar, `window.__perigoAcionado` fica preenchido e o teste
+// reprova. É a prova de que a política barrou, não uma promessa.
+window.__perigoAcionado = [];
+document.querySelectorAll('[data-perigo]').forEach(function(b){
+  b.addEventListener('click', function(){
+    window.__perigoAcionado.push(b.getAttribute('data-perigo'));
+  });
+});
+document.getElementById('form-perigo').addEventListener('submit', function(e){
+  window.__perigoAcionado.push('submit');
+  e.preventDefault();
+});
+document.getElementById('abrir-popup').addEventListener('click', function(){
+  window.__perigoAcionado.push('popup');
+  window.open('https://outro-dominio.invalid/', '_blank');
+});
+</script>
+</body>
+</html>

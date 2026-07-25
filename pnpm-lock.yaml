@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@ds/engine-v2':
+        specifier: workspace:^
+        version: link:packages/engine-v2
       '@ds/explorer':
         specifier: workspace:^
         version: link:packages/explorer

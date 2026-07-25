@@ -102,7 +102,38 @@ export {
 } from './segment/representation.js';
 export { type EvidenciaNome, nomeEhGenerico, nomearPorEvidencia } from './segment/naming.js';
 
-// ── Compilador (puro) ────────────────────────────────────────────────────────
+// ── Segmentação por evidência ────────────────────────────────────────────────
+export {
+  type EntradaSegmentacao,
+  type RejeitadoV2,
+  type ResultadoSegmentacaoV2,
+  type SegmentoV2,
+  type SinaisDeConteudo,
+  contarSinais,
+  escolherSecoes,
+  inferirCategoria,
+  segmentarPorEvidencia,
+  seloDe,
+  validarSegmentoV2,
+} from './segment/segment-v2.js';
+
+// ── Mapas (puro) ─────────────────────────────────────────────────────────────
+export {
+  LIMIAR_CONTENCAO,
+  construirBackgrounds,
+  construirCamadas,
+  construirMapaEstrutural,
+  construirMidias,
+  construirRuntimes,
+  contido,
+  decidirPosse,
+  intersecao,
+  ordemDePintura,
+  secoesCandidatas,
+} from './mapper/build-maps.js';
+export type * from './mapper/raw.js';
+
+// ── Compilador ───────────────────────────────────────────────────────────────
 export {
   type CategoriaSvg,
   type ClassificacaoSvg,
@@ -110,3 +141,119 @@ export {
   classificarSvg,
   isolarIdsSvg,
 } from './compiler/svg-classify.js';
+export {
+  type BlocoCss,
+  type ResponsabilidadeCss,
+  type ResultadoCss,
+  ARQUIVO_CSS,
+  ORDEM_CSS,
+  animacoesReferenciadas,
+  classificarBlocoCss,
+  fatiarCss,
+  organizarCss,
+  podemColidir,
+} from './compiler/css-organize.js';
+export {
+  type ArquivoJs,
+  type ResponsabilidadeJs,
+  type ResultadoJs,
+  ARQUIVO_JS,
+  classificarJs,
+  organizarJs,
+  podeUnir,
+  tagsDeScript,
+} from './compiler/js-organize.js';
+export {
+  type SinalDeFerramenta,
+  detectarFerramentas,
+  montarStack,
+  renderizarStackMd,
+} from './compiler/stack.js';
+export {
+  type BundleEscrito,
+  type EntradaBundle,
+  COMPILER_VERSION,
+  escreverBundle,
+  escreverValidacao,
+  processarSvgs,
+} from './compiler/bundle.js';
+
+// ── Navegador e orquestração ─────────────────────────────────────────────────
+export {
+  type OpcoesSessao,
+  type PaginaV2,
+  type SessaoV2,
+  PlaywrightIndisponivel,
+  UA,
+  abrirSessao,
+  carregarPlaywright,
+  moverPara,
+} from './browser/page.js';
+export {
+  type OpcoesTemporal,
+  type SinkFrame,
+  INSTANTES_PADRAO,
+  atribuirMovimento,
+  naturezaDaRegiao,
+  observarTemporal,
+} from './observe/temporal.js';
+export {
+  type OpcoesVarredura,
+  type ResultadoVarredura,
+  diferencaDeMedida,
+  valeComplementares,
+  varrerPonteiro,
+} from './explore/pointer-run.js';
+export {
+  type OpcoesPercurso,
+  type ParadaContexto,
+  SOBREPOSICAO_PADRAO,
+  percorrerComScroll,
+  posicoesDeParada,
+} from './explore/scroll-walk.js';
+export {
+  type OpcoesGrafo,
+  type ResultadoGrafo,
+  assinaturaDoEstado,
+  construirGrafoDeEstados,
+  houveMudanca,
+} from './explore/state-graph.js';
+export {
+  ALVO_NO_PONTO_FN,
+  ASSINATURA_ESTADO_FN,
+  ATTR_REF,
+  BLUR_FN,
+  CENTRO_DO_REF_FN,
+  COLETAR_CSS_FN,
+  COLETAR_INSTRUMENTACAO_FN,
+  COLETAR_JS_INLINE_FN,
+  COLETAR_MAPA_FN,
+  FOCAR_REF_FN,
+  HTML_DO_REF_FN,
+  INIT_SCRIPT,
+  MEDIR_ALVOS_FN,
+  PORTAL_HTML_FN,
+  REGISTRO_GLOBAL,
+  ROLAR_PARA_FN,
+  SONDAR_PONTO_FN,
+  chamar,
+  limparInstrumentacao,
+} from './instrumentation/index.js';
+export {
+  type LogV2,
+  type OpcoesCaptura,
+  type ResultadoCaptura,
+  FASE_V2,
+  capturarComV2,
+} from './engine.js';
+
+// ── Testes (fixtures) ────────────────────────────────────────────────────────
+// Exportado para os scripts de comparação e os testes de navegador servirem as
+// fixtures por HTTP. `file://` não tem origem, e metade do que se mede aqui
+// (mesma-origem de iframe, política de asset, resposta que nunca termina) depende
+// de haver um servidor de verdade.
+export {
+  type ServidorFixture,
+  gifAnimado,
+  iniciarServidorFixture,
+} from './testing/fixture-server.js';

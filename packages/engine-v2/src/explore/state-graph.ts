@@ -53,6 +53,7 @@ export const assinaturaDoEstado = (a: RawAssinaturaEstado): string => {
     a.overflow,
     String(a.expandidos),
     String(a.selecionados),
+    String(a.detalhesAbertos),
     a.focado,
     // Overlays: só a forma (tag+caixa+classes), não o conteúdo.
     a.overlays
@@ -80,6 +81,10 @@ export const houveMudanca = (
   if (depois.overlays.length > antes.overlays.length) motivos.push('overlay apareceu');
   if (depois.overlays.length < antes.overlays.length) motivos.push('overlay fechou');
   if (depois.expandidos !== antes.expandidos) motivos.push('aria-expanded mudou');
+  // `<details open>` é troca de estado sem ARIA e sem mudar o tamanho do HTML: o
+  // conteúdo já estava no DOM, só escondido. Sem contar isto, o accordion NATIVO
+  // — o mais comum em site institucional — passava como "sem efeito".
+  if (depois.detalhesAbertos !== antes.detalhesAbertos) motivos.push('<details> abriu/fechou');
   if (depois.selecionados !== antes.selecionados) motivos.push('seleção mudou');
   if (depois.htmlClasses !== antes.htmlClasses) motivos.push('classe do <html> mudou');
   if (depois.bodyClasses !== antes.bodyClasses) motivos.push('classe do <body> mudou');
@@ -91,6 +96,46 @@ export const houveMudanca = (
     if (delta > 200 || relativo > 0.01) motivos.push('HTML do corpo mudou');
   }
   return { mudou: motivos.length > 0, motivos };
+};
+
+/**
+ * Traduz o motivo da política para o enum do contrato.
+ *
+ * A política do V1 (`ehSeguroClicar`) devolve TEXTO LIVRE em português — "envia
+ * formulário", "campo sensível (arquivo/senha/submit)". O manifesto exige um
+ * `BlockReason` fechado. Um `as BlockReason` faria o texto passar pelo compilador
+ * e reprovar no schema em runtime, que foi exatamente o que aconteceu: a captura
+ * inteira ficava inválida por causa de um rótulo.
+ *
+ * O fallback é `alteracao-persistente` (o motivo mais genérico e mais grave) em
+ * vez de silenciar: uma ação barrada por razão desconhecida continua barrada.
+ */
+export const motivoParaEnum = (motivo: string): BlockReason => {
+  const m = motivo.toLowerCase();
+  if (/submit|envia formul/.test(m)) return 'submit';
+  if (/campo sens|senha|password/.test(m)) return 'campo-sensivel';
+  if (/arquivo|file/.test(m)) return 'upload';
+  if (/download|baixar/.test(m)) return 'download';
+  if (/fora|dom[íi]nio|navega/.test(m)) return 'navegacao-externa';
+  if (/protocolo/.test(m)) return 'protocolo-externo';
+  if (/popup|nova aba/.test(m)) return 'popup';
+  if (/clipboard|copiar/.test(m)) return 'clipboard';
+  if (/permiss/.test(m)) return 'permissao';
+  if (/geoloc|localiza/.test(m)) return 'geolocalizacao';
+  if (/c[âa]mera/.test(m)) return 'camera';
+  if (/microfone/.test(m)) return 'microfone';
+  if (/instala/.test(m)) return 'instalacao';
+  if (/aplicativo/.test(m)) return 'abrir-aplicativo';
+  if (/mensagem/.test(m)) return 'envio-mensagem';
+  if (/compra|pagar|checkout/.test(m)) return 'compra';
+  if (/pagamento/.test(m)) return 'pagamento';
+  if (/exclu|apagar|deletar/.test(m)) return 'exclusao';
+  if (/confirma/.test(m)) return 'confirmacao-irreversivel';
+  if (/login|entrar/.test(m)) return 'login';
+  if (/cadastro|signup/.test(m)) return 'cadastro';
+  if (/or[çc]amento|tempo/.test(m)) return 'orcamento';
+  if (/irrevers|desabilitado|reprovado|revers[íi]ve/.test(m)) return 'alteracao-persistente';
+  return 'alteracao-persistente';
 };
 
 /** Rótulo em PT-BR do estado, a partir da ação e do que mudou. */
@@ -327,7 +372,7 @@ export const construirGrafoDeEstados = async (
   for (const c of opts.candidatos) {
     for (const b of c.barradas) {
       bloqueadas.push({
-        reason: (b.motivo as BlockReason) ?? 'alteracao-persistente',
+        reason: motivoParaEnum(b.motivo),
         target: `${c.descriptor.tag}${c.descriptor.text ? ` "${c.descriptor.text.slice(0, 40)}"` : ''}`,
         detail: b.motivo,
       });

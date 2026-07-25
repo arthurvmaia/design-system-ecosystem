@@ -47,6 +47,17 @@ export type RawNode = {
   semanticAncestor: string | null;
   siblingIndex: number;
   structuralSignature: string;
+  /**
+   * Campos de SEGURANÇA, consumidos pela política do V1 (`ehSeguroClicar`).
+   * `href` vem CRU de propósito: decidir mesma-origem exige a URL como está no
+   * DOM, e sanitizar antes tiraria o que a decisão precisa.
+   */
+  href: string | null;
+  tipo: string | null;
+  tabindex: number | null;
+  download: boolean;
+  targetBlank: boolean;
+  desabilitado: boolean;
   /** Papel estrutural, já decidido in-page (tem acesso ao CSSOM). */
   papel: string;
   /** Papel da camada visual. */
@@ -160,6 +171,8 @@ export type RawAssinaturaEstado = {
   overlays: Array<{ ref: string | null; tag: string; classes: string; box: BoxPx }>;
   expandidos: number;
   selecionados: number;
+  /** Quantos `<details open>` — estado sem ARIA que o hash de HTML não pega. */
+  detalhesAbertos: number;
   focado: string;
   scrollY: number;
   scrollX: number;

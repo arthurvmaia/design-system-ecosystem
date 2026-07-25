@@ -147,9 +147,15 @@ export const COLETAR_MAPA_FN = `
     if (el.shadowRoot) return 'shadow-host';
     // Geometria: faixa de largura quase total e altura relevante é seção, mesmo
     // sendo <div>. É o caso mais comum em site moderno (nada é <section>).
+    //
+    // MAS só no fluxo. Uma camada \`position:absolute; inset:0\` cobre a seção
+    // inteira e tem exatamente a mesma geometria dela — promovê-la a "seção" faz
+    // o fundo virar um segmento próprio, sem texto e sem nome, que é o "Bloco"
+    // vazio da Galeria. Fora do fluxo e sem texto é CAMADA, não seção.
+    var noFluxo = cs.position === 'static' || cs.position === 'relative' || cs.position === 'sticky';
     var larguraCheia = rect.width >= vw * 0.9;
-    if (larguraCheia && rect.height >= vh * 0.25) return 'section';
-    if (larguraCheia && rect.height >= 60 && temTexto) return 'section';
+    if (noFluxo && larguraCheia && rect.height >= vh * 0.25) return 'section';
+    if (noFluxo && larguraCheia && rect.height >= 60 && temTexto) return 'section';
     // Card: caixa com borda/sombra/fundo próprio e conteúdo dentro.
     var temMoldura =
       (cs.borderRadius && cs.borderRadius !== '0px') ||
@@ -165,7 +171,15 @@ export const COLETAR_MAPA_FN = `
   var papelDaCamada = function (tag, cs, rect, fundo, temTexto, temMidia, zNum) {
     if (cs.position === 'fixed') return 'fixed';
     if (cs.position === 'sticky') return 'sticky';
-    if (temMidia) return 'media';
+    // Mídia fora do fluxo que cobre a área é FUNDO, não conteúdo: é o vídeo de
+    // fundo com \`object-fit:cover\` atrás do texto do CTA. Chamá-lo de "media"
+    // fazia \`asBackground\` sair falso e o nome perder o "de fundo".
+    if (temMidia) {
+      var foraDoFluxoMidia = cs.position === 'absolute';
+      var cobreMidia = rect.width >= vw * 0.6 && rect.height >= vh * 0.3;
+      if (foraDoFluxoMidia && cobreMidia && zNum <= 0) return 'background';
+      return 'media';
+    }
     // Cobre área e está atrás (z negativo, ou primeiro filho absoluto sem texto).
     var cobre = rect.width >= vw * 0.6 && rect.height >= vh * 0.3;
     var foraDoFluxo = cs.position === 'absolute';
@@ -418,6 +432,16 @@ export const COLETAR_MAPA_FN = `
         semanticAncestor: ancestralSemantico(el),
         siblingIndex: indiceEntreIguais(el),
         structuralSignature: assinatura(el),
+        // Campos de SEGURANÇA. Sem eles a política do V1 (\`navegaParaFora\`,
+        // \`ehCampoSensivel\`) não tem o que avaliar, e um link para outro domínio
+        // ou um <input type=file> passaria como clicável. NÃO sanitizamos o href
+        // aqui: a decisão de mesma-origem precisa da URL como está no DOM.
+        href: el.getAttribute ? el.getAttribute('href') : null,
+        tipo: el.getAttribute ? el.getAttribute('type') : null,
+        tabindex: el.getAttribute && el.getAttribute('tabindex') !== null ? Number(el.getAttribute('tabindex')) : null,
+        download: el.hasAttribute ? el.hasAttribute('download') : false,
+        targetBlank: el.getAttribute ? el.getAttribute('target') === '_blank' : false,
+        desabilitado: (el.hasAttribute && el.hasAttribute('disabled')) || el.getAttribute('aria-disabled') === 'true',
         papel: papel,
         camada: camada,
         visivel: visivel,
@@ -573,6 +597,11 @@ export const COLETAR_MAPA_FN = `
         }
         midias.push(m);
       }
+
+      // O endereço do PRÓXIMO nó. Sem este incremento, todo elemento recebe
+      // \`data-dsx2="0"\`, o mapa ref→nó colapsa num único par e a busca de HTML
+      // por ref devolve sempre o mesmo elemento.
+      idx++;
     }
   };
 
@@ -832,9 +861,13 @@ export const ASSINATURA_ESTADO_FN = `
 
   var expandidos = 0;
   var selecionados = 0;
+  var detalhesAbertos = 0;
   try {
     expandidos = document.querySelectorAll('[aria-expanded="true"]').length;
     selecionados = document.querySelectorAll('[aria-selected="true"],[aria-current],[data-state="active"]').length;
+    // \`<details open>\` muda de estado sem tocar em ARIA e sem alterar o tamanho
+    // do HTML — o conteúdo já estava lá, apenas escondido.
+    detalhesAbertos = document.querySelectorAll('details[open]').length;
   } catch (e) {}
 
   var ativo = '';
@@ -860,6 +893,7 @@ export const ASSINATURA_ESTADO_FN = `
     overlays: overlaysVisiveis,
     expandidos: expandidos,
     selecionados: selecionados,
+    detalhesAbertos: detalhesAbertos,
     focado: ativo,
     scrollY: window.scrollY || 0,
     scrollX: window.scrollX || 0

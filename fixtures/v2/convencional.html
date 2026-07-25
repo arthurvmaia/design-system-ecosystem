@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fixture V2 — site convencional</title>
+
+<!--
+  Fixture de SITE CONVENCIONAL.
+
+  Existe por causa de um critério explícito do pedido: "O V2 não pode melhorar
+  sites complexos e piorar sites simples." Aqui não há canvas, WebGL, Lottie nem
+  runtime nenhum — é uma landing page institucional como a maioria: HTML, CSS,
+  imagens, um accordion, um formulário.
+
+  A resposta certa é conhecida e é o que o teste cobra:
+  - 8 seções úteis (header, hero, logos, recursos, planos, depoimentos, FAQ, CTA, rodapé);
+  - nenhum card preto e nenhum segmento vazio;
+  - representação `componente-portatil` em todas;
+  - selo `completo` nas que não têm asset externo;
+  - nome descritivo, nunca "Seção".
+
+  Nada de marca real: os nomes são inventados.
+-->
+
+<style>
+:root{
+  --tinta:#18181b;
+  --papel:#ffffff;
+  --suave:#f4f4f5;
+  --borda:#e4e4e7;
+  --acento:#0f766e;
+  --acento-forte:#0d5f58;
+  --texto-suave:#52525b;
+}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.65 -apple-system,system-ui,"Segoe UI",sans-serif;color:var(--tinta);background:var(--papel)}
+.container{max-width:1120px;margin:0 auto;padding:0 24px}
+h1,h2,h3{line-height:1.2;margin:0 0 16px}
+h1{font-size:clamp(2rem,5vw,3.25rem);letter-spacing:-.02em}
+h2{font-size:clamp(1.5rem,3vw,2.25rem);letter-spacing:-.01em}
+h3{font-size:1.125rem}
+p{margin:0 0 16px;color:var(--texto-suave)}
+section{padding:88px 0;border-bottom:1px solid var(--borda)}
+img{max-width:100%;height:auto;display:block}
+
+.botao{display:inline-block;padding:12px 24px;border-radius:6px;background:var(--acento);color:#fff;text-decoration:none;font-weight:600;border:0;font-size:1rem;cursor:pointer}
+.botao:hover{background:var(--acento-forte)}
+.botao:focus-visible{outline:3px solid var(--acento);outline-offset:2px}
+.botao--secundario{background:transparent;color:var(--acento);border:1px solid var(--borda)}
+
+.cabecalho{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--borda)}
+.cabecalho .barra{display:flex;align-items:center;justify-content:space-between;padding:16px 0}
+.cabecalho nav ul{display:flex;gap:28px;list-style:none;margin:0;padding:0}
+.cabecalho nav a{color:var(--tinta);text-decoration:none}
+.cabecalho nav a:hover{color:var(--acento)}
+
+.hero{background:var(--suave);text-align:center}
+.hero .acoes{display:flex;gap:12px;justify-content:center;margin-top:24px}
+
+.marcas ul{display:flex;flex-wrap:wrap;gap:48px;justify-content:center;list-style:none;margin:0;padding:0;opacity:.7}
+
+.grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:32px;margin-top:48px}
+.recurso{padding:28px;border:1px solid var(--borda);border-radius:10px}
+.recurso h3{margin-top:12px}
+
+.planos{background:var(--suave)}
+.plano{padding:32px;border:1px solid var(--borda);border-radius:12px;background:var(--papel)}
+.plano--destaque{border-color:var(--acento);box-shadow:0 12px 32px rgba(15,118,110,.12)}
+.plano .preco{font-size:2.25rem;font-weight:700;color:var(--tinta);margin:8px 0 20px}
+.plano ul{list-style:none;padding:0;margin:0 0 24px}
+.plano li{padding:6px 0;color:var(--texto-suave)}
+
+.depoimento{padding:28px;border-left:3px solid var(--acento);background:var(--suave);border-radius:0 10px 10px 0}
+.depoimento cite{display:block;margin-top:12px;font-style:normal;font-weight:600;color:var(--tinta)}
+
+.faq details{border-bottom:1px solid var(--borda);padding:20px 0}
+.faq summary{cursor:pointer;font-weight:600;font-size:1.0625rem}
+.faq details[open] summary{color:var(--acento)}
+.faq p{margin:12px 0 0}
+
+.contato{text-align:center}
+.contato form{display:grid;gap:12px;max-width:420px;margin:32px auto 0;text-align:left}
+.contato label{font-size:.9375rem;font-weight:600}
+.contato input,.contato textarea{width:100%;padding:10px 12px;border:1px solid var(--borda);border-radius:6px;font:inherit;margin-top:4px}
+
+.rodape{padding:56px 0;background:var(--tinta);color:#e4e4e7;border:0}
+.rodape a{color:#a1a1aa;text-decoration:none}
+.rodape .colunas{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:32px}
+
+@media (max-width:720px){
+  .cabecalho nav ul{gap:16px}
+  section{padding:56px 0}
+}
+</style>
+</head>
+<body>
+
+<header class="cabecalho">
+  <div class="container barra">
+    <a href="#inicio" style="font-weight:700;text-decoration:none;color:var(--tinta)">Meridiano</a>
+    <nav aria-label="Principal">
+      <ul>
+        <li><a href="#recursos">Recursos</a></li>
+        <li><a href="#planos">Planos</a></li>
+        <li><a href="#depoimentos">Clientes</a></li>
+        <li><a href="#faq">Dúvidas</a></li>
+      </ul>
+    </nav>
+    <a class="botao" href="#contato">Falar com a equipe</a>
+  </div>
+</header>
+
+<section class="hero" id="inicio">
+  <div class="container">
+    <h1>Gestão de contratos sem planilha</h1>
+    <p style="max-width:620px;margin:0 auto 8px">
+      Centralize prazos, aprovações e assinaturas num só lugar. Sua equipe jurídica
+      deixa de perder o dia procurando a versão certa do documento.
+    </p>
+    <div class="acoes">
+      <a class="botao" href="#contato">Começar agora</a>
+      <a class="botao botao--secundario" href="#recursos">Ver como funciona</a>
+    </div>
+    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='960' height='480'%3E%3Crect width='960' height='480' fill='%23ffffff' stroke='%23e4e4e7'/%3E%3Crect x='40' y='40' width='280' height='400' fill='%23f4f4f5'/%3E%3Crect x='360' y='40' width='560' height='60' fill='%23f4f4f5'/%3E%3Crect x='360' y='128' width='560' height='312' fill='%23fafafa'/%3E%3C/svg%3E"
+         width="960" height="480" alt="Painel do produto com lista de contratos" style="margin:48px auto 0;border-radius:12px;border:1px solid var(--borda)">
+  </div>
+</section>
+
+<section class="marcas" id="clientes">
+  <div class="container">
+    <p style="text-align:center;font-size:.875rem;text-transform:uppercase;letter-spacing:.08em">
+      Usado por equipes jurídicas de
+    </p>
+    <ul>
+      <li>Nortada</li><li>Arauá</li><li>Cordilheira</li><li>Vale Claro</li><li>Serena</li>
+    </ul>
+  </div>
+</section>
+
+<section id="recursos">
+  <div class="container">
+    <h2>O que você resolve com o Meridiano</h2>
+    <p style="max-width:640px">Três problemas que aparecem em toda equipe que passa de dez contratos por mês.</p>
+    <div class="grade">
+      <article class="recurso">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' rx='8' fill='%230f766e'/%3E%3C/svg%3E" width="40" height="40" alt="">
+        <h3>Prazos que não passam batido</h3>
+        <p>Alertas por vencimento, renovação automática e um calendário que a diretoria consegue ler.</p>
+      </article>
+      <article class="recurso">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' rx='8' fill='%230f766e'/%3E%3C/svg%3E" width="40" height="40" alt="">
+        <h3>Uma versão, não sete</h3>
+        <p>Histórico de alterações com autor e data. Quem aprovou o quê deixa de ser uma investigação.</p>
+      </article>
+      <article class="recurso">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Crect width='40' height='40' rx='8' fill='%230f766e'/%3E%3C/svg%3E" width="40" height="40" alt="">
+        <h3>Assinatura no fluxo</h3>
+        <p>Envio, acompanhamento e arquivamento sem sair da plataforma nem trocar de aba.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="planos" id="planos">
+  <div class="container">
+    <h2>Planos</h2>
+    <p>Sem taxa de implantação. Cancele quando quiser.</p>
+    <div class="grade">
+      <div class="plano">
+        <h3>Essencial</h3>
+        <div class="preco">R$ 249/mês</div>
+        <ul><li>Até 50 contratos ativos</li><li>3 usuários</li><li>Alertas por e-mail</li></ul>
+        <a class="botao botao--secundario" href="#contato">Escolher Essencial</a>
+      </div>
+      <div class="plano plano--destaque">
+        <h3>Profissional</h3>
+        <div class="preco">R$ 690/mês</div>
+        <ul><li>Contratos ilimitados</li><li>15 usuários</li><li>Assinatura eletrônica inclusa</li><li>Relatórios mensais</li></ul>
+        <a class="botao" href="#contato">Escolher Profissional</a>
+      </div>
+      <div class="plano">
+        <h3>Corporativo</h3>
+        <div class="preco">Sob consulta</div>
+        <ul><li>Usuários ilimitados</li><li>Integração com o ERP</li><li>Gerente de conta</li></ul>
+        <a class="botao botao--secundario" href="#contato">Falar com vendas</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="depoimentos">
+  <div class="container">
+    <h2>Quem já usa</h2>
+    <div class="grade">
+      <blockquote class="depoimento">
+        <p>“Cortamos o tempo de aprovação de onze dias para três. O jurídico parou de ser o gargalo.”</p>
+        <cite>Helena Vasquez — Diretora Jurídica, Nortada</cite>
+      </blockquote>
+      <blockquote class="depoimento">
+        <p>“A migração levou uma tarde. No mês seguinte já tínhamos o histórico completo dos contratos antigos.”</p>
+        <cite>Rafael Okuda — Coordenador de Compliance, Arauá</cite>
+      </blockquote>
+    </div>
+  </div>
+</section>
+
+<section class="faq" id="faq">
+  <div class="container" style="max-width:760px">
+    <h2>Dúvidas frequentes</h2>
+    <details open>
+      <summary>Preciso migrar os contratos antigos?</summary>
+      <p>Não é obrigatório. Você pode começar pelos novos e importar o histórico quando fizer sentido.</p>
+    </details>
+    <details>
+      <summary>A assinatura eletrônica tem validade jurídica?</summary>
+      <p>Sim, com certificado e trilha de auditoria. O comprovante fica anexado ao contrato.</p>
+    </details>
+    <details>
+      <summary>Como funciona o suporte?</summary>
+      <p>Chat em horário comercial nos planos Essencial e Profissional; gerente dedicado no Corporativo.</p>
+    </details>
+    <details>
+      <summary>Meus dados ficam onde?</summary>
+      <p>Em servidores no Brasil, com backup diário e criptografia em repouso.</p>
+    </details>
+  </div>
+</section>
+
+<section class="contato" id="contato">
+  <div class="container">
+    <h2>Vamos conversar</h2>
+    <p>Conte o tamanho da sua operação e devolvemos uma proposta em até dois dias úteis.</p>
+    <form action="#" method="post">
+      <label>Nome<input type="text" name="nome" required></label>
+      <label>E-mail corporativo<input type="email" name="email" required></label>
+      <label>Contratos por mês<input type="number" name="volume" min="1"></label>
+      <label>Mensagem<textarea name="mensagem" rows="4"></textarea></label>
+      <button type="submit" class="botao">Enviar mensagem</button>
+    </form>
+  </div>
+</section>
+
+<footer class="rodape">
+  <div class="container colunas">
+    <div>
+      <strong style="color:#fff">Meridiano</strong>
+      <p style="color:#a1a1aa">Gestão de contratos para equipes jurídicas.</p>
+    </div>
+    <div>
+      <h3 style="font-size:.9375rem;color:#fff">Produto</h3>
+      <p><a href="#recursos">Recursos</a><br><a href="#planos">Planos</a></p>
+    </div>
+    <div>
+      <h3 style="font-size:.9375rem;color:#fff">Empresa</h3>
+      <p><a href="#depoimentos">Clientes</a><br><a href="#faq">Dúvidas</a></p>
+    </div>
+    <div>
+      <h3 style="font-size:.9375rem;color:#fff">Contato</h3>
+      <p>contato@meridiano.exemplo<br>+55 11 4000-0000</p>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

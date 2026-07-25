@@ -96,6 +96,21 @@ export const percorrerComScroll = async (
   let pos = await rolarPara(0);
   let indice = 0;
   let ultimoY = -1;
+  /**
+   * O passo cresce quando a página é mais alta do que o teto de paradas alcança.
+   *
+   * Sem isto, uma página de 18 viewports com 6 paradas era percorrida só nos
+   * primeiros 4 mil pixels: o campo de partículas no meio da página nunca era
+   * provocado, e a metade de baixo não era observada. Explorar o topo em detalhe e
+   * ignorar o resto é pior que amostrar a página inteira — então quando não cabe,
+   * a cobertura passa a ser por AMOSTRAGEM, com a lacuna registrada em `overlap: 0`
+   * (o consumidor sabe que não foi contígua).
+   */
+  const passoContiguo = Math.max(80, Math.round(pos.viewportHeight * (1 - sobreposicao)));
+  const rolavel = Math.max(0, pos.pageHeight - pos.viewportHeight);
+  const passoAmostrado = maxParadas > 1 ? Math.ceil(rolavel / (maxParadas - 1)) : passoContiguo;
+  const passo = Math.max(passoContiguo, passoAmostrado);
+  const amostrado = passo > passoContiguo;
 
   while (indice < maxParadas) {
     if (abortado()) break;
@@ -122,7 +137,9 @@ export const percorrerComScroll = async (
       index: indice,
       scrollY: pos.scrollY,
       progress: progresso,
-      overlap: indice === 0 ? 0 : sobreposicao,
+      // `0` quando a cobertura foi amostrada: não houve sobreposição, houve
+      // lacuna, e mentir aqui esconderia que parte da página não foi vista.
+      overlap: indice === 0 || amostrado ? 0 : sobreposicao,
       direction: 'descendo',
       visible: resultado.visible,
       appeared: [...new Set([...novos, ...resultado.appeared])],
@@ -139,7 +156,6 @@ export const percorrerComScroll = async (
     if (pos.scrollY === ultimoY) break;
     ultimoY = pos.scrollY;
 
-    const passo = Math.max(80, Math.round(pos.viewportHeight * (1 - sobreposicao)));
     pos = await rolarPara(pos.scrollY + passo);
     indice++;
   }
@@ -206,7 +222,11 @@ export const posicoesDeParada = (
   if (viewportHeight <= 0) return [0];
   const out = [0];
   if (pageHeight <= viewportHeight) return out;
-  const passo = Math.max(80, Math.round(viewportHeight * (1 - sobreposicao)));
+  const contiguo = Math.max(80, Math.round(viewportHeight * (1 - sobreposicao)));
+  const rolavel = Math.max(0, pageHeight - viewportHeight);
+  const amostrado = maxParadas > 1 ? Math.ceil(rolavel / (maxParadas - 1)) : contiguo;
+  // Contígua quando cabe; amostrada quando não — nunca "só o topo em detalhe".
+  const passo = Math.max(contiguo, amostrado);
   let y = passo;
   while (out.length < maxParadas && y + viewportHeight < pageHeight + passo) {
     const clamped = Math.min(y, pageHeight - viewportHeight);

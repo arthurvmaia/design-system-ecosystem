@@ -84,6 +84,10 @@ export {
   type RawElementCapture,
   type RawState,
   PlaywrightUnavailableError,
+  // Exportado para o motor V2 REUSAR a captura de bytes da rede em vez de
+  // reimplementá-la: ela já tem guarda de SSRF, teto de memória e timeout
+  // individual por corpo, e reescrever isso é como se perde uma proteção.
+  capturarRede,
   exploreWithBrowser,
   renderWithBrowser,
 } from './browser.js';

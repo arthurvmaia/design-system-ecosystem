@@ -108,6 +108,7 @@ type PwRoute = {
   abort: (motivo?: string) => Promise<void>;
   continue: () => Promise<void>;
 };
+type PwCdp = { send: (metodo: string, params?: Record<string, unknown>) => Promise<unknown> };
 type PwContext = {
   addInitScript: (script: { content: string }) => Promise<void>;
   newPage: () => Promise<PwPage>;
@@ -115,6 +116,8 @@ type PwContext = {
   route: (padrao: string, h: (r: PwRoute) => void) => Promise<void>;
   close: () => Promise<void>;
   on: (evento: 'page', h: (p: PwPage) => void) => void;
+  /** Só existe no Chromium — por isso o uso é sempre com fallback. */
+  newCDPSession: (p: PwPage) => Promise<PwCdp>;
 };
 type PwBrowser = {
   newContext: (opts: Record<string, unknown>) => Promise<PwContext>;
@@ -251,20 +254,60 @@ export const abrirSessao = async (opts: OpcoesSessao): Promise<SessaoV2> => {
     }
   });
 
+  /**
+   * Screenshot por CDP, não por `page.screenshot()`.
+   *
+   * O motivo é concreto e foi descoberto pela fixture de "resposta que nunca
+   * termina": `page.screenshot()` espera `document.fonts.ready` antes de capturar,
+   * e numa página com uma requisição pendurada esse promise **nunca resolve** —
+   * então toda captura estourava o timeout e a observação temporal ficava vazia,
+   * silenciosamente. Um motor cuja medição depende de a página terminar de
+   * carregar não serve para medir páginas que não terminam de carregar.
+   *
+   * `Page.captureScreenshot` do CDP não espera fonte nem load. Também não congela
+   * animação — o que aqui é requisito, não efeito colateral: o default do
+   * Playwright (`animations: 'disabled'`) mataria justamente o movimento que a
+   * observação temporal existe para medir.
+   *
+   * O clip do CDP é em coordenadas do DOCUMENTO; o resto do motor pensa em
+   * coordenadas da VIEWPORT (é o que `getBoundingClientRect` devolve), então o
+   * scroll atual é somado na conversão.
+   */
+  const cdp = await contexto.newCDPSession(page).catch(() => null);
+
+  const capturar = async (o?: { clip?: BoxPx }): Promise<Uint8Array> => {
+    if (cdp !== null) {
+      try {
+        const params: Record<string, unknown> = { format: 'png', captureBeyondViewport: false };
+        if (o?.clip !== undefined) {
+          const scroll = (await page.evaluate(
+            '({x: window.scrollX || 0, y: window.scrollY || 0})',
+          )) as { x: number; y: number };
+          params.clip = {
+            x: o.clip.x + scroll.x,
+            y: o.clip.y + scroll.y,
+            width: Math.max(1, o.clip.w),
+            height: Math.max(1, o.clip.h),
+            scale: 1,
+          };
+        }
+        const res = (await cdp.send('Page.captureScreenshot', params)) as { data: string };
+        return new Uint8Array(Buffer.from(res.data, 'base64'));
+      } catch {
+        // CDP indisponível ou clip inválido: cai no caminho do Playwright.
+      }
+    }
+    return page.screenshot({
+      type: 'png',
+      animations: 'allow',
+      timeout: 4_000,
+      ...(o?.clip ? { clip: { x: o.clip.x, y: o.clip.y, width: o.clip.w, height: o.clip.h } } : {}),
+    });
+  };
+
   const adaptada: PaginaV2 = {
     evaluate: <T>(expressao: string) => page.evaluate(expressao) as Promise<T>,
-    screenshot: async (o) =>
-      page.screenshot({
-        type: 'png',
-        // `animations: 'allow'` é essencial: o default do Playwright é
-        // `disabled`, que congela animações CSS e Web Animations para deixar o
-        // screenshot estável — e mataria justamente o que a observação temporal
-        // existe para medir.
-        animations: 'allow',
-        ...(o?.clip
-          ? { clip: { x: o.clip.x, y: o.clip.y, width: o.clip.w, height: o.clip.h } }
-          : {}),
-      }),
+    screenshot: capturar,
     mouse: {
       move: (x, y, o) => page.mouse.move(x, y, o),
       click: (x, y) => page.mouse.click(x, y, { timeout: 3_000 }),

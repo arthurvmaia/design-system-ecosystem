@@ -82,6 +82,24 @@ test('o teto de paradas é respeitado (página infinita não gira sem fim)', () 
   assert.equal(posicoesDeParada(1_000_000, 900, SOBREPOSICAO_PADRAO, 5).length, 5);
 });
 
+test('página mais alta que o teto permite é AMOSTRADA de ponta a ponta, não só no topo', () => {
+  const vh = 900;
+  // 18 viewports de página, orçamento para 6 paradas: percorrer contiguamente
+  // cobriria 4 mil dos 16 mil pixels e a metade de baixo nunca seria observada.
+  const pos = posicoesDeParada(vh * 18, vh, SOBREPOSICAO_PADRAO, 6);
+  assert.equal(pos.length, 6);
+  assert.equal(pos[0], 0, 'começa no topo');
+  const ultimo = pos[pos.length - 1] as number;
+  assert.ok(
+    ultimo >= vh * 17 - vh,
+    `a última parada (${ultimo}) precisa alcançar o fim da página (${vh * 17})`,
+  );
+  // E os passos são maiores que a viewport: há lacuna, e o percurso declara isso
+  // em `overlap: 0` para o consumidor não supor cobertura contígua.
+  const passo = (pos[1] as number) - (pos[0] as number);
+  assert.ok(passo > vh, `passo ${passo} deveria exceder a viewport na amostragem`);
+});
+
 // ── Percurso (com página falsa) ──────────────────────────────────────────────
 
 test('o percurso registra uma parada por viewport, com progresso crescente', async () => {

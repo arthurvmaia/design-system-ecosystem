@@ -21,7 +21,8 @@
     "fila:progresso": "tsx scripts/fila-progresso.ts",
     "fila:concluir": "tsx scripts/fila-concluir.ts",
     "fila:limpar": "tsx scripts/fila-limpar.ts",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "comparar": "tsx scripts/comparar-motores.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
@@ -39,6 +40,7 @@
     "@ds/indexer": "workspace:^",
     "@ds/segmenter": "workspace:^",
     "@ds/server": "workspace:^",
-    "@ds/shared": "workspace:^"
+    "@ds/shared": "workspace:^",
+    "@ds/engine-v2": "workspace:^"
   }
 }
