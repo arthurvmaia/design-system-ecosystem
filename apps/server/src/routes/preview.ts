@@ -4,6 +4,8 @@ import { getDb, tables } from '@ds/indexer';
 import {
   CaptureManifest,
   RejeitadosManifest,
+  type ScrollBehavior,
+  SegmentScrollFile,
   SegmentStatesFile,
   type StoredState,
   assetRoutePrefix,
@@ -13,6 +15,7 @@ import {
   vaultCaptureManifest,
   vaultExtractedDir,
   vaultRejeitadosPath,
+  vaultSegmentScroll,
   vaultSegmentStates,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
@@ -171,9 +174,119 @@ const lerEstados = (dsId: string, segId: string): StoredState[] => {
   }
 };
 
+/** Lê os comportamentos de scroll de um segmento (associados na segmentação). */
+const lerScroll = (dsId: string, segId: string): ScrollBehavior[] => {
+  const path = vaultSegmentScroll(dsId as `ds_${string}`, segId);
+  if (!existsSync(path)) return [];
+  try {
+    return SegmentScrollFile.parse(JSON.parse(readFileSync(path, 'utf8'))).behaviors;
+  } catch {
+    return [];
+  }
+};
+
 /** Impede que HTML capturado feche o `<script>` do runtime de replay. */
 const escaparParaScript = (json: string): string =>
   json.replace(/<\/script/gi, '<\\/script').replace(/<!--/g, '<\\!--');
+
+/**
+ * Runtime de reprodução de SCROLL. Diferente do replay de estados (botões): aqui
+ * o comportamento é dirigido por SCROLL REAL numa área alta. Reveal/class-toggle
+ * por IntersectionObserver; parallax/progress-* por listener de scroll
+ * interpolando os keyframes; sticky por position:sticky. Reiniciar restaura o
+ * estado inicial; "Voltar ao topo" rola de volta; respeita prefers-reduced-motion
+ * (aplica o estado final sem animar). Sticky/runtime externo aparecem como aviso.
+ */
+const montarScrollReplay = (
+  corpo: string,
+  behaviors: ScrollBehavior[],
+): { corpo: string; head: string } => {
+  const reproduziveis = behaviors.filter((b) => b.kind !== 'external-scroll-runtime');
+  const externos = behaviors.filter((b) => b.kind === 'external-scroll-runtime');
+  const avisoExterno = externos.length
+    ? `<span class="ds-sc-ext">${externos.length} efeito(s) por runtime externo (${externos
+        .map((b) => b.sourceRuntime)
+        .filter(Boolean)
+        .join(', ')}) — detectado, não reproduzido</span>`
+    : '';
+
+  const head = `<style>
+#ds-sc-bar{position:fixed;top:0;left:0;right:0;z-index:2147483000;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:8px 12px;background:rgba(10,10,14,.92);color:#e7e5e4;font:500 12px/1.3 system-ui,sans-serif;backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,.08)}
+#ds-sc-bar .ds-sc-tit{opacity:.7}
+.ds-sc-btn{cursor:pointer;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:inherit;border-radius:999px;padding:4px 10px;font:inherit}
+#ds-sc-msg{opacity:.7;margin-left:auto}
+.ds-sc-ext{opacity:.7;font-style:italic}
+#ds-sc-scroll{height:100vh;overflow-y:auto;padding-top:44px;scroll-behavior:auto}
+.ds-sc-spacer{height:120vh;display:flex;align-items:flex-start;justify-content:center;padding-top:12px;color:rgba(120,120,120,.5);font:12px system-ui}
+</style>`;
+
+  const runtime = `<script>(function(){
+  var B = ${escaparParaScript(JSON.stringify(reproduziveis))};
+  var cont = document.getElementById('ds-sc-scroll');
+  var alvo = document.getElementById('ds-sc-alvo');
+  var msg = document.getElementById('ds-sc-msg');
+  if(!cont || !alvo){ return; }
+  var reduz = false; try{ reduz = matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+  var vistos = new WeakSet(); var salvos = [];
+  function guardar(el){ if(vistos.has(el)) return; vistos.add(el); salvos.push({el:el, css:el.getAttribute('style')||'', cls:el.className}); }
+  function acharAlvo(t){
+    if(t.id){ var e=document.getElementById(t.id); if(e) return e; }
+    if(t.classes && t.classes.length){ try{ var e=alvo.querySelector('.'+t.classes.join('.')); if(e) return e; }catch(_){} }
+    return null;
+  }
+  function num(s){ var m=String(s).match(/-?[0-9.]+/); return m?parseFloat(m[0]):0; }
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  function scrub(b, el, p){
+    var ks=b.keyframes; if(!ks||!ks.length) return;
+    var i=0; while(i<ks.length-1 && ks[i+1].progress < p) i++;
+    var k0=ks[i], k1=ks[Math.min(i+1,ks.length-1)];
+    var span=(k1.progress-k0.progress)||1; var t=Math.min(1,Math.max(0,(p-k0.progress)/span));
+    var prop=Object.keys(k0.properties)[0]; if(!prop) return;
+    if(prop==='opacity'){ el.style.opacity=String(lerp(num(k0.properties.opacity),num(k1.properties.opacity),t)); }
+    else if(prop==='transform'){ var v=lerp(num(k0.properties.transform),num(k1.properties.transform),t);
+      el.style.transform = /scale/.test(k0.properties.transform)?'scale('+v+')':'translateY('+v+'px)'; }
+    else if(prop==='filter'){ el.style.filter='blur('+lerp(num(k0.properties.filter),num(k1.properties.filter),t)+'px)'; }
+  }
+  function fim(b, el){ if(b.classesAdicionadas) b.classesAdicionadas.forEach(function(c){el.classList.add(c)}); if(b.keyframes&&b.keyframes.length) scrub(b,el,1); }
+  function inicio(b, el){ if(b.classesAdicionadas) b.classesAdicionadas.forEach(function(c){el.classList.remove(c)}); if(b.keyframes&&b.keyframes.length) scrub(b,el,0); }
+  var scrubs=[]; var ios=[];
+  function montar(){
+    B.forEach(function(b){
+      var el=acharAlvo(b.target); if(!el) return; guardar(el);
+      if(b.kind==='sticky'){ el.style.position='sticky'; el.style.top='44px'; return; }
+      if(b.trigger==='viewport' || b.kind==='class-toggle' || b.kind==='viewport-reveal' || b.kind==='viewport-hide'){
+        if(reduz){ fim(b,el); return; }
+        var io=new IntersectionObserver(function(es){es.forEach(function(e){ if(e.isIntersecting) fim(b,el); else inicio(b,el); })},{root:cont,threshold:0.25});
+        io.observe(el); ios.push(io);
+      } else { if(reduz){ fim(b,el); } else { scrubs.push({b:b,el:el}); } }
+    });
+  }
+  function progressoEl(el){ var r=el.getBoundingClientRect(), cr=cont.getBoundingClientRect(); var top=r.top-cr.top; return Math.min(1,Math.max(0,1-(top+r.height)/(cr.height+r.height))); }
+  function onScroll(){ for(var i=0;i<scrubs.length;i++){ scrub(scrubs[i].b, scrubs[i].el, progressoEl(scrubs[i].el)); } }
+  cont.addEventListener('scroll', onScroll, {passive:true});
+  montar(); onScroll();
+  function reiniciar(){ ios.forEach(function(o){o.disconnect()}); ios=[]; scrubs=[]; salvos.forEach(function(s){ if(s.css) s.el.setAttribute('style',s.css); else s.el.removeAttribute('style'); s.el.className=s.cls; }); vistos=new WeakSet(); salvos=[]; cont.scrollTop=0; montar(); onScroll(); msg.textContent='Reiniciado.'; }
+  document.getElementById('ds-sc-reset').addEventListener('click', reiniciar);
+  document.getElementById('ds-sc-top').addEventListener('click', function(){ cont.scrollTop=0; });
+  msg.textContent = B.length + ' efeito(s) de scroll' + (reduz?' (movimento reduzido)':'');
+})();</script>`;
+
+  const barra = `<div id="ds-sc-bar" role="toolbar" aria-label="Efeitos de scroll">
+<span class="ds-sc-tit">Role para reproduzir:</span>
+<button type="button" class="ds-sc-btn" id="ds-sc-reset">Reiniciar</button>
+<button type="button" class="ds-sc-btn" id="ds-sc-top">Voltar ao topo</button>
+${avisoExterno}
+<span id="ds-sc-msg" aria-live="polite"></span>
+</div>
+<div id="ds-sc-scroll">
+<div class="ds-sc-spacer">role para baixo ↓</div>
+<div id="ds-sc-alvo">${corpo}</div>
+<div class="ds-sc-spacer" style="height:90vh"></div>
+</div>`;
+
+  return { corpo: `${barra}\n${runtime}`, head };
+};
 
 const ROTULO_TRIGGER: Record<string, string> = {
   hover: 'Passe o mouse',
@@ -345,14 +458,22 @@ previewRoute.get('/segment/:segId', (c) => {
       }))
     : [];
   const corpo = reescreve(seg.htmlSnippet);
-  const replay = estados.length > 0 ? montarReplay(corpo, estados) : null;
+
+  // Modo scroll (`?scroll=1`): reproduz os comportamentos de scroll capturados
+  // (reveal/parallax/sticky/progress-*) com SCROLL REAL numa área alta. Tem
+  // precedência sobre o replay de estados quando pedido e há comportamentos.
+  const querScroll = c.req.query('scroll') === '1';
+  const scroll = querScroll ? lerScroll(seg.designSystemId, seg.id) : [];
+  const scrollReplay = scroll.length > 0 ? montarScrollReplay(corpo, scroll) : null;
+  const replay = !scrollReplay && estados.length > 0 ? montarReplay(corpo, estados) : null;
+  const modo = scrollReplay ?? replay;
 
   return responderHtml(
     compor({
       titulo: seg.name,
-      head: `${reescreve(extrairHead(html))}${replay ? replay.head : ''}`,
+      head: `${reescreve(extrairHead(html))}${modo ? modo.head : ''}`,
       bodyAttrs: extrairBodyAttrs(html),
-      corpo: replay ? replay.corpo : corpo,
+      corpo: modo ? modo.corpo : corpo,
       // Sem <base>: o design-system.html é absolutizado (refs absolutas), então a
       // base é inerte — e a CSP `base-uri 'none'` recusaria o elemento.
       base: null,
