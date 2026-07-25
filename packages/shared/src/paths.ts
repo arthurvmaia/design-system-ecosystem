@@ -40,7 +40,40 @@ export const vaultCaptureManifest = (id: DesignSystemId): string =>
   join(vaultCaptureDir(id), 'manifest.json');
 export const vaultCaptureAssetsDir = (id: DesignSystemId): string =>
   join(vaultCaptureDir(id), 'assets');
+
+/**
+ * Saída do motor V2 (`@ds/engine-v2`). Pasta SEPARADA da `capture/` do V1 de
+ * propósito: durante a migração os dois motores podem ter rodado no mesmo design
+ * system, e comparar V1 com V2 exige que nenhum sobrescreva o outro. O leitor
+ * escolhe: existe `capture-v2/manifest.json`? usa o V2; senão, o V1 de sempre.
+ */
+export const vaultCaptureV2Dir = (id: DesignSystemId): string => join(vaultDsDir(id), 'capture-v2');
+export const vaultCaptureV2Manifest = (id: DesignSystemId): string =>
+  join(vaultCaptureV2Dir(id), 'manifest.json');
+export const vaultCaptureV2AssetsDir = (id: DesignSystemId): string =>
+  join(vaultCaptureV2Dir(id), 'assets');
+/**
+ * Frames guardados pela observação temporal e pelos estados. Ficam fora do
+ * manifesto porque são binários e pesados — o manifesto guarda só o caminho
+ * relativo, já deduplicado por hash.
+ */
+export const vaultCaptureV2FramesDir = (id: DesignSystemId): string =>
+  join(vaultCaptureV2Dir(id), 'frames');
+/** HTML dos nós do grafo de estados (blob por estado, referenciado por `htmlRef`). */
+export const vaultCaptureV2StatesDir = (id: DesignSystemId): string =>
+  join(vaultCaptureV2Dir(id), 'states');
+
 export const vaultSegmentsDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'segments');
+/**
+ * Bundle compilado de um segmento — a saída do Design System Compiler:
+ * `index.html`, `manifest.json`, `STACK.md`, `assets/**`, `validation.json`.
+ * É o que a Biblioteca copia quando o item é curado, e é o que faz o item
+ * sobreviver sozinho depois que a extração original for apagada.
+ */
+export const vaultSegmentBundlesDir = (id: DesignSystemId): string =>
+  join(vaultSegmentsDir(id), 'bundles');
+export const vaultSegmentBundleDir = (id: DesignSystemId, segId: string): string =>
+  join(vaultSegmentBundlesDir(id), segId);
 export const vaultSegmentsManifest = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'manifest.json');
 /**

@@ -1,4 +1,5 @@
 export * from './capture.js';
+export * from './capture-v2.js';
 export * from './interaction-support.js';
 export * from './telemetria.js';
 export * from './scroll.js';

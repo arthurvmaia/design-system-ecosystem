@@ -172,6 +172,32 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  packages/engine-v2:
+    dependencies:
+      '@ds/explorer':
+        specifier: workspace:*
+        version: link:../explorer
+      '@ds/shared':
+        specifier: workspace:*
+        version: link:../shared
+      node-html-parser:
+        specifier: ^7.0.1
+        version: 7.1.0
+    optionalDependencies:
+      playwright:
+        specifier: ^1.61.1
+        version: 1.61.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   packages/explorer:
     dependencies:
       '@ds/shared':
@@ -1830,6 +1856,9 @@ packages:
   node-html-parser@6.1.13:
     resolution: {integrity: sha512-qIsTMOY4C/dAa5Q5vsobRpOOvPfC4pB61UVW2uSwZNUp0QU/jCekTal1vMmbO0DgdHeLUJpv/ARmDqErVxA3Sg==}
 
+  node-html-parser@7.1.0:
+    resolution: {integrity: sha512-iJo8b2uYGT40Y8BTyy5ufL6IVbN8rbm/1QK2xffXU/1a/v3AAa0d1YAoqBNYqaS4R/HajkWIpIfdE6KcyFh1AQ==}
+
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
     engines: {node: '>=18'}
@@ -3169,6 +3198,11 @@ snapshots:
       semver: 7.8.5
 
   node-html-parser@6.1.13:
+    dependencies:
+      css-select: 5.2.2
+      he: 1.2.0
+
+  node-html-parser@7.1.0:
     dependencies:
       css-select: 5.2.2
       he: 1.2.0

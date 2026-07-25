@@ -140,6 +140,11 @@ export type SegmentInteraction = z.infer<typeof SegmentInteraction>;
  * Fidelidade por dimensão. O selo geral é CALCULADO a partir daqui (ver
  * `recomputarSelo`) — nunca o contrário. Todas opcionais para tolerar insights
  * antigos, que só têm o selo agregado.
+ *
+ * As seis últimas nasceram com o motor V2 e são igualmente opcionais: um insight
+ * gravado pelo V1 simplesmente não as tem, e `recomputarSelo` ignora ausência.
+ * `temporal` é a que faltava mais: sem ela, "o primeiro frame apareceu" e "isto
+ * se move de verdade" eram indistinguíveis.
  */
 export const FidelityDimensions = z
   .object({
@@ -154,6 +159,12 @@ export const FidelityDimensions = z
     runtime: SupportLevel,
     portabilidade: SupportLevel,
     validacao: SupportLevel,
+    temporal: SupportLevel,
+    pointer: SupportLevel,
+    drag: SupportLevel,
+    keyboard: SupportLevel,
+    background: SupportLevel,
+    media: SupportLevel,
   })
   .partial();
 export type FidelityDimensions = z.infer<typeof FidelityDimensions>;

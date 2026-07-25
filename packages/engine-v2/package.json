@@ -1,0 +1,29 @@
+{
+  "name": "@ds/engine-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "clean": "node ../../scripts/limpar.mjs"
+  },
+  "dependencies": {
+    "@ds/explorer": "workspace:*",
+    "@ds/shared": "workspace:*",
+    "node-html-parser": "^7.0.1"
+  },
+  "optionalDependencies": {
+    "playwright": "^1.61.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
