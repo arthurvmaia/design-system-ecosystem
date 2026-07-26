@@ -12,11 +12,38 @@
  * sozinho ao fechar um job de extração. Rodar na mão só é necessário para
  * consertar um design system que já ficou para trás.
  */
+import { existsSync, readFileSync } from 'node:fs';
 import { getDb, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
+import {
+  type SegmentRecord,
+  SegmentsManifest,
+  vaultCaptureV2Manifest,
+  vaultSegmentsManifest,
+} from '@ds/shared';
 import { eq } from 'drizzle-orm';
 
 export type ResultadoSegmentacao = { total: number; suspeitoDeSpa: boolean };
+
+/**
+ * Segmentos de uma captura V2, já gravados no vault pela extração.
+ *
+ * No V2 a segmentação acontece DURANTE a captura (por evidência: geometria,
+ * tempo, reação medida), e `persistirCapturaV2` grava o `segments/manifest.json`
+ * no mesmo formato do V1. Re-segmentar aqui por string não só seria pior — ela
+ * SOBRESCREVERIA o manifesto do V2 com uma releitura cega do HTML. Este leitor
+ * falha alto se o manifesto sumiu: a saída certa é re-extrair, não forçar.
+ */
+const lerSegmentosV2 = (dsId: `ds_${string}`): SegmentRecord[] => {
+  const path = vaultSegmentsManifest(dsId);
+  if (!existsSync(path)) {
+    throw new Error(
+      'A captura V2 existe (capture-v2/manifest.json), mas o segments/manifest.json não. ' +
+        'Rode `pnpm extrair` de novo para regravar a persistência.',
+    );
+  }
+  return SegmentsManifest.parse(JSON.parse(readFileSync(path, 'utf8'))).segments;
+};
 
 /**
  * Abaixo disso, quase sempre o que foi extraído é a moldura de uma página que
@@ -34,12 +61,18 @@ const MINIMO_ESPERADO = 4;
  * de inserir, então rodar duas vezes não duplica nada.
  */
 export const segmentarEIndexar = (dsId: `ds_${string}`): ResultadoSegmentacao => {
-  const resultado = segmentDesignSystem(dsId);
+  // O sinal de que a extração foi do motor V2 é o manifesto em `capture-v2/`.
+  const v2 = existsSync(vaultCaptureV2Manifest(dsId));
+  const segments = v2 ? lerSegmentosV2(dsId) : segmentDesignSystem(dsId).segments;
+  if (v2)
+    console.log(
+      `  Segmentos do V2 (por evidência): ${segments.length} — indexando sem re-segmentar.`,
+    );
   const db = getDb();
 
   db.transaction((tx) => {
     tx.delete(tables.segments).where(eq(tables.segments.designSystemId, dsId)).run();
-    for (const seg of resultado.segments) {
+    for (const seg of segments) {
       tx.insert(tables.segments).values(seg).run();
     }
     tx.update(tables.designSystems)
@@ -48,7 +81,7 @@ export const segmentarEIndexar = (dsId: `ds_${string}`): ResultadoSegmentacao =>
       .run();
   });
 
-  const total = resultado.segments.length;
+  const total = segments.length;
   return { total, suspeitoDeSpa: total > 0 && total < MINIMO_ESPERADO };
 };
 

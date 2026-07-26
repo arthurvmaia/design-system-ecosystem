@@ -4,6 +4,7 @@ import {
   type ExplorerLimits,
   FASE,
   Telemetria,
+  absolutizeRefs,
   amostrarScroll,
   capturarRede,
   createSecureHttpFetcher,
@@ -69,7 +70,7 @@ import type {
 } from './mapper/raw.js';
 import { hashBytes } from './observe/pixel.js';
 import { atribuirMovimento, observarTemporal } from './observe/temporal.js';
-import { type SegmentoV2, segmentarPorEvidencia } from './segment/segment-v2.js';
+import { type RejeitadoV2, type SegmentoV2, segmentarPorEvidencia } from './segment/segment-v2.js';
 
 /**
  * O motor V2 — a orquestração do pipeline.
@@ -168,7 +169,8 @@ export type ResultadoCaptura = {
   html: string;
   finalUrl: string;
   segmentos: SegmentoV2[];
-  rejeitados: Array<{ hash: string; name: string; motivos: string[] }>;
+  /** Reprovados COM categoria e HTML — a Revisão mostra a prévia e os motivos. */
+  rejeitados: RejeitadoV2[];
 };
 
 const noop: LogV2 = () => {};
@@ -391,8 +393,11 @@ export const capturarComV2 = async (
     const folhas = await page.evaluate<RawCss[]>(chamar(COLETAR_CSS_FN));
     const scriptsInline = await page.evaluate<RawJsInline[]>(chamar(COLETAR_JS_INLINE_FN));
     const htmlBruto = await s.pw.content();
-    const html = limparInstrumentacao(htmlBruto);
     const finalUrl = s.pw.url();
+    // Refs absolutas são a garantia do V1 que o resto do fluxo assume: o preview
+    // carrega assets da origem e o `fila:concluir` valida refs relativas contra
+    // o disco. `page.content()` devolve os atributos como estão no DOM.
+    const html = absolutizeRefs(limparInstrumentacao(htmlBruto), finalUrl);
 
     if (instrumentacao.shadowRoots.closed > 0) {
       limitacoes.push(
@@ -511,7 +516,11 @@ export const capturarComV2 = async (
       if (!PAPEIS_COM_HTML.has(node.role)) continue;
       try {
         const bruto = await page.evaluate<string>(chamar(HTML_DO_REF_FN, n.ref));
-        if (bruto.length > 0) htmlPorHash.set(node.fingerprint.hash, limparInstrumentacao(bruto));
+        if (bruto.length > 0)
+          htmlPorHash.set(
+            node.fingerprint.hash,
+            absolutizeRefs(limparInstrumentacao(bruto), finalUrl),
+          );
       } catch {
         // nó saiu do DOM: a seção fica sem HTML e é reprovada na validação
       }
@@ -598,7 +607,7 @@ export const capturarComV2 = async (
                 maxStates: 30,
                 maxActions: 80,
                 sinkHtml: (nome, conteudo) =>
-                  gravar(opts.dirCaptura, join('states', nome), conteudo),
+                  gravar(opts.dirCaptura, join('states', nome), absolutizeRefs(conteudo, finalUrl)),
                 sinkFrame: (nome, bytes) => gravar(opts.dirCaptura, join('frames', nome), bytes),
                 reestabelecer: async () => {
                   try {
@@ -824,7 +833,7 @@ export const capturarComV2 = async (
       html,
       finalUrl,
       segmentos,
-      rejeitados: rejeitados.map((r) => ({ hash: r.hash, name: r.name, motivos: r.motivos })),
+      rejeitados,
     };
   } finally {
     await tel.medir(FASE_V2.fechar, () => s.fechar());

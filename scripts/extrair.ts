@@ -12,15 +12,27 @@
  * trava. NÃO chama a API da Anthropic e NÃO dispara nada sozinho: é iniciado por
  * uma pessoa, processando um job que ela escolheu.
  *
- * A captura PROFUNDA (descoberta de estados interativos) entra AUTOMATICAMENTE
- * quando o HTML renderizado tem sinais que a merecem (canvas, sticky, lottie,
- * gsap…). A decisão é de `decidirProfundidade`, e o modo pode ser forçado ou
- * desligado por `DS_EXPLORER_DEPTH=force|off` para dev/teste. O manifesto vai
- * para `vault/<ds>/capture/manifest.json`; o segmenter o consome no fila:concluir.
+ * O motor é decidido por `EXTRACTION_ENGINE` (padrão: `v2`):
+ *
+ * - **v2** — uma captura só faz tudo: observa a página no tempo, varre o
+ *   ponteiro, percorre com scroll, monta o grafo de estados e SEGMENTA POR
+ *   EVIDÊNCIA. Grava `capture-v2/` + bundles + `segments/manifest.json` no
+ *   formato que a Galeria já lê; o `fila:concluir` só indexa.
+ * - **v1** — renderiza, e a captura PROFUNDA (descoberta de estados) entra
+ *   automaticamente quando o HTML tem sinais que a merecem (canvas, sticky,
+ *   lottie, gsap…). A decisão é de `decidirProfundidade` (`DS_EXPLORER_DEPTH=
+ *   force|off` força/desliga). O manifesto vai para `vault/<ds>/capture/
+ *   manifest.json`; o segmenter o consome no fila:concluir.
  */
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import {
+  PlaywrightIndisponivel,
+  type ResultadoCaptura,
+  capturarComV2,
+  persistirCapturaV2,
+} from '@ds/engine-v2';
 import { decidirProfundidade, explorePage, renderPage, resolveDepthMode } from '@ds/explorer';
 import { getDb, tables } from '@ds/indexer';
 import {
@@ -29,11 +41,15 @@ import {
   getJob,
   newDesignSystemId,
   reportarProgresso,
+  resolveEngine,
   setJobResult,
   vaultCaptureAssetsDir,
   vaultCaptureDir,
   vaultCaptureManifest,
+  vaultCaptureV2Dir,
+  vaultDir,
   vaultExtractedDir,
+  vaultSegmentBundlesDir,
   vaultSourceDir,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
@@ -79,6 +95,55 @@ type ExploracaoResumo = {
   erro?: string;
   /** A captura saiu parcial por orçamento de tempo (regra 10). */
   parcial?: boolean;
+};
+
+type CapturaV2 = {
+  captura: ResultadoCaptura;
+  dirCaptura: string;
+  dirBundles: string;
+  tmpBase: string;
+};
+
+/**
+ * Captura com o motor V2, em diretórios temporários DENTRO do vault (mesmo
+ * volume, rename barato): o id do design system nasce do hash do HTML, que só
+ * existe depois da captura — os artefatos são movidos para `vault/<ds>/` assim
+ * que o id é conhecido.
+ *
+ * Degrada com honestidade: sem Playwright devolve `null` e o chamador segue no
+ * caminho V1 (fetch estático). Qualquer outro erro sobe — falha de captura não
+ * pode virar extração "concluída" pela metade.
+ */
+const capturarV2 = async (jobId: string, url: string): Promise<CapturaV2 | null> => {
+  const tmpBase = join(vaultDir(), '.tmp', `extracao-${jobId}`);
+  rmSync(tmpBase, { recursive: true, force: true });
+  const dirCaptura = join(tmpBase, 'capture-v2');
+  const dirBundles = join(tmpBase, 'bundles');
+  try {
+    const captura = await capturarComV2(url, {
+      dirCaptura,
+      dirBundles,
+      log: (evento, dados) => console.log(`  [v2:${evento}] ${dados ? JSON.stringify(dados) : ''}`),
+    });
+    return { captura, dirCaptura, dirBundles, tmpBase };
+  } catch (err) {
+    rmSync(tmpBase, { recursive: true, force: true });
+    if (err instanceof PlaywrightIndisponivel) {
+      console.log('  Playwright indisponível — caindo para o motor V1 (fetch estático).');
+      console.log('  Para a captura completa, instale uma vez:');
+      console.log('    pnpm --filter @ds/explorer exec playwright install chromium');
+      return null;
+    }
+    throw err;
+  }
+};
+
+/** Move um diretório do temporário para o lugar final no vault (substituindo). */
+const moverDir = (origem: string, destino: string): void => {
+  if (!existsSync(origem)) return;
+  rmSync(destino, { recursive: true, force: true });
+  mkdirSync(dirname(destino), { recursive: true });
+  renameSync(origem, destino);
 };
 
 /**
@@ -161,24 +226,39 @@ const main = async (): Promise<void> => {
 
   reportarProgresso(jobId, 8);
 
-  // Obtém o HTML: renderizado (URL) ou colado (HTML).
+  // Obtém o HTML: renderizado (URL) ou colado (HTML). Com `EXTRACTION_ENGINE=v2`
+  // (o padrão), a renderização E a exploração acontecem numa captura só — mesma
+  // página, mesmo DOM, segmentação por evidência. HTML colado não tem navegador:
+  // segue o caminho estático do V1.
+  const engine = resolveEngine();
   let html: string;
   let sourceUrl: string | null;
   let strategy: string;
+  let v2: CapturaV2 | null = null;
   if (kind === 'html' && typeof htmlColado === 'string') {
     html = htmlColado;
     sourceUrl = null;
     strategy = 'colado';
     console.log('Extraindo do HTML colado.');
   } else if (typeof url === 'string') {
-    console.log(`Extraindo ${url}`);
-    const r = await renderPage(url, {
-      log: (evento, dados) => console.log(`  [${evento}] ${dados ? JSON.stringify(dados) : ''}`),
-    });
-    html = r.html;
-    sourceUrl = r.finalUrl;
-    strategy = r.strategy;
-    for (const w of r.warnings) console.log(`  aviso: ${w}`);
+    if (engine === 'v2') {
+      console.log(`Extraindo ${url} — motor V2 (observa, explora e segmenta por evidência).`);
+      v2 = await capturarV2(jobId, url);
+    }
+    if (v2 !== null) {
+      html = v2.captura.html;
+      sourceUrl = v2.captura.finalUrl;
+      strategy = 'playwright-v2';
+    } else {
+      console.log(`Extraindo ${url}`);
+      const r = await renderPage(url, {
+        log: (evento, dados) => console.log(`  [${evento}] ${dados ? JSON.stringify(dados) : ''}`),
+      });
+      html = r.html;
+      sourceUrl = r.finalUrl;
+      strategy = r.strategy;
+      for (const w of r.warnings) console.log(`  aviso: ${w}`);
+    }
   } else {
     console.error('Payload sem url nem html. Nada a extrair.');
     process.exit(1);
@@ -237,12 +317,36 @@ const main = async (): Promise<void> => {
 
   reportarProgresso(jobId, 78);
 
-  // Captura profunda automática (só faz sentido com URL viva; HTML colado não
-  // tem navegador para explorar).
-  const exploration: ExploracaoResumo =
-    kind !== 'html' && typeof url === 'string'
-      ? await capturarProfundo(dsId, url, html)
-      : { mode: 'quick', reasons: [] };
+  // Persistência: no V2, os artefatos saem do temporário para o vault e o
+  // manifesto + segmentos + estados + rejeitados são gravados no formato que a
+  // Galeria já lê — a captura profunda do V1 não é necessária, porque o V2 já
+  // observou estados, ponteiro, scroll e assets na MESMA página que segmentou.
+  // No V1, a captura profunda automática continua como sempre foi.
+  let exploration: ExploracaoResumo;
+  if (v2 !== null) {
+    moverDir(v2.dirCaptura, vaultCaptureV2Dir(dsId));
+    moverDir(v2.dirBundles, vaultSegmentBundlesDir(dsId));
+    rmSync(v2.tmpBase, { recursive: true, force: true });
+    const persistido = persistirCapturaV2(dsId, v2.captura);
+    const m = v2.captura.manifesto;
+    console.log(
+      `  ${persistido.segments.length} segmento(s) por evidência, ${v2.captura.rejeitados.length} reprovado(s) com motivo.`,
+    );
+    imprimirTelemetria(m.telemetry);
+    exploration = {
+      mode: 'deep',
+      reasons: ['engine-v2'],
+      statesFound: Math.max(0, (m.stateGraph?.nodes.length ?? 0) - 1),
+      parcial: m.captureMode !== 'completo',
+    };
+  } else {
+    // Captura profunda automática (só faz sentido com URL viva; HTML colado não
+    // tem navegador para explorar).
+    exploration =
+      kind !== 'html' && typeof url === 'string'
+        ? await capturarProfundo(dsId, url, html)
+        : { mode: 'quick', reasons: [] };
+  }
 
   // Anexa o id + a exploração ao job para o fila:concluir segmentar.
   setJobResult(jobId, { designSystemId: dsId, strategy, exploration });

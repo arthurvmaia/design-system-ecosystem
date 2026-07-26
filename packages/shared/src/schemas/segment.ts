@@ -115,6 +115,15 @@ export const StoredState = SegmentState.extend({
   html: z.string(),
   /** HTML do conteúdo em portal (modal/menu) que o estado revelou, se houve. */
   portalHtml: z.string().optional(),
+  /**
+   * Referência ao blob do HTML quando ele NÃO está inline (motor V2): caminho
+   * relativo a `capture-v2/` (ex.: `states/st_1-escopo.html`). O leitor resolve
+   * a referência na hora de servir; `html: ''` + `htmlRef` é a forma normal do
+   * V2 de não duplicar um blob pesado.
+   */
+  htmlRef: z.string().optional(),
+  /** Referência ao blob do HTML de portal, análoga a `htmlRef`. */
+  portalHtmlRef: z.string().optional(),
 });
 export type StoredState = z.infer<typeof StoredState>;
 
@@ -140,7 +149,7 @@ export type SegmentScrollFile = z.infer<typeof SegmentScrollFile>;
  * validações antigas por hash (ver `previewHash`).
  */
 export const VALIDATOR_VERSION = 1;
-export const PREVIEW_VERSION = 3;
+export const PREVIEW_VERSION = 4;
 
 /**
  * Resultado de uma validação de reprodução em navegador: qual segmento, qual

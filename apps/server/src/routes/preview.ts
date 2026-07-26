@@ -20,6 +20,7 @@ import {
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { resolverEstadosV2 } from '../lib/estados-v2.js';
 
 /**
  * Reescritor de refs para o LOCAL. Lê o índice de assets do manifesto de captura
@@ -163,12 +164,17 @@ ${opts.corpo}
 </html>`;
 };
 
-/** Lê os estados capturados de um segmento (o HTML de cada estado, no vault). */
+/**
+ * Lê os estados capturados de um segmento (o HTML de cada estado, no vault).
+ * Estados do V2 referenciam o blob em `capture-v2/` — a resolução acontece aqui,
+ * para o runtime de replay receber sempre HTML inline.
+ */
 const lerEstados = (dsId: string, segId: string): StoredState[] => {
   const path = vaultSegmentStates(dsId as `ds_${string}`, segId);
   if (!existsSync(path)) return [];
   try {
-    return SegmentStatesFile.parse(JSON.parse(readFileSync(path, 'utf8'))).states;
+    const states = SegmentStatesFile.parse(JSON.parse(readFileSync(path, 'utf8'))).states;
+    return resolverEstadosV2(dsId as `ds_${string}`, states);
   } catch {
     return [];
   }

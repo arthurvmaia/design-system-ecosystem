@@ -23,6 +23,7 @@ import {
   vaultSegmentValidation,
   vaultSegmentsManifest,
 } from '@ds/shared';
+import { resolverEstadosV2 } from './estados-v2.js';
 
 /**
  * Validação AUTOMÁTICA do replay, no fluxo de produção.
@@ -230,7 +231,11 @@ const lerEstadosJson = (dsId: `ds_${string}`, segId: string): string => {
   const path = vaultSegmentStates(dsId, segId);
   if (!existsSync(path)) return '[]';
   try {
-    return JSON.stringify(SegmentStatesFile.parse(JSON.parse(readFileSync(path, 'utf8'))).states);
+    // A MESMA resolução de blob que o preview faz (estados do V2 referenciam
+    // `capture-v2/`): o hash tem de refletir o conteúdo servido — muda o blob,
+    // muda o hash, revalida.
+    const states = SegmentStatesFile.parse(JSON.parse(readFileSync(path, 'utf8'))).states;
+    return JSON.stringify(resolverEstadosV2(dsId, states));
   } catch {
     return '[]';
   }

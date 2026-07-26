@@ -247,6 +247,9 @@ export {
   capturarComV2,
 } from './engine.js';
 
+// ── Persistência ─────────────────────────────────────────────────────────────
+export { type ResultadoPersistencia, persistirCapturaV2 } from './persist.js';
+
 // ── Testes (fixtures) ────────────────────────────────────────────────────────
 // Exportado para os scripts de comparação e os testes de navegador servirem as
 // fixtures por HTTP. `file://` não tem origem, e metade do que se mede aqui
