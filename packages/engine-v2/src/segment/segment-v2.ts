@@ -638,6 +638,21 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     const scrollKinds: ScrollBehaviorKind[] = [...new Set(scroll.map((s) => s.kind))];
     const particulas = detectarParticulas(html, membros, temMovimento);
     const heading = primeiroTitulo(html);
+    // Fundos que DISTINGUEM (imagem/gradiente, medidos no CSSOM): entram no nome
+    // quando nenhuma evidência mais forte falou — cor sólida fica de fora.
+    const fundosDistintivos = [
+      ...new Set(
+        backgrounds
+          .map((b) =>
+            b.assetUrls.length > 0 || /url\(/i.test(b.cssValue)
+              ? ('imagem' as const)
+              : /gradient\(/i.test(b.cssValue)
+                ? ('gradiente' as const)
+                : null,
+          )
+          .filter((f): f is 'imagem' | 'gradiente' => f !== null),
+      ),
+    ];
     const { nome, evidencias: evidenciasDoNome } = nomearPorEvidencia({
       category: categoria,
       role: node.role,
@@ -652,6 +667,8 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       estados: estados.map((e) => e.label),
       representacao: representacao.type,
       posicao: entrada.pageHeight > 0 ? secao.pageBox.y / entrada.pageHeight : undefined,
+      textoVisivel: sinais.texto,
+      fundos: fundosDistintivos,
     });
 
     if (!veredito.ok) {

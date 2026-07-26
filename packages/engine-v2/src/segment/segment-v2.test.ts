@@ -625,7 +625,53 @@ test('seção de texto puro: portátil, editável, sem limitação inventada', (
   assert.deepEqual(s.limitations, []);
 });
 
-test('nome genérico é registrado como limitação, não escondido', () => {
+test('toda evidência que aprova também nomeia — aprovado não sai genérico', () => {
+  // A MESMA evidência que aprova uma seção (texto, mídia, fundo com asset,
+  // movimento, runtime) agora alimenta o nome. Aqui: seção sem texto e sem
+  // título, aprovada pelo fundo com asset — o nome diz "imagem de fundo" em vez
+  // de "Bloco". A limitação "nome saiu genérico" segue existindo como rede de
+  // segurança, mas não deve disparar num aprovado.
+  const secaoFp = fp({ tag: 'div' });
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      structuralMap: [
+        node({
+          fingerprint: secaoFp,
+          role: 'section',
+          subtreeTextLength: 0,
+          areaShare: 0.5,
+        }),
+      ],
+      visualLayers: [camada({ fingerprint: secaoFp, ownerSection: secaoFp.hash })],
+      backgroundDetections: [
+        {
+          id: 'bg_img',
+          source: 'css-image',
+          fingerprint: secaoFp,
+          ownerSection: secaoFp.hash,
+          cssValue: 'url("https://x.test/fundo.jpg")',
+          variables: {},
+          assetUrls: ['https://x.test/fundo.jpg'],
+          animated: false,
+          animationEvidence: [],
+          coversSection: true,
+          confidence: 'alta',
+          limitations: [],
+        },
+      ],
+      htmlPorHash: new Map([[secaoFp.hash, '<div></div>']]),
+    }),
+  );
+  const s = r.segmentos[0];
+  assert.ok(s, `rejeitados: ${r.rejeitados.map((x) => x.motivos.join(';')).join(' | ')}`);
+  assert.ok(/imagem de fundo/.test(s.name), `nome: ${s.name}`);
+  assert.ok(
+    !s.limitations.some((l) => /nome saiu genérico/.test(l)),
+    `limitações: ${s.limitations.join(' | ')}`,
+  );
+});
+
+test('bloco sem título usa o texto visível como nome — não fica "Bloco"', () => {
   const secaoFp = fp({ tag: 'div' });
   const r = segmentarPorEvidencia(
     entradaVazia({
@@ -643,8 +689,6 @@ test('nome genérico é registrado como limitação, não escondido', () => {
   );
   const s = r.segmentos[0];
   assert.ok(s);
-  assert.ok(
-    s.limitations.some((l) => /nome saiu genérico/.test(l)),
-    `limitações: ${s.limitations.join(' | ')}`,
-  );
+  assert.ok(!/^bloco/i.test(s.name), `nome: ${s.name}`);
+  assert.ok(s.name.includes('um pouco de texto'), `nome: ${s.name}`);
 });

@@ -136,6 +136,17 @@ export type EvidenciaNome = {
   posicao?: number;
   /** Índice, para desambiguar homônimos. */
   indice?: number;
+  /**
+   * Texto visível do segmento (na língua do site) — última base antes do
+   * genérico: um bloco sem título ainda é reconhecível pelo que está escrito
+   * nele.
+   */
+  textoVisivel?: string | null;
+  /**
+   * Fundos DISTINTIVOS com dono (medidos no CSSOM). Só imagem/gradiente — cor
+   * sólida não distingue um bloco de outro.
+   */
+  fundos?: readonly ('imagem' | 'gradiente')[];
 };
 
 /** Corta um título longo sem cortar palavra no meio. */
@@ -163,10 +174,15 @@ const baseDoNome = (ev: EvidenciaNome): { base: string; usouTitulo: boolean } =>
   if (ev.heading && ev.heading.trim().length >= 3) {
     return { base: encurtar(ev.heading), usouTitulo: true };
   }
-  // Última linha: em vez de "Seção", diga o que o item É pela representação.
+  // Em vez de "Seção", diga o que o item É pela representação.
   if (ev.representacao === 'capsula-runtime') return { base: 'Cena', usouTitulo: false };
   if (ev.representacao === 'referencia-visual')
     return { base: 'Referência visual', usouTitulo: false };
+  // Última linha antes do genérico: o texto visível do bloco. É o que a pessoa
+  // vê no card — "Bloco" não diz nada; as primeiras palavras do conteúdo dizem.
+  if (ev.textoVisivel && ev.textoVisivel.trim().length >= 3) {
+    return { base: encurtar(ev.textoVisivel, 32), usouTitulo: true };
+  }
   return { base: 'Bloco', usouTitulo: false };
 };
 
@@ -236,6 +252,16 @@ export const nomearPorEvidencia = (ev: EvidenciaNome): { nome: string; evidencia
     // e é o que a pessoa reconhece. Mantido na língua do site, sem tradução.
     nome = `${base} — ${encurtar(ev.heading, 32)}`;
     evidencias.push('titulo-visivel');
+  }
+
+  // Nome ainda genérico e sem comportamento medido: o fundo DISTINTIVO (CSSOM,
+  // com dono geométrico) é a última evidência que separa um bloco de outro.
+  if (quals.length === 0 && nomeEhGenerico(nome)) {
+    const fundo = ev.fundos?.[0];
+    if (fundo !== undefined) {
+      nome = `${base} com ${fundo === 'imagem' ? 'imagem' : 'gradiente'} de fundo`;
+      evidencias.push(`fundo:${fundo}`);
+    }
   }
 
   // "final" / "inicial" só quando a posição é informativa e o nome ainda é curto.
