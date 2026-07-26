@@ -148,7 +148,7 @@ export type SegmentScrollFile = z.infer<typeof SegmentScrollFile>;
  * reprodução (validador) ou a composição do preview mudam — o que INVALIDA
  * validações antigas por hash (ver `previewHash`).
  */
-export const VALIDATOR_VERSION = 1;
+export const VALIDATOR_VERSION = 2;
 export const PREVIEW_VERSION = 4;
 
 /**

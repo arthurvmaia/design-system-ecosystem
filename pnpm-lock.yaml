@@ -48,6 +48,9 @@ importers:
       '@ds/classifier':
         specifier: workspace:*
         version: link:../../packages/classifier
+      '@ds/engine-v2':
+        specifier: workspace:*
+        version: link:../../packages/engine-v2
       '@ds/extractor':
         specifier: workspace:*
         version: link:../../packages/extractor

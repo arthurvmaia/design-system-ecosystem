@@ -15,6 +15,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
     "@ds/classifier": "workspace:*",
+    "@ds/engine-v2": "workspace:*",
     "@ds/extractor": "workspace:*",
     "@ds/generator": "workspace:*",
     "@ds/indexer": "workspace:*",

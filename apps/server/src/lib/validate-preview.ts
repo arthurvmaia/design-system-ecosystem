@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { escreverValidacao as escreverValidacaoBundle, naturezaDaRegiao } from '@ds/engine-v2';
 import {
   CSS_PROCESSOR_VERSION,
   CaptureManifest,
@@ -14,15 +16,27 @@ import {
   type SegmentValidationMeta,
   SegmentsManifest,
   VALIDATOR_VERSION,
+  type ValidationReport,
   type ValidationStatus,
+  type VisualComparison,
   assetRoutePrefix,
   construirIndiceAssets,
   reescreverParaLocal,
   vaultCaptureManifest,
+  vaultCaptureV2Dir,
+  vaultCaptureV2Manifest,
   vaultSegmentStates,
   vaultSegmentValidation,
   vaultSegmentsManifest,
 } from '@ds/shared';
+import {
+  type BundleInfo,
+  type NaturezaRegiao,
+  compararCapturaComPreview,
+  ehTelaPreta,
+  frameDaSecao,
+  lerBundleInfo,
+} from './bundle-v2.js';
 import { resolverEstadosV2 } from './estados-v2.js';
 
 /**
@@ -151,6 +165,20 @@ export const previewHash = (htmlSnippet: string, statesJson: string, depsJson: s
     .digest('hex')
     .slice(0, 32);
 
+/** Contexto de bundle do motor V2, quando a extração o produziu. */
+export type ContextoV2 = {
+  dsId: `ds_${string}`;
+  representation: BundleInfo['representation'];
+  /** Pasta do bundle (`seg_<position>`) — monta a URL da rota de bundle. */
+  pasta: string;
+  /** Caminho absoluto do bundle (para gravar o `validation.json` dele). */
+  dir: string;
+  /** Frame da seção (relativo a `capture-v2/`) para a comparação visual. */
+  frame: string | null;
+  /** Natureza da região — decide o limiar da comparação. */
+  nature: NaturezaRegiao;
+};
+
 export type CandidatoValidacao = {
   segmentId: string;
   htmlSnippet: string;
@@ -159,6 +187,8 @@ export type CandidatoValidacao = {
   /** Comportamentos de scroll a validar (reveal/parallax/sticky/progress-*). */
   scroll: ScrollBehavior[];
   previewHash: string;
+  /** Presente quando o segmento tem bundle V2 — habilita validação por representação. */
+  v2?: ContextoV2;
 };
 
 /**
@@ -202,6 +232,8 @@ export type ResultadoSegmento = {
   results: ResultadoValidacaoSegmento[];
   durationMs: number;
   error?: string;
+  /** Comparações visuais medidas (cápsula) — o orquestrador grava no manifesto V2. */
+  visual?: VisualComparison[];
 };
 export type DriverValidacao = (cand: CandidatoValidacao) => Promise<ResultadoSegmento>;
 
@@ -253,7 +285,60 @@ const lerIndiceAssets = (dsId: `ds_${string}`): Map<string, string> => {
   }
 };
 
-/** Monta os candidatos: segmentos com interação reproduzível E estado capturado. */
+/** Índice mínimo do manifesto V2: o que a natureza da comparação precisa. */
+type InfoManifestoV2 = {
+  kindPorMidia: Map<string, string>;
+  movendoPorHash: Set<string>;
+};
+
+const lerInfoV2 = (dsId: `ds_${string}`): InfoManifestoV2 | null => {
+  const path = vaultCaptureV2Manifest(dsId);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as {
+      mediaDetections?: Array<{ id?: unknown; kind?: unknown }>;
+      temporalObservations?: Array<{ target?: unknown; moving?: unknown }>;
+    };
+    const kindPorMidia = new Map<string, string>();
+    for (const m of raw.mediaDetections ?? []) {
+      if (typeof m.id === 'string' && typeof m.kind === 'string') kindPorMidia.set(m.id, m.kind);
+    }
+    const movendoPorHash = new Set<string>();
+    for (const t of raw.temporalObservations ?? []) {
+      if (t.moving === true && typeof t.target === 'string') movendoPorHash.add(t.target);
+    }
+    return { kindPorMidia, movendoPorHash };
+  } catch {
+    return null;
+  }
+};
+
+/** A natureza da região decide o limiar: canvas animado tolera 60%, estática 2%. */
+const naturezaDe = (bundle: BundleInfo, info: InfoManifestoV2 | null): NaturezaRegiao => {
+  const kinds = new Set(
+    bundle.mediaIds
+      .map((id) => info?.kindPorMidia.get(id))
+      .filter((k): k is string => k !== undefined),
+  );
+  // Mídia intrinsecamente animada (GIF, Lottie, SVG animado) conta como
+  // movimento mesmo sem observação temporal do hash — um GIF não para de rodar
+  // porque a amostragem olhou para outra viewport.
+  const midiaAnimada = kinds.has('gif') || kinds.has('lottie') || kinds.has('svg-animado');
+  return naturezaDaRegiao({
+    temRuntimeExterno: bundle.runtimeIds.length > 0,
+    temCanvas: kinds.has('canvas-2d') || kinds.has('webgl') || kinds.has('webgl2'),
+    temVideo: kinds.has('video'),
+    animado:
+      midiaAnimada || (bundle.hash !== null && (info?.movendoPorHash.has(bundle.hash) ?? false)),
+  });
+};
+
+/**
+ * Monta os candidatos: segmentos com interação reproduzível E estado capturado,
+ * mais os segmentos V2 cuja REPRESENTAÇÃO pede validação própria (cápsula de
+ * runtime e referência visual — mesmo sem replay/scroll, é preciso conferir que
+ * a cápsula executa e que a referência mostra o frame com o aviso).
+ */
 export const montarCandidatos = (dsId: `ds_${string}`): CandidatoValidacao[] => {
   const manifest = lerManifesto(dsId);
   if (!manifest) return [];
@@ -261,26 +346,40 @@ export const montarCandidatos = (dsId: `ds_${string}`): CandidatoValidacao[] => 
   // a reescrita — muda a localização de um asset, o hash muda e revalida.
   const index = lerIndiceAssets(dsId);
   const prefix = assetRoutePrefix(dsId);
+  const infoV2 = lerInfoV2(dsId);
   const candidatos: CandidatoValidacao[] = [];
   for (const insight of manifest.insights ?? []) {
+    const seg = manifest.segments.find((s) => s.id === insight.segmentId);
+    if (!seg) continue;
     const pipeline = insight.pipeline ?? [];
     const temReplay = pipeline.some((p) => p.status === 'replayable' && p.stateIds.length > 0);
     const scroll = insight.scroll ?? [];
     const scrollReproduzivel = scroll.filter((b) => b.kind !== 'external-scroll-runtime');
-    // Vale validar se tem replay de estado OU comportamento de scroll reproduzível.
-    if (!temReplay && scrollReproduzivel.length === 0) continue;
-    const seg = manifest.segments.find((s) => s.id === insight.segmentId);
-    if (!seg) continue;
+    const bundle = lerBundleInfo(dsId, seg.position);
+    const v2: ContextoV2 | undefined =
+      bundle === null
+        ? undefined
+        : {
+            dsId,
+            representation: bundle.representation,
+            pasta: bundle.pasta,
+            dir: bundle.dir,
+            frame: frameDaSecao(dsId, bundle.hash),
+            nature: naturezaDe(bundle, infoV2),
+          };
+    const valeRepresentacao = v2 !== undefined && v2.representation !== 'componente-portatil';
+    if (!temReplay && scrollReproduzivel.length === 0 && !valeRepresentacao) continue;
     const snippetRw = reescreverParaLocal(seg.htmlSnippet, index, prefix).text;
     const statesRw = reescreverParaLocal(
       lerEstadosJson(dsId, insight.segmentId),
       index,
       prefix,
     ).text;
-    // O scroll entra no hash: muda um comportamento, revalida.
+    // Scroll e representação entram no hash: muda qualquer um, revalida.
     const depsJson = JSON.stringify({
       deps: insight.dependencies ?? [],
       scroll: scrollReproduzivel,
+      representation: v2?.representation ?? null,
     });
     candidatos.push({
       segmentId: insight.segmentId,
@@ -289,6 +388,7 @@ export const montarCandidatos = (dsId: `ds_${string}`): CandidatoValidacao[] => 
       pipeline,
       scroll: scrollReproduzivel,
       previewHash: previewHash(snippetRw, statesRw, depsJson),
+      v2,
     });
   }
   return candidatos;
@@ -306,6 +406,24 @@ export type ValidarOpts = {
 
 const escreverValidacao = (dsId: `ds_${string}`, file: SegmentValidationFile): void => {
   writeFileSync(vaultSegmentValidation(dsId), JSON.stringify(file, null, 2), 'utf8');
+};
+
+/**
+ * Regrava `visualComparisons` no manifesto V2 — mutação do JSON cru, de
+ * propósito: um round-trip de schema descartaria campos que este código não
+ * conhece. As comparações refletem a ÚLTIMA validação executada (o schema não
+ * tem chave por segmento para permitir merge).
+ */
+const atualizarComparacoesV2 = (dsId: `ds_${string}`, comparacoes: VisualComparison[]): void => {
+  const path = vaultCaptureV2Manifest(dsId);
+  if (!existsSync(path)) return;
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    raw.visualComparisons = comparacoes;
+    writeFileSync(path, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+  } catch {
+    // Manifesto ilegível: não afirma nada.
+  }
 };
 
 /**
@@ -381,6 +499,7 @@ export const validarPreviews = async (
 
   const novosResultados: ResultadoValidacaoSegmento[] = [];
   const novasMetas: SegmentValidationMeta[] = [];
+  const novasComparacoes: VisualComparison[] = [];
   let processadosOk = 0;
   let comErro = 0;
   const deadline = inicio + limits.totalBudgetMs;
@@ -408,6 +527,7 @@ export const validarPreviews = async (
         } else {
           processadosOk++;
           novosResultados.push(...r.results);
+          novasComparacoes.push(...(r.visual ?? []));
           novasMetas.push({
             segmentId: segId,
             previewHash: cand.previewHash,
@@ -446,11 +566,166 @@ export const validarPreviews = async (
     segments: [...metasCache, ...novasMetas],
   };
   escreverValidacao(dsId, finalFile);
+  // Rodada completa (sem cache) é a fotografia inteira: grava o que mediu,
+  // INCLUSIVE o vazio — comparação velha de código velho não pode sobreviver.
+  // Rodada parcial só acrescenta; apagar aqui descartaria medição ainda válida.
+  if (plano.cache.length === 0) atualizarComparacoesV2(dsId, novasComparacoes);
+  else if (novasComparacoes.length > 0) atualizarComparacoesV2(dsId, novasComparacoes);
   log(`validação: ${processadosOk} ok, ${comErro} com erro, ${plano.cache.length} em cache.`);
   return finalFile;
 };
 
 // ── Navegador real (reusa a previewRoute de produção) ────────────────────────
+
+/**
+ * Validação por REPRESENTAÇÃO (motor V2): navega o documento do BUNDLE — o
+ * mesmo que a Galeria serve — e mede o que cada representação promete.
+ *
+ * - Cápsula de runtime: executou e PINTOU (tela preta é a reprovação clássica);
+ *   erros de console e requests externos ficam registrados como ressalva.
+ * - Referência visual: o aviso está visível e o frame de fallback carregou.
+ * - Ambas: quando a captura guardou o frame da seção, compara captura×preview
+ *   com o limiar da natureza da região.
+ *
+ * O relatório (`ValidationReport`, com `telaPreta` MEDIDO) é gravado no
+ * `validation.json` do bundle. Uma exceção aqui sobe para o worker — tentativa
+ * de validação que falhou é erro do segmento, não sucesso silencioso.
+ */
+const validarRepresentacao = async (
+  page: Any,
+  base: string,
+  cand: CandidatoValidacao,
+  limits: ValidatorLimits,
+): Promise<{ results: ResultadoValidacaoSegmento[]; visual: VisualComparison[] }> => {
+  const v2 = cand.v2;
+  if (v2 === undefined) return { results: [], visual: [] };
+  const arquivo = v2.representation === 'capsula-runtime' ? 'runtime.html' : 'index.html';
+  const url = `${base}/api/preview/bundle/${v2.dsId}/${v2.pasta}/${arquivo}`;
+
+  const consoleErrors: string[] = [];
+  const externalRequests: string[] = [];
+  const onConsole = (m: Any): void => {
+    if (m?.type?.() === 'error') consoleErrors.push(String(m.text?.() ?? '').slice(0, 300));
+  };
+  const onPageError = (e: Any): void => {
+    consoleErrors.push(String(e?.message ?? e).slice(0, 300));
+  };
+  const onRequest = (req: Any): void => {
+    try {
+      const u = String(req.url());
+      if (/^https?:/i.test(u) && !u.startsWith(`${base}/`)) {
+        externalRequests.push(new URL(u).host);
+      }
+    } catch {
+      // URL inválida: irrelevante para o relatório.
+    }
+  };
+  page.on('console', onConsole);
+  page.on('pageerror', onPageError);
+  page.on('request', onRequest);
+
+  try {
+    await page.goto(url, { waitUntil: 'load', timeout: limits.perPreviewTimeoutMs });
+    // Tempo para o runtime montar e pintar o primeiro frame.
+    await page.waitForTimeout(800);
+    const shot: Uint8Array = await page.screenshot({ type: 'png' });
+    const preta = ehTelaPreta(shot);
+
+    const checks: ValidationReport['checks'] = [
+      {
+        name: 'tela-preta',
+        // `null` = screenshot não decodificável: dúvida não reprova, mas fica dita.
+        ok: preta !== true,
+        detail: preta === null ? 'screenshot não decodificável — não medido' : undefined,
+        appliesTo: v2.representation,
+      },
+    ];
+
+    if (v2.representation === 'referencia-visual') {
+      const aviso = (await page.$('[data-ds-aviso="referencia-visual"]')) !== null;
+      const frameOk = await page.$eval('img', (el: Any) => el.naturalWidth > 0).catch(() => false);
+      checks.push({ name: 'aviso-visivel', ok: aviso, appliesTo: v2.representation });
+      checks.push({
+        name: 'frame-carregou',
+        ok: frameOk === true,
+        detail: frameOk === true ? undefined : 'o <img> do frame de fallback não carregou',
+        appliesTo: v2.representation,
+      });
+    }
+
+    checks.push({
+      name: 'console-limpo',
+      ok: consoleErrors.length === 0,
+      detail: consoleErrors.length > 0 ? `${consoleErrors.length} erro(s) de console` : undefined,
+      appliesTo: v2.representation,
+    });
+
+    // A comparação captura×preview responde "o RUNTIME pintou o que a captura
+    // viu?" — só faz sentido na cápsula. Na referência visual o preview mostra
+    // o próprio frame da captura COM a faixa de aviso por cima: comparar seria
+    // tautológico no melhor caso e falso-negativo no pior (a faixa polui o
+    // diff). Lá, o que se confere é o aviso e o carregamento do frame.
+    const visual: VisualComparison[] = [];
+    if (v2.representation === 'capsula-runtime' && v2.frame !== null) {
+      try {
+        const pngCaptura = readFileSync(join(vaultCaptureV2Dir(v2.dsId), v2.frame));
+        const comp = compararCapturaComPreview(pngCaptura, shot, v2.nature);
+        if (comp !== null) {
+          visual.push(comp);
+          checks.push({
+            name: 'comparacao-visual',
+            ok: comp.ok,
+            detail: `delta ${comp.delta} (limiar ${comp.threshold}, natureza ${comp.nature})`,
+            appliesTo: v2.representation,
+          });
+        }
+      } catch {
+        // Frame sumiu do disco: sem comparação, sem afirmação.
+      }
+    }
+
+    // `console-limpo` é ressalva, não veredicto: um runtime que pintou com um
+    // erro de console no meio ainda é uma cápsula que funciona.
+    const decisivos = checks.filter((c) => c.name !== 'console-limpo');
+    const ok = decisivos.every((c) => c.ok);
+    const relatorio: ValidationReport = {
+      ranAt: Date.now(),
+      representation: v2.representation,
+      checks,
+      consoleErrors: consoleErrors.slice(0, 10),
+      externalRequests: [...new Set(externalRequests)].slice(0, 10),
+      cspViolations: [],
+      ok,
+      telaPreta: preta === true,
+    };
+    try {
+      escreverValidacaoBundle(v2.dir, relatorio);
+    } catch {
+      // Gravar o relatório não pode derrubar a validação em si.
+    }
+
+    return {
+      results: [
+        {
+          segmentId: cand.segmentId,
+          kind: v2.representation === 'capsula-runtime' ? 'capsula' : 'referencia-visual',
+          ok,
+          detail: ok
+            ? undefined
+            : `reprovado em: ${decisivos
+                .filter((c) => !c.ok)
+                .map((c) => c.name)
+                .join(', ')}`,
+        },
+      ],
+      visual,
+    };
+  } finally {
+    page.off?.('console', onConsole);
+    page.off?.('pageerror', onPageError);
+    page.off?.('request', onRequest);
+  }
+};
 
 const loadPlaywright = async (): Promise<Any | null> => {
   try {
@@ -497,6 +772,7 @@ const abrirNavegador = async (log: (m: string) => void): Promise<ContextoNavegad
     async (cand) => {
       const t0 = Date.now();
       const results: ResultadoValidacaoSegmento[] = [];
+      const visual: VisualComparison[] = [];
       const page = await browser.newPage();
       const abrir = async (sufixo: string): Promise<Any> => {
         const url = `${base}/api/preview/segment/${cand.segmentId}${sufixo}`;
@@ -508,9 +784,13 @@ const abrirNavegador = async (log: (m: string) => void): Promise<ContextoNavegad
         if (!frame) throw new Error('iframe sem frame');
         return frame;
       };
+      // Cápsula e referência visual são servidas do BUNDLE — a rota de segmento
+      // redireciona para lá, então o replay/scroll de snippet não existe mais
+      // para elas; a validação delas é a da própria representação, abaixo.
+      const ehPortatil = cand.v2 === undefined || cand.v2.representation === 'componente-portatil';
       try {
         // ── Validação de ESTADOS (botões), quando há ──
-        if (cand.states.length > 0) {
+        if (ehPortatil && cand.states.length > 0) {
           const frame = await abrir('?replay=1');
           await frame.waitForSelector('#ds-rp-alvo', { timeout: limits.perPreviewTimeoutMs });
           const alvoHtml = (): Promise<string> =>
@@ -551,7 +831,7 @@ const abrirNavegador = async (log: (m: string) => void): Promise<ContextoNavegad
         }
 
         // ── Validação de SCROLL REAL, quando há comportamentos ──
-        if (cand.scroll.length > 0) {
+        if (ehPortatil && cand.scroll.length > 0) {
           const ok = await validarScrollNoFrame(
             page,
             () => abrir('?scroll=1'),
@@ -565,10 +845,66 @@ const abrirNavegador = async (log: (m: string) => void): Promise<ContextoNavegad
             detail: ok ? undefined : 'efeito de scroll não observável ou reset não restaurou',
           });
         }
+
+        // ── Validação por REPRESENTAÇÃO (segmentos com bundle V2) ──
+        if (cand.v2 !== undefined) {
+          if (cand.v2.representation === 'componente-portatil') {
+            // O replay/scroll acima já validou a reprodução; aqui entra só a
+            // medição de tela preta sobre a superfície do preview, e o resumo
+            // vai para o validation.json do bundle.
+            const checksReplay = results.map((r) => ({
+              name: `replay:${r.kind}`,
+              ok: r.ok,
+              detail: r.detail,
+            }));
+            let preta: boolean | null = null;
+            try {
+              const el = await page.$('#pf');
+              const shot: Uint8Array | null = el ? await el.screenshot({ type: 'png' }) : null;
+              preta = shot === null ? null : ehTelaPreta(shot);
+            } catch {
+              preta = null;
+            }
+            if (preta === true) {
+              results.push({
+                segmentId: cand.segmentId,
+                kind: 'tela-preta',
+                ok: false,
+                detail: 'o preview renderizou praticamente todo preto',
+              });
+            }
+            try {
+              const relatorio: ValidationReport = {
+                ranAt: Date.now(),
+                representation: 'componente-portatil',
+                checks: [
+                  ...checksReplay,
+                  {
+                    name: 'tela-preta',
+                    ok: preta !== true,
+                    detail: preta === null ? 'não medido (screenshot indisponível)' : undefined,
+                  },
+                ],
+                consoleErrors: [],
+                externalRequests: [],
+                cspViolations: [],
+                ok: checksReplay.every((c) => c.ok) && preta !== true,
+                telaPreta: preta === true,
+              };
+              escreverValidacaoBundle(cand.v2.dir, relatorio);
+            } catch {
+              // Gravar o relatório não pode derrubar a validação.
+            }
+          } else {
+            const r = await validarRepresentacao(page, base, cand, limits);
+            results.push(...r.results);
+            visual.push(...r.visual);
+          }
+        }
       } finally {
         await page.close();
       }
-      return { results, durationMs: Date.now() - t0 };
+      return { results, durationMs: Date.now() - t0, visual };
     };
 
   return {

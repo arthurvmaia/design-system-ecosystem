@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { extname, join, resolve, sep } from 'node:path';
 import { getDb, tables } from '@ds/indexer';
 import {
   CaptureManifest,
@@ -13,13 +13,16 @@ import {
   libraryComponentBundleDir,
   reescreverParaLocal,
   vaultCaptureManifest,
+  vaultCaptureV2Dir,
   vaultExtractedDir,
   vaultRejeitadosPath,
+  vaultSegmentBundlesDir,
   vaultSegmentScroll,
   vaultSegmentStates,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { MIME_BUNDLE, lerBundleInfo } from '../lib/bundle-v2.js';
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
 
 /**
@@ -433,6 +436,27 @@ previewRoute.get('/segment/:segId', (c) => {
     );
   }
 
+  // A REPRESENTAÇÃO decide a prévia (motor V2). Cápsula de runtime e referência
+  // visual não são um fragmento de HTML — servi-las como snippet é exatamente o
+  // card preto que o V2 existe para eliminar. O documento do bundle é servido
+  // DENTRO da rota de bundle, para as refs relativas (css/js/frames) resolverem
+  // sem reescrita. Sem bundle (extração V1), o caminho clássico segue intacto.
+  const bundle = lerBundleInfo(seg.designSystemId as `ds_${string}`, seg.position);
+  if (bundle !== null && bundle.representation !== 'componente-portatil') {
+    const arquivo = bundle.representation === 'capsula-runtime' ? 'runtime.html' : 'index.html';
+    if (!existsSync(join(bundle.dir, arquivo))) {
+      return responderHtml(
+        fallback(
+          'Bundle incompleto',
+          `A representação deste segmento é "${bundle.representation}", mas o arquivo ${arquivo} não está no bundle — a compilação pode ter sido cortada por orçamento.`,
+          'Extraia este site de novo para recompilar os bundles.',
+        ),
+        404,
+      );
+    }
+    return c.redirect(`/api/preview/bundle/${seg.designSystemId}/${bundle.pasta}/${arquivo}`, 302);
+  }
+
   const html = lerHtmlDoVault(seg.designSystemId);
   if (html === null) {
     return responderHtml(
@@ -486,6 +510,72 @@ previewRoute.get('/segment/:segId', (c) => {
       bg: c.req.query('bg'),
     }),
   );
+});
+
+/**
+ * Arquivos do bundle de um segmento (motor V2).
+ *
+ * O `runtime.html` (cápsula) e o `index.html` (referência visual) são servidos
+ * daqui de propósito: com o documento DENTRO do espaço de caminho da rota, as
+ * refs relativas do bundle (css/js/svg) resolvem sozinhas — sem reescrita, sem
+ * `<base>` (que a CSP recusa). `frames/…` é a exceção: o frame de fallback mora
+ * em `capture-v2/frames/` e o bundle o referencia sem copiar.
+ */
+previewRoute.get('/bundle/:dsId/:pasta/:caminho{.+}', (c) => {
+  const dsId = c.req.param('dsId');
+  const pasta = c.req.param('pasta');
+  const caminho = c.req.param('caminho');
+  if (!dsId.startsWith('ds_') || !/^seg_\d+$/.test(pasta)) {
+    return new Response(null, { status: 404 });
+  }
+
+  // O caminho vem da URL — o resolvido tem de ficar DENTRO da raiz esperada.
+  const raiz = caminho.startsWith('frames/')
+    ? vaultCaptureV2Dir(dsId as `ds_${string}`)
+    : join(vaultSegmentBundlesDir(dsId as `ds_${string}`), pasta);
+  const base = resolve(raiz);
+  const alvo = resolve(base, caminho);
+  if (alvo !== base && !alvo.startsWith(base + sep)) {
+    return new Response(null, { status: 404 });
+  }
+
+  const ext = extname(alvo).toLowerCase();
+  if (!existsSync(alvo)) {
+    if (ext === '.html') {
+      return responderHtml(
+        fallback(
+          'Arquivo do bundle ausente',
+          'Este segmento aponta para um arquivo de bundle que não está no disco — a compilação pode ter sido cortada por orçamento.',
+          'Extraia este site de novo para recompilar os bundles.',
+        ),
+        404,
+      );
+    }
+    return new Response(null, { status: 404 });
+  }
+
+  if (ext === '.html') {
+    // A CSP embutida (`<meta http-equiv>`) existe para o uso STANDALONE do
+    // bundle (zip, disco). Servido aqui, o isolamento vem do header
+    // CSP_SANDBOX + iframe sandbox — e sob a origem opaca do sandbox o
+    // `'self'` do meta não casa com nada, o que mataria o css/js do próprio
+    // bundle (o mesmo motivo documentado no CSP_SANDBOX acima).
+    const html = readFileSync(alvo, 'utf8').replace(
+      /<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]*>\s*/i,
+      '',
+    );
+    return responderHtml(html);
+  }
+
+  return new Response(readFileSync(alvo), {
+    status: 200,
+    headers: {
+      'Content-Type': MIME_BUNDLE[ext] ?? 'application/octet-stream',
+      'Content-Security-Policy': CSP_SANDBOX,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, max-age=60',
+    },
+  });
 });
 
 /** Prévia de um componente curado da Biblioteca. */
