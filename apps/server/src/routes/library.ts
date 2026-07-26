@@ -1,11 +1,19 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { getDb, tables } from '@ds/indexer';
 import { isolateComponent } from '@ds/isolator';
 import {
   CaptureManifest,
-  type CapturedAsset,
+  CapturedAsset,
   type SegmentInsight,
   SegmentStatesFile,
   SegmentsManifest,
@@ -19,6 +27,9 @@ import {
   reescreverParaLocal,
   vaultCaptureAssetsDir,
   vaultCaptureManifest,
+  vaultCaptureV2AssetsDir,
+  vaultCaptureV2Dir,
+  vaultCaptureV2Manifest,
   vaultExtractedDir,
   vaultSegmentStates,
   vaultSegmentsManifest,
@@ -28,6 +39,8 @@ import { desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { planBatchLike } from '../lib/batch.js';
+import { lerBundleInfo } from '../lib/bundle-v2.js';
+import { resolverEstadosV2 } from '../lib/estados-v2.js';
 
 export const libraryRoute = new Hono();
 
@@ -123,19 +136,49 @@ const lerEstadosDoSegmento = (dsId: `ds_${string}`, segId: string): StoredState[
   }
 };
 
-/** Índice de assets locais da captura de um design system. */
+/**
+ * Índice de assets locais da captura de um design system, V1 ou V2 — o formato
+ * do `CapturedAsset` é o mesmo; muda a pasta de origem (`capture/assets/` no
+ * V1, `capture-v2/assets/` no V2).
+ */
 const lerCaptureAssets = (
   dsId: `ds_${string}`,
-): { index: Map<string, string>; assets: CapturedAsset[] } => {
-  const path = vaultCaptureManifest(dsId);
-  if (!existsSync(path)) return { index: new Map(), assets: [] };
-  try {
-    const m = CaptureManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
-    const locais = (m.assets ?? []).filter((a) => !a.status || a.status === 'local');
-    return { index: construirIndiceAssets(locais), assets: locais };
-  } catch {
-    return { index: new Map(), assets: [] };
+): { index: Map<string, string>; assets: CapturedAsset[]; origem: string } => {
+  const vazio = {
+    index: new Map<string, string>(),
+    assets: [],
+    origem: vaultCaptureAssetsDir(dsId),
+  };
+  const v1 = vaultCaptureManifest(dsId);
+  if (existsSync(v1)) {
+    try {
+      const m = CaptureManifest.parse(JSON.parse(readFileSync(v1, 'utf8')));
+      const locais = (m.assets ?? []).filter((a) => !a.status || a.status === 'local');
+      return {
+        index: construirIndiceAssets(locais),
+        assets: locais,
+        origem: vaultCaptureAssetsDir(dsId),
+      };
+    } catch {
+      return vazio;
+    }
   }
+  const v2 = vaultCaptureV2Manifest(dsId);
+  if (existsSync(v2)) {
+    try {
+      const raw = JSON.parse(readFileSync(v2, 'utf8')) as { assets?: unknown };
+      const todos = CapturedAsset.array().parse(raw.assets ?? []);
+      const locais = todos.filter((a) => !a.status || a.status === 'local');
+      return {
+        index: construirIndiceAssets(locais),
+        assets: locais,
+        origem: vaultCaptureV2AssetsDir(dsId),
+      };
+    } catch {
+      return vazio;
+    }
+  }
+  return vazio;
 };
 
 /**
@@ -175,9 +218,8 @@ const copiarAssetsParaBundle = (
   bundleDir: string,
   textos: string[],
 ): { index: Map<string, string>; assets: CapturedAsset[] } => {
-  const { index: captureIdx, assets: todos } = lerCaptureAssets(dsId);
+  const { index: captureIdx, assets: todos, origem } = lerCaptureAssets(dsId);
   if (captureIdx.size === 0) return { index: new Map(), assets: [] };
-  const origem = vaultCaptureAssetsDir(dsId);
   const usados = new Map<string, string>();
   const assets: CapturedAsset[] = [];
   const copiados = new Set<string>();
@@ -221,6 +263,56 @@ const copiarAssetsParaBundle = (
  * dependências, o selo honesto E os assets locais copiados para o bundle (o HTML/
  * CSS/estados passam a apontar para a rota do bundle, não para a origem).
  */
+/**
+ * Copia para o bundle da Biblioteca os frames que o bundle do V2 referencia
+ * (`dependencies.frames` do manifest do compilador). Os arquivos moram em
+ * `capture-v2/frames/` — sem a cópia, apagar a extração quebraria o fallback
+ * visual da referência.
+ */
+const copiarFramesDoBundle = (dsId: `ds_${string}`, bundleDir: string): void => {
+  const manifestPath = join(bundleDir, 'manifest.json');
+  if (!existsSync(manifestPath)) return;
+  try {
+    const m = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      dependencies?: { frames?: unknown };
+    };
+    const frames = Array.isArray(m.dependencies?.frames) ? m.dependencies.frames : [];
+    for (const f of frames) {
+      if (typeof f !== 'string') continue;
+      const rel = f.replace(/\\/g, '/');
+      if (rel.split('/').includes('..')) continue;
+      const src = join(vaultCaptureV2Dir(dsId), rel);
+      if (!existsSync(src)) continue;
+      const dest = join(bundleDir, rel);
+      mkdirSync(dirname(dest), { recursive: true });
+      copyFileSync(src, dest);
+    }
+  } catch {
+    // Manifest ilegível: o bundle fica sem frames — o preview declara a ausência.
+  }
+};
+
+/** `styles.css` de um bundle V2 copiado: os CSS na ordem dos `<link>` do index. */
+const concatenarCssDoBundle = (bundleDir: string): string => {
+  const indexPath = join(bundleDir, 'index.html');
+  if (!existsSync(indexPath)) return '';
+  try {
+    const html = readFileSync(indexPath, 'utf8');
+    const hrefs = [...html.matchAll(/<link[^>]+href="([^"]+\.css)"/gi)].map((m) => m[1] ?? '');
+    // A ordem dos <link> é a cascata que o compilador preservou — concatenar
+    // nessa ordem não muda resultado.
+    return hrefs
+      .filter((h) => h.length > 0 && !h.includes('..') && !/^[a-z]+:/i.test(h))
+      .map((h) => {
+        const p = join(bundleDir, h);
+        return existsSync(p) ? readFileSync(p, 'utf8') : '';
+      })
+      .join('\n');
+  } catch {
+    return '';
+  }
+};
+
 const montarComponente = (seg: SegmentRow) => {
   const componentId = newComponentId();
   const bundleHash = createHash('sha256').update(seg.htmlSnippet).digest('hex');
@@ -228,41 +320,77 @@ const montarComponente = (seg: SegmentRow) => {
   const bundleDir = libraryComponentBundleDir(componentId);
   mkdirSync(bundleDir, { recursive: true });
 
-  const cssDir = join(vaultExtractedDir(seg.designSystemId as `ds_${string}`), 'assets/css');
-  const isolation = isolateComponent({ html: seg.htmlSnippet, cssDir });
-
   const dsId = seg.designSystemId as `ds_${string}`;
   const insight = lerInsightDoSegmento(dsId, seg.id);
-  const estados = lerEstadosDoSegmento(dsId, seg.id);
-  // Head da extração (fontes, runtime, <link> de CSS externo). Incluído para que
-  // o CSS externo e seus assets transitivos sejam copiados e o componente fique
-  // portátil — não dependa mais do head da origem.
-  const headOrigem = lerHeadDoVault(dsId);
+  // Estados V2 referenciam blobs em `capture-v2/` — resolvidos AQUI, na
+  // promoção: o componente da Biblioteca precisa sobreviver à exclusão da
+  // extração, então o HTML entra inline e a referência ao vault morre.
+  const estados = resolverEstadosV2(dsId, lerEstadosDoSegmento(dsId, seg.id)).map((s) => ({
+    ...s,
+    htmlRef: undefined,
+    portalHtmlRef: undefined,
+  }));
 
-  // Copia os assets locais para o bundle e reescreve tudo para a rota do bundle.
-  const textos = [
-    headOrigem,
-    isolation.html,
-    isolation.css,
-    ...estados.flatMap((s) => [s.html, s.portalHtml ?? '']),
-  ];
-  const bundleAssets = copiarAssetsParaBundle(dsId, bundleDir, textos);
-  const prefixo = `/api/library-asset/${componentId}/`;
-  const local = (t: string): string => reescreverParaLocal(t, bundleAssets.index, prefixo).text;
+  // O bundle do segmento (motor V2) carrega a decisão de representação.
+  const bundleV2 = lerBundleInfo(dsId, seg.position);
+  const representation = bundleV2?.representation ?? 'componente-portatil';
 
-  writeFileSync(join(bundleDir, 'index.html'), local(isolation.html), 'utf8');
-  writeFileSync(join(bundleDir, 'styles.css'), local(isolation.css), 'utf8');
-  // HTML CRU reescrito: preserva as classes/ids originais para o CSS EXTERNO (que
-  // mira esses seletores) casar no preview. O isolado (index.html) fica para o
-  // gerador; o preview do componente usa este.
-  writeFileSync(join(bundleDir, 'raw.html'), local(seg.htmlSnippet), 'utf8');
-  // Head portátil: o CSS externo (<link>) e as fontes já apontam para o bundle.
-  if (headOrigem) writeFileSync(join(bundleDir, 'head.html'), local(headOrigem), 'utf8');
-  writeFileSync(
-    join(bundleDir, 'isolation.json'),
-    JSON.stringify(isolation.stats, null, 2),
-    'utf8',
-  );
+  let isolation: ReturnType<typeof isolateComponent> | null = null;
+  let local: (t: string) => string;
+  let bundleAssets: { index: Map<string, string>; assets: CapturedAsset[] };
+
+  if (bundleV2 !== null && representation !== 'componente-portatil') {
+    // Cápsula de runtime / referência visual: o bundle do COMPILADOR é o
+    // componente — copiá-lo inteiro preserva a decisão (runtime.html isolado,
+    // aviso + frame, css/js organizados, manifest com limitações). Servir o
+    // htmlSnippet estático aqui seria reintroduzir o card preto na Biblioteca.
+    cpSync(bundleV2.dir, bundleDir, { recursive: true });
+    copiarFramesDoBundle(dsId, bundleDir);
+    // `styles.css` para o gerador, que concatena index.html + styles.css.
+    writeFileSync(join(bundleDir, 'styles.css'), concatenarCssDoBundle(bundleDir), 'utf8');
+    bundleAssets = { index: new Map(), assets: [] };
+    local = (t) => t;
+  } else {
+    // Componente portátil (ou extração V1): isolamento clássico. No V2, o CSS
+    // organizado mora no próprio bundle do segmento (`assets/css/`) —
+    // `extracted/assets/css` é coisa do V1 e fica vazio numa extração V2.
+    const cssDir =
+      bundleV2 !== null
+        ? join(bundleV2.dir, 'assets', 'css')
+        : join(vaultExtractedDir(dsId), 'assets/css');
+    isolation = isolateComponent({ html: seg.htmlSnippet, cssDir });
+
+    // Head da extração (fontes, runtime, <link> de CSS externo). Incluído para
+    // que o CSS externo e seus assets transitivos sejam copiados e o componente
+    // fique portátil — não dependa mais do head da origem.
+    const headOrigem = lerHeadDoVault(dsId);
+
+    // Copia os assets locais para o bundle e reescreve tudo para a rota do bundle.
+    const textos = [
+      headOrigem,
+      isolation.html,
+      isolation.css,
+      ...estados.flatMap((s) => [s.html, s.portalHtml ?? '']),
+    ];
+    bundleAssets = copiarAssetsParaBundle(dsId, bundleDir, textos);
+    const prefixo = `/api/library-asset/${componentId}/`;
+    const idx = bundleAssets.index;
+    local = (t) => reescreverParaLocal(t, idx, prefixo).text;
+
+    writeFileSync(join(bundleDir, 'index.html'), local(isolation.html), 'utf8');
+    writeFileSync(join(bundleDir, 'styles.css'), local(isolation.css), 'utf8');
+    // HTML CRU reescrito: preserva as classes/ids originais para o CSS EXTERNO
+    // (que mira esses seletores) casar no preview. O isolado (index.html) fica
+    // para o gerador; o preview do componente usa este.
+    writeFileSync(join(bundleDir, 'raw.html'), local(seg.htmlSnippet), 'utf8');
+    // Head portátil: o CSS externo (<link>) e as fontes já apontam para o bundle.
+    if (headOrigem) writeFileSync(join(bundleDir, 'head.html'), local(headOrigem), 'utf8');
+    writeFileSync(
+      join(bundleDir, 'isolation.json'),
+      JSON.stringify(isolation.stats, null, 2),
+      'utf8',
+    );
+  }
 
   // Estados COM HTML (reescritos p/ local) vão para o bundle: sobrevivem à origem
   // e deixam o componente reproduzir os estados na Biblioteca, como na Galeria.
@@ -281,7 +409,7 @@ const montarComponente = (seg: SegmentRow) => {
 
   // Dependências: as do isolamento (assets) + as que a exploração associou (runtime).
   const dependencies = [
-    ...isolation.referencedAssets.map((ref) => ({
+    ...(isolation?.referencedAssets ?? []).map((ref) => ({
       type: 'shared-asset' as const,
       ref,
       bundled: false,
@@ -302,9 +430,12 @@ const montarComponente = (seg: SegmentRow) => {
         tags: [],
         notes: null,
         bundleHash,
+        // A decisão do V2 viaja com o componente: quem consumir o bundle sabe
+        // se está diante de um portátil, uma cápsula ou uma referência.
+        representation,
         // Fidelidade honesta: o insight da exploração (com dimensões/pipeline)
         // quando existe; senão o do isolamento estático.
-        fidelity: insight ?? isolation.fidelity,
+        fidelity: insight ?? isolation?.fidelity ?? null,
         dependencies,
         // Assets locais copiados para o bundle (content-addressed).
         assets: bundleAssets.assets,

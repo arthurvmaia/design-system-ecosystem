@@ -1,6 +1,10 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, relative } from 'node:path';
-import { libraryComponentBundleDir, vaultCaptureAssetsDir } from '@ds/shared/paths';
+import {
+  libraryComponentBundleDir,
+  vaultCaptureAssetsDir,
+  vaultCaptureV2AssetsDir,
+} from '@ds/shared/paths';
 import { Hono } from 'hono';
 
 /**
@@ -119,11 +123,13 @@ const restoDaUrl = (fullUrl: string, base: string, id: string): string => {
 assetRoute.get('/:dsId/*', (c) => {
   const dsId = c.req.param('dsId');
   if (!/^ds_[a-z0-9]+$/i.test(dsId)) return jsonResp(400, 'invalid_id');
-  return servirDe(
-    vaultCaptureAssetsDir(dsId as `ds_${string}`),
-    restoDaUrl(c.req.url, '/api/asset', dsId),
-    c.req.header('range'),
-  );
+  const resto = restoDaUrl(c.req.url, '/api/asset', dsId);
+  const range = c.req.header('range');
+  const v1 = servirDe(vaultCaptureAssetsDir(dsId as `ds_${string}`), resto, range);
+  if (v1.status !== 404) return v1;
+  // Extração V2: os assets moram em `capture-v2/assets/`, no mesmo formato
+  // content-addressed. Mesmas guardas, outra raiz.
+  return servirDe(vaultCaptureV2AssetsDir(dsId as `ds_${string}`), resto, range);
 });
 
 libraryAssetRoute.get('/:cmpId/*', (c) => {

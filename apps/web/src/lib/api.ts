@@ -88,6 +88,8 @@ export type SegmentFidelity = {
   related?: { kind: string; label: string; stateId?: string }[];
   dependencies?: { type: string; ref: string; runtime?: string; bundled?: boolean }[];
   limitations?: string[];
+  /** Comportamentos de scroll associados (reveal/parallax/sticky/progress-*). */
+  scroll?: { kind: string; scrub?: boolean; pin?: boolean }[];
 };
 
 export type SegmentRecord = {
@@ -338,6 +340,13 @@ export const previewSegmentUrl = (segId: string, bg?: 'claro' | 'escuro'): strin
  */
 export const previewSegmentReplayUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/segment/${segId}?replay=1${bg ? `&bg=${bg}` : ''}`;
+/**
+ * Prévia em modo SCROLL: reproduz os comportamentos capturados (reveal,
+ * parallax, sticky, progress) com rolagem REAL numa área alta — é onde o
+ * usuário VÊ o efeito acontecer em vez de ler que ele existe.
+ */
+export const previewSegmentScrollUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
+  `/api/preview/segment/${segId}?scroll=1${bg ? `&bg=${bg}` : ''}`;
 export const previewComponentUrl = (cmpId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/component/${cmpId}${bg ? `?bg=${bg}` : ''}`;
 export const previewRejeitadoUrl = (dsId: string, segId: string, bg?: 'claro' | 'escuro'): string =>

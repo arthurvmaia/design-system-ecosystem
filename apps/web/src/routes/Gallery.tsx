@@ -7,6 +7,7 @@ import {
   type SegmentRecord,
   api,
   previewSegmentReplayUrl,
+  previewSegmentScrollUrl,
   previewSegmentUrl,
 } from '@/lib/api';
 import { cn } from '@/lib/cn';
@@ -19,7 +20,17 @@ import {
 } from '@/lib/selection';
 import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Heart, Loader2, Play, Sparkles, Sun, Trash2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Heart,
+  Loader2,
+  MoveVertical,
+  Play,
+  Sparkles,
+  Sun,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -898,8 +909,12 @@ function SegmentDetail({
 }) {
   const qc = useQueryClient();
   const [bg, setBg] = useState<'claro' | 'escuro' | undefined>(undefined);
-  const [replay, setReplay] = useState(false);
+  const [modo, setModo] = useState<'plano' | 'estados' | 'scroll'>('plano');
   const temEstados = (segment.fidelity?.states?.length ?? 0) > 0;
+  // Referência visual (selo "visual"): o modal abre direto o movimento gravado
+  // (loop das amostras) — a miniatura limpa fica só para o card da grade.
+  const ehReferenciaVisual = segment.fidelity?.support === 'visual';
+  const temScroll = !ehReferenciaVisual && (segment.fidelity?.scroll?.length ?? 0) > 0;
 
   const add = useMutation({
     mutationFn: () => api.addToLibrary(segment.id),
@@ -945,17 +960,33 @@ function SegmentDetail({
             {temEstados && (
               <button
                 type="button"
-                onClick={() => setReplay((v) => !v)}
-                aria-pressed={replay}
+                onClick={() => setModo((m) => (m === 'estados' ? 'plano' : 'estados'))}
+                aria-pressed={modo === 'estados'}
                 title="Reproduz os estados capturados (hover, clique, modal…) no preview isolado"
                 className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
                 style={{
-                  borderColor: replay ? 'var(--color-primary)' : 'var(--color-border)',
-                  color: replay ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+                  borderColor: modo === 'estados' ? 'var(--color-primary)' : 'var(--color-border)',
+                  color: modo === 'estados' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
                 }}
               >
                 <Play size={11} />
-                {replay ? 'Reproduzindo' : 'Reproduzir estados'}
+                {modo === 'estados' ? 'Reproduzindo' : 'Reproduzir estados'}
+              </button>
+            )}
+            {temScroll && (
+              <button
+                type="button"
+                onClick={() => setModo((m) => (m === 'scroll' ? 'plano' : 'scroll'))}
+                aria-pressed={modo === 'scroll'}
+                title="Reproduz os efeitos de scroll capturados (reveal, parallax, sticky) rolando de verdade"
+                className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+                style={{
+                  borderColor: modo === 'scroll' ? 'var(--color-primary)' : 'var(--color-border)',
+                  color: modo === 'scroll' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+                }}
+              >
+                <MoveVertical size={11} />
+                {modo === 'scroll' ? 'Rolando' : 'Ver ao rolar'}
               </button>
             )}
             <BgToggle bg={bg} onChange={setBg} />
@@ -974,9 +1005,13 @@ function SegmentDetail({
         <FidelityPanel fidelity={segment.fidelity} />
         <div className="p-4">
           <PreviewFrame
-            key={`${bg ?? 'auto'}-${replay ? 'replay' : 'plano'}`}
+            key={`${bg ?? 'auto'}-${ehReferenciaVisual ? 'ref' : modo}`}
             src={
-              replay ? previewSegmentReplayUrl(segment.id, bg) : previewSegmentUrl(segment.id, bg)
+              modo === 'scroll'
+                ? previewSegmentScrollUrl(segment.id, bg)
+                : modo === 'estados' || ehReferenciaVisual
+                  ? previewSegmentReplayUrl(segment.id, bg)
+                  : previewSegmentUrl(segment.id, bg)
             }
             title={segment.name}
             aspect={16 / 11}

@@ -15,6 +15,7 @@ import {
   type DesignSystemId,
   type VisualComparison,
   vaultCaptureV2FramesDir,
+  vaultCaptureV2Manifest,
   vaultSegmentBundlesDir,
 } from '@ds/shared';
 
@@ -30,6 +31,8 @@ export type BundleInfo = {
   representation: RepresentacaoBundle;
   /** Hash da seção (SegmentEvidence.segmentId) — liga o bundle ao manifesto V2. */
   hash: string | null;
+  /** Hashes dos membros da seção — alvos das observações temporais (loop). */
+  members: string[];
   /** Ids de mídia/runtime da evidência, para decidir a natureza da comparação. */
   mediaIds: string[];
   runtimeIds: string[];
@@ -41,6 +44,26 @@ const REPRESENTACOES: ReadonlySet<string> = new Set([
   'referencia-visual',
 ]);
 
+/**
+ * Representação declarada num diretório de bundle qualquer (segmento OU cópia
+ * curada na Biblioteca). `null` = sem manifest do compilador (bundle clássico).
+ */
+export const lerRepresentacaoDeDir = (dir: string): RepresentacaoBundle | null => {
+  const manifestPath = join(dir, 'manifest.json');
+  if (!existsSync(manifestPath)) return null;
+  try {
+    const m = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      representation?: { type?: unknown };
+    };
+    const type = m.representation?.type;
+    return typeof type === 'string' && REPRESENTACOES.has(type)
+      ? (type as RepresentacaoBundle)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 /** Lê o manifest.json do bundle de um segmento. `null` = sem bundle (fluxo V1). */
 export const lerBundleInfo = (dsId: DesignSystemId, position: number): BundleInfo | null => {
   const pasta = `seg_${position}`;
@@ -50,7 +73,12 @@ export const lerBundleInfo = (dsId: DesignSystemId, position: number): BundleInf
   try {
     const m = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
       representation?: { type?: unknown };
-      evidence?: { segmentId?: unknown; mediaIds?: unknown; runtimeIds?: unknown };
+      evidence?: {
+        segmentId?: unknown;
+        members?: unknown;
+        mediaIds?: unknown;
+        runtimeIds?: unknown;
+      };
     };
     const type = m.representation?.type;
     if (typeof type !== 'string' || !REPRESENTACOES.has(type)) return null;
@@ -61,6 +89,7 @@ export const lerBundleInfo = (dsId: DesignSystemId, position: number): BundleInf
       dir,
       representation: type as RepresentacaoBundle,
       hash: typeof m.evidence?.segmentId === 'string' ? m.evidence.segmentId : null,
+      members: lista(m.evidence?.members),
       mediaIds: lista(m.evidence?.mediaIds),
       runtimeIds: lista(m.evidence?.runtimeIds),
     };
@@ -81,6 +110,39 @@ export const frameDaSecao = (dsId: DesignSystemId, hash: string | null): string 
   const prefixo = `secao-${hash.slice(0, 10)}-`;
   const nome = readdirSync(dir).find((f) => f.startsWith(prefixo) && f.endsWith('.png'));
   return nome === undefined ? null : `frames/${nome}`;
+};
+
+/**
+ * Frames do MOVIMENTO da seção, em ordem temporal: as amostras que a observação
+ * temporal guardou para o hash da seção e dos membros dela. Com 2 ou mais dá
+ * para mostrar o movimento de verdade — é o "loop visual" da referência.
+ * Os nomes no manifesto são só o arquivo; o caminho devolvido já vem com o
+ * prefixo `frames/` (relativo a `capture-v2/`).
+ */
+export const framesDoMovimento = (dsId: DesignSystemId, bundle: BundleInfo): string[] => {
+  const path = vaultCaptureV2Manifest(dsId);
+  if (!existsSync(path)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as {
+      temporalObservations?: Array<{ target?: unknown; frames?: unknown }>;
+    };
+    const alvos = new Set(
+      [bundle.hash, ...bundle.members].filter((h): h is string => h !== null && h.length > 0),
+    );
+    const frames: string[] = [];
+    for (const t of raw.temporalObservations ?? []) {
+      if (typeof t.target !== 'string' || !alvos.has(t.target)) continue;
+      if (!Array.isArray(t.frames)) continue;
+      for (const f of t.frames) {
+        if (typeof f !== 'string' || f.length === 0) continue;
+        const rel = `frames/${f.replace(/\\/g, '/').replace(/^frames\//, '')}`;
+        if (!frames.includes(rel)) frames.push(rel);
+      }
+    }
+    return frames;
+  } catch {
+    return [];
+  }
 };
 
 /** Content-Type por extensão para os arquivos servidos da rota de bundle. */

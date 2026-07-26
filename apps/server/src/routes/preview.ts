@@ -22,7 +22,12 @@ import {
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { MIME_BUNDLE, lerBundleInfo } from '../lib/bundle-v2.js';
+import {
+  MIME_BUNDLE,
+  framesDoMovimento,
+  lerBundleInfo,
+  lerRepresentacaoDeDir,
+} from '../lib/bundle-v2.js';
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
 
 /**
@@ -391,6 +396,49 @@ const escaparHtml = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
+ * Loop visual de uma referência (modal): cicla as amostras que a observação
+ * temporal capturou, com o aviso LEGÍVEL. É reprodução honesta do movimento —
+ * são os pixels reais gravados, não o runtime re-executado, e a página diz isso.
+ */
+const paginaLoopVisual = (nome: string, dsId: string, pasta: string, frames: string[]): string => {
+  const urls = frames.map((f) => `/api/preview/bundle/${dsId}/${pasta}/${f}`);
+  return `<!doctype html>
+<html><head><meta charset="utf-8"/><style>
+body{margin:0;min-height:100vh;background:#0b0b0e;color:#e7e5e4;font-family:system-ui,sans-serif;display:flex;flex-direction:column}
+.aviso{padding:10px 14px;background:rgba(185,28,28,.12);border-bottom:1px solid rgba(185,28,28,.35);font-size:12px;line-height:1.5;color:#fca5a5}
+.aviso b{color:#fecaca}
+.palco{flex:1;display:flex;align-items:center;justify-content:center;padding:16px}
+.palco img{max-width:100%;max-height:80vh;display:block;border-radius:6px}
+.controles{display:flex;gap:10px;align-items:center;padding:10px 14px;font-size:12px;color:#a8a29e;border-top:1px solid rgba(255,255,255,.06)}
+.controles button{cursor:pointer;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);color:#e7e5e4;border-radius:999px;padding:4px 12px;font:inherit}
+</style></head><body>
+<div class="aviso"><b>Referência visual:</b> ${escaparHtml(nome)} — loop das amostras capturadas.
+Este item não é um componente editável; o movimento real é do runtime do site, que não foi reproduzido.</div>
+<div class="palco"><img id="ds-loop" alt="Amostra da captura" src="${urls[0] ?? ''}"/></div>
+<div class="controles">
+<button type="button" id="ds-loop-toggle">Pausar</button>
+<span id="ds-loop-info"></span>
+</div>
+<script>(function(){
+  var urls=${escaparParaScript(JSON.stringify(urls))};
+  var img=document.getElementById('ds-loop');
+  var info=document.getElementById('ds-loop-info');
+  var btn=document.getElementById('ds-loop-toggle');
+  var i=0, rodando=true, timer=null;
+  function mostrar(){ img.src=urls[i]; info.textContent='amostra '+(i+1)+' de '+urls.length; }
+  function tique(){ i=(i+1)%urls.length; mostrar(); }
+  function ligar(){ timer=setInterval(tique, 700); }
+  btn.addEventListener('click', function(){
+    rodando=!rodando;
+    if(rodando){ ligar(); btn.textContent='Pausar'; }
+    else { clearInterval(timer); btn.textContent='Continuar'; }
+  });
+  mostrar(); ligar();
+})();</script>
+</body></html>`;
+};
+
+/**
  * Página de fallback: aparece dentro do iframe no lugar da prévia. Nunca um
  * retângulo vazio — sempre a causa e o que fazer a respeito.
  */
@@ -454,7 +502,33 @@ previewRoute.get('/segment/:segId', (c) => {
         404,
       );
     }
-    return c.redirect(`/api/preview/bundle/${seg.designSystemId}/${bundle.pasta}/${arquivo}`, 302);
+    if (bundle.representation === 'capsula-runtime') {
+      // A cápsula é viva no card e no modal: o runtime roda isolado nos dois.
+      return c.redirect(
+        `/api/preview/bundle/${seg.designSystemId}/${bundle.pasta}/${arquivo}`,
+        302,
+      );
+    }
+    // Referência visual: no MODAL (?replay=1), o movimento gravado vira um loop
+    // das amostras temporais — o "loop visual" que a representação promete.
+    // Sem amostras suficientes, o documento completo do bundle (frame + aviso).
+    if (c.req.query('replay') === '1') {
+      const frames = framesDoMovimento(seg.designSystemId as `ds_${string}`, bundle);
+      if (frames.length >= 2) {
+        return responderHtml(paginaLoopVisual(seg.name, seg.designSystemId, bundle.pasta, frames));
+      }
+      return c.redirect(
+        `/api/preview/bundle/${seg.designSystemId}/${bundle.pasta}/${arquivo}`,
+        302,
+      );
+    }
+    // Miniatura do card: só o frame, limpa. O selo do card já diz que é
+    // referência visual; a faixa de aviso espremida na miniatura só parecia
+    // defeito. O aviso completo continua no modal e no bundle em disco.
+    return c.redirect(
+      `/api/preview/bundle/${seg.designSystemId}/${bundle.pasta}/${arquivo}?mini=1`,
+      302,
+    );
   }
 
   const html = lerHtmlDoVault(seg.designSystemId);
@@ -513,26 +587,20 @@ previewRoute.get('/segment/:segId', (c) => {
 });
 
 /**
- * Arquivos do bundle de um segmento (motor V2).
+ * Serve um arquivo de bundle (segmento ou Biblioteca) com todas as guardas.
  *
- * O `runtime.html` (cápsula) e o `index.html` (referência visual) são servidos
- * daqui de propósito: com o documento DENTRO do espaço de caminho da rota, as
- * refs relativas do bundle (css/js/svg) resolvem sozinhas — sem reescrita, sem
- * `<base>` (que a CSP recusa). `frames/…` é a exceção: o frame de fallback mora
- * em `capture-v2/frames/` e o bundle o referencia sem copiar.
+ * Os documentos (`runtime.html`/`index.html`) são servidos DENTRO do espaço de
+ * caminho da rota de propósito: as refs relativas do bundle (css/js/svg/frames)
+ * resolvem sozinhas — sem reescrita, sem `<base>` (que a CSP recusa).
  */
-previewRoute.get('/bundle/:dsId/:pasta/:caminho{.+}', (c) => {
-  const dsId = c.req.param('dsId');
-  const pasta = c.req.param('pasta');
-  const caminho = c.req.param('caminho');
-  if (!dsId.startsWith('ds_') || !/^seg_\d+$/.test(pasta)) {
-    return new Response(null, { status: 404 });
-  }
-
+const servirArquivoDeBundle = (
+  raizBundle: string,
+  raizFrames: string | null,
+  caminho: string,
+  mini: boolean,
+): Response => {
   // O caminho vem da URL — o resolvido tem de ficar DENTRO da raiz esperada.
-  const raiz = caminho.startsWith('frames/')
-    ? vaultCaptureV2Dir(dsId as `ds_${string}`)
-    : join(vaultSegmentBundlesDir(dsId as `ds_${string}`), pasta);
+  const raiz = raizFrames !== null && caminho.startsWith('frames/') ? raizFrames : raizBundle;
   const base = resolve(raiz);
   const alvo = resolve(base, caminho);
   if (alvo !== base && !alvo.startsWith(base + sep)) {
@@ -545,7 +613,7 @@ previewRoute.get('/bundle/:dsId/:pasta/:caminho{.+}', (c) => {
       return responderHtml(
         fallback(
           'Arquivo do bundle ausente',
-          'Este segmento aponta para um arquivo de bundle que não está no disco — a compilação pode ter sido cortada por orçamento.',
+          'Este item aponta para um arquivo de bundle que não está no disco — a compilação pode ter sido cortada por orçamento.',
           'Extraia este site de novo para recompilar os bundles.',
         ),
         404,
@@ -560,10 +628,19 @@ previewRoute.get('/bundle/:dsId/:pasta/:caminho{.+}', (c) => {
     // CSP_SANDBOX + iframe sandbox — e sob a origem opaca do sandbox o
     // `'self'` do meta não casa com nada, o que mataria o css/js do próprio
     // bundle (o mesmo motivo documentado no CSP_SANDBOX acima).
-    const html = readFileSync(alvo, 'utf8').replace(
+    let html = readFileSync(alvo, 'utf8').replace(
       /<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]*>\s*/i,
       '',
     );
+    // `mini` — miniatura de card: esconde a faixa de aviso (que espremida
+    // parece defeito) e enquadra o frame. A honestidade não sai da tela: o
+    // selo do card diz "visual" e o modal mostra o aviso completo.
+    if (mini) {
+      html = html.replace(
+        '</head>',
+        '<style>[data-ds-aviso]{display:none}body{margin:0;background:#0b0b0e}img{max-width:100%;height:auto;display:block}</style></head>',
+      );
+    }
     return responderHtml(html);
   }
 
@@ -576,6 +653,43 @@ previewRoute.get('/bundle/:dsId/:pasta/:caminho{.+}', (c) => {
       'Cache-Control': 'private, max-age=60',
     },
   });
+};
+
+/**
+ * Arquivos do bundle de um segmento (motor V2). `frames/…` mora em
+ * `capture-v2/frames/` — o bundle do segmento referencia o frame sem copiar.
+ */
+previewRoute.get('/bundle/:dsId/:pasta/:caminho{.+}', (c) => {
+  const dsId = c.req.param('dsId');
+  const pasta = c.req.param('pasta');
+  if (!dsId.startsWith('ds_') || !/^seg_\d+$/.test(pasta)) {
+    return new Response(null, { status: 404 });
+  }
+  return servirArquivoDeBundle(
+    join(vaultSegmentBundlesDir(dsId as `ds_${string}`), pasta),
+    vaultCaptureV2Dir(dsId as `ds_${string}`),
+    c.req.param('caminho'),
+    c.req.query('mini') === '1',
+  );
+});
+
+/**
+ * Arquivos do bundle de um componente CURADO (Biblioteca). A promoção copia o
+ * bundle do segmento inteiro — inclusive os frames — então aqui não há raiz
+ * externa: tudo vive em `library/<cmp>/bundle/` e sobrevive à exclusão da
+ * extração original.
+ */
+previewRoute.get('/library-bundle/:cmpId/:caminho{.+}', (c) => {
+  const cmpId = c.req.param('cmpId');
+  if (!/^cmp_[a-z0-9]+$/i.test(cmpId)) {
+    return new Response(null, { status: 404 });
+  }
+  return servirArquivoDeBundle(
+    libraryComponentBundleDir(cmpId as `cmp_${string}`),
+    null,
+    c.req.param('caminho'),
+    c.req.query('mini') === '1',
+  );
 });
 
 /** Prévia de um componente curado da Biblioteca. */
@@ -600,6 +714,28 @@ previewRoute.get('/component/:cmpId', (c) => {
   }
 
   const bundleDir = libraryComponentBundleDir(cmpId as `cmp_${string}`);
+
+  // Componente curado do V2 com representação própria: o bundle copiado é o
+  // componente — a cápsula roda o runtime isolado, a referência mostra o frame
+  // com o aviso. Servir o raw.html aqui seria o card preto de volta, agora na
+  // Biblioteca. A miniatura (`?mini=1` implícito no card) fica limpa.
+  const representacao = lerRepresentacaoDeDir(bundleDir);
+  if (representacao !== null && representacao !== 'componente-portatil') {
+    const arquivo = representacao === 'capsula-runtime' ? 'runtime.html' : 'index.html';
+    if (!existsSync(join(bundleDir, arquivo))) {
+      return responderHtml(
+        fallback(
+          'Bundle incompleto',
+          `A representação deste componente é "${representacao}", mas o arquivo ${arquivo} não está no bundle.`,
+          'Remova o componente e faça a curadoria de novo a partir da Galeria.',
+        ),
+        404,
+      );
+    }
+    const mini = representacao === 'referencia-visual' ? '?mini=1' : '';
+    return c.redirect(`/api/preview/library-bundle/${cmpId}/${arquivo}${mini}`, 302);
+  }
+
   const bundleHtmlPath = join(bundleDir, 'index.html');
   if (!existsSync(bundleHtmlPath)) {
     return responderHtml(

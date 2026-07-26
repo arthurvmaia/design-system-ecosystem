@@ -724,13 +724,26 @@ export const capturarComV2 = async (
               break;
             }
             const dosMeus = new Set(seg.evidence.assetKeys);
+            // Só os frames DESTE segmento (a própria seção primeiro — é o
+            // fallback visual do bundle). Entregar todos os frames da captura
+            // fazia a referência visual de um formulário mostrar o hero.
+            const hashesDoSegmento = new Set([seg.hash, ...seg.evidence.members]);
+            const frameProprio = framePorHash.get(seg.hash);
+            const framesDoSegmento = [
+              ...new Set([
+                ...(frameProprio === undefined ? [] : [frameProprio]),
+                ...[...framePorHash.entries()]
+                  .filter(([hash]) => hashesDoSegmento.has(hash))
+                  .map(([, frame]) => frame),
+              ]),
+            ];
             escreverBundle(join(dirBundles, `seg_${seg.position}`), {
               segmento: seg,
               css: cssInline,
               scripts: seg.representation.type === 'referencia-visual' ? [] : scriptsInline,
               assets: assets.filter((a) => dosMeus.has(a.originalUrl)),
               stack,
-              frames: [...framePorHash.values()],
+              frames: framesDoSegmento,
               runtimeScripts: runtimeDetections
                 .filter((r) => seg.evidence.runtimeIds.includes(r.id))
                 .flatMap((r) => r.scripts)
