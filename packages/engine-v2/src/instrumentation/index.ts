@@ -25,6 +25,7 @@ export {
   HTML_DO_REF_FN,
   MEDIR_ALVOS_FN,
   PORTAL_HTML_FN,
+  ROLAR_ATE_REF_FN,
   ROLAR_PARA_FN,
   SONDAR_PONTO_FN,
 } from './collectors.js';

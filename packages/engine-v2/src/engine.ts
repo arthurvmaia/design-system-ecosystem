@@ -49,6 +49,8 @@ import {
   COLETAR_MAPA_FN,
   HTML_DO_REF_FN,
   INIT_SCRIPT,
+  ROLAR_ATE_REF_FN,
+  ROLAR_PARA_FN,
   chamar,
   limparInstrumentacao,
 } from './instrumentation/index.js';
@@ -590,9 +592,16 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       const node = porRef.get(n.ref);
       if (node === undefined) continue;
       try {
+        const vp = page.viewport();
+        // A seção precisa estar NA VIEWPORT e com as animações de entrada
+        // assentadas antes do screenshot: uma seção com reveal por scroll
+        // fotografada fora de vista sai vazia — e o card na Galeria parece
+        // defeito, não referência. Rola até o ELEMENTO (não a uma coordenada:
+        // o pageBox nem sempre existe) e espera o reveal disparar.
+        const rolou = await page.evaluate<boolean>(chamar(ROLAR_ATE_REF_FN, n.ref));
+        if (rolou) await page.esperar(400);
         const centro = await page.evaluate<{ box: BoxPx } | null>(chamar(CENTRO_DO_REF_FN, n.ref));
         if (centro === null) continue;
-        const vp = page.viewport();
         const clip: BoxPx = {
           x: Math.max(0, Math.min(vp.width - 2, centro.box.x)),
           y: Math.max(0, Math.min(vp.height - 2, centro.box.y)),
@@ -606,9 +615,17 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           gravar(opts.dirCaptura, join('frames', nome), bytes),
         );
       } catch {
-        // seção fora da viewport ou removida: fica sem frame e será reprovada
-        // com o motivo — que é melhor que entregar um card vazio.
+        // seção removida do DOM: fica sem frame e será reprovada com o motivo —
+        // que é melhor que entregar um card vazio.
       }
+    }
+    // Devolve o scroll ao topo: as fases seguintes (candidatos, estados) medem
+    // a página a partir do estado inicial.
+    try {
+      await page.evaluate(chamar(ROLAR_PARA_FN, 0));
+      await page.esperar(200);
+    } catch {
+      // rolagem de volta é cortesia, não pré-condição
     }
     log('frames-secao', { total: framePorHash.size });
 

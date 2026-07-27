@@ -1199,6 +1199,18 @@ export const BLUR_FN = `
 `;
 
 /** Rola para uma posição absoluta e devolve onde parou. `(y) => {...}`. */
+/**
+ * Rola até um elemento pelo ref de instrumentação e centraliza na viewport.
+ * `(ref) => boolean` — false quando o elemento não existe mais.
+ */
+export const ROLAR_ATE_REF_FN = `
+(ref) => {
+  var el = document.querySelector('[${ATTR_REF}="' + ref + '"]');
+  if (!el) return false;
+  el.scrollIntoView({ block: 'center', behavior: 'instant' });
+  return true;
+}`;
+
 export const ROLAR_PARA_FN = `
 (y) => {
   window.scrollTo({ top: y, left: 0, behavior: 'instant' });
