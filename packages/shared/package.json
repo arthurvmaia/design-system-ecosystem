@@ -17,6 +17,7 @@
     "clean": "node ../../scripts/limpar.mjs"
   },
   "dependencies": {
+    "node-html-parser": "^7.0.1",
     "ulid": "^2.3.0",
     "zod": "^3.24.1"
   },

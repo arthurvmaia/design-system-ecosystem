@@ -1,5 +1,6 @@
 export * from './assets.js';
 export * from './asset-rewrite.js';
+export * from './contract.js';
 export * from './engine.js';
 export * from './fonts.js';
 export * from './ids.js';

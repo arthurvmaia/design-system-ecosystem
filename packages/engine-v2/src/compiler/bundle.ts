@@ -1,6 +1,11 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { CapturedAsset, RepresentationDecision, StackEntry } from '@ds/shared';
+import {
+  type CapturedAsset,
+  type RepresentationDecision,
+  type StackEntry,
+  derivarContrato,
+} from '@ds/shared';
 import type { RawJsInline } from '../mapper/raw.js';
 import type { SegmentoV2 } from '../segment/segment-v2.js';
 import { type ResultadoCss, organizarCss } from './css-organize.js';
@@ -275,9 +280,27 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
     ),
   );
 
+  // ── Contrato de esqueleto/slots/tokens ──────────────────────────────────
+  // Metadado DERIVADO do que o bundle já é — nada do bundle muda por causa
+  // dele. É o de-para que a geração usa para aplicar a identidade do usuário
+  // por cima do esqueleto (A geração aplica por DOM/seletor; replace de
+  // string não sobrevive a marcação real).
+  const contract = derivarContrato({
+    html: corpo,
+    css: Object.fromEntries(css.arquivos.map((a) => [a.caminho, a.conteudo])),
+    jsFiles: js.arquivos.map((a) => a.caminho),
+    assets: entrada.assets.map((a) => ({
+      originalUrl: a.originalUrl,
+      localPath: a.localPath,
+      kind: a.kind,
+    })),
+    origem: 'bundle-v2',
+  });
+
   // ── manifest.json ───────────────────────────────────────────────────────
   const manifesto = {
     compilerVersion: COMPILER_VERSION,
+    contract,
     name: segmento.name,
     category: segmento.category,
     kind: segmento.kind,
