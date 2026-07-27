@@ -11,6 +11,7 @@ import {
   previewSegmentUrl,
 } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { usePreferencias } from '@/lib/preferencias';
 import {
   isAllSelected,
   isIndeterminate,
@@ -752,7 +753,11 @@ function SegmentsView({
           </button>
           <button
             type="button"
-            onClick={() => setConfirmExcluir(true)}
+            onClick={() =>
+              usePreferencias.getState().confirmarAntesDeExcluir
+                ? setConfirmExcluir(true)
+                : excluirLote.mutate()
+            }
             disabled={excluirLote.isPending}
             className="ds-tag flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] disabled:opacity-50"
             style={{ borderColor: 'rgba(198,40,40,0.4)', color: 'var(--color-crimson-3)' }}

@@ -1,6 +1,7 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type RejectedSegment, api, previewRejeitadoUrl } from '@/lib/api';
+import { usePreferencias } from '@/lib/preferencias';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -189,7 +190,11 @@ function CardRejeitado({
             <button
               type="button"
               disabled={ocupado}
-              onClick={() => setConfirmaDescarte(true)}
+              onClick={() =>
+                usePreferencias.getState().confirmarAntesDeExcluir
+                  ? setConfirmaDescarte(true)
+                  : descartar.mutate()
+              }
               className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:bg-[rgba(198,40,40,0.12)] disabled:opacity-40"
               style={{ color: 'var(--color-fg-muted)' }}
             >

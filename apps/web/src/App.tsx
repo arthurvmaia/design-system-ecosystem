@@ -1,5 +1,6 @@
 import { Intro } from '@/components/Intro';
 import { Shell } from '@/components/Shell';
+import { aplicarMovimento, usePreferencias } from '@/lib/preferencias';
 import { ExtractPage } from '@/routes/Extract';
 import { GalleryPage } from '@/routes/Gallery';
 import { KitsPage } from '@/routes/Kits';
@@ -8,7 +9,7 @@ import { MeusProjetosPage } from '@/routes/MeusProjetos';
 import { RevisaoPage } from '@/routes/Revisao';
 import { SettingsPage } from '@/routes/Settings';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import { ProjectsPage } from './routes/projects';
 
@@ -23,13 +24,29 @@ const queryClient = new QueryClient({
 });
 
 export function App() {
-  // A intro abre por cima do app. Quando termina (ou é pulada) ela some e o app
-  // fica visível — sem redirecionar para lugar nenhum: faz parte do próprio app.
-  const [introVista, setIntroVista] = useState(false);
+  const movimento = usePreferencias((s) => s.movimento);
+  const introAoAbrir = usePreferencias((s) => s.introAoAbrir);
+  const jaViuIntro = usePreferencias((s) => s.jaViuIntro);
+  const definir = usePreferencias((s) => s.definir);
+
+  // A preferência manual de movimento vira classe global — o CSS respeita
+  // como se fosse a preferência do sistema.
+  useEffect(() => aplicarMovimento(movimento), [movimento]);
+
+  // A intro abre por cima do app. Por padrão, só na primeira visita — a
+  // preferência em Configurações decide se ela volta sempre.
+  const [introVista, setIntroVista] = useState(introAoAbrir === 'primeira-vez' && jaViuIntro);
 
   return (
     <QueryClientProvider client={queryClient}>
-      {!introVista && <Intro onFinish={() => setIntroVista(true)} />}
+      {!introVista && (
+        <Intro
+          onFinish={() => {
+            setIntroVista(true);
+            definir({ jaViuIntro: true });
+          }}
+        />
+      )}
       <Router>
         <Routes>
           <Route element={<Shell />}>

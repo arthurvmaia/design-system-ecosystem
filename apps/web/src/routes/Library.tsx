@@ -4,6 +4,7 @@ import { PreviewFrame } from '@/components/PreviewFrame';
 import { Select } from '@/components/seletores';
 import { type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { usePreferencias } from '@/lib/preferencias';
 import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -265,7 +266,11 @@ export function LibraryPage() {
           <button
             type="button"
             disabled={excluir.isPending}
-            onClick={() => setConfirmaLote(true)}
+            onClick={() =>
+              usePreferencias.getState().confirmarAntesDeExcluir
+                ? setConfirmaLote(true)
+                : excluir.mutate({ ids: [...sel], confirmar: false })
+            }
             className="ds-btn flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium disabled:opacity-40"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >

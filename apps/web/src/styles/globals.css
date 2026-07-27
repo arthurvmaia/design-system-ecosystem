@@ -779,3 +779,32 @@
     transform: none;
   }
 }
+
+/* A MESMA redução, por escolha manual em Configurações (classe no <html>) —
+   independe do sistema operacional. Espelho do bloco acima. */
+:root.reduz-movimento *,
+:root.reduz-movimento *::before,
+:root.reduz-movimento *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+:root.reduz-movimento .ds-ambient,
+:root.reduz-movimento .ds-embers {
+  display: none;
+}
+:root.reduz-movimento .ds-reveal {
+  opacity: 1;
+  transform: none;
+}
+:root.reduz-movimento .ds-card:hover,
+:root.reduz-movimento .ds-card:hover .ds-card-content,
+:root.reduz-movimento .ds-glow-border:hover,
+:root.reduz-movimento .ds-glow-intense:hover,
+:root.reduz-movimento .ds-glass-lift:hover,
+:root.reduz-movimento .ds-hover-lift:hover,
+:root.reduz-movimento .ds-hover-float:hover,
+:root.reduz-movimento .ds-tag:hover,
+:root.reduz-movimento .ds-logo-hover:hover {
+  transform: none;
+}
