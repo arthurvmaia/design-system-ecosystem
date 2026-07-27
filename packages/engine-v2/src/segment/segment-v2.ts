@@ -259,17 +259,21 @@ export type VereditoSegmento = { ok: boolean; motivos: string[] };
 /**
  * O segmento vale a Galeria?
  *
- * Esta função é o antídoto direto do card preto. No V1, um candidato promovido por
- * conter `<canvas>` **pulava a validação inteira** (`if (hint === undefined)`), e o
- * `htmlSnippet` gravado era `<canvas></canvas>` — um retângulo escuro no preview.
+ * Esta função é o antídoto direto do card preto E do card decorativo. Um
+ * componente precisa de ESTRUTURA E PROPÓSITO PRÓPRIOS: texto de verdade,
+ * ações, campos, títulos ou mídia de conteúdo (imagem, vídeo, embed).
  *
- * Aqui a pergunta é: **existe substância verificada?** Texto de verdade, mídia com
- * conteúdo comprovado, fundo com asset ou gradiente que cobre área, ou movimento
- * medido. Um canvas sem contexto observado e sem movimento medido não é um
- * componente — é um elemento vazio, e vai para a Revisão com o motivo escrito.
+ * Efeito visual — canvas animado, gradiente, fundo com asset, orbe — NÃO é
+ * substância sozinho. Quando o efeito pertence a uma seção real, o visual dela
+ * já o carrega (o HTML da seção contém o efeito e o CSS viaja no bundle);
+ * promovê-lo a card independente é o que enchia a Biblioteca de fragmentos.
+ * A regra prefere rejeitar (com motivo humano, revisável em Pendências) a
+ * promover algo sem valor de reutilização.
  */
 export const validarSegmentoV2 = (opts: {
   texto: string;
+  /** Sinais de conteúdo/função contados no HTML da seção. */
+  sinais: SinaisDeConteudo;
   midias: readonly MediaDetection[];
   backgrounds: readonly BackgroundDetection[];
   temMovimento: boolean;
@@ -282,23 +286,37 @@ export const validarSegmentoV2 = (opts: {
   const motivos: string[] = [];
   const temTexto = opts.texto.trim().length >= 12;
 
-  // Mídia COM substância — não basta a tag existir.
-  const midiaComSubstancia = opts.midias.some((m) => {
-    if (m.kind === 'canvas-2d' || m.kind === 'webgl' || m.kind === 'webgl2') {
-      // Canvas só conta se algo foi desenhado (movimento medido) ou se há runtime
-      // identificado que o desenha. Sem isso é um retângulo vazio.
-      return opts.temMovimento || opts.temRuntime;
-    }
+  // Mídia DE CONTEÚDO — imagem, vídeo, embed, ilustração. Canvas/WebGL ficam
+  // de fora de propósito: são efeito, não conteúdo.
+  const midiaDeConteudo = opts.midias.some((m) => {
+    if (m.kind === 'canvas-2d' || m.kind === 'webgl' || m.kind === 'webgl2') return false;
     if (m.kind === 'video') return Boolean(m.src) || Boolean(m.poster) || opts.temMovimento;
     if (m.kind === 'iframe') return Boolean(m.src);
     return Boolean(m.src) || (m.intrinsic?.width ?? 0) > 0 || m.kind === 'svg-animado';
   });
 
-  const fundoComSubstancia = opts.backgrounds.some(
+  // Função de interface: botões/links, campos, títulos, preços.
+  const temFuncao =
+    opts.sinais.acoes > 0 ||
+    opts.sinais.campos > 0 ||
+    opts.sinais.titulos > 0 ||
+    opts.sinais.precos > 0;
+
+  // Imagens contadas no HTML também são conteúdo (ex.: faixa de logos sem
+  // uma palavra) — mesmo quando não viraram MediaDetection.
+  const temConteudo = temTexto || temFuncao || midiaDeConteudo || opts.sinais.imagens > 0;
+
+  // Efeitos presentes (para o motivo certo quando faltar conteúdo).
+  const canvasComMovimento = opts.midias.some(
+    (m) =>
+      (m.kind === 'canvas-2d' || m.kind === 'webgl' || m.kind === 'webgl2') &&
+      (opts.temMovimento || opts.temRuntime),
+  );
+  const fundoDecorativo = opts.backgrounds.some(
     (b) => b.assetUrls.length > 0 || /gradient|url\(/i.test(b.cssValue) || b.animated,
   );
 
-  if (!temTexto && !midiaComSubstancia && !fundoComSubstancia) {
+  if (!temConteudo) {
     // Diagnóstico específico, porque "bloco vazio" não ajuda ninguém a corrigir.
     const canvasVazio = opts.midias.some(
       (m) =>
@@ -306,12 +324,16 @@ export const validarSegmentoV2 = (opts: {
         !opts.temMovimento &&
         !opts.temRuntime,
     );
-    if (canvasVazio) {
+    if (canvasComMovimento || fundoDecorativo) {
+      motivos.push(
+        'Efeito visual sem conteúdo próprio (canvas, gradiente ou fundo animado). Sozinho ele não vira componente — quando pertence a uma seção de verdade, o visual dela já o carrega.',
+      );
+    } else if (canvasVazio) {
       motivos.push(
         'Canvas sem nada desenhado: nenhum movimento foi medido e nenhum runtime foi identificado. Preservar isto produziria um card vazio.',
       );
     } else {
-      motivos.push('Sem texto, sem mídia com conteúdo e sem fundo — não há o que curar.');
+      motivos.push('Sem texto, sem ação e sem mídia de conteúdo — não há o que curar.');
     }
   }
 
@@ -625,6 +647,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
 
     const veredito = validarSegmentoV2({
       texto: sinais.texto,
+      sinais,
       midias,
       backgrounds,
       temMovimento,

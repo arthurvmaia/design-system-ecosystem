@@ -38,6 +38,7 @@ const FIXTURE = `<!doctype html>
     <button>Fechar</button>
   </div>
 
+  <div class="p-2"><button aria-label="avancar" class="seta"><svg viewBox="0 0 8 8"><path d="M0 0h8v8"/></svg></button></div>
   <footer class="p-10"><p>© 2026 Alche Studio. Todos os direitos reservados.</p></footer>
 </body></html>`;
 
@@ -51,14 +52,35 @@ const setupVault = (): { root: string; dsId: `ds_${string}` } => {
   return { root, dsId };
 };
 
-test('promove background animado (canvas) e orbe de gradiente a segmentos', () => {
+test('fragmento decorativo (canvas, orbe de gradiente) NÃO vira segmento — vai para a Revisão com motivo', () => {
   const { root, dsId } = setupVault();
   try {
     const res = segmentDesignSystem(dsId);
-    const backgrounds = res.segments.filter((s) => s.category === 'background');
-    assert.ok(backgrounds.length >= 2, `esperava ≥2 backgrounds, veio ${backgrounds.length}`);
-    // O canvas deve estar entre eles.
-    assert.ok(res.segments.some((s) => s.htmlSnippet.includes('<canvas')));
+    // A Galeria não recebe efeito solto: nenhum segmento é só canvas/orbe.
+    assert.equal(
+      res.segments.filter((s) => s.category === 'background').length,
+      0,
+      'background solto não é componente',
+    );
+    // Mas nada some calado: os efeitos estão na Revisão, com o motivo humano.
+    const efeitos = res.rejected.filter((r) =>
+      r.motivos.some((m) => /Efeito visual sem conteúdo próprio/.test(m)),
+    );
+    assert.ok(efeitos.length >= 2, `esperava ≥2 efeitos na Revisão, veio ${efeitos.length}`);
+    assert.ok(res.rejected.some((r) => r.htmlSnippet.includes('<canvas')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('controle solto (botão de seta isolado) NÃO vira componente — Revisão explica', () => {
+  const { root, dsId } = setupVault();
+  try {
+    const res = segmentDesignSystem(dsId);
+    assert.ok(
+      !res.segments.some((s) => s.htmlSnippet.includes('aria-label="avancar"')),
+      'um botão isolado não é componente reutilizável',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -93,12 +115,6 @@ test('cada segmento tem avaliação de fidelidade; canvas é visual, accordion �
     const res = segmentDesignSystem(dsId);
     // Um insight por segmento.
     assert.equal(res.insights.length, res.segments.length);
-
-    const canvasSeg = res.segments.find((s) => s.htmlSnippet.includes('<canvas'));
-    const canvasInsight = res.insights.find((i) => i.segmentId === canvasSeg?.id);
-    assert.equal(canvasInsight?.renderMode, 'webgl');
-    assert.equal(canvasInsight?.support, 'visual');
-    assert.ok((canvasInsight?.warnings.length ?? 0) > 0, 'canvas deve trazer aviso');
 
     const faqSeg = res.segments.find((s) => s.category === 'faq');
     const faqInsight = res.insights.find((i) => i.segmentId === faqSeg?.id);

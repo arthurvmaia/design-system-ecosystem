@@ -33,15 +33,25 @@ test('a página de teste existe e é lida', () => {
   assert.match(html, /role="dialog"/);
 });
 
-test('extrai os cenários visuais que antes sumiam (canvas, aurora, modal)', () => {
+test('overlay real entra; efeito solto (canvas, aurora) vai para a Revisão', () => {
   const { root, dsId } = setup();
   try {
     const res = segmentDesignSystem(dsId);
     const cats = new Set(res.segments.map((s) => s.category));
-    assert.ok(cats.has('background'), 'background animado presente');
+    // Modal oculto é conteúdo legítimo revelado por interação — continua.
     assert.ok(cats.has('overlay'), 'modal/overlay presente');
-    // O canvas de partículas é um dos backgrounds.
-    assert.ok(res.segments.some((s) => s.htmlSnippet.includes('<canvas')));
+    // Efeito decorativo não é componente: nenhum segmento é só canvas/aurora…
+    assert.ok(!cats.has('background'), 'background solto não vira card');
+    assert.ok(!res.segments.some((s) => /^<canvas/i.test(s.htmlSnippet.trim())));
+    // …mas nada some calado: está na Revisão com o motivo humano.
+    assert.ok(
+      res.rejected.some(
+        (r) =>
+          r.htmlSnippet.includes('<canvas') &&
+          r.motivos.some((m) => /Efeito visual sem conteúdo próprio/.test(m)),
+      ),
+      'canvas decorativo revisável em Pendências',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -55,11 +65,6 @@ test('cada cenário interativo recebe a fidelidade correta', () => {
       const seg = res.segments.find((s) => pred(s.htmlSnippet));
       return res.insights.find((i) => i.segmentId === seg?.id);
     };
-
-    // Canvas → visual.
-    const canvas = insightDe((h) => h.includes('id="particles"'));
-    assert.equal(canvas?.renderMode, 'canvas');
-    assert.equal(canvas?.support, 'visual');
 
     // Accordion → parcial, com interação toggle.
     const faq = insightDe((h) => h.includes('accordion-trigger'));

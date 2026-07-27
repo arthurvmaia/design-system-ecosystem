@@ -396,18 +396,24 @@ test('a segmentação acontece DEPOIS da exploração e produz segmentos úteis'
   }
 });
 
-test('NENHUM segmento é um card vazio: todos têm substância verificada', () => {
+test('NENHUM segmento é card vazio nem efeito solto: todos têm conteúdo próprio', () => {
   if (pular() || composicao === null) return;
   for (const s of composicao.segmentos) {
     const texto = s.htmlSnippet
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    const temMidia = s.evidence.mediaIds.length > 0 || s.evidence.backgroundIds.length > 0;
-    assert.ok(
-      texto.length >= 12 || temMidia,
-      `"${s.name}" não tem texto nem mídia — é um card vazio`,
-    );
+    // Substância = texto, elemento de conteúdo/função no HTML, ou mídia
+    // DETECTADA (cobre conteúdo dentro de shadow root, que o regex não vê).
+    // Fundo (backgroundIds) NÃO conta — fundo sozinho é decoração, e a regra
+    // nova o manda para a Revisão em vez da Galeria.
+    const temSubstancia =
+      texto.length >= 12 ||
+      /<(?:img|picture|video|iframe|button|input|select|textarea|h[1-6])[\s>]/i.test(
+        s.htmlSnippet,
+      ) ||
+      s.evidence.mediaIds.length > 0;
+    assert.ok(temSubstancia, `"${s.name}" não tem conteúdo próprio — é efeito ou card vazio`);
   }
 });
 

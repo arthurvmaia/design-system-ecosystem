@@ -83,7 +83,8 @@ type Candidato = {
    * fundo ou um overlay que a heurística de enfeite descartaria. Ver
    * `promoverComo`.
    */
-  hint?: ComponentCategory;
+  /** `efeito` = decorativo sem conteúdo: vai para a Revisão, nunca para a Galeria. */
+  hint?: ComponentCategory | 'efeito';
 };
 
 /**
@@ -254,15 +255,16 @@ const ehCanvas = (node: HTMLElement): boolean =>
   node.tagName.toLowerCase() === 'canvas' || node.querySelector('canvas') !== null;
 
 /**
- * Um nó que a heurística de enfeite descartaria merece virar segmento? Se sim,
- * com que categoria. Devolve `null` quando é enfeite de verdade (divisor,
- * espaçador de 35 bytes) — esse continua saindo.
- *
- * A diferença entre "brilho roxo de 83 bytes que não é nada" e "background de
- * shader que é o hero do site" não está no tamanho: está nos sinais de efeito
- * (canvas, classe de animação/gradiente posicionado) e de overlay.
+ * Um nó que a heurística de enfeite descartaria merece atenção? Devolve:
+ * - `overlay` — modal/menu/tooltip oculto: conteúdo legítimo revelado por
+ *   interação, vira candidato e passa pela MESMA validação dos demais;
+ * - `efeito` — canvas, gradiente, orbe, partícula: decorativo SEM conteúdo.
+ *   Não vira componente (era o que enchia a Biblioteca de fragmentos) — vai
+ *   para a Revisão com o motivo, e o visual continua vivo dentro da seção a
+ *   que pertence, porque o HTML da seção o contém e o CSS viaja no bundle;
+ * - `null` — enfeite de verdade (divisor, espaçador), segue descartado.
  */
-const promoverComo = (node: HTMLElement): ComponentCategory | null => {
+const promoverComo = (node: HTMLElement): ComponentCategory | 'efeito' | null => {
   const cls = node.getAttribute('class') ?? '';
   const style = node.getAttribute('style') ?? '';
   const rawAttrs = node.rawAttrs ?? '';
@@ -279,18 +281,15 @@ const promoverComo = (node: HTMLElement): ComponentCategory | null => {
     return 'overlay';
   }
 
-  // Canvas é sempre um efeito visual, mesmo vazio (o desenho vem do JS).
-  if (ehCanvas(node)) return 'background';
-
-  // Classe de efeito de fundo (animação/gradiente/partícula…).
-  if (CLASSE_DE_EFEITO.test(cls)) return 'background';
-
-  // Gradiente/imagem de fundo num elemento posicionado que cobre área.
+  // Canvas, classe de efeito ou fundo rico posicionado: é EFEITO — decorativo
+  // sem conteúdo próprio. Vai para a Revisão, nunca direto para a Galeria.
+  if (ehCanvas(node)) return 'efeito';
+  if (CLASSE_DE_EFEITO.test(cls)) return 'efeito';
   const temFundoRico = /gradient|url\(|radial-|conic-|mask|filter/i.test(`${style} ${cls}`);
   const cobreArea = /\b(absolute|fixed|inset-0|w-full|h-full|min-h-|h-screen)\b/i.test(
     `${cls} ${style}`,
   );
-  if (temFundoRico && cobreArea) return 'background';
+  if (temFundoRico && cobreArea) return 'efeito';
 
   return null;
 };
@@ -552,36 +551,39 @@ const inferCategory = (name: string, node: HTMLElement): ComponentCategory => {
   return 'other';
 };
 
-/** Tags que carregam substância própria — mídia ou controle. */
-const TAGS_MIDIA = new Set([
-  'img',
-  'svg',
-  'video',
-  'iframe',
-  'canvas',
-  'picture',
-  'button',
-  'input',
-  'select',
-  'textarea',
-]);
+/** Mídia DE CONTEÚDO — imagem, vídeo, embed. Canvas fica de fora: é efeito. */
+const TAGS_MIDIA_DE_CONTEUDO = ['img', 'video', 'iframe', 'picture'];
+/** Controles de formulário/ação — só contam acompanhados de contexto. */
+const TAGS_CONTROLE = ['button', 'input', 'select', 'textarea'];
 
-const temMidia = (nodes: HTMLElement[]): boolean =>
+const contem = (nodes: HTMLElement[], tags: readonly string[]): boolean =>
   nodes.some(
-    (n) =>
-      TAGS_MIDIA.has(n.tagName.toLowerCase()) ||
-      n.querySelector([...TAGS_MIDIA].join(',')) !== null,
+    (n) => tags.includes(n.tagName.toLowerCase()) || n.querySelector(tags.join(',')) !== null,
   );
+
+/** SVG conta como conteúdo só FORA de controle — dentro de botão/link é ícone. */
+const temSvgDeConteudo = (nodes: HTMLElement[]): boolean =>
+  nodes.some((n) => {
+    const svgs = [...(n.tagName.toLowerCase() === 'svg' ? [n] : []), ...n.querySelectorAll('svg')];
+    return svgs.some((svg) => {
+      let p = svg.parentNode as HTMLElement | null;
+      while (p) {
+        const t = p.tagName?.toLowerCase();
+        if (t === 'button' || t === 'a') return false;
+        p = p.parentNode as HTMLElement | null;
+      }
+      return true;
+    });
+  });
 
 /**
  * O bloco vale a Galeria?
  *
- * A Galeria é para o que o algoritmo realmente conseguiu interpretar. Passa só o
- * que dá para reconhecer como componente: tem texto de verdade OU tem
- * mídia/controle. O resto — invólucro vazio, fragmento sem substância, bloco que
- * não dá para nomear — é reprovado COM o motivo e vai para a Revisão, em vez de
- * sujar a Galeria. Conservador de propósito: na dúvida, aprova. Site novo e fora
- * do padrão vai cair mais aqui, e isso é esperado.
+ * Um componente precisa de ESTRUTURA E PROPÓSITO: texto de verdade, mídia de
+ * conteúdo (imagem/vídeo/embed) ou controle COM contexto. Canvas solto é
+ * efeito; controle solto é fragmento — os dois vão para a Revisão com o
+ * motivo, em vez de sujar a Galeria. Preferimos rejeitar um fragmento a
+ * promover algo sem valor de reutilização.
  */
 const validarSegmento = (
   nodes: HTMLElement[],
@@ -594,16 +596,30 @@ const validarSegmento = (
     .replace(/\s+/g, ' ')
     .trim();
   const temTexto = texto.length >= 12;
-  const midia = temMidia(nodes);
+  const midiaConteudo = contem(nodes, TAGS_MIDIA_DE_CONTEUDO) || temSvgDeConteudo(nodes);
+  const temControle = contem(nodes, TAGS_CONTROLE);
+  const temCanvas = contem(nodes, ['canvas']);
 
   const motivos: string[] = [];
-  if (!temTexto && !midia) {
-    motivos.push('Bloco sem texto nem mídia visível — parece um invólucro vazio ou uma decoração.');
+  if (!temTexto && !midiaConteudo) {
+    if (temCanvas) {
+      motivos.push(
+        'Efeito visual sem conteúdo próprio (canvas). Sozinho ele não vira componente — quando pertence a uma seção de verdade, o visual dela já o carrega.',
+      );
+    } else if (temControle) {
+      motivos.push(
+        'Controle solto, sem texto nem contexto por perto — um botão ou campo isolado não é um componente reutilizável.',
+      );
+    } else {
+      motivos.push(
+        'Bloco sem texto nem mídia visível — parece um invólucro vazio ou uma decoração.',
+      );
+    }
   }
-  if (snippet.length < 60 && !midia) {
+  if (snippet.length < 60 && !midiaConteudo) {
     motivos.push('Fragmento pequeno demais para ser um componente reutilizável.');
   }
-  if (category === 'other' && !temTexto && !midia) {
+  if (category === 'other' && !temTexto && !midiaConteudo && !temControle) {
     motivos.push('Não foi possível identificar o que este bloco representa.');
   }
 
@@ -813,17 +829,38 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
       .trim();
     if (snippet.length < 30) continue;
 
-    // Categoria: um candidato PROMOVIDO (efeito de fundo, overlay) já traz a sua
-    // via `hint` e não passa pela heurística de seção nem pela validação de
-    // texto/mídia — um background animado é, por natureza, vazio de texto.
+    // Efeito decorativo (canvas, gradiente, orbe…): NÃO vira componente.
+    // Vai para a Revisão com o motivo — a pessoa pode discordar e recuperar,
+    // mas a Biblioteca não recebe fragmento por padrão. O visual do site não
+    // se perde: quando o efeito pertence a uma seção real, o HTML da seção o
+    // contém e o CSS (keyframes inclusive) viaja no bundle dela.
+    if (hint === 'efeito') {
+      rejeitados.push({
+        id: newSegmentId(),
+        designSystemId,
+        category: 'background',
+        kind: 'component' satisfies ComponentKind,
+        name: rotulo ? prettify(rotulo) : nomeDoCandidato(nodes, 'background', position),
+        htmlSnippet: snippet,
+        position: rejeitados.length,
+        motivos: [
+          'Efeito visual sem conteúdo próprio (canvas, gradiente ou fundo animado). Sozinho ele não vira componente — quando pertence a uma seção de verdade, o visual dela já o carrega.',
+        ],
+      });
+      continue;
+    }
+
+    // Categoria: um candidato PROMOVIDO (overlay oculto) já traz a sua via
+    // `hint`; os demais passam pela heurística de seção.
     const category =
       hint ??
       (nodes.length > 1 && grupoTemH1(nodes) ? 'hero' : inferCategory(rotulo ?? '', principal));
     const name = rotulo ? prettify(rotulo) : nomeDoCandidato(nodes, category, position);
 
-    if (hint === undefined) {
-      // Validação: só o que dá para reconhecer como componente entra na Galeria.
-      // O que não passa vai para a Revisão, com o motivo — não some calado.
+    // Validação para TODOS — inclusive promovidos. Um overlay de verdade tem
+    // conteúdo (texto do modal, itens do menu) e passa; um tooltip vazio não é
+    // componente e vai para a Revisão com o motivo, em vez de sujar a Galeria.
+    {
       const veredito = validarSegmento(nodes, snippet, category);
       if (!veredito.ok) {
         rejeitados.push({

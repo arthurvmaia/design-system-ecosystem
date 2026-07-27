@@ -235,6 +235,7 @@ test('papel semântico vence tudo', () => {
 test('canvas sem nada desenhado é REPROVADO, com o motivo escrito', () => {
   const v = validarSegmentoV2({
     texto: '',
+    sinais: contarSinais(''),
     midias: [
       {
         id: 'md_1',
@@ -280,9 +281,10 @@ test('canvas sem nada desenhado é REPROVADO, com o motivo escrito', () => {
   );
 });
 
-test('o MESMO canvas, com movimento medido, é aprovado', () => {
+test('canvas com movimento mas SEM conteúdo é efeito, não componente — reprovado; com conteúdo real, aprovado', () => {
   const base = {
     texto: '',
+    sinais: contarSinais(''),
     midias: [
       {
         id: 'md_1',
@@ -319,7 +321,26 @@ test('o MESMO canvas, com movimento medido, é aprovado', () => {
     temFrameDeFallback: true,
     areaShare: 1,
   };
-  assert.equal(validarSegmentoV2({ ...base, temMovimento: true, temRuntime: true }).ok, true);
+  // Sozinho, o canvas animado é EFEITO — a Biblioteca não recebe orbe/cena solta.
+  const soEfeito = validarSegmentoV2({ ...base, temMovimento: true, temRuntime: true });
+  assert.equal(soEfeito.ok, false);
+  assert.ok(
+    soEfeito.motivos.some((m) => /Efeito visual sem conteúdo próprio/.test(m)),
+    `motivos: ${soEfeito.motivos.join(' | ')}`,
+  );
+
+  // O MESMO canvas dentro de um hero com título e chamada é aprovado — o
+  // componente é o hero, e o efeito viaja como dependência visual dele.
+  const heroComCanvas = validarSegmentoV2({
+    ...base,
+    texto: 'Construa mundos em tempo real',
+    sinais: contarSinais(
+      '<h1>Construa mundos em tempo real</h1><a href="#">Começar agora</a><canvas></canvas>',
+    ),
+    temMovimento: true,
+    temRuntime: true,
+  });
+  assert.equal(heroComCanvas.ok, true, heroComCanvas.motivos.join(' | '));
 });
 
 test('referência visual sem frame de fallback é reprovada — melhor não mostrar que mostrar vazio', () => {
@@ -341,6 +362,7 @@ test('referência visual sem frame de fallback é reprovada — melhor não most
   });
   const v = validarSegmentoV2({
     texto: 'algum texto aqui',
+    sinais: contarSinais('<p>algum texto aqui</p>'),
     midias: [],
     backgrounds: [],
     temMovimento: false,
@@ -353,47 +375,86 @@ test('referência visual sem frame de fallback é reprovada — melhor não most
   assert.ok(v.motivos.some((m) => /sem frame de fallback/.test(m)));
 });
 
-test('fundo com asset aprova a seção mesmo sem texto', () => {
-  const bg: BackgroundDetection = {
+test('fundo/gradiente sem conteúdo é DECORAÇÃO — reprovado; faixa de logos (imagens sem texto) é aprovada', () => {
+  const reprEstatica = classificarRepresentacao({
+    runtimes: [],
+    midias: [],
+    assetsLocais: true,
+    assetsExternos: 0,
+    scriptsNaoLocalizados: 0,
+    iframeCrossOrigin: false,
+    shadowFechado: false,
+    estadosCapturados: 0,
+    movimentoMedido: false,
+    movimentoPorCss: false,
+    reageAoPonteiro: false,
+    regiaoReativaSemDom: false,
+    dependeDeJs: false,
+    bootstrapIdentificado: false,
+  });
+  const base = {
+    texto: '',
+    sinais: contarSinais(''),
+    midias: [],
+    temMovimento: false,
+    temRuntime: false,
+    representacao: reprEstatica,
+    temFrameDeFallback: true,
+    areaShare: 1,
+  };
+  const fundo = (cssValue: string, animated = false): BackgroundDetection => ({
     id: 'bg_1',
     source: 'css-image',
     fingerprint: fp({ tag: 'div' }),
     ownerSection: null,
-    cssValue: 'url("https://x.test/a.jpg")',
+    cssValue,
     variables: {},
-    assetUrls: ['https://x.test/a.jpg'],
-    animated: false,
+    assetUrls: /url\(/.test(cssValue) ? ['https://x.test/a.jpg'] : [],
+    animated,
     animationEvidence: [],
     coversSection: true,
     confidence: 'alta',
     limitations: [],
-  };
-  const v = validarSegmentoV2({
-    texto: '',
-    midias: [],
-    backgrounds: [bg],
-    temMovimento: false,
-    temRuntime: false,
-    representacao: classificarRepresentacao({
-      runtimes: [],
-      midias: [],
-      assetsLocais: true,
-      assetsExternos: 0,
-      scriptsNaoLocalizados: 0,
-      iframeCrossOrigin: false,
-      shadowFechado: false,
-      estadosCapturados: 0,
-      movimentoMedido: false,
-      movimentoPorCss: false,
-      reageAoPonteiro: false,
-      regiaoReativaSemDom: false,
-      dependeDeJs: false,
-      bootstrapIdentificado: false,
-    }),
-    temFrameDeFallback: true,
-    areaShare: 1,
   });
-  assert.equal(v.ok, true);
+
+  // Fundo com imagem, gradiente animado, orbe: nada disso vira card sozinho.
+  for (const bg of [
+    fundo('url("https://x.test/a.jpg")'),
+    fundo('linear-gradient(90deg, #f00, #00f)', true),
+  ]) {
+    const v = validarSegmentoV2({ ...base, backgrounds: [bg] });
+    assert.equal(v.ok, false, `deveria reprovar: ${bg.cssValue}`);
+    assert.ok(
+      v.motivos.some((m) => /Efeito visual sem conteúdo próprio/.test(m)),
+      `motivos: ${v.motivos.join(' | ')}`,
+    );
+  }
+
+  // Mas uma faixa de logos — imagens de conteúdo, sem uma palavra — é seção real.
+  const logos = validarSegmentoV2({
+    ...base,
+    sinais: contarSinais('<img src="a.svg"><img src="b.svg"><img src="c.svg">'),
+    midias: [
+      {
+        id: 'md_1',
+        kind: 'imagem',
+        fingerprint: fp({ tag: 'img' }),
+        ownerSection: null,
+        src: 'https://x.test/logo.svg',
+        sources: [],
+        asBackground: false,
+        appearance: 'inicial',
+        animated: false,
+        pointerReactive: false,
+        scrollReactive: false,
+        confidence: 'alta',
+        limitations: [],
+        intrinsic: { width: 120, height: 40 },
+      } satisfies MediaDetection,
+    ],
+    backgrounds: [],
+  });
+  assert.equal(logos.ok, true, logos.motivos.join(' | '));
 });
 
 // ── Pipeline completo ───────────────────────────────────────────────────────
@@ -626,11 +687,11 @@ test('seção de texto puro: portátil, editável, sem limitação inventada', (
 });
 
 test('toda evidência que aprova também nomeia — aprovado não sai genérico', () => {
-  // A MESMA evidência que aprova uma seção (texto, mídia, fundo com asset,
-  // movimento, runtime) agora alimenta o nome. Aqui: seção sem texto e sem
-  // título, aprovada pelo fundo com asset — o nome diz "imagem de fundo" em vez
-  // de "Bloco". A limitação "nome saiu genérico" segue existindo como rede de
-  // segurança, mas não deve disparar num aprovado.
+  // A MESMA evidência que aprova uma seção agora alimenta o nome. Aqui: seção
+  // sem texto e sem título, aprovada pelas IMAGENS de conteúdo (fundo sozinho
+  // não aprova mais) — o nome ainda usa o fundo distintivo ("imagem de fundo")
+  // porque nenhuma evidência mais forte falou. A limitação "nome saiu genérico"
+  // segue como rede de segurança, mas não deve disparar num aprovado.
   const secaoFp = fp({ tag: 'div' });
   const r = segmentarPorEvidencia(
     entradaVazia({
@@ -659,7 +720,12 @@ test('toda evidência que aprova também nomeia — aprovado não sai genérico'
           limitations: [],
         },
       ],
-      htmlPorHash: new Map([[secaoFp.hash, '<div></div>']]),
+      htmlPorHash: new Map([
+        [
+          secaoFp.hash,
+          '<div><img src="https://x.test/l1.svg"><img src="https://x.test/l2.svg"></div>',
+        ],
+      ]),
     }),
   );
   const s = r.segmentos[0];
