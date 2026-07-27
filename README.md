@@ -1,56 +1,65 @@
 # Design System Ecosystem
 
-Plataforma para engenharia reversa de sites, curadoria de componentes em uma biblioteca própria, e geração de novos sites a partir dessa biblioteca.
+Plataforma para engenharia reversa de sites, curadoria de componentes em uma
+biblioteca própria e geração de novos sites a partir dessa biblioteca.
 
-## Estado atual
+**Fluxo:** Extrair → Galeria (triagem) → Biblioteca (acervo) → Design Systems
+(kits) → Gerar site (wizard com sua marca) → Meus sites (prévia, `.zip`, edição).
 
-**Fases 0-7 implementadas.** Loop completo: extrair → segmentar → classificar → curar → gerar.
+---
 
-| Fase | Módulo | Status |
-|---|---|---|
-| 0 | Fundação, storage, shell | ✅ testado |
-| 1 | Extractor (agente Claude) | ✅ pronto, testável com API key |
-| 2 | Segmenter | ✅ testado |
-| 3 | Classifier (LLM) | ✅ pronto, testável com API key |
-| 4 | Library (curadoria) | ✅ testado |
-| 5 | Isolator (PostCSS) | ✅ testado (pragmático) |
-| 6 | Tokens (extração) | ✅ testado (pragmático) |
-| 7 | Generator (LLM) | ✅ pronto, testável com API key |
-| 8 | Tauri (empacotamento) | ⏭ pendente |
-
-## Requisitos
-
-- Node.js `>=20.11.0`
-- pnpm `>=9.0.0`
-- Chave da Anthropic (para Fases 1, 3 e 7)
-
-## Setup
-
-### Windows — jeito fácil
+## Comece aqui (Windows)
 
 Só precisa do [Node.js LTS](https://nodejs.org) instalado.
 
-```powershell
-git clone <url-do-repo>
-cd design-system-ecosystem
-```
+1. **Baixe o projeto**, de um dos dois jeitos:
+   - com git:
+     ```powershell
+     git clone https://github.com/arthurvmaia/design-system-ecosystem.git
+     ```
+   - sem git: na página do repositório, **Code → Download ZIP**, e extraia em
+     qualquer pasta.
+2. **Duplo clique no `INICIAR.bat`.**
 
-Depois **duplo clique no `INICIAR.bat`**. Ele cuida do resto: instala o pnpm se
-faltar, instala as dependências, cria o `.env`, pede sua chave da Anthropic,
-cria o banco e abre o navegador. Da segunda vez em diante, só sobe o app.
+Ele cuida do resto: instala o pnpm se faltar, instala as dependências, cria o
+`.env`, cria o banco e abre o navegador em `http://localhost:5173`. Da segunda
+vez em diante, só sobe o app. Se a pasta for movida ou as dependências vierem
+de outra máquina, ele percebe e reinstala sozinho — não precisa apagar nada na
+mão.
 
-Se a pasta for movida ou as dependências vierem de outra máquina, ele percebe e
-reinstala sozinho — não precisa apagar nada na mão.
+> **Avisos do Windows na primeira vez:** se o SmartScreen mostrar "o Windows
+> protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
+> Se o firewall pedir permissão para o Node, autorize.
+
+Para **processar a fila** (extrações, classificação e geração de sites) no modo
+padrão, instale também o [Claude Code](https://claude.com/product/claude-code)
+e use o **`PROCESSAR.bat`**. Ele roda na assinatura Claude de quem usa —
+assinatura é individual, cada pessoa entra com a sua.
+
+O passo a passo de uso completo, sem terminal, está em
+**[docs/MANUAL.md](docs/MANUAL.md)**.
+
+## Modos de execução
+
+| Modo | O que acontece | Custo |
+|---|---|---|
+| `queue` (padrão) | O app registra pedidos numa fila em disco; você processa com o `PROCESSAR.bat` no Claude Code | Assinatura Claude — não consome créditos de API |
+| `api` | O app chama a API da Anthropic direto, sem pausa | Créditos de API |
+
+A troca é uma variável (`EXECUTION_MODE` em `apps/server/.env`). Guia completo
+em [docs/MIGRAR-PARA-API.md](docs/MIGRAR-PARA-API.md).
+
+## Setup manual
 
 ### Windows — na unha
 
 ```powershell
-git clone <url-do-repo>
+git clone https://github.com/arthurvmaia/design-system-ecosystem.git
 cd design-system-ecosystem
 node --version                                  # precisa >= 20.11
 pnpm install
 Copy-Item apps/server/.env.example apps/server/.env
-# abra apps\server\.env e cole sua ANTHROPIC_API_KEY
+# modo api: abra apps\server\.env e cole sua ANTHROPIC_API_KEY
 pnpm db:migrate                                 # cria ~/design-system-ecosystem/
 pnpm dev                                        # server :8787 + web :5173
 ```
@@ -58,7 +67,7 @@ pnpm dev                                        # server :8787 + web :5173
 ### macOS / Linux / WSL2
 
 ```bash
-git clone <url-do-repo>
+git clone https://github.com/arthurvmaia/design-system-ecosystem.git
 cd design-system-ecosystem
 nvm use
 pnpm install
@@ -72,6 +81,9 @@ Os `.bat` são só para Windows. Nos outros sistemas, `pnpm dev` sobe o app e
 
 ## Compartilhar com alguém
 
+O jeito certo é **pelo GitHub**: a pessoa clona (ou baixa o ZIP) e roda o
+`INICIAR.bat` — o `.gitignore` já garante que segredos e dados não vão junto.
+
 **Não compacte a pasta pelo Explorer.** Três coisas vão junto e quebram do outro
 lado:
 
@@ -83,14 +95,11 @@ lado:
 - `apps/server/.env` — **sua chave da Anthropic**, que passaria a ser usada e
   cobrada em seu nome.
 
-Use o **`EMPACOTAR.bat`**. Ele gera um zip limpo na Área de Trabalho, sem nada
-disso. Quem receber extrai em qualquer pasta e roda o `INICIAR.bat`, que instala
-as dependências na máquina dele e pede a chave dele.
+Se não der para usar o GitHub, use o **`EMPACOTAR.bat`**: ele gera um zip limpo
+na Área de Trabalho, sem nada disso. Quem receber extrai em qualquer pasta e
+roda o `INICIAR.bat`.
 
-Pelo GitHub o `.gitignore` já cobre tudo isso: clonar e rodar o `INICIAR.bat`
-funciona direto.
-
-### Notas para Windows
+## Notas para Windows
 
 - **Terminal recomendado**: Windows Terminal + PowerShell 7. O CMD antigo funciona mas o output do Turbo fica menos legível.
 - **Node**: se não tem, instale via [nvm-windows](https://github.com/coreybutler/nvm-windows) e rode `nvm install 20.11.0 && nvm use 20.11.0`.
@@ -98,74 +107,96 @@ funciona direto.
 - **Onde ficam os dados**: `C:\Users\<você>\design-system-ecosystem\`. Configurável via env var `DS_ECOSYSTEM_ROOT`.
 - **Alternativa**: rodar tudo no WSL2 dá a experiência POSIX completa sem gambiarra. Recomendado se você já usa WSL para dev.
 
-## Fluxo de uso
-
-1. **Extrair** (`/extract`): cole URL ou envie HTML. O agente roda o prompt do professor via Claude API. Cria `vault/{ds_id}/` e segmenta automaticamente.
-2. **Galeria** (`/gallery`): navegue os segmentos. Clique **Classificar via LLM** para categorizar tudo em Hero, Card, etc. Clique no coração pra curar.
-3. **Biblioteca** (`/library`): componentes aprovados. Cada um vem com bundle isolado + tokens extraídos. Renomeie, remova.
-4. **Projetos** (`/projects`): preencha o wizard (nome, conteúdo, cores, tipografia). Um agente LLM compõe o site usando só os componentes curados.
-
 ## Estrutura do monorepo
 
 ```
 apps/
-├── server/          Hono + Drizzle + SQLite
+├── server/          API Hono + Drizzle + SQLite (EXECUTION_MODE=queue|api)
 └── web/             React 19 + Vite + Tailwind v4
 
 packages/
-├── shared/          Zod schemas + paths + IDs
-├── indexer/         Drizzle schema + migrations
-├── extractor/       Agente Claude + prompt do professor
+├── shared/          Schemas Zod, paths, fila — fonte da verdade dos contratos
+├── indexer/         Índice SQLite via Drizzle (schema + migrations)
+├── explorer/        Captura por navegador (Playwright opcional): renderiza o
+│                    DOM real de qualquer URL, inclusive SPAs
+├── engine-v2/       Motor de captura V2: instrumenta a página, explora estados
+│                    interativos e compila bundles
+├── extractor/       Loop agêntico de extração via API (modo api)
 ├── segmenter/       Parser HTML → segmentos
-├── classifier/      LLM classifier de segmentos
+├── classifier/      Classificação de segmentos via LLM
 ├── isolator/        Bundle mínimo por componente (PostCSS)
 ├── tokens/          Extração de design tokens
-└── generator/       Composição de site via LLM
+└── generator/       Composição de sites a partir do kit (blueprint/criativo)
+
+scripts/             Fila, extração, empacotamento e o iniciar.ps1 dos .bat
+docs/                Manual, arquitetura e guias
+fixtures/            Casos de teste de segmentação
 ```
+
+Na raiz ficam os pontos de entrada de duplo clique — `INICIAR.bat`,
+`PROCESSAR.bat`, `EMPACOTAR.bat`, `SUBIR-GITHUB.bat` — de propósito: são a
+interface de quem usa o app sem terminal.
 
 ## Onde ficam os dados
 
-Todos em `~/design-system-ecosystem/`:
+Todos fora do repositório, em `~/design-system-ecosystem/`:
 
 - `vault/{ds_id}/` — cada design system extraído (imutável)
 - `library/{cmp_id}/` — componentes aprovados (ativo real)
 - `library/_shared/{sha256}/` — assets deduplicados
 - `projects/{prj_id}/` — sites gerados
+- `queue/` — fila de trabalho (`pendente/`, `concluido/`)
 - `cache/` — thumbnails, respostas de LLM
-- `workspace/{task_id}/` — extrações em andamento (descartável)
-- `ecosystem.db` — SQLite index
+- `ecosystem.db` — índice SQLite
 
-Detalhes em `docs/ARCHITECTURE.md`.
+Detalhes em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Scripts
 
-- `pnpm dev` sobe server + web (Turbo)
-- `pnpm build` build de tudo
-- `pnpm lint` Biome check
-- `pnpm typecheck` TypeScript check
-- `pnpm db:generate` nova migration a partir do schema Drizzle
-- `pnpm db:migrate` aplica migrations
+```powershell
+pnpm dev              # sobe server (8787) + web (5173)
+pnpm build            # build de tudo
+pnpm lint             # biome
+pnpm typecheck        # tsc em todos os pacotes
+pnpm test             # testes de unidade
+pnpm db:migrate       # aplica migrations
+pnpm fila             # lista a fila
+pnpm extrair          # extrai um job de URL por navegador
+pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
+```
 
-## Custos aproximados de LLM
+A lista completa dos comandos de fila está no [CLAUDE.md](CLAUDE.md).
 
-Cada operação consome tokens da Anthropic. Estimativa:
+## Documentação
 
-- Extração de um site (Fase 1): US$ 0,20 - 3,00 dependendo do tamanho.
-- Classificação de um DS (Fase 3): US$ 0,05 - 0,20.
-- Geração de um site (Fase 7): US$ 0,10 - 0,50.
-
-Cache do system prompt do professor não está ativado nesta versão do SDK. Ativar cache seria uma otimização futura.
+| Documento | Para quê |
+|---|---|
+| [docs/MANUAL.md](docs/MANUAL.md) | Manual de uso — sem terminal, para qualquer pessoa |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Arquitetura detalhada do sistema |
+| [docs/CAPTURE.md](docs/CAPTURE.md) | Motor de captura por navegador |
+| [docs/MIGRAR-PARA-API.md](docs/MIGRAR-PARA-API.md) | Migração do modo `queue` para o modo `api` |
+| [docs/HANDOFF.md](docs/HANDOFF.md) | Histórico de decisões e estado do trabalho |
+| [CLAUDE.md](CLAUDE.md) | Instruções para o Claude Code processar a fila |
 
 ## Limitações reconhecidas
 
-**Fase 5 (Isolator):** faz matching por classes/tags/ids. Regras como `.hero .button` são mantidas mas o pai `.hero` não existe no isolamento, então o botão pode renderizar diferente do original. Solução completa exige rescrita de seletores.
+- **Isolator:** faz matching por classes/tags/ids. Regras como `.hero .button`
+  são mantidas mas o pai `.hero` não existe no isolamento, então o botão pode
+  renderizar diferente do original.
+- **Tokens:** extrai valores repetidos (2+ ocorrências) mas não agrupa cores
+  próximas (`#7f1d1d` vs `#801e1e`) em um só token.
+- **Generator:** compõe usando os componentes do kit escolhido. Se o kit mistura
+  componentes de sites muito diferentes, o resultado pode ficar visualmente
+  incoerente — curadoria é responsabilidade de quem usa.
+- **Playwright é opcional.** Sem ele, a extração cai para fetch estático —
+  funciona para sites server-rendered, não para SPAs. Para a captura completa:
+  `pnpm --filter @ds/explorer exec playwright install chromium`.
 
-**Fase 6 (Tokens):** extrai valores repetidos (2+ ocorrências) mas não agrupa cores próximas (`#7f1d1d` vs `#801e1e`) em um só token. Cluster perceptivo é próxima iteração.
+## Custos aproximados (modo `api`)
 
-**Fase 7 (Generator):** compõe usando qualquer componente da library. Se você misturou componentes de sites muito diferentes, o resultado pode ficar visualmente incoerente. Curadoria é responsabilidade do usuário.
+- Extração de um site: US$ 0,20 – 3,00 dependendo do tamanho.
+- Classificação de um design system: US$ 0,05 – 0,20.
+- Geração de um site: US$ 0,10 – 0,50.
 
-**Playwright é opcional.** Se não estiver instalado, URL fetching cai no fetch nativo do Node — funciona pra sites server-rendered mas não pra SPAs. Instale com `pnpm --filter @ds/extractor add playwright && npx playwright install chromium` se precisar.
-
-## Próxima fase
-
-Fase 8 (Tauri) empacota tudo como app desktop. Ficou pendente porque muda o runtime e você provavelmente vai querer iterar sobre o loop primeiro com sites reais.
+No modo `queue` (padrão) nada disso se aplica: o processamento roda na
+assinatura Claude via Claude Code.
