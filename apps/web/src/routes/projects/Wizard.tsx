@@ -15,7 +15,13 @@ import {
 } from '@/lib/autosave-core';
 import { resumoDaVoz } from '@/lib/marca-rotulos';
 import { toast } from '@/lib/toast';
-import { distribuirTokens, normalizarProjectBranding } from '@ds/shared/schemas';
+import {
+  type BriefDaSecao,
+  distribuirTokens,
+  espelhoDoBrief,
+  normalizarProjectBranding,
+  normalizarProjectContent,
+} from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Check, CloudOff, Loader2, Rocket } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -45,7 +51,8 @@ export function ProjectWizard({
   const blueprints = useQuery({ queryKey: ['blueprints'], queryFn: api.getBlueprints });
 
   const parsedBranding = parseBranding(existing?.brandingJson);
-  const parsedContent = safeParse<{ sections?: Record<string, string> }>(existing?.contentJson);
+  // Caminho único de migração: sections legado entra e sai como briefs.
+  const parsedContent = normalizarProjectContent(existing?.contentJson ?? null);
   const parsedLayout = safeParse<LayoutChoice & Record<string, unknown>>(existing?.layoutJson);
 
   const [step, setStep] = useState(0);
@@ -62,8 +69,15 @@ export function ProjectWizard({
     disabledRoles: parsedLayout?.disabledRoles ?? [],
     placements: Array.isArray(parsedLayout?.placements) ? parsedLayout.placements : [],
   });
-  const [sections, setSections] = useState<Record<string, string>>(parsedContent?.sections ?? {});
+  const [briefs, setBriefs] = useState<Record<string, BriefDaSecao>>(parsedContent.briefs ?? {});
   const [media, setMedia] = useState<MediaItem[]>(parseMedia(existing?.mediaManifestJson));
+
+  // Espelho legado: quem ainda lê texto plano por seção continua atendido.
+  const sectionsEspelho = Object.fromEntries(
+    Object.entries(briefs)
+      .map(([role, b]) => [role, espelhoDoBrief(b)] as const)
+      .filter(([, texto]) => texto !== ''),
+  );
 
   const kit = useQuery({
     queryKey: ['kit', kitId],
@@ -136,7 +150,7 @@ export function ProjectWizard({
     await api.updateProject(id, {
       name: name.trim() || 'Sem nome',
       kitId,
-      content: { sections },
+      content: { sections: sectionsEspelho, briefs },
       branding: toBranding(),
       layout,
     });
@@ -163,7 +177,7 @@ export function ProjectWizard({
   // primeira letra do nome não pode criar um projeto). A máquina de estados e
   // as decisões vivem em lib/autosave-core, testadas sem navegador.
   const [autosave, setAutosave] = useState<EstadoAutosave>('ocioso');
-  const assinatura = JSON.stringify({ name, kitId, branding, layout, sections });
+  const assinatura = JSON.stringify({ name, kitId, branding, layout, briefs });
   const ultimaSalva = useRef(existing !== null ? assinatura : '');
   const emVoo = useRef(false);
 
@@ -244,8 +258,8 @@ export function ProjectWizard({
             <StepConteudo
               slots={activeSlots}
               mode={layout.mode}
-              sections={sections}
-              onSection={(role, v) => setSections((s) => ({ ...s, [role]: v }))}
+              briefs={briefs}
+              onBrief={(role, b) => setBriefs((s) => ({ ...s, [role]: b }))}
               branding={branding}
               setB={setB}
             />
@@ -260,7 +274,7 @@ export function ProjectWizard({
               branding={branding}
               activeSlots={activeSlots}
               mode={layout.mode}
-              sections={sections}
+              sections={sectionsEspelho}
               media={media}
             />
           )}

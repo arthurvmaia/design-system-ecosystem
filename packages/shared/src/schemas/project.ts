@@ -25,6 +25,39 @@ export type ProjectStatus = z.infer<typeof ProjectStatus>;
 export const PROJECT_DATA_VERSION = 1;
 
 /** Conteúdo textual fornecido pelo usuário. Estrutura semiaberta para caber vários formatos. */
+/**
+ * O que o usuário quer que UMA seção diga — estruturado, não um textão.
+ * Todos os campos são opcionais: brief vazio = o gerador segue o hint do slot.
+ */
+export const BriefDaSecao = z.object({
+  /** A mensagem central da seção, em uma ou duas frases. */
+  mensagem: z.string().optional(),
+  /** Pontos de apoio (um recurso, um plano, uma pergunta… por item). */
+  pontos: z.array(z.string()).default([]),
+  /** Provas: números, nomes, depoimentos — fatos que sustentam a mensagem. */
+  provas: z.array(z.string()).default([]),
+  /** Chamada específica desta seção (quando difere do CTA principal). */
+  cta: z.string().optional(),
+});
+export type BriefDaSecao = z.infer<typeof BriefDaSecao>;
+
+/**
+ * Espelho textual de um brief — alimenta o `sections` legado para quem ainda
+ * lê texto plano. Determinístico.
+ */
+export const espelhoDoBrief = (b: BriefDaSecao): string => {
+  const linhas: (string | undefined)[] = [
+    b.mensagem?.trim() || undefined,
+    ...b.pontos.map((p) => p.trim()).filter((p) => p !== ''),
+    ...b.provas.map((p) => p.trim()).filter((p) => p !== ''),
+    b.cta?.trim() ? `Chamada: ${b.cta.trim()}` : undefined,
+  ];
+  return linhas.filter((l): l is string => l !== undefined).join('\n');
+};
+
+/** Um brief sem nada preenchido não conta como conteúdo. */
+export const briefVazio = (b: BriefDaSecao): boolean => espelhoDoBrief(b) === '';
+
 export const ProjectContent = z.object({
   schemaVersion: z.number().int().positive().optional(),
   about: z.string().optional(),
@@ -37,10 +70,16 @@ export const ProjectContent = z.object({
     .optional(),
   /**
    * Copy por seção, chaveada pelo `SectionRole` do blueprint ("hero",
-   * "features", ...). É o que o wizard coleta seção a seção e o que o gerador
-   * usa como texto daquela dobra — em vez de inventar.
+   * "features", ...). LEGADO: hoje é o espelho textual derivado dos `briefs`
+   * (mantido para quem ainda lê texto plano); a fonte estruturada são os briefs.
    */
   sections: z.record(z.string(), z.string()).optional(),
+  /**
+   * Brief ESTRUTURADO por seção (A7): em vez de um textão, cada seção pede o
+   * que precisa — mensagem, pontos de apoio, provas e chamada. É o que o
+   * pipeline editorial consome; `sections` legado migra na leitura.
+   */
+  briefs: z.record(z.string(), BriefDaSecao).optional(),
   custom: z.record(z.string(), z.unknown()).optional(),
 });
 export type ProjectContent = z.infer<typeof ProjectContent>;
@@ -167,6 +206,21 @@ const jsonSeguro = (raw: string | null): unknown => {
  * (O comportamento antigo tinha um buraco real: JSON corrompido virava objeto
  * vazio em vez do default — a página saía sem texto nenhum, em silêncio.)
  */
+/**
+ * Migra o `sections` legado (texto plano por seção) para `briefs` NA LEITURA:
+ * o texto vira a mensagem do brief. Brief já preenchido nunca é sobrescrito.
+ */
+const migrarContentLegado = (c: ProjectContent): ProjectContent => {
+  if (c.briefs !== undefined || c.sections === undefined) return c;
+  const briefs: Record<string, BriefDaSecao> = {};
+  for (const [role, texto] of Object.entries(c.sections)) {
+    if (texto.trim() !== '') {
+      briefs[role] = { mensagem: texto.trim(), pontos: [], provas: [] };
+    }
+  }
+  return Object.keys(briefs).length > 0 ? { ...c, briefs } : c;
+};
+
 export const normalizarProjectContent = (raw: string | null): ProjectContent => {
   const bruto = jsonSeguro(raw);
   if (bruto === null || typeof bruto !== 'object') {
@@ -174,7 +228,7 @@ export const normalizarProjectContent = (raw: string | null): ProjectContent => 
   }
   const tentado = ProjectContent.safeParse(bruto);
   const base = tentado.success ? tentado.data : DEFAULT_PROJECT_CONTENT;
-  return { ...base, schemaVersion: PROJECT_DATA_VERSION };
+  return migrarContentLegado({ ...base, schemaVersion: PROJECT_DATA_VERSION });
 };
 
 /**
