@@ -474,6 +474,21 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
   const seg = db.select().from(tables.segments).where(eq(tables.segments.id, segmentId)).get();
   if (!seg) return c.json({ error: 'segment_not_found' }, 404);
 
+  // Gate de qualidade: um bloco que a captura NÃO consegue reproduzir fora do
+  // site de origem não entra na Biblioteca — entraria quebrado e apareceria
+  // quebrado no site gerado. A recusa explica, não esconde.
+  const insight = lerInsightDoSegmento(seg.designSystemId as `ds_${string}`, seg.id);
+  if (insight?.support === 'nao-suportado') {
+    return c.json(
+      {
+        error: 'sem_suporte',
+        message:
+          'Este bloco não se sustenta fora do site de origem — a captura não conseguiu reproduzi-lo. Por isso ele não pode entrar na Biblioteca.',
+      },
+      422,
+    );
+  }
+
   // Idempotente: já na Biblioteca não cria cópia nova.
   if (seg.inLibrary) {
     const existente = db
@@ -516,8 +531,18 @@ libraryRoute.post('/batch', zValidator('json', BatchAddInput), (c) => {
     .all();
 
   const plano = planBatchLike(segmentIds, segs);
-  const records = plano.toAdd.map(montarComponente);
-  const addedIds = plano.toAdd.map((s) => s.id);
+  // Mesmo gate do caminho unitário: o que a captura não reproduz não entra.
+  const recusados: string[] = [];
+  const aprovados = plano.toAdd.filter((s) => {
+    const insight = lerInsightDoSegmento(s.designSystemId as `ds_${string}`, s.id);
+    if (insight?.support === 'nao-suportado') {
+      recusados.push(s.id);
+      return false;
+    }
+    return true;
+  });
+  const records = aprovados.map(montarComponente);
+  const addedIds = aprovados.map((s) => s.id);
 
   db.transaction((tx) => {
     for (const r of records) tx.insert(tables.libraryComponents).values(r).run();
@@ -529,7 +554,7 @@ libraryRoute.post('/batch', zValidator('json', BatchAddInput), (c) => {
     }
   });
 
-  return c.json({ added: addedIds, already: plano.already, missing: plano.missing });
+  return c.json({ added: addedIds, already: plano.already, missing: plano.missing, recusados });
 });
 
 const PatchInput = z.object({

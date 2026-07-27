@@ -1,7 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { getDb, tables } from '@ds/indexer';
 import { type RejectedSegment, RejeitadosManifest, vaultRejeitadosPath } from '@ds/shared';
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 /**
@@ -42,4 +42,61 @@ rejeitadosRoute.get('/', (c) => {
 
   const total = grupos.reduce((n, g) => n + g.itens.length, 0);
   return c.json({ grupos, total });
+});
+
+const gravarRejeitados = (dsId: `ds_${string}`, itens: RejectedSegment[]): void => {
+  writeFileSync(
+    vaultRejeitadosPath(dsId),
+    JSON.stringify({ designSystemId: dsId, generatedAt: Date.now(), rejeitados: itens }, null, 2),
+    'utf8',
+  );
+};
+
+/**
+ * "Aproveitar mesmo assim": a pessoa olhou, discordou do algoritmo e quer o
+ * bloco na Galeria. O rejeitado vira segmento de verdade (mesmo id, mesma
+ * posição) e sai da lista de pendências — deixou de ser um beco sem saída.
+ */
+rejeitadosRoute.post('/:dsId/:segId/recuperar', (c) => {
+  const dsId = c.req.param('dsId') as `ds_${string}`;
+  const segId = c.req.param('segId');
+  const itens = lerRejeitados(dsId);
+  const item = itens.find((i) => i.id === segId);
+  if (item === undefined) return c.json({ error: 'not_found' }, 404);
+
+  const db = getDb();
+  const existente = db.select().from(tables.segments).where(eq(tables.segments.id, item.id)).get();
+  if (existente === undefined) {
+    db.insert(tables.segments)
+      .values({
+        id: item.id,
+        designSystemId: dsId,
+        category: item.category,
+        kind: item.kind,
+        name: item.name,
+        htmlSnippet: item.htmlSnippet,
+        previewPath: null,
+        position: item.position,
+        inLibrary: false,
+      })
+      .run();
+  }
+  gravarRejeitados(
+    dsId,
+    itens.filter((i) => i.id !== segId),
+  );
+  return c.json({ ok: true, segmentId: item.id });
+});
+
+/** Descartar de vez: a pessoa concordou com o algoritmo. Some da lista. */
+rejeitadosRoute.delete('/:dsId/:segId', (c) => {
+  const dsId = c.req.param('dsId') as `ds_${string}`;
+  const segId = c.req.param('segId');
+  const itens = lerRejeitados(dsId);
+  if (!itens.some((i) => i.id === segId)) return c.json({ error: 'not_found' }, 404);
+  gravarRejeitados(
+    dsId,
+    itens.filter((i) => i.id !== segId),
+  );
+  return c.json({ ok: true });
 });

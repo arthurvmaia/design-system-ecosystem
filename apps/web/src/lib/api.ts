@@ -343,8 +343,19 @@ const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   });
   if (!res.ok) {
+    // O erro que chega ao toast é o que a PESSOA lê: preferir a mensagem
+    // humana que o servidor mandou; nunca despejar status/JSON cru na tela.
     const body = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    let mensagem = 'Não deu para concluir agora. Tente de novo em instantes.';
+    try {
+      const parsed = JSON.parse(body) as { message?: string };
+      if (typeof parsed.message === 'string' && parsed.message.trim() !== '') {
+        mensagem = parsed.message;
+      }
+    } catch {
+      // corpo não-JSON: fica a mensagem genérica
+    }
+    throw new Error(mensagem);
   }
   return (await res.json()) as T;
 };
@@ -463,6 +474,12 @@ export const api = {
 
   // ── Rejeitados (Revisão) ────────────────────────────────────────────────
   listRejeitados: () => jsonFetch<{ grupos: RejeitadosGrupo[]; total: number }>('/api/rejeitados'),
+  recuperarRejeitado: (dsId: string, segId: string) =>
+    jsonFetch<{ ok: true; segmentId: string }>(`/api/rejeitados/${dsId}/${segId}/recuperar`, {
+      method: 'POST',
+    }),
+  descartarRejeitado: (dsId: string, segId: string) =>
+    jsonFetch<{ ok: true }>(`/api/rejeitados/${dsId}/${segId}`, { method: 'DELETE' }),
 
   // ── Kits (Design Systems finais) ────────────────────────────────────────
   listKits: () => jsonFetch<{ items: KitRecord[] }>('/api/kits'),

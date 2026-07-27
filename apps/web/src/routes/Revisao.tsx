@@ -1,8 +1,11 @@
+import { ConfirmPop } from '@/components/ConfirmPop';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type RejectedSegment, api, previewRejeitadoUrl } from '@/lib/api';
+import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
-import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, Info, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 
 const CAT_LABEL: Record<string, string> = {
   hero: 'Hero',
@@ -21,11 +24,11 @@ const CAT_LABEL: Record<string, string> = {
 };
 
 /**
- * Revisão.
+ * Pendências.
  *
- * O outro lado da Galeria: o que o algoritmo NÃO teve confiança para interpretar
- * e por isso deixou de fora. Não some — fica aqui, com o motivo, para a pessoa
- * olhar. Site novo e fora do padrão cai mais aqui, e isso é o esperado.
+ * O outro lado da Galeria: blocos que a leitura automática preferiu não levar
+ * adiante. Nada some calado — cada um fica aqui com o motivo, e a DECISÃO é da
+ * pessoa: aproveitar mesmo assim (vai para a Galeria) ou descartar de vez.
  */
 export function RevisaoPage() {
   const rej = useQuery({ queryKey: ['rejeitados'], queryFn: api.listRejeitados });
@@ -36,36 +39,35 @@ export function RevisaoPage() {
   return (
     <div className="mx-auto max-w-[1080px] px-8 py-12">
       <div
-        className="ds-slide-up text-[10px] uppercase tracking-[0.28em]"
+        className="ds-slide-up text-[11px] uppercase tracking-[0.28em]"
         style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}
       >
-        Pendências · área de exceções
+        Precisa do seu olhar
       </div>
       <h1
         className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
-        O que o algoritmo não entendeu.
+        Alguns blocos ficaram para você decidir.
       </h1>
       <p
-        className="ds-slide-up ds-d2 mt-3 max-w-[64ch] text-[14px] leading-[1.6]"
+        className="ds-slide-up ds-d2 mt-3 max-w-[64ch] text-[15px] leading-[1.7]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        A Galeria recebe só o que foi bem interpretado. Estes blocos ficaram de fora — cada um com o
-        motivo. É normal um site mais novo ou fora do padrão cair aqui; use esta tela para conferir
-        se algo bom foi barrado por engano.
+        A Galeria recebe o que foi lido com confiança. Estes blocos ficaram de fora — cada um com o
+        motivo. Se algo bom foi deixado para trás, é só aproveitar mesmo assim que ele vai para a
+        Galeria. Se concordar, descarte e a lista fica limpa.
       </p>
 
       {total === 0 ? (
         <div className="ds-glass-static ds-slide-up ds-d3 mt-10 rounded-xl p-10 text-center">
           <CheckCircle2 size={22} className="mx-auto" style={{ color: 'var(--color-primary)' }} />
-          <div className="mt-4 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>
-            {rej.isPending ? 'Carregando...' : 'Nada para revisar.'}
+          <div className="mt-4 text-[15px]" style={{ color: 'var(--color-fg-muted)' }}>
+            {rej.isPending ? 'Carregando…' : 'Nada esperando por você.'}
           </div>
           {!rej.isPending && (
-            <div className="mt-2 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              Tudo que foi extraído até agora o algoritmo conseguiu interpretar e mandou para a
-              Galeria.
+            <div className="mt-2 text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
+              Tudo que foi extraído até agora já está na Galeria.
             </div>
           )}
         </div>
@@ -74,8 +76,7 @@ export function RevisaoPage() {
           {grupos.map((grupo) => (
             <div key={grupo.designSystemId}>
               <div className="mb-4 flex items-center gap-2">
-                <AlertTriangle size={14} style={{ color: 'var(--color-signal)' }} />
-                <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
+                <span className="text-[15px] font-medium" style={{ color: 'var(--color-fg)' }}>
                   {grupo.designSystemName}
                 </span>
                 <span
@@ -110,20 +111,48 @@ function CardRejeitado({
   item: RejectedSegment;
   index: number;
 }) {
+  const qc = useQueryClient();
+  const [confirmaDescarte, setConfirmaDescarte] = useState(false);
+
+  const aoMudar = () => {
+    qc.invalidateQueries({ queryKey: ['rejeitados'] });
+    qc.invalidateQueries({ queryKey: ['segments'] });
+  };
+
+  const recuperar = useMutation({
+    mutationFn: () => api.recuperarRejeitado(dsId, item.id),
+    onSuccess: () => {
+      toast.ok('Enviado para a Galeria.');
+      aoMudar();
+    },
+    onError: () => toast.erro('Não deu para enviar agora. Tente de novo.'),
+  });
+
+  const descartar = useMutation({
+    mutationFn: () => api.descartarRejeitado(dsId, item.id),
+    onSuccess: () => {
+      toast.ok('Bloco descartado.');
+      aoMudar();
+    },
+    onError: () => toast.erro('Não deu para descartar agora. Tente de novo.'),
+  });
+
+  const ocupado = recuperar.isPending || descartar.isPending;
   const delay = index < 6 ? `ds-d${index + 1}` : '';
+
   return (
     <div className={`ds-scale-in ${delay} ds-glass-static overflow-hidden rounded-xl`}>
-      <div className="opacity-70">
+      <div className="opacity-80">
         <PreviewFrame src={previewRejeitadoUrl(dsId, item.id)} title={item.name} aspect={16 / 10} />
       </div>
       <div className="p-3.5">
         <div
-          className="truncate text-[13px] font-medium"
+          className="truncate text-[14px] font-medium"
           style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-body)' }}
         >
           {item.name}
         </div>
-        <div className="ds-data mt-0.5 text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+        <div className="mt-0.5 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
           {CAT_LABEL[item.category] ?? 'Outros'}
         </div>
         <div
@@ -131,11 +160,59 @@ function CardRejeitado({
           style={{ borderColor: 'var(--color-border)' }}
         >
           {item.motivos.map((motivo) => (
-            <div key={motivo} className="flex items-start gap-1.5 text-[11px] leading-snug">
+            <div key={motivo} className="flex items-start gap-1.5 text-[12px] leading-snug">
               <Info size={11} className="mt-px shrink-0" style={{ color: 'var(--color-signal)' }} />
               <span style={{ color: 'var(--color-fg-muted)' }}>{motivo}</span>
             </div>
           ))}
+        </div>
+
+        <div
+          className="mt-3 flex items-center gap-2 border-t pt-3"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <button
+            type="button"
+            disabled={ocupado}
+            onClick={() => recuperar.mutate()}
+            className="ds-btn flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
+          >
+            {recuperar.isPending ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Sparkles size={12} />
+            )}
+            Aproveitar mesmo assim
+          </button>
+          <div className="relative ml-auto">
+            <button
+              type="button"
+              disabled={ocupado}
+              onClick={() => setConfirmaDescarte(true)}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:bg-[rgba(198,40,40,0.12)] disabled:opacity-40"
+              style={{ color: 'var(--color-fg-muted)' }}
+            >
+              {descartar.isPending ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Trash2 size={12} />
+              )}
+              Descartar
+            </button>
+            <ConfirmPop
+              open={confirmaDescarte}
+              title="Descartar este bloco?"
+              description="Ele sai da lista de pendências e não volta."
+              confirmLabel="Descartar"
+              busy={descartar.isPending}
+              onConfirm={() => {
+                setConfirmaDescarte(false);
+                descartar.mutate();
+              }}
+              onClose={() => setConfirmaDescarte(false)}
+            />
+          </div>
         </div>
       </div>
     </div>
