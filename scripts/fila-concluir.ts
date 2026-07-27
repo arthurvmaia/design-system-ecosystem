@@ -144,6 +144,21 @@ if (job.type === 'generate') {
               'nenhuma seção marca a proveniência (data-origem="biblioteca"|"gerado") no HTML gerado.',
             );
           }
+          // Responsividade é REQUISITO: viewport declarado e alguma camada
+          // com @media de largura — sem isso o "mobile" é só a página estreitada.
+          if (!/name="viewport"/.test(html)) {
+            problemas.push('o site gerado não declara a meta viewport — não funciona no celular.');
+          }
+          const cssDaVersao = ['assets/responsivo.css', 'assets/styles.css', 'assets/marca.css']
+            .map((p) => join(dir, p))
+            .filter((p) => existsSync(p))
+            .map((p) => readFileSync(p, 'utf8'))
+            .join('\n');
+          if (!/@media[^{]*max-width/.test(cssDaVersao)) {
+            problemas.push(
+              'nenhum CSS do site tem regra @media de largura — a versão mobile precisa ser pensada, não só espremida.',
+            );
+          }
         }
       }
     }

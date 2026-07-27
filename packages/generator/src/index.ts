@@ -19,6 +19,9 @@ import {
 } from '@ds/shared';
 import { z } from 'zod';
 import { type ModeloDeCopy, executarPlano, montarPlanoEditorial } from './editorial.js';
+import { cssResponsivoBase } from './responsivo.js';
+
+export { cssResponsivoBase } from './responsivo.js';
 import {
   envolverSecao,
   extrairCorpo,
@@ -420,10 +423,12 @@ export const generateSite = async (
     opts.onProgress?.(`Adicionado: ${section.role} (${section.componentId})`);
   }
 
-  // Ordem da cascata: primeiro o ESQUELETO (CSS dos componentes), depois a
-  // MARCA — os tokens do projeto vencem sem !important porque chegam por último.
+  // Ordem da cascata: ESQUELETO (CSS dos componentes) → RESPONSIVO (vence as
+  // larguras fixas capturadas, só no mobile) → MARCA (a identidade por último,
+  // vencendo sem !important).
   const brandingCss = buildBrandingCss(input.branding);
   writeFileSync(join(outputDir, 'assets/styles.css'), concatCss, 'utf8');
+  writeFileSync(join(outputDir, 'assets/responsivo.css'), cssResponsivoBase(), 'utf8');
   writeFileSync(join(outputDir, 'assets/marca.css'), brandingCss, 'utf8');
 
   // Importa as fontes escolhidas (só os pesos usados) via <link> no head — a
@@ -443,6 +448,7 @@ export const generateSite = async (
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>${input.projectName}</title>
 ${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
+<link rel="stylesheet" href="assets/responsivo.css"/>
 <link rel="stylesheet" href="assets/marca.css"/>
 </head>
 <body>
