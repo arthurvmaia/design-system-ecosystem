@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {
@@ -7,6 +7,8 @@ import {
   type LayoutBlueprint,
   type ProjectBranding,
   buildTypographyCss,
+  derivarEscala,
+  distribuirTokens,
   getBlueprint,
   libraryComponentBundleDir,
   pickCreativeDirection,
@@ -15,6 +17,13 @@ import {
   resolverPlacements,
 } from '@ds/shared';
 import { z } from 'zod';
+import {
+  envolverSecao,
+  extrairCorpo,
+  limparParaComposicao,
+  reescreverRefsCss,
+  reescreverRefsHtml,
+} from './montagem.js';
 
 /**
  * Gerador de site.
@@ -288,18 +297,57 @@ const applySubstitutions = (html: string, subs?: Record<string, string>): string
  */
 export const buildBrandingCss = (branding: ProjectBranding): string => {
   const typo = buildTypographyCss(branding.typography);
+
+  // Tokens semânticos da paleta nova (A5); sem paleta, o legado de 4 cores
+  // segue valendo. Este CSS carrega DEPOIS do esqueleto — vence a cascata.
+  const tokens = branding.paleta !== undefined ? distribuirTokens(branding.paleta) : undefined;
+  const varsSemanticas =
+    tokens !== undefined
+      ? Object.entries(tokens)
+          .map(([token, hex]) => `  --marca-${token}: ${hex};`)
+          .join('\n')
+      : '';
+
+  const fundo = tokens?.background ?? branding.palette.background;
+  const texto = tokens?.body ?? branding.palette.foreground;
+  const primaria = tokens?.primary ?? branding.palette.primary;
+
+  // Escala tipográfica derivada dos presets (A5); sem tipografia nova, só as
+  // famílias legadas do buildTypographyCss.
+  let escalaCss = '';
+  if (branding.tipografia !== undefined) {
+    const e = derivarEscala(branding.tipografia);
+    const headings = e.headings.map((tam, i) => `h${i + 1} { font-size: ${tam}; }`).join('\n');
+    escalaCss = `
+h1, h2, h3, h4, h5, h6 {
+  font-weight: ${e.pesoTitulos};
+  line-height: ${e.lineHeightTitulos};
+  letter-spacing: ${e.letterSpacingTitulos};${e.transformacaoTitulos !== 'nenhuma' ? `\n  text-transform: ${e.transformacaoTitulos};` : ''}
+}
+${headings}
+body { font-size: ${e.corpoTamanho}; line-height: ${e.corpoLineHeight}; }
+`;
+  }
+
   return `${typo.css}
 :root {
-  --brand-primary: ${branding.palette.primary};
+  --brand-primary: ${primaria};
   ${branding.palette.secondary ? `--brand-secondary: ${branding.palette.secondary};` : ''}
-  --brand-bg: ${branding.palette.background};
-  --brand-fg: ${branding.palette.foreground};
+  --brand-bg: ${fundo};
+  --brand-fg: ${texto};
   ${branding.palette.accent ? `--brand-accent: ${branding.palette.accent};` : ''}
+${varsSemanticas}
 }
 /* Override dos --primary do componente para casar com a marca. */
 :root { --primary: var(--brand-primary); }
 body { background: var(--brand-bg); color: var(--brand-fg); }
-`;
+${escalaCss}${
+  tokens !== undefined
+    ? `a { color: var(--marca-link); }
+h1, h2, h3, h4, h5, h6 { color: var(--marca-heading); }
+`
+    : ''
+}`;
 };
 
 /** Gera o site final e escreve em projects/{id}/generated/{iso}/ */
@@ -315,28 +363,60 @@ export const generateSite = async (
   mkdirSync(outputDir, { recursive: true });
   mkdirSync(join(outputDir, 'assets'), { recursive: true });
 
-  // Concatena HTML e CSS dos componentes do plano.
+  // Monta cada seção levando o BUNDLE COMPLETO do componente: corpo extraído
+  // (bundles V2 são documentos completos), CSS dividido concatenado na ordem,
+  // JS e arquivos copiados para o namespace do componente — o esqueleto viaja
+  // inteiro, não só os primeiros bytes do HTML.
   let bodyHtml = '';
   let concatCss = '';
   for (const section of plan.sections) {
     const bundleDir = libraryComponentBundleDir(section.componentId as `cmp_${string}`);
     const htmlPath = join(bundleDir, 'index.html');
-    const cssPath = join(bundleDir, 'styles.css');
     if (!existsSync(htmlPath)) {
       opts.onProgress?.(`Componente ${section.componentId} não achado, pulando`);
       continue;
     }
-    const html = readFileSync(htmlPath, 'utf8');
-    const css = existsSync(cssPath) ? readFileSync(cssPath, 'utf8') : '';
-    bodyHtml += `\n<!-- ${section.role} · ${section.componentId} -->\n`;
-    bodyHtml += applySubstitutions(html, section.substitutions);
-    bodyHtml += '\n';
+
+    // CSS: V2 tem assets/css/*.css (dividido, em ordem); legado tem styles.css.
+    const cssDir = join(bundleDir, 'assets', 'css');
+    const cssFiles = existsSync(cssDir)
+      ? readdirSync(cssDir)
+          .filter((f) => f.endsWith('.css'))
+          .sort()
+      : [];
+    let css =
+      cssFiles.length > 0
+        ? cssFiles.map((f) => readFileSync(join(cssDir, f), 'utf8')).join('\n')
+        : existsSync(join(bundleDir, 'styles.css'))
+          ? readFileSync(join(bundleDir, 'styles.css'), 'utf8')
+          : '';
+
+    let corpo = limparParaComposicao(extrairCorpo(readFileSync(htmlPath, 'utf8')));
+    corpo = applySubstitutions(corpo, section.substitutions);
+
+    // Arquivos do bundle (JS, imagens, fontes) vão para assets/<cmpId>/ e as
+    // referências são reescritas — componentes não colidem entre si.
+    const assetsDir = join(bundleDir, 'assets');
+    if (existsSync(assetsDir)) {
+      const destino = join(outputDir, 'assets', section.componentId);
+      for (const entry of readdirSync(assetsDir)) {
+        if (entry === 'css') continue;
+        cpSync(join(assetsDir, entry), join(destino, entry), { recursive: true });
+      }
+      corpo = reescreverRefsHtml(corpo, section.componentId);
+      css = reescreverRefsCss(css, section.componentId);
+    }
+
+    bodyHtml += `\n${envolverSecao(corpo, { role: section.role, componentId: section.componentId })}\n`;
     concatCss += `\n/* ${section.role} · ${section.componentId} */\n${css}`;
     opts.onProgress?.(`Adicionado: ${section.role} (${section.componentId})`);
   }
 
+  // Ordem da cascata: primeiro o ESQUELETO (CSS dos componentes), depois a
+  // MARCA — os tokens do projeto vencem sem !important porque chegam por último.
   const brandingCss = buildBrandingCss(input.branding);
-  writeFileSync(join(outputDir, 'assets/styles.css'), `${brandingCss}\n${concatCss}`, 'utf8');
+  writeFileSync(join(outputDir, 'assets/styles.css'), concatCss, 'utf8');
+  writeFileSync(join(outputDir, 'assets/marca.css'), brandingCss, 'utf8');
 
   // Importa as fontes escolhidas (só os pesos usados) via <link> no head — a
   // aplicação aos títulos/corpo está no styles.css. Preconnect para acelerar.
@@ -355,6 +435,7 @@ export const generateSite = async (
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>${input.projectName}</title>
 ${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
+<link rel="stylesheet" href="assets/marca.css"/>
 </head>
 <body>
 ${bodyHtml}

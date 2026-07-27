@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import {
+  envolverSecao,
+  extrairCorpo,
+  limparParaComposicao,
+  reescreverRefsCss,
+  reescreverRefsHtml,
+} from './montagem.js';
+
+test('extrairCorpo: documento completo vira só o corpo; fragmento passa direto', () => {
+  const doc = `<!doctype html><html><head><title>x</title></head><body class="a">\n<div>oi</div>\n</body></html>`;
+  assert.equal(extrairCorpo(doc), '<div>oi</div>');
+  assert.equal(extrairCorpo('<div>solto</div>'), '<div>solto</div>');
+});
+
+test('limparParaComposicao: tira aviso interno do bundle e links de stylesheet', () => {
+  const corpo = `<aside data-ds-aviso="referencia">aviso da galeria</aside>
+<link rel="stylesheet" href="assets/css/styles.css">
+<div>conteúdo real</div>`;
+  assert.equal(limparParaComposicao(corpo), '<div>conteúdo real</div>');
+});
+
+test('reescreverRefs: assets ganham o namespace do componente', () => {
+  assert.equal(
+    reescreverRefsHtml('<img src="assets/img/a.png"><video poster="assets/p.jpg">', 'cmp_x'),
+    '<img src="assets/cmp_x/img/a.png"><video poster="assets/cmp_x/p.jpg">',
+  );
+  assert.equal(
+    reescreverRefsCss('a{background:url(../img/b.png)}b{mask:url("assets/m.svg")}', 'cmp_x'),
+    'a{background:url(assets/cmp_x/img/b.png)}b{mask:url("assets/cmp_x/m.svg")}',
+  );
+});
+
+test('envolverSecao: proveniência explícita — biblioteca × gerado', () => {
+  assert.match(
+    envolverSecao('<div/>', { role: 'hero', componentId: 'cmp_a' }),
+    /<section data-secao="hero" data-origem="biblioteca" data-componente="cmp_a">/,
+  );
+  assert.match(
+    envolverSecao('<div/>', { role: 'cta', componentId: null }),
+    /<section data-secao="cta" data-origem="gerado">/,
+  );
+});

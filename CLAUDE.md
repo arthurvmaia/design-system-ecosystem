@@ -67,20 +67,23 @@ O payload é rico e é a fonte da verdade — não vá ler o banco por fora:
 ```
 { projectId, projectName,
   kitId, kit: { id, name, components: [{ id, name, category, kind, bundlePath }] },
-  layout, blueprintId,
+  layout,     // ProjectLayout: mode, blueprintId, disabledRoles, placements[{role, escolha, componentId, observacao}], density, motion
+  blueprintId,
   branding,   // ProjectBranding: brandName, tone, palette, typography, logoPath, contact, social, mainCta
-  content,    // ProjectContent: sections{ role→texto }, ...
+              // + modelo novo (preferir quando presente): identidadeVerbal{tons, arquetipos, eixos, vocabulário},
+              //   logos[{tipo, path}], logosLocais, paleta{cores, atribuicoes}, tipografia{presets, ajustes}, sociais[]
+  content,    // ProjectContent: briefs{ role→{mensagem, pontos, provas, cta} } (fonte) + sections{ role→texto } (espelho legado)
   media }     // MediaItem[]: { path, kind, slotRole, originalName, ... } (path relativo a projects/<id>/media/)
 ```
 
-1. **Use SOMENTE os componentes do kit** (`payload.kit.components`), nunca a Biblioteca inteira. Cada componente tem `bundlePath` — leia `bundlePath/index.html` (marcação) e `bundlePath/styles.css` (estilo isolado). O kit é o Design System final; sair dele traz peças de origens que não conversam.
+1. **Use SOMENTE os componentes do kit** (`payload.kit.components`), nunca a Biblioteca inteira. Cada componente tem `bundlePath` — leve o **bundle completo**: o corpo do `index.html` (bundles V2 são documentos completos; extraia o `<body>` e remova `<aside data-ds-aviso>`), TODO o CSS (`assets/css/*.css` em ordem, ou `styles.css` no legado), o JS de `assets/js/` e os arquivos de `assets/`. Copie os arquivos para `assets/<cmp_id>/` no site gerado e reescreva as referências — componentes não colidem entre si. O kit é o Design System final; sair dele traz peças de origens que não conversam.
 2. Leia `payload.layout.mode`:
-   - `blueprint` — a estrutura está fixada. Use `getBlueprint(payload.blueprintId)` e `resolveSlots()` de `@ds/shared`. Um slot por posição, na ordem.
+   - `blueprint` — a estrutura está fixada. Use `getBlueprint(payload.blueprintId)` e `resolveSlots()` de `@ds/shared`. Um slot por posição, na ordem. **Respeite `layout.placements`**: `resolverPlacements()` de `@ds/shared` resolve — escolha fixada é ordem, sugestão é preferência, `observacao` é instrução daquela seção.
    - `criativo` — você decide a estrutura. Use `pickCreativeDirection(layout.creativeSeed)` e comprometa-se com a direção sorteada.
-3. **Preencha cada slot.** Se o kit tem um componente da categoria do slot (ver mapa papel→categoria), use-o e marque-o `data-origem="biblioteca" data-componente="cmp_..."`. Se não tem, **crie** o HTML/CSS/JS daquele slot no estilo do kit (mesmas cores, tipografia, espaçamento, densidade) e marque-o `data-origem="gerado"`. Nenhum slot fica vazio.
-4. **Aplique a marca e o conteúdo do usuário**, não o do site de origem: cores e fontes de `branding`, texto de `content.sections[role]`, contato/redes/CTA de `branding`, logo e mídias de `media` no slot indicado por `slotRole`. Respeite o `tone` ao ajustar copy. Respeite `density` e `motion` do layout.
+3. **Preencha cada slot.** Se o kit tem um componente da categoria do slot (`ROLE_CATEGORIES` de `@ds/shared`), use-o e envolva em `<section data-secao="role" data-origem="biblioteca" data-componente="cmp_...">`. Se não tem, **crie** o HTML/CSS/JS daquele slot no estilo do kit (mesmas cores, tipografia, espaçamento, densidade) com `data-origem="gerado"`. Nenhum slot fica vazio.
+4. **A IDV do usuário entra POR CIMA do esqueleto, nunca dentro dele**: o CSS dos componentes fica em `assets/styles.css` e a marca em `assets/marca.css`, carregada DEPOIS — os tokens vencem a cascata sem `!important`. Com `branding.paleta`, use `distribuirTokens()` (17 tokens semânticos); com `branding.tipografia`, use `derivarEscala()` (H1–H6, peso, respiro). Texto vem de `content.briefs[role]` (mensagem, pontos, provas, cta — fonte estruturada; `sections` é só o espelho legado). Logos: `distribuirLogos(branding.logos)` decide a variação por local (`logosLocais` sobrepõe). Mídias de `media` entram no slot indicado por `slotRole`. Respeite a voz (`identidadeVerbal` → `derivarDiretrizes()`), `density` e `motion`.
 5. **NUNCA copie texto, nome ou marca do site de origem.** O kit empresta só o jeito visual; a identidade é a do usuário.
-6. Escreva em `~/design-system-ecosystem/projects/<prj_id>/generated/<timestamp>/` com `index.html` + assets. É o que a tela **Meus sites** serve na prévia e empacota no `.zip`.
+6. Escreva em `~/design-system-ecosystem/projects/<prj_id>/generated/<timestamp>/` com `index.html` + assets. É o que a tela **Meus sites** serve na prévia e empacota no `.zip`. O `fila:concluir` valida: assets referenciados existem, `marca.css` carrega depois do `styles.css` e toda seção tem `data-origem`.
 
 ## Finalizando um job
 

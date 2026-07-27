@@ -119,10 +119,29 @@ if (job.type === 'generate') {
         if (!existsSync(indexPath)) {
           problemas.push(`index.html não existe em ${dir}`);
         } else {
-          const faltando = listarAssetsFaltando(dir, readFileSync(indexPath, 'utf8'));
+          const html = readFileSync(indexPath, 'utf8');
+          const faltando = listarAssetsFaltando(dir, html);
           if (faltando.length > 0) {
             problemas.push(
               `o site gerado referencia ${faltando.length} arquivo(s) que não existem: ${faltando.slice(0, 6).join(', ')}`,
+            );
+          }
+          // A marca precisa VENCER a cascata: quando existe um CSS de marca
+          // separado, ele tem que carregar depois do CSS do esqueleto.
+          if (existsSync(join(dir, 'assets', 'marca.css'))) {
+            const posEsqueleto = html.indexOf('assets/styles.css');
+            const posMarca = html.indexOf('assets/marca.css');
+            if (posEsqueleto !== -1 && posMarca !== -1 && posMarca < posEsqueleto) {
+              problemas.push(
+                'assets/marca.css carrega ANTES de assets/styles.css — a identidade do usuário perde a cascata para o esqueleto.',
+              );
+            }
+          }
+          // Proveniência explícita é contrato do produto: toda seção declara
+          // se veio da biblioteca ou foi criada no estilo.
+          if (!/data-origem=/.test(html)) {
+            problemas.push(
+              'nenhuma seção marca a proveniência (data-origem="biblioteca"|"gerado") no HTML gerado.',
             );
           }
         }
