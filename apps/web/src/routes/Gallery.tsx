@@ -22,6 +22,7 @@ import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  Columns2,
   Heart,
   Loader2,
   MoveVertical,
@@ -91,6 +92,15 @@ const SUPORTE_LABEL: Record<string, string> = {
   visual: 'Visual',
   externo: 'Dep. externa',
   'nao-suportado': 'Não suportado',
+};
+
+/** Só o domínio, sem esquema/caminho — origem legível para gente. */
+const hostDe = (url: string): string => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
 };
 
 /** Estado da extração em linguagem de gente — o enum interno nunca vaza. */
@@ -443,16 +453,26 @@ function SegmentsView({
   });
 
   const [detalhe, setDetalhe] = useState<SegmentRecord | null>(null);
+  const [comparando, setComparando] = useState<SegmentRecord[] | null>(null);
+
+  // Qualidade como filtro de curadoria: "prontos" = reproduzem completos;
+  // "ressalvas" = têm selo de atenção. O selo deixou de ser só informativo.
+  const [qualidade, setQualidade] = useState<'todos' | 'prontos' | 'ressalvas'>('todos');
 
   const filtered = useMemo(() => {
     let items = segments.data?.items ?? [];
     if (category !== 'all') items = items.filter((s) => s.category === category);
+    if (qualidade === 'prontos') {
+      items = items.filter((s) => !s.fidelity || s.fidelity.support === 'completo');
+    } else if (qualidade === 'ressalvas') {
+      items = items.filter((s) => s.fidelity && s.fidelity.support !== 'completo');
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter((s) => s.name.toLowerCase().includes(q));
     }
     return items;
-  }, [segments.data, category, search]);
+  }, [segments.data, category, qualidade, search]);
 
   // ── Seleção em massa ───────────────────────────────────────────────────────
   const visiveis = useMemo(() => filtered.map((s) => s.id), [filtered]);
@@ -525,9 +545,22 @@ function SegmentsView({
           >
             {dsInfo.data?.item.name ?? '...'}
           </h1>
-          <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
-            {filtered.length} de {segments.data?.items.length ?? 0}{' '}
-            {(segments.data?.items.length ?? 0) === 1 ? 'componente' : 'componentes'}
+          <div
+            className="mt-1 flex items-center gap-2 text-[12px]"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            <span>
+              {filtered.length} de {segments.data?.items.length ?? 0}{' '}
+              {(segments.data?.items.length ?? 0) === 1 ? 'componente' : 'componentes'}
+            </span>
+            {dsInfo.data?.item.sourceUrl && (
+              <span style={{ color: 'var(--color-fg-subtle)' }}>
+                · extraído de{' '}
+                <strong style={{ color: 'var(--color-fg-muted)' }}>
+                  {hostDe(dsInfo.data.item.sourceUrl)}
+                </strong>
+              </span>
+            )}
           </div>
           {segments.data?.capturaParcial && (
             <div
@@ -634,6 +667,34 @@ function SegmentsView({
             </button>
           ))}
         </div>
+        <span
+          className="mx-1 h-4 w-px shrink-0"
+          style={{ backgroundColor: 'var(--color-border)' }}
+        />
+        <div className="flex shrink-0 gap-1.5">
+          {(
+            [
+              ['todos', 'Tudo'],
+              ['prontos', 'Prontos para usar'],
+              ['ressalvas', 'Com ressalvas'],
+            ] as const
+          ).map(([v, r]) => (
+            <button
+              type="button"
+              key={v}
+              onClick={() => setQualidade(v)}
+              className={cn(
+                'ds-tag rounded-full border px-3 py-1 text-[11px]',
+                qualidade === v
+                  ? 'ds-glass-static text-[var(--color-fg)]'
+                  : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
+              )}
+              style={{ fontFamily: 'var(--font-body)' }}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
         <input
           type="text"
           value={search}
@@ -670,6 +731,24 @@ function SegmentsView({
               <Heart size={12} />
             )}
             Curtir selecionados
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const escolhidos = (segments.data?.items ?? []).filter((s) => sel.has(s.id));
+              setComparando(escolhidos.slice(0, 3));
+            }}
+            disabled={selCount < 2}
+            title={
+              selCount < 2
+                ? 'Selecione 2 ou 3 componentes para comparar'
+                : 'Ver lado a lado, com interação'
+            }
+            className="ds-tag flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] disabled:opacity-40"
+            style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg)' }}
+          >
+            <Columns2 size={12} />
+            Comparar{selCount >= 2 ? ` (${Math.min(selCount, 3)})` : ''}
           </button>
           <button
             type="button"
@@ -716,6 +795,63 @@ function SegmentsView({
       </div>
 
       {detalhe && <SegmentDetail segment={detalhe} dsId={dsId} onClose={() => setDetalhe(null)} />}
+
+      {/* Comparação lado a lado: prévias VIVAS, para decidir entre parecidos. */}
+      {comparando !== null && (
+        <Modal
+          open
+          onClose={() => setComparando(null)}
+          size="xl"
+          title={`Comparando ${comparando.length} componentes`}
+        >
+          <div className="p-6">
+            <div
+              className="text-[15px] font-medium"
+              style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
+            >
+              Lado a lado
+            </div>
+            <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+              As prévias são vivas — passe o mouse e interaja para sentir a diferença.
+            </p>
+            <div
+              className={cn(
+                'mt-4 grid gap-4',
+                comparando.length === 2 ? 'grid-cols-2' : 'grid-cols-3',
+              )}
+            >
+              {comparando.map((s) => (
+                <div
+                  key={s.id}
+                  className="overflow-hidden rounded-lg border"
+                  style={{ borderColor: 'var(--color-border)' }}
+                >
+                  <PreviewFrame
+                    src={previewSegmentUrl(s.id)}
+                    title={s.name}
+                    aspect={4 / 3}
+                    interactive
+                  />
+                  <div className="border-t p-3" style={{ borderColor: 'var(--color-border)' }}>
+                    <div
+                      className="truncate text-[13px] font-medium"
+                      style={{ color: 'var(--color-fg)' }}
+                    >
+                      {s.name}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                        {CATEGORY_LABEL[s.category] ?? 'Outros'}
+                      </span>
+                      <FidelityBadge fidelity={s.fidelity} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
 
       <ConfirmPop
         open={confirmExcluir}
