@@ -7,6 +7,7 @@ import {
   type LayoutBlueprint,
   type ProjectBranding,
   buildTypographyCss,
+  derivarDiretrizes,
   derivarEscala,
   distribuirTokens,
   getBlueprint,
@@ -17,6 +18,7 @@ import {
   resolverPlacements,
 } from '@ds/shared';
 import { z } from 'zod';
+import { type ModeloDeCopy, executarPlano, montarPlanoEditorial } from './editorial.js';
 import {
   envolverSecao,
   extrairCorpo,
@@ -73,6 +75,12 @@ export type GenerateOptions = {
   apiKey: string;
   model: string;
   onProgress?: (msg: string) => void;
+  /**
+   * Modelo do pipeline editorial (ver ./editorial.ts). Quando presente e o
+   * projeto tem identidade verbal, a copy nasce do plano validado e é gravada
+   * em copy.json na versão gerada. Nos testes, uma função simulada.
+   */
+  modeloDeCopy?: ModeloDeCopy;
 };
 
 export type GenerateResult = {
@@ -444,6 +452,23 @@ ${bodyHtml}
 
   writeFileSync(join(outputDir, 'index.html'), finalHtml, 'utf8');
   writeFileSync(join(outputDir, 'plan.json'), JSON.stringify(plan, null, 2), 'utf8');
+
+  // Pipeline editorial (A11): com modelo plugado e voz definida, a copy nasce
+  // do plano determinístico + validadores e fica versionada junto do site.
+  if (opts.modeloDeCopy !== undefined && input.branding.identidadeVerbal !== undefined) {
+    const diretrizes = derivarDiretrizes(input.branding.identidadeVerbal);
+    const planoEditorial = montarPlanoEditorial({
+      briefs: input.content.briefs ?? {},
+      diretrizes,
+    });
+    const copy = await executarPlano(planoEditorial, opts.modeloDeCopy, {
+      vocabularioEvitar: diretrizes.vocabularioEvitar,
+    });
+    writeFileSync(join(outputDir, 'copy.json'), JSON.stringify(copy, null, 2), 'utf8');
+    opts.onProgress?.(
+      `Copy editorial: ${planoEditorial.pedidos.length} pedido(s), ${copy.problemas.length} problema(s) irrecuperável(is)`,
+    );
+  }
 
   return { outputDir, plan, totalBytes: finalHtml.length + concatCss.length + brandingCss.length };
 };
