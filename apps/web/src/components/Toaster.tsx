@@ -19,7 +19,12 @@ export function Toaster() {
   if (list.length === 0) return null;
 
   return (
-    <div aria-live="polite" className="fixed right-5 bottom-5 z-[80] flex w-[320px] flex-col gap-2">
+    // Acima de TUDO (modal 90, seletores flutuantes 120): um aviso de sucesso
+    // ou erro não pode ficar escondido atrás do diálogo que o disparou.
+    <div
+      aria-live="polite"
+      className="fixed right-5 bottom-5 z-[130] flex w-[320px] flex-col gap-2"
+    >
       {list.map((t) => {
         const Icone = ICONE[t.kind];
         return (
