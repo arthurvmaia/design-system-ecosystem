@@ -54,6 +54,7 @@ export const montarPlanoEditorial = (dados: {
   for (const [role, brief] of Object.entries(dados.briefs)) {
     const base = (texto: string): string => (voz !== '' ? `${voz} ${texto}` : texto);
     const limite = dados.limites?.[role];
+    const antesDaSecao = pedidos.length;
     if (brief.mensagem !== undefined && brief.mensagem.trim() !== '') {
       pedidos.push({
         role,
@@ -83,6 +84,24 @@ export const montarPlanoEditorial = (dados: {
         papel: 'cta',
         orientacao: base(`Chamada curta de botão a partir de: "${brief.cta.trim()}".`),
         limite: limite !== undefined ? Math.min(limite, 40) : 40,
+      });
+    }
+
+    // "Deixar a IA decidir" sem nenhum material: pedidos SEGUROS — nada de
+    // inventar fatos, números, clientes ou prêmios. Texto genérico e editável.
+    if (brief.iaDecide && pedidos.length === antesDaSecao) {
+      const seguro =
+        'NÃO invente fatos, números, clientes, prêmios ou promessas. Sem informação concreta, escreva algo seguro e genérico, fácil de editar depois.';
+      pedidos.push({
+        role,
+        papel: 'titulo',
+        orientacao: base(`Escreva o título da seção "${role}" no tom da marca. ${seguro}`),
+        ...(limite !== undefined ? { limite } : {}),
+      });
+      pedidos.push({
+        role,
+        papel: 'paragrafo',
+        orientacao: base(`Escreva o parágrafo de apoio da seção "${role}". ${seguro}`),
       });
     }
   }

@@ -38,6 +38,13 @@ export const BriefDaSecao = z.object({
   provas: z.array(z.string()).default([]),
   /** Chamada específica desta seção (quando difere do CTA principal). */
   cta: z.string().optional(),
+  /**
+   * "Deixar a IA decidir" (A9/R9): a pessoa delegou o texto DESTA seção.
+   * O gerador escreve no tom da marca, SEM inventar fatos — sem informação,
+   * sai texto seguro e fácil de editar. Reversível: o que já foi escrito
+   * continua guardado nos campos acima.
+   */
+  iaDecide: z.boolean().default(false),
 });
 export type BriefDaSecao = z.infer<typeof BriefDaSecao>;
 
@@ -55,8 +62,9 @@ export const espelhoDoBrief = (b: BriefDaSecao): string => {
   return linhas.filter((l): l is string => l !== undefined).join('\n');
 };
 
-/** Um brief sem nada preenchido não conta como conteúdo. */
-export const briefVazio = (b: BriefDaSecao): boolean => espelhoDoBrief(b) === '';
+/** Um brief sem nada preenchido não conta como conteúdo — a menos que a
+ * pessoa tenha DELEGADO a seção à IA (delegar é uma decisão, não um vazio). */
+export const briefVazio = (b: BriefDaSecao): boolean => !b.iaDecide && espelhoDoBrief(b) === '';
 
 export const ProjectContent = z.object({
   schemaVersion: z.number().int().positive().optional(),
@@ -215,7 +223,7 @@ const migrarContentLegado = (c: ProjectContent): ProjectContent => {
   const briefs: Record<string, BriefDaSecao> = {};
   for (const [role, texto] of Object.entries(c.sections)) {
     if (texto.trim() !== '') {
-      briefs[role] = { mensagem: texto.trim(), pontos: [], provas: [] };
+      briefs[role] = { mensagem: texto.trim(), pontos: [], provas: [], iaDecide: false };
     }
   }
   return Object.keys(briefs).length > 0 ? { ...c, briefs } : c;

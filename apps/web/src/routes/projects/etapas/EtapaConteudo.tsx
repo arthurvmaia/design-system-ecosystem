@@ -2,9 +2,10 @@ import type { Blueprint } from '@/lib/api';
 import { ROTEIRO_POR_SECAO } from '@/lib/conteudo-roteiro';
 import type { BriefDaSecao, SectionRole } from '@ds/shared/schemas';
 import { briefVazio } from '@ds/shared/schemas';
+import { Sparkles } from 'lucide-react';
 import { Campo, INPUT, type WizardBranding, inputStyle, rotulo } from '../partes';
 
-const BRIEF_NOVO: BriefDaSecao = { pontos: [], provas: [] };
+const BRIEF_NOVO: BriefDaSecao = { pontos: [], provas: [], iaDecide: false };
 
 /**
  * Conteúdo GUIADO por seção: cada papel pergunta o que precisa (mensagem,
@@ -48,20 +49,62 @@ export function StepConteudo({
                 style={{ borderColor: 'var(--color-border)' }}
               >
                 <div className="mb-2 flex items-center gap-2">
-                  <span className="text-[12px] font-medium" style={{ color: 'var(--color-fg)' }}>
+                  <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
                     {s.label}
                   </span>
-                  {preenchida && (
+                  {brief.iaDecide ? (
                     <span
-                      className="ds-data rounded-full px-1.5 py-0.5 text-[9px]"
+                      className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
                       style={{ backgroundColor: 'rgba(107,20,20,0.24)', color: 'var(--color-fg)' }}
                     >
-                      preenchida
+                      <Sparkles size={9} />
+                      com a IA
                     </span>
+                  ) : (
+                    preenchida && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
+                        style={{
+                          backgroundColor: 'rgba(107,20,20,0.24)',
+                          color: 'var(--color-fg)',
+                        }}
+                      >
+                        preenchida
+                      </span>
+                    )
+                  )}
+                  {roteiro !== null && (
+                    <button
+                      type="button"
+                      onClick={() => mudar(s.role, { iaDecide: !brief.iaDecide })}
+                      className="ml-auto flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] transition-colors hover:border-[var(--color-signal)]"
+                      style={{
+                        borderColor: brief.iaDecide
+                          ? 'var(--color-crimson-5)'
+                          : 'var(--color-border-strong)',
+                        color: brief.iaDecide ? 'var(--color-fg)' : 'var(--color-fg-muted)',
+                      }}
+                    >
+                      <Sparkles size={11} />
+                      {brief.iaDecide ? 'Escrever eu mesmo' : 'Deixar a IA decidir'}
+                    </button>
                   )}
                 </div>
-                {roteiro === null ? (
-                  <p className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                {roteiro !== null && brief.iaDecide ? (
+                  <p
+                    className="rounded-md px-3 py-2.5 text-[13px] leading-relaxed"
+                    style={{
+                      backgroundColor: 'rgba(107,20,20,0.10)',
+                      color: 'var(--color-fg-muted)',
+                    }}
+                  >
+                    A IA escreve esta seção com a sua marca, a sua voz e o que você já contou nas
+                    outras etapas. Ela não inventa fatos, números nem clientes — sem informação, o
+                    texto sai seguro e fácil de editar depois. O que você já escreveu aqui fica
+                    guardado.
+                  </p>
+                ) : roteiro === null ? (
+                  <p className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
                     Esta seção usa a marca, o contato e as redes — nada a preencher aqui.
                   </p>
                 ) : (

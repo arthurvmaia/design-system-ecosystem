@@ -18,7 +18,7 @@ const BASE: DadosDeRevisao = {
     atribuicoes: {},
   },
   ctaPrincipal: 'Comece agora',
-  briefs: { hero: { mensagem: 'promessa', pontos: [], provas: [] } },
+  briefs: { hero: { mensagem: 'promessa', pontos: [], provas: [], iaDecide: false } },
   placements: [],
   nMidias: 2,
   modo: 'blueprint',

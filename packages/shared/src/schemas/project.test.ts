@@ -8,15 +8,16 @@ test('espelhoDoBrief: mensagem, pontos, provas e chamada viram texto plano', () 
     pontos: ['Recurso A', ' ', 'Recurso B'],
     provas: ['98% de satisfação'],
     cta: 'Comece agora',
+    iaDecide: false,
   });
   assert.equal(
     texto,
     'A promessa.\nRecurso A\nRecurso B\n98% de satisfação\nChamada: Comece agora',
   );
 
-  assert.equal(briefVazio({ pontos: [], provas: [] }), true);
-  assert.equal(briefVazio({ pontos: ['  '], provas: [], mensagem: ' ' }), true);
-  assert.equal(briefVazio({ pontos: [], provas: [], mensagem: 'oi' }), false);
+  assert.equal(briefVazio({ pontos: [], provas: [], iaDecide: false }), true);
+  assert.equal(briefVazio({ pontos: ['  '], provas: [], iaDecide: false, mensagem: ' ' }), true);
+  assert.equal(briefVazio({ pontos: [], provas: [], iaDecide: false, mensagem: 'oi' }), false);
 });
 
 test('sections legado migra para briefs na leitura (texto vira mensagem)', () => {
@@ -34,7 +35,7 @@ test('briefs já preenchidos NUNCA são sobrescritos pelo sections legado', () =
   const c = normalizarProjectContent(
     JSON.stringify({
       sections: { hero: 'texto velho' },
-      briefs: { hero: { mensagem: 'estruturado', pontos: ['a'], provas: [] } },
+      briefs: { hero: { mensagem: 'estruturado', pontos: ['a'], provas: [], iaDecide: false } },
     }),
   );
   assert.equal(c.briefs?.hero?.mensagem, 'estruturado');

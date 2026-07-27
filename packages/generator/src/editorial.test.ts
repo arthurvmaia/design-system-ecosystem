@@ -25,9 +25,9 @@ const DIRETRIZES = {
 test('montarPlanoEditorial é determinístico e só pede o que o brief tem', () => {
   const dados = {
     briefs: {
-      hero: { mensagem: 'Resolvemos X', pontos: [], provas: [], cta: 'Começar' },
-      stats: { pontos: [], provas: ['98% de satisfação'] },
-      faq: { pontos: [], provas: [] }, // vazio → nenhum pedido
+      hero: { mensagem: 'Resolvemos X', pontos: [], provas: [], cta: 'Começar', iaDecide: false },
+      stats: { pontos: [], provas: ['98% de satisfação'], iaDecide: false },
+      faq: { pontos: [], provas: [], iaDecide: false }, // vazio → nenhum pedido
     },
     diretrizes: DIRETRIZES,
   };
@@ -45,6 +45,30 @@ test('montarPlanoEditorial é determinístico e só pede o que o brief tem', () 
   assert.equal(a.pedidos[2]?.limite, 40);
 });
 
+test('seção delegada à IA sem material gera pedidos SEGUROS (sem inventar fatos)', () => {
+  const plano = montarPlanoEditorial({
+    briefs: { about: { pontos: [], provas: [], iaDecide: true } },
+    diretrizes: DIRETRIZES,
+  });
+  const papeis = plano.pedidos.map((p) => `${p.role}:${p.papel}`);
+  assert.deepEqual(papeis, ['about:titulo', 'about:paragrafo']);
+  for (const p of plano.pedidos) {
+    assert.match(p.orientacao, /NÃO invente fatos/, 'a trava de segurança viaja no pedido');
+    assert.match(p.orientacao, /Vai ao ponto/, 'a voz da marca também');
+  }
+  // Delegada COM material: os pedidos normais bastam — nada duplicado.
+  const comMaterial = montarPlanoEditorial({
+    briefs: {
+      hero: { mensagem: 'Resolvemos X', pontos: [], provas: [], iaDecide: true },
+    },
+    diretrizes: DIRETRIZES,
+  });
+  assert.deepEqual(
+    comMaterial.pedidos.map((p) => p.papel),
+    ['titulo', 'paragrafo'],
+  );
+});
+
 test('validarCopy: vazio, limite e vocabulário proibido', () => {
   assert.deepEqual(validarCopy('Texto ok', { vocabularioEvitar: [] }), []);
   assert.ok(validarCopy('  ', { vocabularioEvitar: [] }).length > 0);
@@ -57,7 +81,15 @@ test('validarCopy: vazio, limite e vocabulário proibido', () => {
 
 test('executarPlano com modelo simulado: reprova, corrige na segunda, e o irrecuperável fica listado', async () => {
   const plano = montarPlanoEditorial({
-    briefs: { hero: { mensagem: 'Resolvemos X', pontos: [], provas: [], cta: 'Começar agora' } },
+    briefs: {
+      hero: {
+        mensagem: 'Resolvemos X',
+        pontos: [],
+        provas: [],
+        cta: 'Começar agora',
+        iaDecide: false,
+      },
+    },
     diretrizes: DIRETRIZES,
   });
 
