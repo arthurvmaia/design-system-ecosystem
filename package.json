@@ -11,6 +11,8 @@
     "typecheck": "turbo run typecheck",
     "db:generate": "pnpm --filter @ds/indexer db:generate",
     "db:migrate": "pnpm --filter @ds/indexer db:migrate",
+    "acervo:exportar": "tsx scripts/acervo-exportar.ts",
+    "acervo:importar": "tsx scripts/acervo-importar.ts",
     "fila": "tsx scripts/fila.ts",
     "extrair": "tsx scripts/extrair.ts",
     "explorar": "tsx scripts/explorar.ts",

@@ -176,9 +176,39 @@ Autorize o Node. Só acontece na primeira vez.
 4. Duplo clique em **`INICIAR.bat`** — ele instala as dependências e cria o
    `.env` sozinho
 
+O app dele começa **zerado**: galeria e biblioteca vazias, porque o acervo é
+de cada máquina. Ele pode montar o próprio (extrair sites e processar), ou
+você manda o seu — veja a seção seguinte.
+
 > **Não copie a pasta pelo Explorer nem envie o seu `.env`** — cada máquina cria
 > o próprio na primeira execução. Se não der para usar o GitHub, use o
 > `EMPACOTAR.bat`, que gera um zip limpo e seguro para enviar.
+
+---
+
+## Levando seu acervo para outra máquina
+
+O acervo (design systems extraídos, componentes curados, kits e sites gerados)
+não vai pelo GitHub — ele mora fora do projeto. Para compartilhar:
+
+**Na sua máquina:**
+
+1. Duplo clique em **`EXPORTAR-ACERVO.bat`**
+2. Sai um `acervo-design-system-<data>.zip` na Área de Trabalho
+3. Mande esse arquivo (WhatsApp, Drive, pendrive...)
+
+**Na máquina de quem recebe** (com o app já instalado pelo INICIAR.bat):
+
+1. Baixe o zip (Área de Trabalho ou Downloads)
+2. Duplo clique em **`IMPORTAR-ACERVO.bat`** — ele acha o zip sozinho e pede
+   confirmação (dá para arrastar o zip para cima do `.bat` também)
+3. Abra o `INICIAR.bat`: Galeria, Biblioteca, Design Systems e Meus sites
+   chegam prontos
+
+O importador conserta os caminhos internos do banco para a máquina nova. Se já
+existir acervo lá, **nada é apagado**: a pasta atual vira um backup ao lado
+(`design-system-ecosystem.backup-<data>`). A fila, o cache e a chave de API
+não viajam no zip.
 
 ---
 

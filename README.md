@@ -99,6 +99,21 @@ Se não der para usar o GitHub, use o **`EMPACOTAR.bat`**: ele gera um zip limpo
 na Área de Trabalho, sem nada disso. Quem receber extrai em qualquer pasta e
 roda o `INICIAR.bat`.
 
+### Levando o acervo junto
+
+O repositório leva só o **app** — os design systems extraídos, a biblioteca
+curada e os sites gerados moram fora dele e cada máquina começa zerada. Para
+dar o seu acervo a alguém:
+
+1. Você: duplo clique no **`EXPORTAR-ACERVO.bat`** → sai um
+   `acervo-design-system-*.zip` na Área de Trabalho. Mande esse arquivo.
+2. A pessoa: arrasta o zip para cima do **`IMPORTAR-ACERVO.bat`** (ou só dá
+   duplo clique nele, que ele acha o zip sozinho).
+
+O importador reescreve os caminhos do banco para a máquina de destino e, se já
+existir acervo lá, transforma o atual em backup em vez de apagar. Cache, fila e
+chave de API não viajam.
+
 ## Notas para Windows
 
 - **Terminal recomendado**: Windows Terminal + PowerShell 7. O CMD antigo funciona mas o output do Turbo fica menos legível.
@@ -134,8 +149,9 @@ fixtures/            Casos de teste de segmentação
 ```
 
 Na raiz ficam os pontos de entrada de duplo clique — `INICIAR.bat`,
-`PROCESSAR.bat`, `EMPACOTAR.bat`, `SUBIR-GITHUB.bat` — de propósito: são a
-interface de quem usa o app sem terminal.
+`PROCESSAR.bat`, `EMPACOTAR.bat`, `EXPORTAR-ACERVO.bat`, `IMPORTAR-ACERVO.bat`,
+`SUBIR-GITHUB.bat` — de propósito: são a interface de quem usa o app sem
+terminal.
 
 ## Onde ficam os dados
 
@@ -163,6 +179,8 @@ pnpm db:migrate       # aplica migrations
 pnpm fila             # lista a fila
 pnpm extrair          # extrai um job de URL por navegador
 pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
+pnpm acervo:exportar  # zip do acervo (vault+biblioteca+sites+banco) na Área de Trabalho
+pnpm acervo:importar  # importa um acervo exportado noutra máquina
 ```
 
 A lista completa dos comandos de fila está no [CLAUDE.md](CLAUDE.md).

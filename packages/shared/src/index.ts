@@ -1,3 +1,4 @@
+export * from './acervo.js';
 export * from './assets.js';
 export * from './asset-rewrite.js';
 export * from './contract.js';

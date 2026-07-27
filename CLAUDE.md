@@ -117,6 +117,8 @@ pnpm fila:progresso   # reporta 0-100 de um job em andamento
 pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
 pnpm segmentar        # segmenta um ds_id à mão (conserto; o fila:concluir já faz sozinho)
 pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
+pnpm acervo:exportar  # zip portátil do acervo (EXPORTAR-ACERVO.bat)
+pnpm acervo:importar  # importa acervo de outra máquina reescrevendo caminhos (IMPORTAR-ACERVO.bat)
 ```
 
 ## Arquitetura
