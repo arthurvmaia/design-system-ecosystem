@@ -265,7 +265,15 @@ export function ProjectWizard({
             />
           )}
           {step === 4 && (
-            <StepMidia projectId={projectId} slots={activeSlots} media={media} onMedia={setMedia} />
+            <StepMidia
+              projectId={projectId}
+              slots={activeSlots}
+              layout={layout}
+              components={kit.data?.item.components ?? []}
+              kitId={kitId}
+              media={media}
+              onMedia={setMedia}
+            />
           )}
           {step === 5 && (
             <StepRevisao

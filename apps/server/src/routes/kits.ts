@@ -1,5 +1,6 @@
 import { getDb, tables } from '@ds/indexer';
-import { CreateKitInput, UpdateKitInput, newKitId } from '@ds/shared';
+import { CreateKitInput, UpdateKitInput, lerOuDerivarContrato, newKitId } from '@ds/shared';
+import { libraryComponentBundleDir } from '@ds/shared/paths';
 import { zValidator } from '@hono/zod-validator';
 import { asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -88,6 +89,33 @@ kitsRoute.get('/:id', (c) => {
   const kit = carregarKit(c.req.param('id'));
   if (!kit) return c.json({ error: 'not_found' }, 404);
   return c.json({ item: kit });
+});
+
+/**
+ * Resumo do CONTRATO de cada componente do kit: quantos espaços de texto,
+ * mídia e link a peça realmente tem. É o que a etapa de mídia usa para mostrar
+ * espaços REAIS em vez de um chute — componente sem bundle legível entra com
+ * contrato nulo (a UI degrada para o comportamento genérico).
+ */
+kitsRoute.get('/:id/contratos', (c) => {
+  const kit = carregarKit(c.req.param('id'));
+  if (!kit) return c.json({ error: 'not_found' }, 404);
+  const items = kit.components.map((cmp) => {
+    const contrato = lerOuDerivarContrato(libraryComponentBundleDir(cmp.id as `cmp_${string}`));
+    if (contrato === null) {
+      return { id: cmp.id, disponivel: false, textos: 0, links: 0, logos: 0, midias: [] };
+    }
+    const midias = contrato.slots.midias.filter((m) => !m.pareceLogo);
+    return {
+      id: cmp.id,
+      disponivel: true,
+      textos: contrato.slots.textos.length,
+      links: contrato.slots.links.length,
+      logos: contrato.slots.midias.length - midias.length,
+      midias: midias.map((m) => ({ tipo: m.tipo })),
+    };
+  });
+  return c.json({ items });
 });
 
 kitsRoute.post('/', zValidator('json', CreateKitInput), (c) => {

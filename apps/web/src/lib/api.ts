@@ -175,6 +175,16 @@ export type KitComponentRef = {
   position: number;
 };
 
+/** Resumo do contrato de um componente do kit (espaços reais de conteúdo). */
+export type KitContratoResumo = {
+  id: string;
+  disponivel: boolean;
+  textos: number;
+  links: number;
+  logos: number;
+  midias: { tipo: string }[];
+};
+
 export type KitRecord = {
   id: string;
   name: string;
@@ -457,6 +467,8 @@ export const api = {
   // ── Kits (Design Systems finais) ────────────────────────────────────────
   listKits: () => jsonFetch<{ items: KitRecord[] }>('/api/kits'),
   getKit: (id: string) => jsonFetch<{ item: KitRecord }>(`/api/kits/${id}`),
+  getKitContratos: (id: string) =>
+    jsonFetch<{ items: KitContratoResumo[] }>(`/api/kits/${id}/contratos`),
   createKit: (input: CreateKitInput) =>
     jsonFetch<{ item: KitRecord }>('/api/kits', { method: 'POST', body: JSON.stringify(input) }),
   updateKit: (id: string, input: UpdateKitInput) =>
