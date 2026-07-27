@@ -197,6 +197,13 @@ export type ResultadoGrafo = {
   limitacoes: string[];
 };
 
+/** A página navegou e destruiu o contexto de execução no meio de uma ação? */
+const ehContextoDestruido = (err: unknown): boolean =>
+  err instanceof Error &&
+  /Execution context was destroyed|because of a navigation|Cannot find context with specified id/i.test(
+    err.message,
+  );
+
 /** Teclas seguras. `Enter` fica fora: em formulário, ele envia. */
 const TECLAS_SEGURAS = ['ArrowRight', 'ArrowDown', 'Escape'] as const;
 
@@ -439,179 +446,206 @@ export const construirGrafoDeEstados = async (
           break;
         }
 
-        // ── Conferir a base ─────────────────────────────────────────────────
-        // Sem isto, o estado seguinte é medido contra o anterior contaminado —
-        // o defeito exato do V1.
-        if (!(await conferirBase(estadoAtual.signature))) {
-          let recuperou = false;
-          if (opts.reestabelecer !== undefined && reestabelecimentos < maxReest) {
-            reestabelecimentos++;
-            recuperou = await opts.reestabelecer();
-            if (recuperou && item.caminho.length > 0) {
-              recuperou = await reencenar(item.caminho);
+        try {
+          // ── Conferir a base ─────────────────────────────────────────────────
+          // Sem isto, o estado seguinte é medido contra o anterior contaminado —
+          // o defeito exato do V1.
+          if (!(await conferirBase(estadoAtual.signature))) {
+            let recuperou = false;
+            if (opts.reestabelecer !== undefined && reestabelecimentos < maxReest) {
+              reestabelecimentos++;
+              recuperou = await opts.reestabelecer();
+              if (recuperou && item.caminho.length > 0) {
+                recuperou = await reencenar(item.caminho);
+              }
+            }
+            if (!recuperou) {
+              contaminado = true;
+              limitacoes.push(
+                `A exploração não pôde voltar ao estado "${estadoAtual.label}" antes de "${acao}": as ações seguintes foram medidas contra o estado encontrado, não contra o original.`,
+              );
+              // Adota a base atual, para não medir contra uma referência falsa.
+              estadoAtual.signature = assinaturaDoEstado(await lerAssinatura());
             }
           }
-          if (!recuperou) {
-            contaminado = true;
-            limitacoes.push(
-              `A exploração não pôde voltar ao estado "${estadoAtual.label}" antes de "${acao}": as ações seguintes foram medidas contra o estado encontrado, não contra o original.`,
-            );
-            // Adota a base atual, para não medir contra uma referência falsa.
-            estadoAtual.signature = assinaturaDoEstado(await lerAssinatura());
+
+          const ref = Number(cand.descriptor.ref);
+          const antes = await lerAssinatura();
+          const antesSig = assinaturaDoEstado(antes);
+
+          const t0 = Date.now();
+          const exec = await executarAcao(page, acao, ref);
+          acoesFeitas++;
+          if (!exec.ok) {
+            acoes.push({
+              id: `ac_${acoes.length + 1}`,
+              kind: acao,
+              target: cand.hash,
+              fromState: estadoAtual.id,
+              toState: estadoAtual.id,
+              hadEffect: false,
+              restored: true,
+              restoreEvidence: [`ação não executada: ${exec.motivo ?? 'motivo desconhecido'}`],
+              latencyMs: Date.now() - t0,
+              assetsLoaded: [],
+              requests: [],
+            });
+            continue;
           }
-        }
+          await page.esperar(assentar);
 
-        const ref = Number(cand.descriptor.ref);
-        const antes = await lerAssinatura();
-        const antesSig = assinaturaDoEstado(antes);
+          const depois = await lerAssinatura();
+          const depoisSig = assinaturaDoEstado(depois);
+          const mudanca = houveMudanca(antes, depois);
+          const latencia = Date.now() - t0;
 
-        const t0 = Date.now();
-        const exec = await executarAcao(page, acao, ref);
-        acoesFeitas++;
-        if (!exec.ok) {
+          let destinoId = estadoAtual.id;
+          if (mudanca.mudou && depoisSig !== antesSig) {
+            const existente = porAssinatura.get(depoisSig);
+            if (existente !== undefined) {
+              // Já conhecíamos este estado. Se é um ancestral, é ciclo.
+              dedup++;
+              destinoId = existente;
+              // Voltar a um ANCESTRAL é ciclo (abrir→fechar→abrir); voltar a um
+              // estado irmão é só dedup. A distinção importa para o relatório: um
+              // ciclo alto significa que a exploração está girando.
+              let anc: StateNode | undefined = estadoAtual;
+              let guarda = 0;
+              while (anc !== undefined && guarda < 20) {
+                if (anc.id === existente) {
+                  ciclos++;
+                  break;
+                }
+                const paiId: string | null = anc.parent;
+                anc = paiId === null ? undefined : nodes.find((n) => n.id === paiId);
+                guarda++;
+              }
+            } else {
+              const id = `st_${nodes.length}`;
+              const label = rotularEstado(acao, mudanca.motivos);
+              let htmlRef: string | undefined;
+              let portalRef: string | undefined;
+              let frameRef: string | undefined;
+              if (opts.sinkHtml !== undefined) {
+                try {
+                  const html = await page.evaluate<string>(chamar(HTML_DO_REF_FN, ref));
+                  if (html.length > 0) htmlRef = opts.sinkHtml(`${id}-escopo.html`, html);
+                  const portal = await page.evaluate<string>(chamar(PORTAL_HTML_FN, ref));
+                  if (portal.length > 0) portalRef = opts.sinkHtml(`${id}-portal.html`, portal);
+                } catch {
+                  // elemento saiu do DOM ao mudar de estado: o estado vale sem o HTML
+                }
+              }
+              if (opts.sinkFrame !== undefined) {
+                try {
+                  const bytes = await page.screenshot();
+                  frameRef = opts.sinkFrame(`${id}-${hashBytes(bytes).slice(0, 8)}.png`, bytes);
+                } catch {
+                  // sem frame: o estado continua registrado
+                }
+              }
+              const node: StateNode = {
+                id,
+                signature: depoisSig,
+                label,
+                depth: estadoAtual.depth + 1,
+                parent: estadoAtual.id,
+                scope: cand.hash,
+                htmlRef,
+                portalHtmlRef: portalRef,
+                frameRef,
+                layersAdded: depois.overlays
+                  .filter((o) => o.ref !== null)
+                  .map((o) => String(o.ref))
+                  .slice(0, 20),
+                assets: [],
+                confidence: confiancaDoEstado(mudanca.motivos),
+              };
+              nodes.push(node);
+              porAssinatura.set(depoisSig, id);
+              destinoId = id;
+              if (node.depth < maxDepth) {
+                fila.push({
+                  estadoId: id,
+                  caminho: [...item.caminho, { ref, acao }],
+                });
+              }
+            }
+          }
+
+          // ── Desfazer e CONFERIR ────────────────────────────────────────────
+          const desfeito = await tentarDesfazer(page, acao, ref, () => conferirBase(antesSig));
+          if (!desfeito.restaurado) {
+            let recuperou = false;
+            if (opts.reestabelecer !== undefined && reestabelecimentos < maxReest) {
+              reestabelecimentos++;
+              recuperou = await opts.reestabelecer();
+              if (recuperou) {
+                desfeito.evidencias.push('página reestabelecida');
+                if (item.caminho.length > 0) recuperou = await reencenar(item.caminho);
+              }
+            }
+            if (!recuperou) {
+              contaminado = true;
+              limitacoes.push(
+                `A ação "${acao}" não pôde ser desfeita (${desfeito.evidencias.join(' → ')}). O estado seguinte pode ter sido medido contaminado.`,
+              );
+            } else {
+              desfeito.restaurado = true;
+            }
+          }
+
+          const idAcao = `ac_${acoes.length + 1}`;
           acoes.push({
-            id: `ac_${acoes.length + 1}`,
+            id: idAcao,
             kind: acao,
             target: cand.hash,
             fromState: estadoAtual.id,
-            toState: estadoAtual.id,
-            hadEffect: false,
-            restored: true,
-            restoreEvidence: [`ação não executada: ${exec.motivo ?? 'motivo desconhecido'}`],
-            latencyMs: Date.now() - t0,
+            toState: destinoId,
+            hadEffect: mudanca.mudou,
+            restored: desfeito.restaurado,
+            restoreEvidence: desfeito.evidencias,
+            latencyMs: latencia,
             assetsLoaded: [],
             requests: [],
           });
-          continue;
-        }
-        await page.esperar(assentar);
 
-        const depois = await lerAssinatura();
-        const depoisSig = assinaturaDoEstado(depois);
-        const mudanca = houveMudanca(antes, depois);
-        const latencia = Date.now() - t0;
-
-        let destinoId = estadoAtual.id;
-        if (mudanca.mudou && depoisSig !== antesSig) {
-          const existente = porAssinatura.get(depoisSig);
-          if (existente !== undefined) {
-            // Já conhecíamos este estado. Se é um ancestral, é ciclo.
-            dedup++;
-            destinoId = existente;
-            // Voltar a um ANCESTRAL é ciclo (abrir→fechar→abrir); voltar a um
-            // estado irmão é só dedup. A distinção importa para o relatório: um
-            // ciclo alto significa que a exploração está girando.
-            let anc: StateNode | undefined = estadoAtual;
-            let guarda = 0;
-            while (anc !== undefined && guarda < 20) {
-              if (anc.id === existente) {
-                ciclos++;
-                break;
-              }
-              const paiId: string | null = anc.parent;
-              anc = paiId === null ? undefined : nodes.find((n) => n.id === paiId);
-              guarda++;
-            }
-          } else {
-            const id = `st_${nodes.length}`;
-            const label = rotularEstado(acao, mudanca.motivos);
-            let htmlRef: string | undefined;
-            let portalRef: string | undefined;
-            let frameRef: string | undefined;
-            if (opts.sinkHtml !== undefined) {
-              try {
-                const html = await page.evaluate<string>(chamar(HTML_DO_REF_FN, ref));
-                if (html.length > 0) htmlRef = opts.sinkHtml(`${id}-escopo.html`, html);
-                const portal = await page.evaluate<string>(chamar(PORTAL_HTML_FN, ref));
-                if (portal.length > 0) portalRef = opts.sinkHtml(`${id}-portal.html`, portal);
-              } catch {
-                // elemento saiu do DOM ao mudar de estado: o estado vale sem o HTML
-              }
-            }
-            if (opts.sinkFrame !== undefined) {
-              try {
-                const bytes = await page.screenshot();
-                frameRef = opts.sinkFrame(`${id}-${hashBytes(bytes).slice(0, 8)}.png`, bytes);
-              } catch {
-                // sem frame: o estado continua registrado
-              }
-            }
-            const node: StateNode = {
-              id,
-              signature: depoisSig,
-              label,
-              depth: estadoAtual.depth + 1,
-              parent: estadoAtual.id,
-              scope: cand.hash,
-              htmlRef,
-              portalHtmlRef: portalRef,
-              frameRef,
-              layersAdded: depois.overlays
-                .filter((o) => o.ref !== null)
-                .map((o) => String(o.ref))
-                .slice(0, 20),
-              assets: [],
-              confidence: confiancaDoEstado(mudanca.motivos),
-            };
-            nodes.push(node);
-            porAssinatura.set(depoisSig, id);
-            destinoId = id;
-            if (node.depth < maxDepth) {
-              fila.push({
-                estadoId: id,
-                caminho: [...item.caminho, { ref, acao }],
-              });
-            }
+          if (destinoId !== estadoAtual.id) {
+            edges.push({
+              from: estadoAtual.id,
+              to: destinoId,
+              actionId: idAcao,
+              kind: acao,
+              // Reversível só quando desfazer FOI conferido. É a diferença entre
+              // "achamos que fecha" e "vimos fechar".
+              reversible: desfeito.restaurado,
+            });
           }
-        }
-
-        // ── Desfazer e CONFERIR ────────────────────────────────────────────
-        const desfeito = await tentarDesfazer(page, acao, ref, () => conferirBase(antesSig));
-        if (!desfeito.restaurado) {
+        } catch (err) {
+          // Uma ação navegou/destruiu o contexto apesar da política (SPA que
+          // intercepta, script do site, corrida). O GRAFO não pode levar a
+          // captura junto: registra, tenta reestabelecer a página e segue —
+          // sem recuperação, devolve o que já foi medido.
+          if (!ehContextoDestruido(err)) throw err;
+          contaminado = true;
+          limitacoes.push(
+            `A ação "${acao}" em "${cand.hash.slice(0, 10)}" navegou para outro documento; o grafo seguiu sem ela.`,
+          );
+          bloqueadas.push({
+            reason: 'navegacao-externa',
+            target: `${cand.descriptor.tag}${cand.descriptor.text ? ` "${cand.descriptor.text.slice(0, 40)}"` : ''}`,
+            detail: 'navegou durante a exploração — contexto destruído',
+          });
           let recuperou = false;
           if (opts.reestabelecer !== undefined && reestabelecimentos < maxReest) {
             reestabelecimentos++;
-            recuperou = await opts.reestabelecer();
-            if (recuperou) {
-              desfeito.evidencias.push('página reestabelecida');
-              if (item.caminho.length > 0) recuperou = await reencenar(item.caminho);
-            }
+            recuperou = await opts.reestabelecer().catch(() => false);
           }
           if (!recuperou) {
-            contaminado = true;
-            limitacoes.push(
-              `A ação "${acao}" não pôde ser desfeita (${desfeito.evidencias.join(' → ')}). O estado seguinte pode ter sido medido contaminado.`,
-            );
-          } else {
-            desfeito.restaurado = true;
+            truncado = true;
+            fila.length = 0;
+            break;
           }
-        }
-
-        const idAcao = `ac_${acoes.length + 1}`;
-        acoes.push({
-          id: idAcao,
-          kind: acao,
-          target: cand.hash,
-          fromState: estadoAtual.id,
-          toState: destinoId,
-          hadEffect: mudanca.mudou,
-          restored: desfeito.restaurado,
-          restoreEvidence: desfeito.evidencias,
-          latencyMs: latencia,
-          assetsLoaded: [],
-          requests: [],
-        });
-
-        if (destinoId !== estadoAtual.id) {
-          edges.push({
-            from: estadoAtual.id,
-            to: destinoId,
-            actionId: idAcao,
-            kind: acao,
-            // Reversível só quando desfazer FOI conferido. É a diferença entre
-            // "achamos que fecha" e "vimos fechar".
-            reversible: desfeito.restaurado,
-          });
         }
       }
     }

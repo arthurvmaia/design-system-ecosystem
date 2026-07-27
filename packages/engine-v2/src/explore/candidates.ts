@@ -178,6 +178,23 @@ export const acoesProvaveis = (s: SinaisCandidato): SafeActionKind[] => {
   return [...new Set(out)];
 };
 
+/** O href leva ao MESMO documento (só muda o fragmento)? */
+const ehSoFragmento = (href: string, baseUrl: string): boolean => {
+  if (href.startsWith('#')) return true;
+  try {
+    const destino = new URL(href, baseUrl);
+    const atual = new URL(baseUrl);
+    return (
+      destino.origin === atual.origin &&
+      destino.pathname === atual.pathname &&
+      destino.search === atual.search &&
+      destino.hash.length > 0
+    );
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Filtra as ações pela política de segurança. Reusa `ehSeguroClicar` do V1 para
  * as ações que envolvem clique e acrescenta as barreiras novas.
@@ -200,6 +217,16 @@ export const filtrarAcoes = (
   const barreiraDeTexto = PADROES_BARRADOS.find((p) => p.re.test(texto));
   const protoExterno = d.href !== null && PROTO_EXTERNO.test(d.href);
   const vereditoClique = ehSeguroClicar(d, baseUrl);
+  // Link que TROCA DE DOCUMENTO: navegar nunca é um estado DESTA página — o
+  // clique destrói o contexto de execução e leva a captura junto (visto em site
+  // real: item de menu same-origin derrubava o grafo inteiro). Âncora de
+  // fragmento continua permitida: muda estado sem trocar documento.
+  const trocaDeDocumento =
+    d.tag === 'a' &&
+    d.href !== null &&
+    d.href.trim().length > 0 &&
+    !/^javascript:/i.test(d.href) &&
+    !ehSoFragmento(d.href, baseUrl);
 
   for (const acao of acoes) {
     if (!REVERSIVEIS.has(acao)) {
@@ -233,6 +260,10 @@ export const filtrarAcoes = (
     }
     if (!vereditoClique.safe) {
       barradas.push({ acao, motivo: vereditoClique.motivo ?? 'clique reprovado pela política' });
+      continue;
+    }
+    if (trocaDeDocumento) {
+      barradas.push({ acao, motivo: 'navega para outro documento' });
       continue;
     }
     permitidas.push(acao);

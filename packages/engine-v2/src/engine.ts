@@ -184,17 +184,46 @@ const gravar = (base: string, relativo: string, conteudo: string | Uint8Array): 
   return relativo;
 };
 
+/** A página navegou no meio da captura e levou o contexto de execução junto? */
+const navegacaoDestruiuContexto = (err: unknown): boolean =>
+  err instanceof Error &&
+  /Execution context was destroyed|because of a navigation|Cannot find context with specified id/i.test(
+    err.message,
+  );
+
 /**
  * Captura uma URL com o motor V2.
  *
  * Nunca deixa de devolver algo útil: corte por orçamento produz manifesto PARCIAL
  * com o que já foi medido, e ausência de Playwright lança
  * `PlaywrightIndisponivel` para o chamador decidir (a fila cai no V1 estático).
+ *
+ * Navegação no meio da captura (redirect de locale, meta refresh, link
+ * same-origin que a política deixou passar) destrói o contexto e invalida os
+ * refs — os dados da tentativa não servem. UMA nova tentativa, do zero, no
+ * MESMO orçamento (a telemetria acumula: o que a primeira gastou faz falta na
+ * segunda, de propósito). Persistindo, o erro sobe com a causa clara.
  */
 export const capturarComV2 = async (
   url: string,
   opts: OpcoesCaptura,
 ): Promise<ResultadoCaptura> => {
+  const tel =
+    opts.telemetria ?? new Telemetria(resolveOrcamento(resolveLimits(opts.limits)).orcamento);
+  const comTelemetria = { ...opts, telemetria: tel };
+  try {
+    return await capturarTentativa(url, comTelemetria);
+  } catch (err) {
+    if (!navegacaoDestruiuContexto(err)) throw err;
+    (opts.log ?? noop)('navegacao-no-meio', {
+      detalhe: err instanceof Error ? err.message.slice(0, 160) : String(err),
+      acao: 'a página navegou durante a captura — uma nova tentativa, do zero',
+    });
+    return await capturarTentativa(url, comTelemetria);
+  }
+};
+
+const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<ResultadoCaptura> => {
   const limits = resolveLimits(opts.limits);
   const log = opts.log ?? noop;
   const { orcamento, avisos } = resolveOrcamento(limits);
@@ -227,6 +256,20 @@ export const capturarComV2 = async (
       s.pw.goto(url, { waitUntil: 'domcontentloaded', timeout: gotoTimeout }),
     );
     await tel.medir(FASE_V2.estabilizar, () => page.esperar(limits.settleAfterLoadMs));
+
+    // Quiescência de navegação: bouncer de locale e meta refresh navegam DEPOIS
+    // do load. Instrumentar uma página que ainda vai trocar de documento perde
+    // tudo — espera a URL parar de mudar (custo fixo de 1 checagem quando não
+    // há navegação nenhuma).
+    let urlEstavel = s.pw.url();
+    for (let i = 0; i < 6; i++) {
+      await page.esperar(400);
+      const agora = s.pw.url();
+      if (agora === urlEstavel) break;
+      log('navegacao-tardia', { de: urlEstavel, para: agora });
+      urlEstavel = agora;
+      await page.esperar(limits.settleAfterLoadMs);
+    }
 
     const lerAssinatura = (): Promise<RawAssinaturaEstado> =>
       page.evaluate<RawAssinaturaEstado>(chamar(ASSINATURA_ESTADO_FN));
