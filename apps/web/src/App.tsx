@@ -5,12 +5,12 @@ import { GalleryPage } from '@/routes/Gallery';
 import { KitsPage } from '@/routes/Kits';
 import { LibraryPage } from '@/routes/Library';
 import { MeusProjetosPage } from '@/routes/MeusProjetos';
-import { ProjectsPage } from '@/routes/Projects';
 import { RevisaoPage } from '@/routes/Revisao';
 import { SettingsPage } from '@/routes/Settings';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { ProjectsPage } from './routes/projects';
 
 const queryClient = new QueryClient({
   defaultOptions: {

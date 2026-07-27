@@ -27,6 +27,9 @@ vault/
 library/
 projects/
 queue/
+# A rota modular de código em apps/web/src/routes/projects/ NÃO é dado de
+# runtime — re-inclui a pasta que o padrão `projects/` acima pegaria junto.
+!apps/web/src/routes/projects/
 *.db
 *.db-shm
 *.db-wal
