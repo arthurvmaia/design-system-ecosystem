@@ -49,7 +49,6 @@ export function LayoutPicker({
   });
 
   const blueprints = data?.items ?? [];
-  const selecionado = blueprints.find((b) => b.id === value.blueprintId);
 
   return (
     <div className="space-y-4">
@@ -114,51 +113,8 @@ export function LayoutPicker({
             ))}
           </div>
 
-          {selecionado && (
-            <div className="ds-glass-static rounded-lg p-3">
-              <div
-                className="mb-2 text-[10px] uppercase tracking-[0.28em]"
-                style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
-              >
-                Seções — clique para ligar ou desligar
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {selecionado.slots.map((s) => {
-                  const desligado = value.disabledRoles.includes(s.role);
-                  return (
-                    <button
-                      key={s.role}
-                      type="button"
-                      disabled={s.required}
-                      onClick={() =>
-                        onChange({
-                          ...value,
-                          disabledRoles: desligado
-                            ? value.disabledRoles.filter((r) => r !== s.role)
-                            : [...value.disabledRoles, s.role],
-                          // desligar a seção descarta a decisão feita para ela
-                          placements: desligado
-                            ? value.placements
-                            : value.placements.filter((p) => p.role !== s.role),
-                        })
-                      }
-                      className="ds-tag rounded-full border px-2.5 py-1 text-[11px] transition-all disabled:cursor-default"
-                      style={{
-                        borderColor: desligado ? 'var(--color-border)' : 'var(--color-crimson-7)',
-                        backgroundColor: desligado ? 'transparent' : 'rgba(107,20,20,0.22)',
-                        color: desligado ? 'var(--color-fg-subtle)' : 'var(--color-fg)',
-                        opacity: s.required ? 0.75 : 1,
-                      }}
-                      title={s.required ? 'Obrigatória nesta estrutura' : undefined}
-                    >
-                      {s.label}
-                      {s.required && ' *'}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* Ligar/desligar seções agora acontece na lista de seções da etapa
+              Estrutura — uma decisão por vez, não tudo de uma vez aqui. */}
         </div>
       )}
 

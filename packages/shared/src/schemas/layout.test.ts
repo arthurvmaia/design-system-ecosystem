@@ -90,6 +90,31 @@ test('normalizarProjectLayout: legado sem placements entra com lista vazia', () 
   assert.equal(comPlacement.placements[0]?.componentId, 'cmp_x');
 });
 
+test('kit MENOR que a estrutura nunca falha: toda seção sai resolvida (reuso ou criação no estilo)', () => {
+  // Estrutura de 11 seções × kit de 2 componentes — o caso que não pode quebrar.
+  const saas = BUILTIN_BLUEPRINTS.find((b) => b.id === 'saas-landing');
+  assert.ok(saas);
+  const kitPequeno: ComponenteDoKitResumo[] = [
+    { id: 'cmp_hero', name: 'Hero', category: 'hero' },
+    { id: 'cmp_cards', name: 'Cards', category: 'card' },
+  ];
+  const resolvidos = resolverPlacements(saas.slots, [], kitPequeno);
+  assert.equal(resolvidos.length, saas.slots.length, 'uma resposta por seção, sempre');
+  for (const r of resolvidos) {
+    assert.ok(
+      (r.origem !== 'criado' && r.componente !== null) ||
+        (r.origem === 'criado' && r.componente === null),
+      `seção ${r.role} sem resposta coerente`,
+    );
+  }
+  // Reuso quando faz sentido: features E showcase E gallery aceitam card —
+  // com um card só, ele pode se repetir em vez de deixar seção vazia.
+  const comCard = resolvidos.filter((r) => r.componente?.id === 'cmp_cards');
+  assert.ok(comCard.length >= 2, 'um componente pode servir mais de uma seção');
+  // E o que não tem peça compatível é criado no estilo — nunca vazio.
+  assert.ok(resolvidos.some((r) => r.origem === 'criado'));
+});
+
 test('blueprints embutidos só usam papéis conhecidos (o mapa cobre todos)', () => {
   for (const bp of BUILTIN_BLUEPRINTS) {
     for (const s of bp.slots) {

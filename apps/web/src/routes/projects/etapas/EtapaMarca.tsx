@@ -12,13 +12,13 @@ import { PainelRedes } from './marca/PainelRedes';
 import { PainelTipografia } from './marca/PainelTipografia';
 import { PainelVoz } from './marca/PainelVoz';
 
-type MarcaSecaoDef = { id: MarcaSubId; label: string };
+type MarcaSecaoDef = { id: MarcaSubId; label: string; peso: 'recomendado' | 'opcional' };
 const MARCA_SECOES: MarcaSecaoDef[] = [
-  { id: 'marca', label: 'Marca' },
-  { id: 'voz', label: 'Voz da marca' },
-  { id: 'paleta', label: 'Paleta' },
-  { id: 'tipografia', label: 'Tipografia' },
-  { id: 'redes', label: 'Redes sociais' },
+  { id: 'marca', label: 'Marca', peso: 'recomendado' },
+  { id: 'voz', label: 'Voz da marca', peso: 'recomendado' },
+  { id: 'paleta', label: 'Paleta', peso: 'recomendado' },
+  { id: 'tipografia', label: 'Tipografia', peso: 'recomendado' },
+  { id: 'redes', label: 'Redes sociais', peso: 'opcional' },
 ];
 
 /**
@@ -58,12 +58,16 @@ export function StepMarca({
             >
               <StatusDot status={info.status} />
               <span className="min-w-0">
-                <span className="block">{s.label}</span>
+                <span className="block text-[14px]">{s.label}</span>
                 <span
-                  className="ds-data block max-w-[124px] truncate text-[10px]"
+                  className="block max-w-[132px] truncate text-[11px]"
                   style={{ color: 'var(--color-fg-subtle)' }}
                 >
-                  {info.resumo}
+                  {info.status === 'configurado'
+                    ? info.resumo
+                    : s.peso === 'opcional'
+                      ? 'Opcional'
+                      : 'Recomendado'}
                 </span>
               </span>
             </button>

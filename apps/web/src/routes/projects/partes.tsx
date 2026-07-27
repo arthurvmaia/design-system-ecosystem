@@ -43,7 +43,7 @@ export function Campo({ label, children }: { label: string; children: React.Reac
   return (
     // biome-ignore lint/a11y/noLabelWithoutControl: o controle vem por children; o <label> o envolve e a associação implícita vale em runtime.
     <label className="block">
-      <span className="mb-1.5 block text-[10px] uppercase tracking-[0.2em]" style={rotulo}>
+      <span className="mb-1.5 block text-[11px] uppercase tracking-[0.18em]" style={rotulo}>
         {label}
       </span>
       {children}
@@ -52,7 +52,7 @@ export function Campo({ label, children }: { label: string; children: React.Reac
 }
 
 export const INPUT =
-  'w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)]';
+  'w-full rounded-md border px-3.5 py-2.5 text-[14px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)]';
 
 export const inputStyle: React.CSSProperties = {
   borderColor: 'var(--color-border)',

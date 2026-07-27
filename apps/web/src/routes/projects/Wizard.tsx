@@ -274,7 +274,7 @@ export function ProjectWizard({
             <StepEstrutura
               layout={layout}
               onLayout={setLayout}
-              activeSlots={activeSlots}
+              todosSlots={bp?.slots ?? []}
               components={kit.data?.item.components ?? []}
             />
           )}
