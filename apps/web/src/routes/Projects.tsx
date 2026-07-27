@@ -4,6 +4,7 @@ import { GoogleFontsPicker } from '@/components/GoogleFontsPicker';
 import { type LayoutChoice, LayoutPicker } from '@/components/LayoutPicker';
 import { Modal } from '@/components/Modal';
 import { QueuePanel } from '@/components/QueuePanel';
+import { Select } from '@/components/seletores';
 import {
   type Blueprint,
   type MediaItem,
@@ -1252,40 +1253,26 @@ function StepMidia({
     <div className="space-y-5">
       <div className="ds-glass-static flex flex-wrap items-end gap-3 rounded-lg p-4">
         <Campo label="Seção">
-          <select
-            value={slotRole}
-            onChange={(e) => setSlotRole(e.target.value)}
-            className={INPUT}
-            style={inputStyle}
-          >
-            {secoes.map((s) => (
-              <option
-                key={s.role}
-                value={s.role}
-                style={{ backgroundColor: 'var(--color-obsidian-2)' }}
-              >
-                {s.label}
-              </option>
-            ))}
-          </select>
+          <Select
+            className="min-w-44"
+            rotulo="Seção da mídia"
+            opcoes={secoes.map((s) => ({ valor: s.role, rotulo: s.label }))}
+            valor={slotRole}
+            aoMudar={setSlotRole}
+          />
         </Campo>
         <Campo label="Tipo">
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as MediaItem['kind'])}
-            className={INPUT}
-            style={inputStyle}
-          >
-            <option value="image" style={{ backgroundColor: 'var(--color-obsidian-2)' }}>
-              imagem
-            </option>
-            <option value="video" style={{ backgroundColor: 'var(--color-obsidian-2)' }}>
-              vídeo
-            </option>
-            <option value="mockup" style={{ backgroundColor: 'var(--color-obsidian-2)' }}>
-              mockup
-            </option>
-          </select>
+          <Select
+            className="min-w-36"
+            rotulo="Tipo da mídia"
+            opcoes={[
+              { valor: 'image', rotulo: 'Imagem' },
+              { valor: 'video', rotulo: 'Vídeo' },
+              { valor: 'mockup', rotulo: 'Mockup' },
+            ]}
+            valor={kind}
+            aoMudar={(v) => setKind(v as MediaItem['kind'])}
+          />
         </Campo>
         <label
           className="ds-btn flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium"

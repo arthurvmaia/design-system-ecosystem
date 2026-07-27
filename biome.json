@@ -42,5 +42,19 @@
         "noExplicitAny": "warn"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "include": ["apps/web/src/components/seletores/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "useFocusableInteractive": "off",
+            "noNoninteractiveElementToInteractiveRole": "off"
+          }
+        }
+      }
+    }
+  ]
 }

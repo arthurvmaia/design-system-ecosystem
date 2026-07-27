@@ -1,6 +1,7 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
+import { Select } from '@/components/seletores';
 import { type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { toast } from '@/lib/toast';
@@ -342,18 +343,12 @@ function LibraryDetail({
             />
           </Field>
           <Field label="Categoria">
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)]"
-              style={inputStyle}
-            >
-              {EDIT_CATEGORIES.map((c) => (
-                <option key={c} value={c} style={{ backgroundColor: 'var(--color-obsidian-2)' }}>
-                  {LABEL[c] ?? c}
-                </option>
-              ))}
-            </select>
+            <Select
+              rotulo="Categoria do componente"
+              opcoes={EDIT_CATEGORIES.map((c) => ({ valor: c, rotulo: LABEL[c] ?? c }))}
+              valor={category}
+              aoMudar={setCategory}
+            />
           </Field>
           <Field label="Tags">
             <div
