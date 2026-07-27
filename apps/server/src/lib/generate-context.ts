@@ -95,6 +95,20 @@ export const montarContextoDeGeracao = (dados: DadosParaContexto): ContextoDeGer
     designSystemId: cmp.designSystemId,
   }));
 
+  // Escolha fixada apontando para componente que saiu do kit: degrada para a
+  // sugestão automática (o resolver já faz isso) — mas a pessoa fica sabendo.
+  for (const p of layout.placements) {
+    if (
+      p.escolha === 'componente' &&
+      p.componentId !== null &&
+      !components.some((c) => c.id === p.componentId)
+    ) {
+      avisos.push(
+        `A seção "${p.role}" fixava um componente que não está mais no kit — a escolha voltou para o automático.`,
+      );
+    }
+  }
+
   const payload = GeneratePayload.parse({
     projectId: dados.projeto.id,
     projectName: dados.projeto.name,

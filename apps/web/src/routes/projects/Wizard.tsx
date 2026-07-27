@@ -60,6 +60,7 @@ export function ProjectWizard({
     mode: parsedLayout?.mode === 'criativo' ? 'criativo' : 'blueprint',
     blueprintId: parsedLayout?.blueprintId ?? 'saas-landing',
     disabledRoles: parsedLayout?.disabledRoles ?? [],
+    placements: Array.isArray(parsedLayout?.placements) ? parsedLayout.placements : [],
   });
   const [sections, setSections] = useState<Record<string, string>>(parsedContent?.sections ?? {});
   const [media, setMedia] = useState<MediaItem[]>(parseMedia(existing?.mediaManifestJson));
@@ -236,7 +237,7 @@ export function ProjectWizard({
               layout={layout}
               onLayout={setLayout}
               activeSlots={activeSlots}
-              kitCategories={new Set((kit.data?.item.components ?? []).map((c) => c.category))}
+              components={kit.data?.item.components ?? []}
             />
           )}
           {step === 3 && (

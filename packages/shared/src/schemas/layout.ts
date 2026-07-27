@@ -141,6 +141,50 @@ export type CreativeDirection = (typeof CREATIVE_DIRECTIONS)[number];
 export const pickCreativeDirection = (seed: number): CreativeDirection =>
   CREATIVE_DIRECTIONS[Math.abs(Math.trunc(seed)) % CREATIVE_DIRECTIONS.length] as CreativeDirection;
 
+/**
+ * Que categorias de componente atendem cada papel de seção. É o vocabulário
+ * ÚNICO entre wizard, sugestão automática e gerador (antes vivia duplicado na
+ * web). Papel sem categoria = nenhum componente encaixa direto; a seção é
+ * criada no estilo do kit.
+ */
+export const ROLE_CATEGORIES: Record<SectionRole, string[]> = {
+  nav: ['nav', 'header'],
+  hero: ['hero'],
+  logos: [],
+  features: ['feature', 'card'],
+  showcase: ['card'],
+  stats: [],
+  pricing: ['pricing'],
+  testimonials: ['testimonial'],
+  faq: ['faq'],
+  about: [],
+  team: [],
+  gallery: ['card'],
+  catalog: ['card'],
+  contact: ['form'],
+  cta: ['cta', 'button'],
+  footer: ['footer'],
+};
+
+/** Como um slot é preenchido: sugestão automática, componente fixado ou criação forçada. */
+export const EscolhaDePlacement = z.enum(['automatica', 'componente', 'criar']);
+export type EscolhaDePlacement = z.infer<typeof EscolhaDePlacement>;
+
+/**
+ * A decisão do usuário para UM slot do blueprint: seção × componente × config.
+ * `automatica` deixa a sugestão decidir; `componente` fixa uma peça do kit;
+ * `criar` força a criação no estilo do kit mesmo havendo peça compatível.
+ */
+export const PlacementDoSlot = z.object({
+  role: SectionRole,
+  escolha: EscolhaDePlacement.default('automatica'),
+  /** Id do componente fixado (só faz sentido com escolha `componente`). */
+  componentId: z.string().nullable().default(null),
+  /** Instrução livre por seção (ex.: "3 colunas", "fundo escuro"). */
+  observacao: z.string().optional(),
+});
+export type PlacementDoSlot = z.infer<typeof PlacementDoSlot>;
+
 /** A escolha de layout gravada no projeto. */
 export const ProjectLayout = z.object({
   mode: GenerationMode.default('blueprint'),
@@ -148,6 +192,8 @@ export const ProjectLayout = z.object({
   blueprintId: z.string(),
   /** Slots opcionais que o usuário desligou. Os obrigatórios são sempre mantidos. */
   disabledRoles: z.array(SectionRole).default([]),
+  /** Decisões por slot (aditivo — projetos antigos entram com lista vazia). */
+  placements: z.array(PlacementDoSlot).default([]),
   density: LayoutDensity.default('equilibrado'),
   motion: MotionLevel.default('sutil'),
   /**
@@ -279,10 +325,78 @@ export const DEFAULT_LAYOUT: ProjectLayout = {
   mode: 'blueprint',
   blueprintId: 'saas-landing',
   disabledRoles: [],
+  placements: [],
   density: 'equilibrado',
   motion: 'sutil',
   preferDesignSystemId: null,
   creativeSeed: 0,
+};
+
+// ── Resolução de placements ──────────────────────────────────────────────────
+
+/** O mínimo que a resolução precisa saber de um componente do kit. */
+export type ComponenteDoKitResumo = { id: string; name: string; category: string };
+
+export type PlacementResolvido = {
+  role: SectionRole;
+  /** De onde veio a decisão — o wizard e o gerador mostram isso, nunca escondem. */
+  origem: 'escolhido' | 'sugerido' | 'criado';
+  componente: ComponenteDoKitResumo | null;
+  observacao?: string;
+};
+
+/**
+ * Sugestão automática DETERMINÍSTICA: para cada slot, na ordem, o primeiro
+ * componente compatível ainda não usado — espalha o kit pela página em vez de
+ * repetir a mesma peça. Quando todos os compatíveis já foram usados, reusa o
+ * primeiro compatível (repetir é melhor que deixar vazio).
+ */
+export const sugerirDistribuicao = (
+  slots: readonly LayoutSlot[],
+  componentes: readonly ComponenteDoKitResumo[],
+): Map<SectionRole, ComponenteDoKitResumo> => {
+  const usados = new Set<string>();
+  const mapa = new Map<SectionRole, ComponenteDoKitResumo>();
+  for (const s of slots) {
+    const cats = ROLE_CATEGORIES[s.role] ?? [];
+    const compativeis = componentes.filter((c) => cats.includes(c.category));
+    const escolhido = compativeis.find((c) => !usados.has(c.id)) ?? compativeis[0];
+    if (escolhido !== undefined) {
+      mapa.set(s.role, escolhido);
+      usados.add(escolhido.id);
+    }
+  }
+  return mapa;
+};
+
+/**
+ * Resolve as decisões por slot: escolha manual VENCE (se o componente ainda
+ * existe no kit — id órfão degrada para o automático em vez de quebrar),
+ * `criar` força criação, e o resto cai na sugestão. Determinístico.
+ */
+export const resolverPlacements = (
+  slots: readonly LayoutSlot[],
+  placements: readonly PlacementDoSlot[],
+  componentes: readonly ComponenteDoKitResumo[],
+): PlacementResolvido[] => {
+  const porId = new Map(componentes.map((c) => [c.id, c]));
+  const porRole = new Map(placements.map((p) => [p.role, p]));
+  const sugestoes = sugerirDistribuicao(slots, componentes);
+  return slots.map((s) => {
+    const p = porRole.get(s.role);
+    const observacao = p?.observacao?.trim();
+    const extra = observacao ? { observacao } : {};
+    if (p?.escolha === 'componente' && p.componentId !== null) {
+      const c = porId.get(p.componentId);
+      if (c !== undefined) return { role: s.role, origem: 'escolhido', componente: c, ...extra };
+    }
+    if (p?.escolha === 'criar')
+      return { role: s.role, origem: 'criado', componente: null, ...extra };
+    const sugerido = sugestoes.get(s.role);
+    return sugerido !== undefined
+      ? { role: s.role, origem: 'sugerido', componente: sugerido, ...extra }
+      : { role: s.role, origem: 'criado', componente: null, ...extra };
+  });
 };
 
 /**

@@ -1,26 +1,8 @@
 /**
- * Que categorias do kit atendem cada papel de seção. Se o kit tem algo, aquele
- * slot é preenchido com peça sua; se não, será criado no estilo do kit. É o que
- * a etapa de estrutura mostra em cada slot, para não haver surpresa no resultado.
+ * Que categorias do kit atendem cada papel de seção — agora vem do shared
+ * (vocabulário único com a sugestão automática e o gerador).
  */
-export const ROLE_CATS: Record<string, string[]> = {
-  nav: ['nav', 'header'],
-  hero: ['hero'],
-  logos: [],
-  features: ['feature', 'card'],
-  showcase: ['card'],
-  stats: [],
-  pricing: ['pricing'],
-  testimonials: ['testimonial'],
-  faq: ['faq'],
-  about: [],
-  team: [],
-  gallery: ['card'],
-  catalog: ['card'],
-  contact: ['form'],
-  cta: ['cta', 'button'],
-  footer: ['footer'],
-};
+export { ROLE_CATEGORIES as ROLE_CATS } from '@ds/shared/schemas';
 
 import type {
   IdentidadeVerbal,

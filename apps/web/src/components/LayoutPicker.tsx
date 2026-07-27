@@ -1,3 +1,4 @@
+import type { PlacementDoSlot } from '@ds/shared/schemas';
 import { useQuery } from '@tanstack/react-query';
 import { Shuffle, SlidersHorizontal } from 'lucide-react';
 
@@ -27,6 +28,8 @@ export type LayoutChoice = {
   mode: 'blueprint' | 'criativo';
   blueprintId: string;
   disabledRoles: string[];
+  /** Decisões por seção (seção × componente × instrução) — ver EtapaEstrutura. */
+  placements: PlacementDoSlot[];
 };
 
 export function LayoutPicker({
@@ -54,14 +57,14 @@ export function LayoutPicker({
         <ModeCard
           active={value.mode === 'blueprint'}
           icon={<SlidersHorizontal size={14} />}
-          title="Eu defino a estrutura"
-          description="Você escolhe o esqueleto da página. O gerador só decide qual componente ocupa cada posição. Resultado previsível."
+          title="Composição guiada"
+          description="Você escolhe o esqueleto da página e decide o que ocupa cada seção. Resultado previsível, sob seu controle."
           onClick={() => onChange({ ...value, mode: 'blueprint' })}
         />
         <ModeCard
           active={value.mode === 'criativo'}
           icon={<Shuffle size={14} />}
-          title="Use sua criatividade"
+          title="Composição inteligente"
           description="O gerador monta a página do jeito que achar melhor, usando só os componentes que você curou. Cada geração sai diferente."
           onClick={() => onChange({ ...value, mode: 'criativo' })}
         />
@@ -81,7 +84,9 @@ export function LayoutPicker({
               <button
                 key={b.id}
                 type="button"
-                onClick={() => onChange({ ...value, blueprintId: b.id, disabledRoles: [] })}
+                onClick={() =>
+                  onChange({ ...value, blueprintId: b.id, disabledRoles: [], placements: [] })
+                }
                 className="ds-glass rounded-lg p-3 text-left"
                 style={
                   value.blueprintId === b.id ? { borderColor: 'var(--color-crimson-5)' } : undefined
@@ -131,6 +136,10 @@ export function LayoutPicker({
                           disabledRoles: desligado
                             ? value.disabledRoles.filter((r) => r !== s.role)
                             : [...value.disabledRoles, s.role],
+                          // desligar a seção descarta a decisão feita para ela
+                          placements: desligado
+                            ? value.placements
+                            : value.placements.filter((p) => p.role !== s.role),
                         })
                       }
                       className="ds-tag rounded-full border px-2.5 py-1 text-[11px] transition-all disabled:cursor-default"

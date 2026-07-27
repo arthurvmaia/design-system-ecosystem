@@ -12,6 +12,7 @@ import {
   pickCreativeDirection,
   projectGeneratedVersionDir,
   resolveSlots,
+  resolverPlacements,
 } from '@ds/shared';
 import { z } from 'zod';
 
@@ -136,8 +137,29 @@ const promptBlueprint = (
   blueprint: LayoutBlueprint,
 ): { system: string; user: string } => {
   const slots = resolveSlots(blueprint, input.layout);
+  // Decisões por slot fixadas no wizard: escolha manual vira ordem, sugestão
+  // vira preferência, e a instrução livre do usuário acompanha o slot.
+  const resolvidos = new Map(
+    resolverPlacements(slots, input.layout.placements, input.kit.components).map((r) => [
+      r.role,
+      r,
+    ]),
+  );
   const slotList = slots
-    .map((s, i) => `${i + 1}. role "${s.role}" — ${s.label}: ${s.hint}`)
+    .map((s, i) => {
+      const r = resolvidos.get(s.role);
+      const notas: string[] = [];
+      if (r?.origem === 'escolhido' && r.componente !== null) {
+        notas.push(`ESCOLHA FIXADA pelo usuário: use exatamente o componente "${r.componente.id}"`);
+      } else if (r?.origem === 'sugerido' && r.componente !== null) {
+        notas.push(`preferência: componente "${r.componente.id}" (${r.componente.name})`);
+      } else if (r?.origem === 'criado') {
+        notas.push('sem componente do kit para este papel: crie no estilo do kit');
+      }
+      if (r?.observacao !== undefined) notas.push(`instrução do usuário: ${r.observacao}`);
+      const sufixo = notas.length > 0 ? `\n   ${notas.join('\n   ')}` : '';
+      return `${i + 1}. role "${s.role}" — ${s.label}: ${s.hint}${sufixo}`;
+    })
     .join('\n');
 
   return {
@@ -150,6 +172,7 @@ cada slot, o componente da biblioteca que melhor cumpre aquele papel.
 Regras:
 - Retorne exatamente um item por slot, na mesma ordem em que os slots aparecem.
 - Use o valor de "role" exatamente como fornecido no slot.
+- Slot com ESCOLHA FIXADA não é sugestão: use o componente indicado.
 ${REGRAS_COMUNS}
 
 ${FORMATO}`,
