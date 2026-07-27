@@ -7,6 +7,7 @@ export * from './design-system.js';
 export * from './segment.js';
 export * from './library.js';
 export * from './component-contract.js';
+export * from './generate.js';
 export * from './kit.js';
 export * from './layout.js';
 export * from './project.js';

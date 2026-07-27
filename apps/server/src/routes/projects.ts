@@ -6,15 +6,17 @@ import {
   BUILTIN_BLUEPRINTS,
   CREATIVE_DIRECTIONS,
   DEFAULT_LAYOUT,
+  DEFAULT_PROJECT_BRANDING,
+  DEFAULT_PROJECT_CONTENT,
   type MediaItem,
   MediaManifest,
   type ProjectBranding,
   type ProjectContent,
   ProjectLayout,
   enqueueJob,
-  getBlueprint,
-  libraryComponentBundleDir,
   newProjectId,
+  normalizarProjectBranding,
+  normalizarProjectContent,
   projectBrandingDir,
   projectContentDir,
   projectDir,
@@ -26,20 +28,13 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { getModels } from '../lib/anthropic.js';
 import { isQueueMode } from '../lib/execution-mode.js';
+import { montarContextoDeGeracao } from '../lib/generate-context.js';
 import { enqueueTask } from '../lib/task-queue.js';
 
 export const projectsRoute = new Hono();
 
-const DEFAULT_CONTENT: ProjectContent = {
-  about: 'Uma empresa moderna que resolve seu problema.',
-  slogan: 'A solução que faltava',
-  cta: 'Comece agora',
-};
-
-const DEFAULT_BRANDING: ProjectBranding = {
-  palette: { primary: '#7f1d1d', background: '#ffffff', foreground: '#0a0a0a' },
-  typography: { display: 'Inter, sans-serif', body: 'Inter, sans-serif' },
-};
+// Defaults vivem em @ds/shared (fonte única) — ver DEFAULT_PROJECT_CONTENT e
+// DEFAULT_PROJECT_BRANDING. Aqui só a leitura normalizada.
 
 const MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -74,23 +69,10 @@ const gravarConfig = (
   writeFileSync(join(projectBrandingDir(id), 'branding.json'), JSON.stringify(branding, null, 2));
 };
 
-const safeJson = (raw: string | null): Record<string, unknown> => {
-  if (!raw) return {};
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-};
-
-const lerContent = (raw: string | null): ProjectContent =>
-  (safeJson(raw) as ProjectContent) ?? DEFAULT_CONTENT;
-
-const lerBranding = (raw: string | null): ProjectBranding => {
-  const parsed = safeJson(raw) as Partial<ProjectBranding>;
-  if (!parsed.palette || !parsed.typography) return DEFAULT_BRANDING;
-  return parsed as ProjectBranding;
-};
+// Normalizadores do shared: JSON corrompido/legado vira default carimbado, e o
+// buraco antigo (corrompido → objeto vazio silencioso) fecha nos DOIS modos.
+const lerContent = (raw: string | null): ProjectContent => normalizarProjectContent(raw);
+const lerBranding = (raw: string | null): ProjectBranding => normalizarProjectBranding(raw);
 
 /** Catálogo de estruturas e direções criativas, para o wizard montar a tela de escolha. */
 projectsRoute.get('/blueprints', (c) =>
@@ -156,7 +138,7 @@ projectsRoute.post('/', zValidator('json', CreateProjectInput), (c) => {
   mkdirSync(projectContentDir(projectId), { recursive: true });
   mkdirSync(projectBrandingDir(projectId), { recursive: true });
   mkdirSync(projectMediaDir(projectId), { recursive: true });
-  gravarConfig(projectId, DEFAULT_CONTENT, DEFAULT_BRANDING);
+  gravarConfig(projectId, DEFAULT_PROJECT_CONTENT, DEFAULT_PROJECT_BRANDING);
 
   const layout = ProjectLayout.parse(DEFAULT_LAYOUT);
 
@@ -167,8 +149,8 @@ projectsRoute.post('/', zValidator('json', CreateProjectInput), (c) => {
       createdAt: now,
       updatedAt: now,
       kitId: input.kitId ?? null,
-      contentJson: JSON.stringify(DEFAULT_CONTENT),
-      brandingJson: JSON.stringify(DEFAULT_BRANDING),
+      contentJson: JSON.stringify(DEFAULT_PROJECT_CONTENT),
+      brandingJson: JSON.stringify(DEFAULT_PROJECT_BRANDING),
       mediaManifestJson: '[]',
       layoutJson: JSON.stringify(layout),
       status: 'draft',
@@ -347,52 +329,40 @@ projectsRoute.post('/:id/generate', async (c) => {
     .all();
   const porId = new Map(componentes.map((cmp) => [cmp.id, cmp]));
 
-  // Componentes do kit na ordem curada, com o caminho do bundle em disco — é o
-  // que o processador (modo fila) ou o gerador (modo api) lê para montar o site.
-  const kitComponentes = links.flatMap((l) => {
+  // O CONTEXTO ÚNICO de geração: fila e API consomem o MESMO payload validado.
+  // Divergência entre os modos era exatamente o defeito (a mídia não chegava
+  // ao gerador no modo API) — agora qualquer campo novo entra no construtor e
+  // chega aos dois mundos ou a nenhum.
+  const componentesDoKit = links.flatMap((l) => {
     const cmp = porId.get(l.componentId);
-    if (!cmp) return [];
-    return [
-      {
-        id: cmp.id,
-        name: cmp.name,
-        category: cmp.category,
-        kind: cmp.kind,
-        bundlePath: libraryComponentBundleDir(cmp.id as `cmp_${string}`),
-      },
-    ];
+    return cmp
+      ? [
+          {
+            id: cmp.id,
+            name: cmp.name,
+            category: cmp.category,
+            kind: cmp.kind,
+            designSystemId: cmp.designSystemId ?? null,
+          },
+        ]
+      : [];
+  });
+  const ausentes = links.map((l) => l.componentId).filter((cid) => !porId.has(cid));
+  const contexto = montarContextoDeGeracao({
+    projeto: row,
+    kit: { id: kit.id, name: kit.name },
+    componentes: componentesDoKit,
+    ausentes,
   });
 
-  const content = lerContent(row.contentJson);
-  const branding = lerBranding(row.brandingJson);
-  const media = lerManifest(row.mediaManifestJson);
-  const layout = ProjectLayout.parse({ ...DEFAULT_LAYOUT, ...safeJson(row.layoutJson) });
-  if (layout.mode === 'criativo') {
-    // Cada geração no modo criativo sorteia uma composição nova.
-    layout.creativeSeed = Math.floor(Math.random() * 1_000_000);
-  }
-  const blueprint = getBlueprint(layout.blueprintId) ?? BUILTIN_BLUEPRINTS[0];
-  if (!blueprint)
-    return c.json({ error: 'blueprint_not_found', blueprintId: layout.blueprintId }, 400);
-
-  // Modo fila: registra o pedido com payload rico. Nada roda aqui.
+  // Modo fila: registra o pedido com o payload do contrato. Nada roda aqui.
   if (isQueueMode()) {
-    const job = enqueueJob('generate', `Gerar site — ${row.name}`, {
-      projectId: id,
-      projectName: row.name,
-      kitId: kit.id,
-      kit: { id: kit.id, name: kit.name, components: kitComponentes },
-      layout,
-      blueprintId: blueprint?.id ?? layout.blueprintId,
-      branding,
-      content,
-      media,
-    });
+    const job = enqueueJob('generate', `Gerar site — ${row.name}`, contexto.payload);
     db.update(tables.projects)
       .set({ status: 'ready-to-generate', updatedAt: Date.now() })
       .where(eq(tables.projects.id, id))
       .run();
-    return c.json({ queued: true, job, projectId: id }, 202);
+    return c.json({ queued: true, job, projectId: id, avisos: contexto.avisos }, 202);
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -405,32 +375,17 @@ projectsRoute.post('/:id/generate', async (c) => {
     .run();
 
   const task = enqueueTask('generate-site', { projectId: id }, async (_, onEvent) => {
-    onEvent('info', `Compondo site com ${kitComponentes.length} componentes do kit "${kit.name}"`);
-
-    const catalog = kitComponentes.map((cmp) => {
-      const htmlPath = join(cmp.bundlePath, 'index.html');
-      const preview = existsSync(htmlPath) ? readFileSync(htmlPath, 'utf8').slice(0, 500) : '';
-      return {
-        id: cmp.id,
-        name: cmp.name,
-        category: cmp.category,
-        htmlPreview: preview,
-        designSystemId: porId.get(cmp.id)?.designSystemId ?? null,
-      };
-    });
-
-    const result = await generateSite(
-      {
-        projectId: id as `prj_${string}`,
-        projectName: row.name,
-        content,
-        branding,
-        library: catalog,
-        layout,
-        blueprint,
-      },
-      { apiKey, model: models.generator, onProgress: (msg) => onEvent('info', msg) },
+    onEvent(
+      'info',
+      `Compondo site com ${contexto.payload.kit.components.length} componentes do kit "${kit.name}"`,
     );
+    for (const aviso of contexto.avisos) onEvent('warn', aviso);
+
+    const result = await generateSite(contexto.payload, {
+      apiKey,
+      model: models.generator,
+      onProgress: (msg) => onEvent('info', msg),
+    });
 
     getDb()
       .update(tables.projects)

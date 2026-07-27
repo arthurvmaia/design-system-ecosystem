@@ -28,9 +28,11 @@ const HERO_VIDEO_HTML = `
 
 const HERO_VIDEO_CSS = {
   'assets/css/tokens.css': `:root{--brand-primary:#7c3aed;--brand-bg:#0b0b0e;--texto:#f5f5f4;--fonte-display:"Clash Display",sans-serif}`,
-  'assets/css/layout.css': `.hero{position:relative;min-height:100vh}.hero video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}`,
+  'assets/css/layout.css':
+    '.hero{position:relative;min-height:100vh}.hero video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}',
   'assets/css/components.css': `.btn--primario{background:var(--brand-primary);color:#fff}.hero__titulo{font-family:var(--fonte-display)}body{font-family:Inter,sans-serif;color:var(--texto)}h1{font-family:"Clash Display",sans-serif}`,
-  'assets/css/animations.css': `@keyframes subir{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}.hero__conteudo{animation:subir .8s ease-out}`,
+  'assets/css/animations.css':
+    '@keyframes subir{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}.hero__conteudo{animation:subir .8s ease-out}',
 };
 
 const CARDS_HTML = `

@@ -284,3 +284,24 @@ export const DEFAULT_LAYOUT: ProjectLayout = {
   preferDesignSystemId: null,
   creativeSeed: 0,
 };
+
+/**
+ * Normaliza o layout persistido: legado sem campos novos e JSON corrompido
+ * entram; sai SEMPRE um `ProjectLayout` válido sobre o default.
+ */
+export const normalizarProjectLayout = (raw: string | null): ProjectLayout => {
+  let bruto: unknown = null;
+  if (raw !== null && raw.trim().length > 0) {
+    try {
+      bruto = JSON.parse(raw);
+    } catch {
+      bruto = null;
+    }
+  }
+  const mesclado =
+    bruto !== null && typeof bruto === 'object'
+      ? { ...DEFAULT_LAYOUT, ...(bruto as Record<string, unknown>) }
+      : DEFAULT_LAYOUT;
+  const tentado = ProjectLayout.safeParse(mesclado);
+  return tentado.success ? tentado.data : ProjectLayout.parse(DEFAULT_LAYOUT);
+};

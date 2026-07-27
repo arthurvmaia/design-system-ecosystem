@@ -2,11 +2,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {
+  BUILTIN_BLUEPRINTS,
+  type GeneratePayload,
   type LayoutBlueprint,
   type ProjectBranding,
-  type ProjectContent,
-  type ProjectLayout,
   buildTypographyCss,
+  getBlueprint,
   libraryComponentBundleDir,
   pickCreativeDirection,
   projectGeneratedVersionDir,
@@ -51,15 +52,12 @@ export type LibraryCatalogItem = {
   designSystemId?: string | null;
 };
 
-export type GenerateInput = {
-  projectId: `prj_${string}`;
-  projectName: string;
-  content: ProjectContent;
-  branding: ProjectBranding;
-  library: LibraryCatalogItem[];
-  layout: ProjectLayout;
-  blueprint: LayoutBlueprint;
-};
+/**
+ * O gerador consome o CONTRATO de geração — o mesmo payload que a fila grava
+ * no job (`GeneratePayload` em @ds/shared). Fila e API deixam de divergir: a
+ * mídia, o kit com `bundlePath` e o layout chegam idênticos nos dois modos.
+ */
+export type GenerateInput = GeneratePayload;
 
 export type GenerateOptions = {
   apiKey: string;
@@ -113,9 +111,31 @@ const REGRAS_COMUNS = `- Só use componentes da biblioteca, por ID. Nunca invent
   mapa de substituições. Nunca invente fatos que não estejam no conteúdo.
 - Retorne SÓ JSON, sem markdown.`;
 
+/** Blueprint efetivo do payload: id declarado > id do layout > primeiro builtin. */
+const blueprintDe = (input: GenerateInput): LayoutBlueprint =>
+  getBlueprint(input.blueprintId ?? input.layout.blueprintId) ??
+  (BUILTIN_BLUEPRINTS[0] as LayoutBlueprint);
+
+/** Catálogo para o planejador, nascido do KIT com bundle em disco. */
+const catalogoDoKit = (input: GenerateInput): LibraryCatalogItem[] =>
+  input.kit.components.map((cmp) => {
+    const htmlPath = join(cmp.bundlePath, 'index.html');
+    const preview = existsSync(htmlPath) ? readFileSync(htmlPath, 'utf8').slice(0, 500) : '';
+    return {
+      id: cmp.id,
+      name: cmp.name,
+      category: cmp.category,
+      htmlPreview: preview,
+      designSystemId: cmp.designSystemId ?? null,
+    };
+  });
+
 /** Modo blueprint: a estrutura vem pronta, o modelo só preenche. */
-const promptBlueprint = (input: GenerateInput): { system: string; user: string } => {
-  const slots = resolveSlots(input.blueprint, input.layout);
+const promptBlueprint = (
+  input: GenerateInput,
+  blueprint: LayoutBlueprint,
+): { system: string; user: string } => {
+  const slots = resolveSlots(blueprint, input.layout);
   const slotList = slots
     .map((s, i) => `${i + 1}. role "${s.role}" — ${s.label}: ${s.hint}`)
     .join('\n');
@@ -133,7 +153,7 @@ Regras:
 ${REGRAS_COMUNS}
 
 ${FORMATO}`,
-    user: `ESTRUTURA ESCOLHIDA: ${input.blueprint.name} — ${input.blueprint.description}
+    user: `ESTRUTURA ESCOLHIDA: ${blueprint.name} — ${blueprint.description}
 
 SLOTS A PREENCHER (nesta ordem, um componente para cada):
 ${slotList}`,
@@ -174,8 +194,18 @@ mistura morna de várias.`,
 
 const planSite = async (input: GenerateInput, opts: GenerateOptions): Promise<CompositionPlan> => {
   const client = new Anthropic({ apiKey: opts.apiKey });
+  const blueprint = blueprintDe(input);
   const { system, user: modoUser } =
-    input.layout.mode === 'criativo' ? promptCriativo(input) : promptBlueprint(input);
+    input.layout.mode === 'criativo' ? promptCriativo(input) : promptBlueprint(input, blueprint);
+
+  const midias =
+    input.media.length === 0
+      ? 'nenhuma enviada'
+      : input.media
+          .map(
+            (m) => `- ${m.kind} "${m.originalName}"${m.slotRole ? ` → seção ${m.slotRole}` : ''}`,
+          )
+          .join('\n');
 
   const user = `PROJETO: ${input.projectName}
 
@@ -190,8 +220,11 @@ ${JSON.stringify(input.content, null, 2)}
 IDENTIDADE VISUAL:
 ${JSON.stringify(input.branding, null, 2)}
 
+MÍDIA DO USUÁRIO (prefira seções que aproveitem o que existe):
+${midias}
+
 BIBLIOTECA DISPONÍVEL:
-${buildCatalog(input.library, input.layout.preferDesignSystemId)}
+${buildCatalog(catalogoDoKit(input), input.layout.preferDesignSystemId)}
 
 Componha o site.`;
 
@@ -255,7 +288,7 @@ export const generateSite = async (
   const plan = await planSite(input, opts);
 
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
-  const outputDir = projectGeneratedVersionDir(input.projectId, iso);
+  const outputDir = projectGeneratedVersionDir(input.projectId as `prj_${string}`, iso);
   mkdirSync(outputDir, { recursive: true });
   mkdirSync(join(outputDir, 'assets'), { recursive: true });
 
