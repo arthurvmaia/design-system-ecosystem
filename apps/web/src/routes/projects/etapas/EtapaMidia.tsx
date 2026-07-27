@@ -6,12 +6,27 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react';
 import { mediaUrl, rotulo } from '../partes';
 
+/** A finalidade humana da mídia em cada papel — a tela fala de propósito. */
+const FINALIDADE: Record<string, string> = {
+  hero: 'Imagem principal',
+  showcase: 'Demonstração',
+  gallery: 'Galeria',
+  catalog: 'Fotos de produto',
+  testimonial: 'Foto de quem depõe',
+  about: 'Foto de contexto',
+  team: 'Fotos da equipe',
+  features: 'Ilustrações de apoio',
+};
+
+/** Papéis que se BENEFICIAM de mídia mesmo sem espaço declarado no contrato. */
+const PAPEIS_VISUAIS = new Set(Object.keys(FINALIDADE));
+
 /**
- * Mídia por SEÇÃO REAL: cada seção ativa mostra o componente que a ocupa e os
- * espaços de mídia que o contrato dele realmente tem — o upload entra direto na
- * seção, com o tipo inferido do arquivo. A mídia é ancorada na SEÇÃO, não no
- * componente: trocar a peça na Estrutura preserva tudo que foi enviado.
- * As logos não aparecem aqui — vêm da Marca e entram sozinhas nos lugares certos.
+ * Mídia por SEÇÃO REAL — e SÓ para quem aceita: a lista nasce da estrutura
+ * final, das peças escolhidas e das capacidades de cada uma. Seção cujo
+ * componente não tem espaço de mídia nem se beneficia dela NÃO pede upload
+ * (aparece só se já tiver arquivo, com o aviso). A mídia é ancorada na SEÇÃO:
+ * trocar a peça na Estrutura preserva tudo. Logos vêm da Marca, sozinhas.
  */
 export function StepMidia({
   projectId,
@@ -91,15 +106,42 @@ export function StepMidia({
     (m) => m.slotRole === undefined || !secoes.some((s) => s.role === m.slotRole),
   );
 
+  // Relevância: só pede upload quem tem ESPAÇO no componente escolhido, quem
+  // será criada no estilo (a mídia vira o visual) ou quem é papel visual por
+  // natureza. O resto só aparece se já tiver arquivo enviado.
+  const relevantes = secoes.filter((s) => {
+    const r = resolvidos.get(s.role);
+    const contrato = contratoDe(r?.componente?.id);
+    const temEspaco = (contrato?.midias.length ?? 0) > 0;
+    const criadaNoEstilo = guiada && (r == null || r.componente == null);
+    const contratoDesconhecido = r?.componente != null && contrato?.disponivel !== true;
+    const jaTemMidia = conteudo.some((m) => m.slotRole === s.role);
+    return (
+      temEspaco ||
+      criadaNoEstilo ||
+      (contratoDesconhecido && PAPEIS_VISUAIS.has(s.role)) ||
+      jaTemMidia
+    );
+  });
+  const dispensadas = secoes.length - relevantes.length;
+
   return (
     <div className="space-y-4">
-      <p className="text-[12px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
-        A mídia fica presa à <strong style={{ color: 'var(--color-fg)' }}>seção</strong>, não ao
-        componente — trocar a peça na Estrutura não apaga nada. Seções sem imagem são criadas no
-        estilo do kit. As logos vêm da Marca e entram sozinhas nos lugares certos.
+      <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
+        Tudo aqui é <strong style={{ color: 'var(--color-fg)' }}>opcional</strong> — pode pular e
+        gerar sem mídia: as seções saem bonitas no estilo do kit. A mídia fica presa à{' '}
+        <strong style={{ color: 'var(--color-fg)' }}>seção</strong>: trocar a peça na Estrutura não
+        apaga nada. As logos vêm da Marca e entram sozinhas nos lugares certos.
+        {dispensadas > 0 && (
+          <span className="mt-1 block text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            {dispensadas === 1
+              ? 'Uma seção da sua estrutura não usa mídia e ficou de fora da lista.'
+              : `${dispensadas} seções da sua estrutura não usam mídia e ficaram de fora da lista.`}
+          </span>
+        )}
       </p>
 
-      {secoes.map((s) => {
+      {relevantes.map((s) => {
         const r = resolvidos.get(s.role);
         const contrato = contratoDe(r?.componente?.id);
         const daSecao = conteudo.filter((m) => m.slotRole === s.role);
@@ -119,9 +161,20 @@ export function StepMidia({
             style={{ borderColor: 'var(--color-border)' }}
           >
             <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-[12px] font-medium" style={{ color: 'var(--color-fg)' }}>
+              <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
                 {s.label}
               </span>
+              {FINALIDADE[s.role] && (
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                    color: 'var(--color-fg-muted)',
+                  }}
+                >
+                  {FINALIDADE[s.role]}
+                </span>
+              )}
               <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
                 {r?.componente !== null && r !== undefined
                   ? `${r.componente.name}${
