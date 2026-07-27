@@ -14,6 +14,7 @@ import {
   reduzirAutosave,
 } from '@/lib/autosave-core';
 import { resumoDaVoz } from '@/lib/marca-rotulos';
+import { bloqueantes, validarProjeto } from '@/lib/revisao-core';
 import { toast } from '@/lib/toast';
 import {
   type BriefDaSecao,
@@ -226,6 +227,29 @@ export function ProjectWizard({
   const podeAvancar = step === 0 ? name.trim() !== '' && kitId !== null : true;
   const ultima = step === ETAPAS.length - 1;
 
+  // Validação da revisão: bloqueante impede gerar; aviso só aponta. Enquanto o
+  // kit carrega, um marcador evita o falso "kit vazio".
+  const problemas = validarProjeto({
+    nome: name,
+    kitComponentes:
+      kitId === null
+        ? null
+        : kit.data === undefined
+          ? [{ id: '__carregando__' }]
+          : kit.data.item.components,
+    brandName: branding.brandName,
+    nLogos: branding.logos.length,
+    tons: branding.identidadeVerbal.tons,
+    arquetipos: branding.identidadeVerbal.arquetipos,
+    paleta: branding.paleta,
+    ctaPrincipal: branding.mainCta.label,
+    briefs,
+    placements: layout.placements,
+    nMidias: media.filter((m) => m.kind !== 'logo').length,
+    modo: layout.mode,
+  });
+  const travadoPorBloqueante = bloqueantes(problemas).length > 0;
+
   return (
     <Modal open onClose={onClose} size="xl" title={existing ? 'Editar projeto' : 'Novo projeto'}>
       <div className="flex max-h-[88vh] flex-col">
@@ -284,6 +308,8 @@ export function ProjectWizard({
               mode={layout.mode}
               sections={sectionsEspelho}
               media={media}
+              problemas={problemas}
+              onIr={setStep}
             />
           )}
         </div>
@@ -321,7 +347,10 @@ export function ProjectWizard({
             <button
               type="button"
               onClick={() => gerar.mutate()}
-              disabled={gerar.isPending}
+              disabled={gerar.isPending || travadoPorBloqueante}
+              title={
+                travadoPorBloqueante ? 'Resolva os itens bloqueantes listados acima' : undefined
+              }
               className="ds-btn ds-glow flex items-center gap-2 rounded-full px-6 py-2.5 text-[13px] font-medium disabled:opacity-50"
               style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
             >
