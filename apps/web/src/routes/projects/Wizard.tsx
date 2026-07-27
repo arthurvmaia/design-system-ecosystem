@@ -7,10 +7,16 @@ import {
   type StartWorkResponse,
   api,
 } from '@/lib/api';
+import {
+  DEBOUNCE_AUTOSAVE_MS,
+  type EstadoAutosave,
+  ROTULO_AUTOSAVE,
+  reduzirAutosave,
+} from '@/lib/autosave-core';
 import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Check, Loader2, Rocket } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, ArrowRight, Check, CloudOff, Loader2, Rocket } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { StepConteudo } from './etapas/EtapaConteudo';
 import { StepEstrutura } from './etapas/EtapaEstrutura';
 import { StepMarca } from './etapas/EtapaMarca';
@@ -41,6 +47,9 @@ export function ProjectWizard({
   const parsedLayout = safeParse<LayoutChoice & Record<string, unknown>>(existing?.layoutJson);
 
   const [step, setStep] = useState(0);
+  // Até onde a pessoa JÁ chegou: a StepBar deixa voltar E avançar para
+  // qualquer etapa visitada — só o desconhecido fica bloqueado.
+  const [maxVisitado, setMaxVisitado] = useState(existing !== null ? ETAPAS.length - 1 : 0);
   const [projectId, setProjectId] = useState<string | null>(existing?.id ?? null);
   const [name, setName] = useState(existing?.name ?? '');
   const [kitId, setKitId] = useState<string | null>(existing?.kitId ?? null);
@@ -105,9 +114,49 @@ export function ProjectWizard({
 
   const avancar = useMutation({
     mutationFn: () => salvar(),
-    onSuccess: () => setStep((s) => Math.min(ETAPAS.length - 1, s + 1)),
+    onSuccess: () => {
+      setAutosave((e) => reduzirAutosave(e, 'salvou'));
+      setStep((s) => {
+        const proxima = Math.min(ETAPAS.length - 1, s + 1);
+        setMaxVisitado((m) => Math.max(m, proxima));
+        return proxima;
+      });
+    },
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao salvar o rascunho.'),
   });
+
+  // ── Autosave ──────────────────────────────────────────────────────────────
+  // Debounce sobre o ESTADO serializado (nunca request por tecla); só depois
+  // que o rascunho existe (o rascunho nasce no primeiro "Próximo" — digitar a
+  // primeira letra do nome não pode criar um projeto). A máquina de estados e
+  // as decisões vivem em lib/autosave-core, testadas sem navegador.
+  const [autosave, setAutosave] = useState<EstadoAutosave>('ocioso');
+  const assinatura = JSON.stringify({ name, kitId, branding, layout, sections });
+  const ultimaSalva = useRef(existing !== null ? assinatura : '');
+  const emVoo = useRef(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a assinatura serializa todas as dependências de dados; salvar é estável por closure
+  useEffect(() => {
+    if (projectId === null) return;
+    if (assinatura === ultimaSalva.current) return;
+    setAutosave((e) => reduzirAutosave(e, emVoo.current ? 'alterou-durante-salvar' : 'alterou'));
+    const timer = window.setTimeout(async () => {
+      if (emVoo.current) return;
+      emVoo.current = true;
+      const snapshot = assinatura;
+      setAutosave((e) => reduzirAutosave(e, 'comecou-salvar'));
+      try {
+        await salvar();
+        ultimaSalva.current = snapshot;
+        setAutosave((e) => reduzirAutosave(e, 'salvou'));
+      } catch {
+        setAutosave((e) => reduzirAutosave(e, 'falhou'));
+      } finally {
+        emVoo.current = false;
+      }
+    }, DEBOUNCE_AUTOSAVE_MS);
+    return () => window.clearTimeout(timer);
+  }, [assinatura, projectId]);
 
   const gerar = useMutation({
     mutationFn: async () => {
@@ -134,7 +183,11 @@ export function ProjectWizard({
   return (
     <Modal open onClose={onClose} size="xl" title={existing ? 'Editar projeto' : 'Novo projeto'}>
       <div className="flex max-h-[88vh] flex-col">
-        <StepBar step={step} onStep={(s) => s <= step && setStep(s)} />
+        <StepBar
+          step={step}
+          maxVisitado={maxVisitado}
+          onStep={(s) => s <= maxVisitado && setStep(s)}
+        />
 
         <div className="min-h-[300px] flex-1 overflow-y-auto px-6 py-5">
           {step === 0 && (
@@ -192,15 +245,30 @@ export function ProjectWizard({
           className="flex items-center justify-between border-t px-6 py-4"
           style={{ borderColor: 'var(--color-border)' }}
         >
-          <button
-            type="button"
-            onClick={() => (step === 0 ? onClose() : setStep((s) => s - 1))}
-            className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] transition-colors hover:text-[var(--color-fg)]"
-            style={{ color: 'var(--color-fg-muted)' }}
-          >
-            <ArrowLeft size={13} />
-            {step === 0 ? 'Cancelar' : 'Voltar'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => (step === 0 ? onClose() : setStep((s) => s - 1))}
+              className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] transition-colors hover:text-[var(--color-fg)]"
+              style={{ color: 'var(--color-fg-muted)' }}
+            >
+              <ArrowLeft size={13} />
+              {step === 0 ? 'Cancelar' : 'Voltar'}
+            </button>
+            {autosave !== 'ocioso' && (
+              <output
+                className="flex items-center gap-1.5 text-[11px]"
+                style={{
+                  color: autosave === 'falha' ? 'var(--color-signal)' : 'var(--color-fg-subtle)',
+                }}
+              >
+                {autosave === 'salvando' && <Loader2 size={11} className="animate-spin" />}
+                {autosave === 'salvo' && <Check size={11} />}
+                {autosave === 'falha' && <CloudOff size={11} />}
+                {ROTULO_AUTOSAVE[autosave]}
+              </output>
+            )}
+          </div>
 
           {ultima ? (
             <button
@@ -239,7 +307,15 @@ export function ProjectWizard({
   );
 }
 
-function StepBar({ step, onStep }: { step: number; onStep: (s: number) => void }) {
+function StepBar({
+  step,
+  maxVisitado,
+  onStep,
+}: {
+  step: number;
+  maxVisitado: number;
+  onStep: (s: number) => void;
+}) {
   return (
     <div
       className="flex items-center gap-1 overflow-x-auto border-b px-6 py-3"
@@ -253,7 +329,9 @@ function StepBar({ step, onStep }: { step: number; onStep: (s: number) => void }
             key={label}
             type="button"
             onClick={() => onStep(i)}
-            disabled={i > step}
+            disabled={i > maxVisitado}
+            aria-current={active ? 'step' : undefined}
+            title={i > maxVisitado ? 'Avance pelas etapas para desbloquear' : `Ir para ${label}`}
             className="flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-[11px] transition-colors disabled:cursor-default"
             style={{
               backgroundColor: active ? 'rgba(107,20,20,0.24)' : 'transparent',
