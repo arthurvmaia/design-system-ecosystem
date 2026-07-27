@@ -1,30 +1,19 @@
-import { api } from '@/lib/api';
-import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 
 /**
- * Barra superior fina. Serve dois propósitos:
- * 1. Localizar o usuário na hierarquia (breadcrumb curto).
- * 2. Mostrar o estado bruto do backend (conectado, chave da Anthropic ok, root de dados).
+ * Barra superior fina, com um único propósito: localizar a pessoa no fluxo.
  *
- * A barra é vidro sobre o conteúdo que rola por baixo — por isso o fundo é preto
- * translúcido e não uma cor chapada. Os indicadores viram pílulas com borda em
- * gradiente, o mesmo tratamento que a referência dá aos badges.
+ * Nada de infraestrutura aqui — estado de servidor, chave de API e afins são
+ * conversa interna do sistema, não do usuário. Quando algo falhar, é a ação
+ * que falhou que explica o que houve e o que fazer, no lugar onde aconteceu.
  */
 export function TopBar() {
   const location = useLocation();
-  const health = useQuery({
-    queryKey: ['health'],
-    queryFn: api.health,
-    refetchInterval: 15_000,
-    staleTime: 10_000,
-  });
-
   const label = pageLabel(location.pathname);
 
   return (
     <header
-      className="ds-backdrop relative z-20 flex h-[64px] shrink-0 items-center justify-between border-b px-8"
+      className="ds-backdrop relative z-20 flex h-[64px] shrink-0 items-center border-b px-8"
       style={{
         borderColor: 'var(--color-border)',
         backgroundColor: 'rgba(6, 6, 6, 0.72)',
@@ -32,8 +21,8 @@ export function TopBar() {
     >
       <div className="flex items-baseline gap-3">
         <span
-          className="text-[11px] uppercase tracking-[0.28em]"
-          style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
+          className="text-[12px] uppercase tracking-[0.24em]"
+          style={{ color: 'var(--color-fg-muted)', fontFamily: 'var(--font-display)' }}
         >
           {label.section}
         </span>
@@ -44,60 +33,25 @@ export function TopBar() {
           {label.title}
         </span>
       </div>
-
-      <div className="flex items-center gap-3">
-        <StatusChip
-          label="server"
-          ok={health.data?.status === 'ok'}
-          hint={health.data?.status === 'ok' ? 'conectado' : 'sem resposta'}
-        />
-        <StatusChip
-          label="anthropic"
-          ok={Boolean(health.data?.anthropicConfigured)}
-          hint={health.data?.anthropicConfigured ? 'chave presente' : 'chave ausente'}
-        />
-      </div>
     </header>
   );
 }
 
-function StatusChip({ label, ok, hint }: { label: string; ok: boolean; hint: string }) {
-  return (
-    <div
-      className="ds-glow-border ds-backdrop ds-hover-float flex items-center gap-2 rounded-full px-3 py-1.5"
-      style={{
-        backgroundColor: ok ? 'rgba(107, 20, 20, 0.18)' : 'rgba(255, 255, 255, 0.03)',
-        borderColor: ok ? 'rgba(198, 40, 40, 0.32)' : 'var(--color-border)',
-      }}
-    >
-      {ok ? (
-        <span className="ds-signal-dot" aria-hidden />
-      ) : (
-        <span
-          aria-hidden
-          className="inline-block h-[6px] w-[6px] rounded-full"
-          style={{ backgroundColor: 'var(--color-fg-subtle)' }}
-        />
-      )}
-      <span
-        className="text-[10px] uppercase tracking-[0.24em]"
-        style={{ color: 'var(--color-fg-muted)', fontFamily: 'var(--font-display)' }}
-      >
-        {label}
-      </span>
-      <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-        {hint}
-      </span>
-    </div>
-  );
-}
-
+/** Rótulos humanos por etapa — o propósito da tela, não o número do pipeline. */
 function pageLabel(pathname: string): { section: string; title: string } {
-  if (pathname.startsWith('/extract')) return { section: '01 · Entrada', title: 'Extrair' };
-  if (pathname.startsWith('/gallery')) return { section: '02 · Descoberta', title: 'Galeria' };
-  if (pathname.startsWith('/library')) return { section: '03 · Curadoria', title: 'Biblioteca' };
-  if (pathname.startsWith('/projects')) return { section: '04 · Saída', title: 'Projetos' };
-  if (pathname.startsWith('/revisao')) return { section: 'Auxiliar', title: 'Pendências' };
-  if (pathname.startsWith('/settings')) return { section: 'Sistema', title: 'Configurações' };
+  if (pathname.startsWith('/extract')) return { section: 'Traga referências', title: 'Extrair' };
+  if (pathname.startsWith('/gallery')) return { section: 'Escolha o que gostou', title: 'Galeria' };
+  if (pathname.startsWith('/library')) return { section: 'Seu acervo', title: 'Biblioteca' };
+  if (pathname.startsWith('/design-systems')) {
+    return { section: 'Suas curadorias', title: 'Design Systems' };
+  }
+  if (pathname.startsWith('/projects')) return { section: 'Monte o seu site', title: 'Gerar site' };
+  if (pathname.startsWith('/meus-projetos')) {
+    return { section: 'Prontos para usar', title: 'Meus sites' };
+  }
+  if (pathname.startsWith('/revisao')) {
+    return { section: 'Precisa do seu olhar', title: 'Pendências' };
+  }
+  if (pathname.startsWith('/settings')) return { section: 'Do seu jeito', title: 'Configurações' };
   return { section: '', title: 'Início' };
 }

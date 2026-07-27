@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, Terminal, X } from 'lucide-react';
+import { Clock, MousePointerClick, X } from 'lucide-react';
 import { FluxoProgresso } from './FluxoProgresso';
 
 /**
@@ -37,8 +37,8 @@ type Semaforo = 'verde' | 'amarelo' | 'vermelho';
  */
 const SEMAFORO: Record<Semaforo, { cor: string; texto: string }> = {
   verde: { cor: '#3fb950', texto: 'tudo certo' },
-  amarelo: { cor: '#d29922', texto: 'com erros' },
-  vermelho: { cor: '#f85149', texto: 'sem conexão' },
+  amarelo: { cor: '#d29922', texto: 'atenção' },
+  vermelho: { cor: '#f85149', texto: 'sem resposta' },
 };
 
 export function QueuePanel() {
@@ -70,9 +70,14 @@ export function QueuePanel() {
     return (
       <div className="ds-glass-static ds-slide-up rounded-lg p-4">
         <Cabecalho estado="vermelho" />
-        <div className="mt-3 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          Não consegui falar com o servidor. Rode o <span className="ds-data">INICIAR.bat</span> ou
-          verifique se a porta 8787 está de pé.
+        <div
+          className="mt-3 text-[13px] leading-relaxed"
+          style={{ color: 'var(--color-fg-muted)' }}
+        >
+          O aplicativo não respondeu agora, então a fila não pôde ser lida. Feche e abra o
+          aplicativo de novo (dê dois cliques em{' '}
+          <strong style={{ color: 'var(--color-fg)' }}>INICIAR</strong> na pasta dele) — seus
+          pedidos continuam guardados.
         </div>
       </div>
     );
@@ -96,9 +101,11 @@ export function QueuePanel() {
       )}
 
       {data.erros > 0 && (
-        <div className="mt-3 text-[11px]" style={{ color: SEMAFORO.amarelo.cor }}>
-          {data.erros} job(s) falharam. Veja o motivo rodando{' '}
-          <span className="ds-data">pnpm fila</span>.
+        <div className="mt-3 text-[12px] leading-relaxed" style={{ color: SEMAFORO.amarelo.cor }}>
+          {data.erros === 1
+            ? 'Um pedido não foi concluído'
+            : `${data.erros} pedidos não foram concluídos`}{' '}
+          na última rodada. Eles não se perderam: ao processar de novo, você pode tentar outra vez.
         </div>
       )}
 
@@ -137,10 +144,11 @@ export function QueuePanel() {
             className="mt-3 flex items-start gap-2 border-t pt-3 text-[11px] leading-relaxed"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
           >
-            <Terminal size={12} className="mt-0.5 shrink-0" />
+            <MousePointerClick size={12} className="mt-0.5 shrink-0" />
             <span>
-              Para processar: duplo clique em <span className="ds-data">PROCESSAR.bat</span> na
-              pasta do projeto. Ele lista a fila numerada e você escolhe quais rodar.
+              Para processar, dê dois cliques em{' '}
+              <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do aplicativo
+              — ele mostra a fila e você escolhe o que rodar.
             </span>
           </div>
         </>

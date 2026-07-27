@@ -2,11 +2,18 @@ import { QueuePanel } from '@/components/QueuePanel';
 import { type QueueJobRef, type TaskRecord, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Link as LinkIcon, Loader2, Terminal, UploadCloud } from 'lucide-react';
+import { FileText, Link as LinkIcon, Loader2, MousePointerClick, UploadCloud } from 'lucide-react';
 import { type ChangeEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 type Mode = 'url' | 'file';
+
+/** Tamanho de arquivo em linguagem de gente — nada de "bytes" cru na tela. */
+function tamanhoLegivel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 /**
  * Tela de entrada do fluxo.
@@ -100,7 +107,7 @@ export function ExtractPage() {
         className="ds-slide-up text-[11px] uppercase tracking-[0.32em]"
         style={{ color: 'var(--color-signal)', fontFamily: 'var(--font-display)' }}
       >
-        Fase 1 · Extractor
+        Traga uma referência
       </div>
       <h1
         className="ds-slide-up ds-d1 ds-text-glow mt-3 text-[42px] font-medium leading-[1.05] tracking-tight"
@@ -114,14 +121,15 @@ export function ExtractPage() {
       >
         {isQueueMode ? (
           <>
-            Cole uma URL ou envie um HTML. O pedido entra na fila e nada roda agora — a extração
-            acontece quando você abrir o <code className="ds-data">PROCESSAR.bat</code> e confirmar.
+            Cole o endereço de um site ou envie um arquivo HTML. O pedido fica guardado na fila —
+            nada roda agora. Quando quiser processar, dê dois cliques em{' '}
+            <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do aplicativo e
+            escolha o que rodar.
           </>
         ) : (
           <>
-            Cole uma URL ou envie um HTML. O script do professor roda via Claude API, gera o{' '}
-            <code className="ds-data">design-system.html</code> e os assets, e arquiva tudo no
-            vault.
+            Cole o endereço de um site ou envie um arquivo HTML. A extração abre a página, captura o
+            visual por completo e traz as seções aproveitáveis para a Galeria.
           </>
         )}
       </p>
@@ -136,8 +144,8 @@ export function ExtractPage() {
             color: 'var(--color-fg)',
           }}
         >
-          Chave da Anthropic não está configurada em{' '}
-          <code className="ds-data">apps/server/.env</code>. Configure e reinicie o servidor.
+          A extração automática não está ativa neste computador, então nada pode rodar por aqui
+          agora. Peça a quem fez a instalação para ativá-la — seus pedidos não se perdem.
         </div>
       )}
 
@@ -213,18 +221,15 @@ export function ExtractPage() {
           <div className="mt-2 text-[15px]" style={{ color: 'var(--color-fg)' }}>
             {queuedJob.label}
           </div>
-          <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            {queuedJob.id}
-          </div>
           <div
-            className="mt-4 flex items-start gap-2 border-t pt-4 text-[12px] leading-relaxed"
+            className="mt-4 flex items-start gap-2 border-t pt-4 text-[13px] leading-relaxed"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
           >
-            <Terminal size={13} className="mt-0.5 shrink-0" />
+            <MousePointerClick size={14} className="mt-0.5 shrink-0" />
             <span>
-              Nada rodou ainda. Para processar: duplo clique em{' '}
-              <code className="ds-data">PROCESSAR.bat</code> na pasta do projeto. Ele lista a fila
-              numerada e você escolhe quais rodar.
+              Nada rodou ainda. Para processar, dê dois cliques em{' '}
+              <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do aplicativo
+              — ele mostra a fila e você escolhe o que rodar.
             </span>
           </div>
         </div>
@@ -339,8 +344,8 @@ function FileDropzone({
         {current ? current.name : 'Clique para escolher um arquivo .html'}
       </span>
       {current && (
-        <span className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          {current.content.length.toLocaleString('pt-BR')} bytes
+        <span className="mt-1 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+          {tamanhoLegivel(current.content.length)}
         </span>
       )}
       <input type="file" accept=".html,text/html" onChange={handleChange} className="hidden" />
@@ -365,16 +370,11 @@ function TaskProgress({
   return (
     <div className="ds-glass-static ds-scale-in mt-8 rounded-xl p-6">
       <div className="flex items-center justify-between">
-        <div>
-          <div
-            className="text-[10px] uppercase tracking-[0.24em]"
-            style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
-          >
-            Task
-          </div>
-          <div className="ds-data mt-1 text-[13px]" style={{ color: 'var(--color-fg)' }}>
-            {task.id}
-          </div>
+        <div
+          className="text-[13px] font-medium"
+          style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
+        >
+          {running ? 'Extraindo a referência…' : done ? 'Extração concluída' : 'Extração'}
         </div>
         <StatusBadge status={task.status} />
       </div>
@@ -384,8 +384,17 @@ function TaskProgress({
       {running && <div className="ds-progress mt-5 rounded-full" />}
 
       {failed && (
-        <div className="mt-4 text-[12px]" style={{ color: 'var(--color-crimson-3)' }}>
-          {task.errorMessage ?? 'erro desconhecido'}
+        <div
+          className="mt-4 text-[13px] leading-relaxed"
+          style={{ color: 'var(--color-crimson-3)' }}
+        >
+          Não deu para concluir esta extração. Você pode tentar de novo — se o problema repetir, o
+          site pode estar bloqueando a captura.
+          {task.errorMessage && (
+            <span className="mt-1 block text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+              Detalhe: {task.errorMessage}
+            </span>
+          )}
         </div>
       )}
 
@@ -403,7 +412,15 @@ function TaskProgress({
         </button>
       )}
 
-      <div className="mt-6 max-h-[300px] overflow-y-auto">
+      {events.length > 0 && (
+        <div
+          className="mt-6 text-[10px] uppercase tracking-[0.24em]"
+          style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
+        >
+          Passo a passo
+        </div>
+      )}
+      <div className="mt-2 max-h-[300px] overflow-y-auto">
         {events.map((ev, i) => (
           <div
             key={`${ev.timestamp}-${i}`}
@@ -427,24 +444,24 @@ function TaskProgress({
 }
 
 function StatusBadge({ status }: { status: TaskRecord['status'] }) {
-  const colors: Record<TaskRecord['status'], string> = {
-    queued: 'var(--color-fg-subtle)',
-    running: 'var(--color-signal)',
-    succeeded: 'var(--color-signal)',
-    failed: 'var(--color-crimson-3)',
-    cancelled: 'var(--color-fg-subtle)',
+  const visual: Record<TaskRecord['status'], { rotulo: string; cor: string }> = {
+    queued: { rotulo: 'Na fila', cor: 'var(--color-fg-subtle)' },
+    running: { rotulo: 'Trabalhando', cor: 'var(--color-signal)' },
+    succeeded: { rotulo: 'Concluída', cor: 'var(--color-signal)' },
+    failed: { rotulo: 'Não concluída', cor: 'var(--color-crimson-3)' },
+    cancelled: { rotulo: 'Cancelada', cor: 'var(--color-fg-subtle)' },
   };
   return (
     <span
-      className="ds-tag ds-backdrop rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.2em]"
+      className="ds-tag ds-backdrop rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em]"
       style={{
         backgroundColor: 'rgba(255, 255, 255, 0.04)',
         borderColor: 'var(--color-border)',
-        color: colors[status],
+        color: visual[status].cor,
         fontFamily: 'var(--font-display)',
       }}
     >
-      {status}
+      {visual[status].rotulo}
     </span>
   );
 }

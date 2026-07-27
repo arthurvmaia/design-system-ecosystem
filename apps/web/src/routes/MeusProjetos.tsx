@@ -143,9 +143,8 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
               >
                 {projeto.name}
               </div>
-              <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                {projeto.id} · {projeto.versoes.length}{' '}
-                {projeto.versoes.length === 1 ? 'versão' : 'versões'}
+              <div className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                {projeto.versoes.length} {projeto.versoes.length === 1 ? 'versão' : 'versões'}
               </div>
             </div>
           </div>
@@ -157,8 +156,8 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
             >
               <Package size={12} style={{ color: 'var(--color-signal)' }} />
               <span>Mais recente · {formatarData(maisRecente.timestamp)}</span>
-              <span className="ds-data" style={{ color: 'var(--color-fg-subtle)' }}>
-                {maisRecente.arquivos} arquivos · {formatarBytes(maisRecente.bytes)}
+              <span style={{ color: 'var(--color-fg-subtle)' }}>
+                {formatarBytes(maisRecente.bytes)}
               </span>
             </div>
           )}
@@ -202,7 +201,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
               style={{ color: 'var(--color-fg-muted)' }}
             >
               <FolderOpen size={12} />
-              Pasta
+              Ver arquivos
             </button>
             <div className="ml-auto flex items-center gap-1">
               <button
@@ -246,8 +245,8 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                     {formatarData(versao.timestamp)}
                   </span>
                   <div className="flex items-center gap-3">
-                    <span className="ds-data" style={{ color: 'var(--color-fg-subtle)' }}>
-                      {versao.arquivos} arquivos · {formatarBytes(versao.bytes)}
+                    <span style={{ color: 'var(--color-fg-subtle)' }}>
+                      {formatarBytes(versao.bytes)}
                     </span>
                     <a
                       href={siteUrl(projeto.id, versao.timestamp)}

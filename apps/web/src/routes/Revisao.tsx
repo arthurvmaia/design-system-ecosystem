@@ -124,7 +124,7 @@ function CardRejeitado({
           {item.name}
         </div>
         <div className="ds-data mt-0.5 text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          {CAT_LABEL[item.category] ?? item.category}
+          {CAT_LABEL[item.category] ?? 'Outros'}
         </div>
         <div
           className="mt-2.5 space-y-1.5 border-t pt-2.5"

@@ -7,7 +7,6 @@ import {
   primaryNav,
   secondaryNav,
 } from '@/lib/nav';
-import { useUiStore } from '@/lib/store';
 import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
 import { NavLink } from 'react-router-dom';
@@ -30,8 +29,6 @@ const ITEM_ATIVO = 'ds-glass-static text-[var(--color-fg)]';
  * config das duas listas mora em `@/lib/nav`.
  */
 export function Sidebar() {
-  const runningTasks = useUiStore((s) => s.runningTasks);
-
   return (
     <aside
       className="ds-backdrop relative z-20 flex h-full w-[260px] shrink-0 flex-col border-r"
@@ -74,34 +71,6 @@ export function Sidebar() {
             </li>
           ))}
         </ul>
-      </div>
-
-      {/* Barra de status. Aparece só quando há trabalho rodando. */}
-      <div
-        className="flex h-[42px] shrink-0 items-center gap-3 border-t px-6 text-[11px] uppercase tracking-[0.16em]"
-        style={{
-          borderColor: 'var(--color-border)',
-          color: 'var(--color-fg-muted)',
-          fontFamily: 'var(--font-display)',
-        }}
-      >
-        {runningTasks > 0 ? (
-          <>
-            <span className="ds-signal-dot" aria-hidden />
-            <span>
-              {runningTasks} {runningTasks === 1 ? 'tarefa' : 'tarefas'} em curso
-            </span>
-          </>
-        ) : (
-          <>
-            <span
-              aria-hidden
-              className="inline-block h-[5px] w-[5px] rounded-full"
-              style={{ backgroundColor: 'var(--color-fg-subtle)' }}
-            />
-            <span>Ocioso</span>
-          </>
-        )}
       </div>
     </aside>
   );

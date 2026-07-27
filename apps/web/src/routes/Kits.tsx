@@ -355,13 +355,13 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                     <div className="h-[44px] w-[72px] shrink-0 overflow-hidden rounded-md">
                       <PreviewFrame
                         src={previewComponentUrl(id)}
-                        title={c?.name ?? id}
+                        title={c?.name ?? 'Componente removido da Biblioteca'}
                         aspect={72 / 44}
                       />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[12px]" style={{ color: 'var(--color-fg)' }}>
-                        {c?.name ?? id}
+                        {c?.name ?? 'Componente removido'}
                       </div>
                       <div
                         className="ds-data text-[10px]"

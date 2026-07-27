@@ -92,6 +92,18 @@ const SUPORTE_LABEL: Record<string, string> = {
   externo: 'Dep. externa',
   'nao-suportado': 'Não suportado',
 };
+
+/** Estado da extração em linguagem de gente — o enum interno nunca vaza. */
+const STATUS_DA_EXTRACAO: Record<string, string> = {
+  pending: 'Na fila',
+  extracting: 'Capturando…',
+  extracted: 'Capturada',
+  segmenting: 'Separando as seções…',
+  segmented: 'Pronta',
+  classifying: 'Organizando…',
+  ready: 'Pronta',
+  failed: 'Não concluída',
+};
 const SUPORTE_COR: Record<string, string> = {
   completo: '#16a34a',
   parcial: '#d97706',
@@ -165,9 +177,6 @@ function FidelityPanel({ fidelity }: { fidelity?: SegmentFidelity | null }) {
           style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
         >
           {SUPORTE_LABEL[fidelity.support] ?? fidelity.support}
-        </span>
-        <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          render: {fidelity.renderMode}
         </span>
         {fidelity.interactions.map((it) => (
           <span
@@ -354,10 +363,10 @@ function DsSidebar({
                   {ds.name}
                 </div>
                 <div
-                  className="ds-data mt-0.5 truncate text-[10px]"
+                  className="mt-0.5 truncate text-[11px]"
                   style={{ color: 'var(--color-fg-subtle)' }}
                 >
-                  {ds.status}
+                  {STATUS_DA_EXTRACAO[ds.status] ?? 'Em preparo'}
                 </div>
               </button>
               <button
@@ -517,7 +526,8 @@ function SegmentsView({
             {dsInfo.data?.item.name ?? '...'}
           </h1>
           <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
-            {filtered.length} de {segments.data?.items.length ?? 0} segmentos
+            {filtered.length} de {segments.data?.items.length ?? 0}{' '}
+            {(segments.data?.items.length ?? 0) === 1 ? 'componente' : 'componentes'}
           </div>
           {segments.data?.capturaParcial && (
             <div
@@ -530,10 +540,8 @@ function SegmentsView({
                 style={{ color: 'var(--color-signal)' }}
               />
               <span>
-                Extração <strong>parcial por tempo</strong>: o orçamento esgotou na fase “
-                <span className="ds-data">{segments.data.capturaParcial.fase}</span>” (
-                {(segments.data.capturaParcial.totalMs / 1000).toFixed(0)}s). O que foi capturado
-                até ali foi preservado — extraia de novo para completar.
+                Esta captura <strong>não terminou dentro do tempo</strong>. O que deu para capturar
+                foi preservado, mas pode faltar conteúdo — extraia o site de novo para completar.
               </span>
             </div>
           )}
@@ -542,10 +550,8 @@ function SegmentsView({
               className="mt-2 rounded-md px-3 py-2 text-[11px] leading-relaxed"
               style={{ backgroundColor: 'rgba(107, 20, 20, 0.2)', color: 'var(--color-fg)' }}
             >
-              Esta extração está incompleta: o HTML aponta para {dsInfo.data?.assetsFaltando.length}{' '}
-              arquivo(s) que não existem em disco (
-              <span className="ds-data">{dsInfo.data?.assetsFaltando.slice(0, 3).join(', ')}</span>
-              ). Sem eles as prévias aparecem sem estilo. Extraia este site de novo.
+              Esta extração veio incompleta: parte das imagens e arquivos do site não foi baixada,
+              então as prévias podem aparecer sem estilo. Extraia este site de novo para corrigir.
             </div>
           )}
           {rejDoDs > 0 && (
@@ -833,9 +839,7 @@ function SegmentCard({
                     sistema
                   </span>
                 )}
-                <span className="truncate">
-                  {CATEGORY_LABEL[segment.category] ?? segment.category}
-                </span>
+                <span className="truncate">{CATEGORY_LABEL[segment.category] ?? 'Outros'}</span>
                 <FidelityBadge fidelity={segment.fidelity} />
               </div>
             </div>

@@ -209,7 +209,7 @@ function LibraryCard({
             </div>
             <div className="mt-0.5 flex items-center gap-1.5 truncate">
               <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                {LABEL[component.category] ?? component.category}
+                {LABEL[component.category] ?? 'Outros'}
               </span>
               {component.tags.slice(0, 3).map((t) => (
                 <span
