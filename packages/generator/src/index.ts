@@ -271,12 +271,23 @@ ${buildCatalog(catalogoDoKit(input), input.layout.preferDesignSystemId)}
 
 Componha o site.`;
 
-  const response = await client.messages.create({
-    model: opts.model,
-    max_tokens: 16000,
-    system,
-    messages: [{ role: 'user', content: user }],
-  });
+  // Mesmo racional do extractor: o Fable 5 pensa dentro do max_tokens (em
+  // effort max, 16k amputava o plano) e os classificadores de segurança podem
+  // recusar uma requisição legítima — recusa cai para o modelo de fallback.
+  const MODELO_FALLBACK = 'claude-opus-4-8';
+  const chamar = (model: string) =>
+    client.messages.create({
+      model,
+      max_tokens: 64000,
+      output_config: { effort: 'max' },
+      system,
+      messages: [{ role: 'user', content: user }],
+    });
+
+  let response = await chamar(opts.model);
+  if (response.stop_reason === 'refusal' && opts.model !== MODELO_FALLBACK) {
+    response = await chamar(MODELO_FALLBACK);
+  }
 
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')

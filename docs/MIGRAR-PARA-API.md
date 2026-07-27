@@ -43,27 +43,27 @@ A partir daqui cada extração, classificação e geração consome créditos.
 - Saldo: https://console.anthropic.com/settings/billing
 - **Defina um limite de gasto mensal antes de liberar para os dois usuários.**
 
-### 3. Decidir o modelo da extração — importante
+### 3. Conferir os modelos — importante
 
-O MVP rodou extração no Claude Code (Opus 4.8). A configuração de produção usa
-Sonnet 5 para extrair:
+A configuração padrão usa o **Claude Fable 5** (o modelo mais capaz da
+Anthropic) na extração e na geração, em **esforço máximo** (`effort: max`,
+fixado no código):
 
 ```
-ANTHROPIC_MODEL_EXTRACTOR=claude-sonnet-5
+ANTHROPIC_MODEL_EXTRACTOR=claude-fable-5
 ANTHROPIC_MODEL_CLASSIFIER=claude-opus-4-8
-ANTHROPIC_MODEL_GENERATOR=claude-opus-4-8
+ANTHROPIC_MODEL_GENERATOR=claude-fable-5
 ```
 
-**Se a qualidade validada no MVP for o padrão a manter, suba o extrator para
-Opus:**
+Dois pontos para saber antes de ligar:
 
-```
-ANTHROPIC_MODEL_EXTRACTOR=claude-opus-4-8
-```
-
-Caso contrário, produção sairá um degrau abaixo do que foi validado — e vai
-parecer que "a API quebrou algo", quando na verdade o MVP é que rodava num
-modelo mais forte. Custa mais; é uma decisão de negócio, não técnica.
+- **Custo.** O Fable 5 custa US$ 10/50 por milhão de tokens — o dobro do Opus
+  4.8 (US$ 5/25). As estimativas do README dobram nesse cenário. Para baratear,
+  troque extrator/gerador para `claude-opus-4-8`; é uma variável no `.env`, não
+  precisa mexer em código.
+- **Recusas.** Os classificadores de segurança do Fable 5 podem recusar uma
+  requisição legítima (`stop_reason: refusal`). O código já trata: a mesma
+  chamada é refeita no `claude-opus-4-8` automaticamente, sem quebrar o job.
 
 ### 4. Validar
 
@@ -91,10 +91,12 @@ Três breakpoints: system+tools, HTML de entrada, e um rolante na conversa. O
 loop reenvia o contexto até 60 vezes; sem cache, o custo multiplica. Não remova
 os `cache_control`.
 
-**`max_tokens: 16000`** nos três pacotes
+**`max_tokens`** — 64000 no extractor e no generator, 16000 no classifier
 Eram 4096–8192 e truncavam resultados grandes — o gerador chegava a estourar
-`"Composição não retornou JSON"`. `max_tokens` é teto, não compra: você paga o
-que o modelo escreve, então baixar isso não economiza, só volta a amputar.
+`"Composição não retornou JSON"`. No Fable 5 o raciocínio interno também conta
+dentro do `max_tokens`, por isso os dois pacotes que rodam nele usam 64000.
+`max_tokens` é teto, não compra: você paga o que o modelo escreve, então baixar
+isso não economiza, só volta a amputar.
 
 **Slot separado do classificador**
 A classificação organiza a galeria e alimenta a curadoria. Ela usa
@@ -122,7 +124,7 @@ O custo de manter é uma variável de ambiente e um `if`.
 
 - [ ] `EXECUTION_MODE=api` em `apps/server/.env`
 - [ ] Crédito na conta + limite de gasto definido
-- [ ] Decisão sobre o modelo do extrator (Sonnet 5 vs Opus 4.8)
+- [ ] Ciente do custo do Fable 5 (2× o Opus) — ou modelos trocados no `.env` para baratear
 - [ ] `pnpm typecheck` e `pnpm lint` limpos
 - [ ] Uma extração real validada
 - [ ] Uma geração em cada modo (blueprint e criativo)

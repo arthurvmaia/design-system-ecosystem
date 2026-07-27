@@ -194,9 +194,17 @@ A lista completa dos comandos de fila está no [CLAUDE.md](CLAUDE.md).
 
 ## Custos aproximados (modo `api`)
 
-- Extração de um site: US$ 0,20 – 3,00 dependendo do tamanho.
-- Classificação de um design system: US$ 0,05 – 0,20.
-- Geração de um site: US$ 0,10 – 0,50.
+A configuração padrão usa o **Claude Fable 5** (modelo mais capaz da Anthropic,
+US$ 10/50 por milhão de tokens) na extração e na geração, em esforço máximo,
+com fallback automático para o Opus 4.8 se uma requisição for recusada.
+Estimativas por operação:
+
+- Extração de um site: US$ 0,40 – 6,00 dependendo do tamanho.
+- Classificação de um design system (Opus 4.8): US$ 0,05 – 0,20.
+- Geração de um site: US$ 0,20 – 1,00.
+
+Para baratear, troque `ANTHROPIC_MODEL_EXTRACTOR` e `ANTHROPIC_MODEL_GENERATOR`
+para `claude-opus-4-8` no `apps/server/.env` — os valores caem pela metade.
 
 No modo `queue` (padrão) nada disso se aplica: o processamento roda na
 assinatura Claude via Claude Code.

@@ -77,14 +77,30 @@ ${opts.html}
 
   const totalUsage: AgentUsage = { inputTokens: 0, outputTokens: 0 };
 
-  for (let iter = 0; iter < maxIterations; iter++) {
-    const response = await client.messages.create({
-      model: opts.model,
-      max_tokens: 16000,
+  // O Fable 5 pensa DENTRO do max_tokens e, em effort max, 16k truncava a
+  // resposta no meio; 64k dá o respiro que a Anthropic recomenda para esse
+  // nível (o SDK estende o timeout sozinho em requisições grandes).
+  // Os classificadores de segurança do Fable 5 podem recusar uma requisição
+  // legítima (stop_reason 'refusal') — nesse caso a MESMA conversa cai para o
+  // modelo de fallback e fica nele até o fim do loop.
+  const MODELO_FALLBACK = 'claude-opus-4-8';
+  let model = opts.model;
+  const chamar = () =>
+    client.messages.create({
+      model,
+      max_tokens: 64000,
+      output_config: { effort: 'max' },
       system,
       tools,
       messages,
     });
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    let response = await chamar();
+    if (response.stop_reason === 'refusal' && model !== MODELO_FALLBACK) {
+      model = MODELO_FALLBACK;
+      response = await chamar();
+    }
 
     totalUsage.inputTokens += response.usage.input_tokens;
     totalUsage.outputTokens += response.usage.output_tokens;
