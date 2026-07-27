@@ -4,10 +4,11 @@ import { PreviewFrame } from '@/components/PreviewFrame';
 import { Select } from '@/components/seletores';
 import { type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HeartOff, Loader2, Sun, Tag, X } from 'lucide-react';
-import { type KeyboardEvent, useMemo, useState } from 'react';
+import { HeartOff, Loader2, Sun, Tag, Trash2, X } from 'lucide-react';
+import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 
 const CATEGORIES = [
   'all',
@@ -49,11 +50,48 @@ const LABEL: Record<string, string> = {
 /** Categorias editáveis (sem "all"), para o select do editor. */
 const EDIT_CATEGORIES = CATEGORIES.filter((c) => c !== 'all');
 
+type EmUso = { id: string; name: string; kits: string[]; projetos: string[] };
+
 export function LibraryPage() {
+  const qc = useQueryClient();
   const lib = useQuery({ queryKey: ['library'], queryFn: api.listLibrary });
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
   const [detalhe, setDetalhe] = useState<LibraryComponentRecord | null>(null);
+
+  // ── Seleção múltipla + exclusão em lote ────────────────────────────────────
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [confirmaLote, setConfirmaLote] = useState(false);
+  const [emUsoPendente, setEmUsoPendente] = useState<EmUso[] | null>(null);
+
+  useEffect(() => {
+    setSel((s) =>
+      prune(
+        s,
+        (lib.data?.items ?? []).map((i) => i.id),
+      ),
+    );
+  }, [lib.data]);
+
+  const excluir = useMutation({
+    mutationFn: (args: { ids: string[]; confirmar: boolean }) =>
+      api.excluirDaBibliotecaEmLote(args.ids, args.confirmar),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['library'] });
+      qc.invalidateQueries({ queryKey: ['segments'] });
+      if (res.excluidos.length > 0) {
+        toast.ok(
+          res.excluidos.length === 1
+            ? 'Componente excluído.'
+            : `${res.excluidos.length} componentes excluídos.`,
+        );
+      }
+      setSel((s) => new Set([...s].filter((id) => !res.excluidos.includes(id))));
+      // O que está EM USO não saiu — a pessoa decide com a informação na mão.
+      setEmUsoPendente(res.emUso.length > 0 ? res.emUso : null);
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não deu para excluir agora.'),
+  });
 
   const filtered = useMemo(() => {
     let items = lib.data?.items ?? [];
@@ -150,9 +188,43 @@ export function LibraryPage() {
           />
         </div>
 
+        {filtered.length > 0 && (
+          <div
+            className="flex items-center gap-2 border-b px-8 py-2 text-[12px]"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+          >
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isAllSelected(
+                  sel,
+                  filtered.map((c) => c.id),
+                )}
+                onChange={() =>
+                  setSel((s) =>
+                    toggleAllVisible(
+                      s,
+                      filtered.map((c) => c.id),
+                    ),
+                  )
+                }
+                className="h-4 w-4 accent-[var(--color-primary)]"
+              />
+              Selecionar todos os visíveis
+            </label>
+          </div>
+        )}
+
         <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((c, i) => (
-            <LibraryCard key={c.id} component={c} index={i} onOpen={setDetalhe} />
+            <LibraryCard
+              key={c.id}
+              component={c}
+              index={i}
+              onOpen={setDetalhe}
+              selected={sel.has(c.id)}
+              onToggle={() => setSel((s) => toggleSel(s, c.id))}
+            />
           ))}
           {filtered.length === 0 && (
             <div
@@ -168,6 +240,89 @@ export function LibraryPage() {
       {detalhe && (
         <LibraryDetail key={detalhe.id} component={detalhe} onClose={() => setDetalhe(null)} />
       )}
+
+      {/* Barra contextual — só existe quando há seleção. */}
+      {sel.size > 0 && (
+        <div
+          className="ds-scale-in fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full border px-5 py-2.5"
+          style={{
+            backgroundColor: 'rgba(13, 13, 14, 0.97)',
+            borderColor: 'var(--color-border-strong)',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          }}
+        >
+          <span className="text-[13px]" style={{ color: 'var(--color-fg)' }}>
+            {sel.size} {sel.size === 1 ? 'selecionado' : 'selecionados'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSel(new Set())}
+            className="text-[12px] underline"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            Limpar
+          </button>
+          <button
+            type="button"
+            disabled={excluir.isPending}
+            onClick={() => setConfirmaLote(true)}
+            className="ds-btn flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
+          >
+            {excluir.isPending ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Trash2 size={12} />
+            )}
+            Excluir
+          </button>
+        </div>
+      )}
+
+      <ConfirmPop
+        open={confirmaLote}
+        title={sel.size === 1 ? 'Excluir 1 componente?' : `Excluir ${sel.size} componentes?`}
+        description="Eles saem da Biblioteca e voltam a aparecer na Galeria para curtir de novo. Componentes em uso por um kit pedem uma confirmação a mais."
+        confirmLabel="Excluir"
+        busy={excluir.isPending}
+        onConfirm={() => {
+          setConfirmaLote(false);
+          excluir.mutate({ ids: [...sel], confirmar: false });
+        }}
+        onClose={() => setConfirmaLote(false)}
+      />
+
+      <ConfirmPop
+        open={emUsoPendente !== null}
+        title={
+          (emUsoPendente?.length ?? 0) === 1
+            ? 'Um componente está em uso'
+            : `${emUsoPendente?.length ?? 0} componentes estão em uso`
+        }
+        description={
+          <div className="space-y-1.5">
+            {(emUsoPendente ?? []).slice(0, 5).map((u) => (
+              <div key={u.id} className="text-[12px] leading-snug">
+                <strong>{u.name}</strong> — faz parte de {u.kits.join(', ')}
+                {u.projetos.length > 0 ? ` e dos sites ${u.projetos.join(', ')}` : ''}
+              </div>
+            ))}
+            <div className="pt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+              Excluir mesmo assim remove{' '}
+              {(emUsoPendente?.length ?? 0) === 1 ? 'a peça' : 'as peças'} desses kits — os sites já
+              gerados continuam como estão.
+            </div>
+          </div>
+        }
+        confirmLabel="Excluir mesmo assim"
+        busy={excluir.isPending}
+        onConfirm={() => {
+          const ids = (emUsoPendente ?? []).map((u) => u.id);
+          setEmUsoPendente(null);
+          excluir.mutate({ ids, confirmar: true });
+        }}
+        onClose={() => setEmUsoPendente(null)}
+      />
     </div>
   );
 }
@@ -176,16 +331,38 @@ function LibraryCard({
   component,
   index,
   onOpen,
+  selected,
+  onToggle,
 }: {
   component: LibraryComponentRecord;
   index: number;
   onOpen: (c: LibraryComponentRecord) => void;
+  selected: boolean;
+  onToggle: () => void;
 }) {
   const delay = index < 6 ? `ds-d${index + 1}` : '';
 
   return (
     <div className={`ds-scale-in ${delay}`}>
-      <div className="ds-card ds-glass-static group relative rounded-xl">
+      <div
+        className="ds-card ds-glass-static group relative rounded-xl"
+        style={selected ? { outline: '2px solid var(--color-crimson-5)' } : undefined}
+      >
+        <label
+          className={cn(
+            'absolute top-2.5 left-2.5 z-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md transition-opacity',
+            selected ? 'opacity-100' : 'opacity-40 group-hover:opacity-100',
+          )}
+          style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Selecionar ${component.name}`}
+            className="h-4 w-4 accent-[var(--color-primary)]"
+          />
+        </label>
         <div className="ds-card-content overflow-hidden rounded-xl">
           <button
             type="button"
@@ -193,6 +370,7 @@ function LibraryCard({
             aria-label={`Editar ${component.name}`}
             className="block w-full"
           >
+            {/* o checkbox fica FORA deste botão — clicar nele não abre o modal */}
             <div className="transition-transform duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.06]">
               <PreviewFrame src={previewComponentUrl(component.id)} title={component.name} />
             </div>

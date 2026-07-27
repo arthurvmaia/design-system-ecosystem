@@ -474,6 +474,15 @@ export const api = {
 
   // ── Rejeitados (Revisão) ────────────────────────────────────────────────
   listRejeitados: () => jsonFetch<{ grupos: RejeitadosGrupo[]; total: number }>('/api/rejeitados'),
+  excluirDaBibliotecaEmLote: (componentIds: string[], confirmarEmUso = false) =>
+    jsonFetch<{
+      excluidos: string[];
+      emUso: { id: string; name: string; kits: string[]; projetos: string[] }[];
+      faltando: string[];
+    }>('/api/library/excluir-lote', {
+      method: 'POST',
+      body: JSON.stringify({ componentIds, confirmarEmUso }),
+    }),
   recuperarRejeitado: (dsId: string, segId: string) =>
     jsonFetch<{ ok: true; segmentId: string }>(`/api/rejeitados/${dsId}/${segId}/recuperar`, {
       method: 'POST',

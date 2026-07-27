@@ -628,3 +628,96 @@ libraryRoute.delete('/:id', (c) => {
 
   return c.json({ deleted: true });
 });
+
+const ExcluirLoteInput = z.object({
+  componentIds: z.array(z.string().startsWith('cmp_')).min(1).max(200),
+  /** Sem isto, componente EM USO não é excluído — volta na resposta para a UI avisar. */
+  confirmarEmUso: z.boolean().optional().default(false),
+});
+
+/**
+ * Exclusão em lote com aviso de uso: um componente dentro de um kit (e,
+ * por consequência, dos sites gerados a partir dele) só sai com confirmação
+ * explícita. Antes, o DELETE derrubava o vínculo por cascade em silêncio.
+ */
+libraryRoute.post('/excluir-lote', zValidator('json', ExcluirLoteInput), (c) => {
+  const { componentIds, confirmarEmUso } = c.req.valid('json');
+  const db = getDb();
+  const rows = db
+    .select()
+    .from(tables.libraryComponents)
+    .where(inArray(tables.libraryComponents.id, componentIds))
+    .all();
+
+  const links =
+    rows.length > 0
+      ? db
+          .select()
+          .from(tables.kitComponents)
+          .where(
+            inArray(
+              tables.kitComponents.componentId,
+              rows.map((r) => r.id),
+            ),
+          )
+          .all()
+      : [];
+  const kitIds = [...new Set(links.map((l) => l.kitId))];
+  const kits =
+    kitIds.length > 0
+      ? db
+          .select({ id: tables.kits.id, name: tables.kits.name })
+          .from(tables.kits)
+          .where(inArray(tables.kits.id, kitIds))
+          .all()
+      : [];
+  const projetos =
+    kitIds.length > 0
+      ? db
+          .select({ name: tables.projects.name, kitId: tables.projects.kitId })
+          .from(tables.projects)
+          .where(inArray(tables.projects.kitId, kitIds))
+          .all()
+      : [];
+  const nomeDoKit = new Map(kits.map((k) => [k.id, k.name]));
+
+  const emUso = rows.flatMap((r) => {
+    const seusKits = links.filter((l) => l.componentId === r.id).map((l) => l.kitId);
+    if (seusKits.length === 0) return [];
+    return [
+      {
+        id: r.id,
+        name: r.name,
+        kits: seusKits.map((k) => nomeDoKit.get(k) ?? 'um kit'),
+        projetos: projetos
+          .filter((p) => p.kitId !== null && seusKits.includes(p.kitId))
+          .map((p) => p.name),
+      },
+    ];
+  });
+
+  const bloqueados = confirmarEmUso ? new Set<string>() : new Set(emUso.map((u) => u.id));
+  const paraExcluir = rows.filter((r) => !bloqueados.has(r.id));
+
+  db.transaction((tx) => {
+    for (const row of paraExcluir) {
+      if (row.segmentId) {
+        tx.update(tables.segments)
+          .set({ inLibrary: false })
+          .where(eq(tables.segments.id, row.segmentId))
+          .run();
+      }
+      tx.delete(tables.libraryComponents).where(eq(tables.libraryComponents.id, row.id)).run();
+    }
+  });
+  for (const row of paraExcluir) {
+    const dir = libraryComponentDir(row.id as `cmp_${string}`);
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  }
+
+  return c.json({
+    excluidos: paraExcluir.map((r) => r.id),
+    emUso,
+    faltando: componentIds.filter((id) => !rows.some((r) => r.id === id)),
+  });
+});
