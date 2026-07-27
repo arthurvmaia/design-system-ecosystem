@@ -13,7 +13,9 @@ import {
   ROTULO_AUTOSAVE,
   reduzirAutosave,
 } from '@/lib/autosave-core';
+import { resumoDaVoz } from '@/lib/marca-rotulos';
 import { toast } from '@/lib/toast';
+import { distribuirTokens, normalizarProjectBranding } from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Check, CloudOff, Loader2, Rocket } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -73,21 +75,50 @@ export function ProjectWizard({
 
   const setB = (patch: Partial<WizardBranding>) => setBranding((b) => ({ ...b, ...patch }));
 
-  const toBranding = (): ProjectBranding => ({
-    brandName: branding.brandName || undefined,
-    tone: branding.tone || undefined,
-    logoPath: branding.logoPath,
-    palette: {
-      primary: branding.primary,
-      background: branding.background,
-      foreground: branding.foreground,
-      ...(branding.accent ? { accent: branding.accent } : {}),
-    },
-    typography: { display: branding.fontDisplay, body: branding.fontBody },
-    contact: limparObjeto(branding.contact),
-    social: limparObjeto(branding.social),
-    mainCta: limparObjeto(branding.mainCta),
-  });
+  // Grava o modelo NOVO (identidade verbal, logos, paleta, tipografia, redes)
+  // e mantém os campos LEGADOS como espelho derivado — o gerador e os fluxos
+  // que ainda leem `palette`/`tone`/`logoPath` continuam funcionando até a A10.
+  const toBranding = (): ProjectBranding => {
+    const tokens = distribuirTokens(branding.paleta);
+    const logoPrincipal = branding.logos.find((l) => l.tipo === 'principal') ?? branding.logos[0];
+    const socialNovo = Object.fromEntries(
+      branding.sociais
+        .filter((s) => s.visivel && s.url.trim() !== '')
+        .map((s) => [s.plataforma, s.url]),
+    );
+    return {
+      brandName: branding.brandName || undefined,
+      tone: resumoDaVoz(branding.identidadeVerbal) ?? (branding.tone || undefined),
+      logoPath: logoPrincipal?.path ?? branding.logoPath,
+      palette: {
+        primary: tokens.primary ?? branding.primary,
+        background: tokens.background ?? branding.background,
+        foreground: tokens.body ?? branding.foreground,
+        ...(tokens.secondary ? { secondary: tokens.secondary } : {}),
+        ...(tokens.accent
+          ? { accent: tokens.accent }
+          : branding.accent
+            ? { accent: branding.accent }
+            : {}),
+      },
+      typography: { display: branding.fontDisplay, body: branding.fontBody },
+      contact: limparObjeto(branding.contact),
+      social: Object.keys(socialNovo).length > 0 ? socialNovo : limparObjeto(branding.social),
+      mainCta: limparObjeto(branding.mainCta),
+      identidadeVerbal: branding.identidadeVerbal,
+      ...(branding.logos.length > 0 ? { logos: branding.logos } : {}),
+      ...(Object.keys(branding.logosLocais).length > 0
+        ? { logosLocais: branding.logosLocais }
+        : {}),
+      paleta: branding.paleta,
+      tipografia: {
+        ...branding.tipografia,
+        display: branding.fontDisplay,
+        body: branding.fontBody,
+      },
+      ...(branding.sociais.length > 0 ? { sociais: branding.sociais } : {}),
+    };
+  };
 
   // Garante que o rascunho existe (cria no primeiro avanço). Retorna o id.
   const ensureDraft = async (): Promise<string> => {
@@ -199,14 +230,7 @@ export function ProjectWizard({
               kits={kits.data?.items ?? []}
             />
           )}
-          {step === 1 && (
-            <StepMarca
-              branding={branding}
-              setB={setB}
-              projectId={projectId}
-              onLogo={(p) => setB({ logoPath: p })}
-            />
-          )}
+          {step === 1 && <StepMarca branding={branding} setB={setB} projectId={projectId} />}
           {step === 2 && (
             <StepEstrutura
               layout={layout}
@@ -376,26 +400,57 @@ function parseMedia(raw: string | null | undefined): MediaItem[] {
   return Array.isArray(parsed) ? parsed : [];
 }
 
+const hex6 = (v: string | undefined, fallback: string): string =>
+  v !== undefined && /^#[0-9a-fA-F]{6}$/.test(v) ? v : fallback;
+
+/**
+ * Lê o branding persistido pelo caminho ÚNICO de migração do shared
+ * (`normalizarProjectBranding`): JSON corrompido vira default, legado incompleto
+ * é completado e os campos novos (A5) nascem migrados dos antigos.
+ */
 function parseBranding(raw: string | null | undefined): WizardBranding {
-  const b = safeParse<ProjectBranding>(raw);
+  const b = normalizarProjectBranding(raw ?? null);
   return {
-    brandName: b?.brandName ?? '',
-    tone: b?.tone ?? '',
-    primary: b?.palette?.primary ?? '#7f1d1d',
-    background: b?.palette?.background ?? '#ffffff',
-    foreground: b?.palette?.foreground ?? '#0a0a0a',
-    accent: b?.palette?.accent ?? '',
-    fontDisplay: b?.typography?.display ?? 'Inter, sans-serif',
-    fontBody: b?.typography?.body ?? 'Inter, sans-serif',
-    logoPath: b?.logoPath ?? null,
+    brandName: b.brandName ?? '',
+    tone: b.tone ?? '',
+    primary: b.palette.primary,
+    background: b.palette.background,
+    foreground: b.palette.foreground,
+    accent: b.palette.accent ?? '',
+    fontDisplay: b.typography.display,
+    fontBody: b.typography.body,
+    logoPath: b.logoPath ?? null,
     contact: {
-      email: b?.contact?.email ?? '',
-      phone: b?.contact?.phone ?? '',
-      whatsapp: b?.contact?.whatsapp ?? '',
-      address: b?.contact?.address ?? '',
+      email: b.contact?.email ?? '',
+      phone: b.contact?.phone ?? '',
+      whatsapp: b.contact?.whatsapp ?? '',
+      address: b.contact?.address ?? '',
     },
-    social: { ...(b?.social ?? {}) },
-    mainCta: { label: b?.mainCta?.label ?? '', href: b?.mainCta?.href ?? '' },
+    social: { ...(b.social ?? {}) },
+    mainCta: { label: b.mainCta?.label ?? '', href: b.mainCta?.href ?? '' },
+    identidadeVerbal: b.identidadeVerbal ?? {
+      tons: [],
+      arquetipos: [],
+      vocabularioPreferido: [],
+      vocabularioEvitar: [],
+    },
+    logos: b.logos ?? [],
+    logosLocais: b.logosLocais ?? {},
+    paleta: b.paleta ?? {
+      cores: [
+        { id: 'primaria', nome: 'Primária', hex: hex6(b.palette.primary, '#7f1d1d') },
+        { id: 'fundo', nome: 'Fundo', hex: hex6(b.palette.background, '#ffffff') },
+        { id: 'texto', nome: 'Texto', hex: hex6(b.palette.foreground, '#0a0a0a') },
+      ],
+      atribuicoes: { primary: 'primaria', background: 'fundo', body: 'texto', heading: 'texto' },
+    },
+    tipografia: b.tipografia ?? {
+      display: b.typography.display,
+      body: b.typography.body,
+      presetTitulos: 'equilibrada',
+      presetCorpo: 'confortavel',
+    },
+    sociais: b.sociais ?? [],
   };
 }
 

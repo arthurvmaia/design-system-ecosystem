@@ -1,3 +1,12 @@
+import type {
+  IdentidadeVerbal,
+  LocalDeLogo,
+  LogoVariante,
+  PaletaDoProjeto,
+  RedeSocial,
+  TipografiaDoProjeto,
+} from '@ds/shared/schemas';
+
 export type HealthResponse = {
   status: 'ok';
   root: string;
@@ -269,6 +278,13 @@ export type ProjectBranding = {
   contact?: { email?: string; phone?: string; whatsapp?: string; address?: string };
   social?: Record<string, string>;
   mainCta?: { label?: string; href?: string };
+  // ── Campos novos (A5) — aditivos; o shape vem do shared (fonte única) ──
+  identidadeVerbal?: IdentidadeVerbal;
+  logos?: LogoVariante[];
+  logosLocais?: Partial<Record<LocalDeLogo, string>>;
+  paleta?: PaletaDoProjeto;
+  tipografia?: TipografiaDoProjeto;
+  sociais?: RedeSocial[];
 };
 
 export type MediaItem = {

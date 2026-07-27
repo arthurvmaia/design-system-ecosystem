@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  IdentidadeVerbal,
+  LocalDeLogo,
+  LogoVariante,
+  PaletaDoProjeto,
+  RedeSocial,
+  TipografiaDoProjeto,
+} from './brand.js';
 
 export const ProjectStatus = z.enum([
   'draft',
@@ -70,6 +78,20 @@ export const ProjectBranding = z.object({
   social: z.record(z.string(), z.string()).optional(),
   /** Chamada principal do site: rótulo do botão e para onde ele leva. */
   mainCta: z.object({ label: z.string().optional(), href: z.string().optional() }).optional(),
+
+  // ── Campos NOVOS (A5) — todos aditivos; os legados acima seguem válidos ──
+  /** Identidade verbal (tons + arquétipos + modelo derivado editável). */
+  identidadeVerbal: IdentidadeVerbal.optional(),
+  /** Variações de logo por tipo; `logoPath` legado migra como `principal`. */
+  logos: z.array(LogoVariante).optional(),
+  /** Ajuste MANUAL da distribuição de logos (local → tipo); resto é automático. */
+  logosLocais: z.record(LocalDeLogo, z.string()).optional(),
+  /** Paleta variável (3–12 cores) sobre os tokens semânticos do gerador. */
+  paleta: PaletaDoProjeto.optional(),
+  /** Tipografia estendida (presets + escala + papéis); `typography` legado segue. */
+  tipografia: TipografiaDoProjeto.optional(),
+  /** Redes sociais com ordem, visibilidade e posições. */
+  sociais: z.array(RedeSocial).optional(),
 });
 export type ProjectBranding = z.infer<typeof ProjectBranding>;
 
@@ -155,21 +177,90 @@ export const normalizarProjectContent = (raw: string | null): ProjectContent => 
   return { ...base, schemaVersion: PROJECT_DATA_VERSION };
 };
 
+/**
+ * Migra os campos LEGADOS do branding para o modelo novo, NA LEITURA:
+ * `tone` → observação da identidade verbal; `logoPath` → variação principal;
+ * `palette` de 4 cores → paleta nomeada com atribuições; `typography` →
+ * tipografia estendida; `social` → lista de redes. Campo novo já preenchido
+ * NUNCA é sobrescrito pelo legado.
+ */
+const migrarBrandingLegado = (b: ProjectBranding): ProjectBranding => {
+  const saida = { ...b };
+  if (saida.identidadeVerbal === undefined && typeof saida.tone === 'string' && saida.tone.trim()) {
+    saida.identidadeVerbal = {
+      tons: [],
+      arquetipos: [],
+      vocabularioPreferido: [],
+      vocabularioEvitar: [],
+      observacao: saida.tone.trim(),
+    };
+  }
+  if (saida.logos === undefined && typeof saida.logoPath === 'string' && saida.logoPath) {
+    saida.logos = [{ tipo: 'principal', path: saida.logoPath }];
+  }
+  if (saida.paleta === undefined) {
+    const p = saida.palette;
+    const cores = [
+      { id: 'primaria', nome: 'Primária', hex: p.primary },
+      { id: 'fundo', nome: 'Fundo', hex: p.background },
+      { id: 'texto', nome: 'Texto', hex: p.foreground },
+      ...(p.secondary ? [{ id: 'secundaria', nome: 'Secundária', hex: p.secondary }] : []),
+      ...(p.accent ? [{ id: 'destaque', nome: 'Destaque', hex: p.accent }] : []),
+    ].filter((c) => /^#[0-9a-fA-F]{6}$/.test(c.hex));
+    if (cores.length >= 3) {
+      saida.paleta = {
+        cores,
+        atribuicoes: {
+          primary: 'primaria',
+          background: 'fundo',
+          body: 'texto',
+          heading: 'texto',
+          ...(p.secondary ? { secondary: 'secundaria' } : {}),
+          ...(p.accent ? { accent: 'destaque' } : {}),
+        },
+      };
+    }
+  }
+  if (saida.tipografia === undefined) {
+    saida.tipografia = {
+      display: saida.typography.display,
+      body: saida.typography.body,
+      ...(saida.typography.mono ? { mono: saida.typography.mono } : {}),
+      presetTitulos: 'equilibrada',
+      presetCorpo: 'confortavel',
+    };
+  }
+  if (saida.sociais === undefined && saida.social !== undefined) {
+    saida.sociais = Object.entries(saida.social).map(([plataforma, url], i) => ({
+      plataforma,
+      url,
+      ordem: i,
+      visivel: true,
+    }));
+  }
+  return saida;
+};
+
 /** Normaliza o branding persistido; paleta/tipografia ausentes caem no default. */
 export const normalizarProjectBranding = (raw: string | null): ProjectBranding => {
   const bruto = jsonSeguro(raw);
   if (bruto === null || typeof bruto !== 'object') {
-    return { ...DEFAULT_PROJECT_BRANDING, schemaVersion: PROJECT_DATA_VERSION };
+    return migrarBrandingLegado({
+      ...DEFAULT_PROJECT_BRANDING,
+      schemaVersion: PROJECT_DATA_VERSION,
+    });
   }
   const tentado = ProjectBranding.safeParse(bruto);
-  if (tentado.success) return { ...tentado.data, schemaVersion: PROJECT_DATA_VERSION };
+  if (tentado.success) {
+    return migrarBrandingLegado({ ...tentado.data, schemaVersion: PROJECT_DATA_VERSION });
+  }
   // Parcial (legado incompleto): preserva o que der, completa com o default.
   const parcial = bruto as Partial<ProjectBranding>;
-  return {
+  return migrarBrandingLegado({
     ...DEFAULT_PROJECT_BRANDING,
     ...parcial,
     palette: { ...DEFAULT_PROJECT_BRANDING.palette, ...(parcial.palette ?? {}) },
     typography: { ...DEFAULT_PROJECT_BRANDING.typography, ...(parcial.typography ?? {}) },
     schemaVersion: PROJECT_DATA_VERSION,
-  };
+  });
 };

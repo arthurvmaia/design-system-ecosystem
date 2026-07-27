@@ -22,6 +22,15 @@ export const ROLE_CATS: Record<string, string[]> = {
   footer: ['footer'],
 };
 
+import type {
+  IdentidadeVerbal,
+  LocalDeLogo,
+  LogoVariante,
+  PaletaDoProjeto,
+  RedeSocial,
+  TipografiaDoProjeto,
+} from '@ds/shared/schemas';
+
 export const mediaUrl = (prjId: string, path: string) =>
   `/api/projects/${prjId}/media/${encodeURIComponent(path)}`;
 
@@ -38,6 +47,14 @@ export type WizardBranding = {
   contact: { email: string; phone: string; whatsapp: string; address: string };
   social: Record<string, string>;
   mainCta: { label: string; href: string };
+  // ── Modelo novo (A5). Os campos legados acima seguem como espelho para as
+  // partes que ainda não migraram; o `toBranding` do wizard grava os dois.
+  identidadeVerbal: IdentidadeVerbal;
+  logos: LogoVariante[];
+  logosLocais: Partial<Record<LocalDeLogo, string>>;
+  paleta: PaletaDoProjeto;
+  tipografia: TipografiaDoProjeto;
+  sociais: RedeSocial[];
 };
 
 export function Campo({ label, children }: { label: string; children: React.ReactNode }) {
