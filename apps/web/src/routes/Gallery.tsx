@@ -823,9 +823,10 @@ function SegmentsView({
         </section>
       )}
 
-      {/* `items-start`: com o card acompanhando a altura do conteúdo, as linhas
-          da grade não devem esticar o card curto até a altura do vizinho. */}
-      <div className="grid flex-1 grid-cols-1 items-start gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
+      {/* Sem `items-start`: o alinhamento padrão do grid estica os cards da
+          linha até a altura do mais alto, e o rodapé de cada um encosta embaixo
+          (`mt-auto`). É o que deixa a grade regular. */}
+      <div className="grid flex-1 grid-cols-1 content-start gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map((seg, i) => {
           // Filho que casou com o filtro de categoria: card compacto de
           // primeiro nível, com o selo "de:" dizendo a seção de origem.
@@ -1003,9 +1004,11 @@ function SegmentCard({
   const delay = index < 6 ? `ds-d${index + 1}` : '';
 
   return (
-    <div className={`ds-scale-in ${delay}`}>
+    // `h-full` + coluna: todos os cards da linha terminam na mesma altura, e o
+    // rodapé encosta embaixo mesmo quando um tem a linha de peças e o outro não.
+    <div className={`ds-scale-in h-full ${delay}`}>
       <div
-        className="ds-card ds-glass-static group relative rounded-xl"
+        className="ds-card ds-glass-static group relative flex h-full flex-col rounded-xl"
         style={
           selected ? { outline: '2px solid var(--color-signal)', outlineOffset: '2px' } : undefined
         }
@@ -1029,7 +1032,7 @@ function SegmentCard({
             className="h-4 w-4 accent-[var(--color-crimson-4)]"
           />
         </label>
-        <div className="ds-card-content overflow-hidden rounded-xl">
+        <div className="ds-card-content flex h-full flex-col overflow-hidden rounded-xl">
           <button
             type="button"
             onClick={() => onOpen(segment)}
@@ -1037,19 +1040,21 @@ function SegmentCard({
             className="block w-full"
           >
             <div className="transition-transform duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.06]">
-              {/* Conteúdo curto encolhe o card; conteúdo longo é recortado na
-                  proporção, como antes. Uma barra de navegação de 80px deixava
-                  meia tela de fundo vazio e parecia defeito. */}
+              {/* Todos os cards com a mesma altura e o componente inteiro
+                  dentro, centralizado. Antes a grade ficava irregular e uma
+                  barra de navegação virava uma fatia de 20px. */}
               <PreviewFrame
                 src={previewSegmentUrl(segment.id)}
                 title={segment.name}
-                autoHeight
-                alturaMaxima={Math.round(1280 / (16 / 10))}
+                ajuste="conter"
               />
             </div>
           </button>
+          {/* Altura reservada: a linha de peças é opcional, e sem reservar o
+              espaço os títulos de uma mesma linha da grade ficavam em alturas
+              diferentes. */}
           <div
-            className="ds-gradient-glow flex items-center justify-between border-t p-3.5"
+            className="ds-gradient-glow mt-auto flex min-h-[92px] items-start justify-between border-t p-3.5"
             style={{ borderColor: 'rgba(255, 255, 255, 0.06)' }}
           >
             <div className="min-w-0 flex-1">
@@ -1322,8 +1327,7 @@ function SegmentCardFilho({
           src={previewSegmentUrl(segment.id)}
           title={segment.name}
           aspect={4 / 3}
-          autoHeight
-          alturaMaxima={Math.round(1280 / (4 / 3))}
+          ajuste="conter"
         />
       </button>
       <div

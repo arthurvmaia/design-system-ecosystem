@@ -18,10 +18,13 @@ export function PreviewFrame({
   src,
   title,
   aspect = 16 / 10,
-  virtualWidth = 1280,
+  // 1440 é a largura da viewport que o motor usa para capturar. Renderizar em
+  // 1280 reflui o layout e corta texto grande: o hero aparecia com a primeira
+  // letra fora do quadro. Mesma largura da captura, mesmo desenho do print.
+  virtualWidth = 1440,
   interactive = false,
   autoHeight = false,
-  alturaMaxima,
+  ajuste = 'largura',
   className,
 }: {
   src: string;
@@ -43,27 +46,29 @@ export function PreviewFrame({
    */
   autoHeight?: boolean;
   /**
-   * Teto para a altura automática, em px do canvas virtual.
+   * Como o documento se encaixa no quadro.
    *
-   * Na grade o teto é a própria proporção do card: conteúdo curto (uma barra de
-   * navegação de 80px) encolhe o card em vez de deixar meia tela de fundo vazio,
-   * e conteúdo longo continua recortado como antes. No detalhe não há teto.
+   * - `largura`: reduz até caber na largura e recorta a altura. Serve quando o
+   *   quadro cresce junto (o detalhe).
+   * - `conter`: reduz até o conteúdo INTEIRO caber, e centraliza. É o que a
+   *   grade usa: todos os cards com a mesma altura e nada cortado. Uma barra de
+   *   navegação de 80px aparece grande e centrada; uma seção de 3000px aparece
+   *   inteira, menor.
    */
-  alturaMaxima?: number;
+  ajuste?: 'largura' | 'conter';
   className?: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
-  const [scale, setScale] = useState(0);
   const [visible, setVisible] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [alturaConteudo, setAlturaConteudo] = useState<number | null>(null);
 
   // A altura chega do próprio documento. Origem opaca (sandbox sem
   // allow-same-origin) não dá para conferir, então a checagem é a janela que
-  // enviou ser a DESTE iframe — nenhum outro documento consegue forjar isso.
+  // enviou ser a DESTE iframe: nenhum outro documento consegue forjar isso.
   useEffect(() => {
-    if (!autoHeight) return;
+    if (!autoHeight && ajuste !== 'conter') return;
     const onMsg = (e: MessageEvent) => {
       if (frame.current === null || e.source !== frame.current.contentWindow) return;
       const dado = e.data as { tipo?: unknown; altura?: unknown } | null;
@@ -72,21 +77,26 @@ export function PreviewFrame({
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, [autoHeight]);
+  }, [autoHeight, ajuste]);
 
   // Troca de documento recomeça a medição — senão a altura do anterior fica.
   useEffect(() => setAlturaConteudo(null), []);
 
+  // Guarda a caixa do quadro. O modo `conter` precisa da ALTURA também, para
+  // decidir o quanto reduzir; o modo `largura` usa só a largura, como antes.
+  const [caixa, setCaixa] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? el.clientWidth;
-      if (w > 0) setScale(w / virtualWidth);
+      const r = entries[0]?.contentRect;
+      const w = r?.width ?? el.clientWidth;
+      const h = r?.height ?? el.clientHeight;
+      if (w > 0) setCaixa({ w, h });
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [virtualWidth]);
+  }, []);
 
   useEffect(() => {
     const el = wrap.current;
@@ -104,19 +114,34 @@ export function PreviewFrame({
     return () => io.disconnect();
   }, [visible]);
 
-  const teto = alturaMaxima ?? Number.POSITIVE_INFINITY;
-  const medida = autoHeight && alturaConteudo !== null ? Math.min(alturaConteudo, teto) : null;
-  const virtualHeight = medida ?? Math.round(virtualWidth / aspect);
+  const conter = ajuste === 'conter';
+  // Altura do documento: a medida real quando ela chega, senão a proporção.
+  const virtualHeight = alturaConteudo ?? Math.round(virtualWidth / aspect);
+
+  const escalaLargura = caixa.w > 0 ? caixa.w / virtualWidth : 0;
+  // `conter` reduz pelo lado mais apertado, então o documento inteiro entra.
+  const escala =
+    conter && caixa.h > 0 ? Math.min(escalaLargura, caixa.h / virtualHeight) : escalaLargura;
+
+  // Centraliza o que sobrou de folga. Sem isto, conteúdo curto ficaria colado no
+  // topo à esquerda e o card pareceria vazio.
+  const sobraX = conter ? Math.max(0, (caixa.w - virtualWidth * escala) / 2) : 0;
+  const sobraY = conter ? Math.max(0, (caixa.h - virtualHeight * escala) / 2) : 0;
+
+  // Fora do modo `conter`, o quadro cresce com o documento (detalhe).
+  const alturaDoQuadro =
+    !conter && autoHeight && alturaConteudo !== null
+      ? Math.round(alturaConteudo * escalaLargura)
+      : null;
 
   return (
     <div
       ref={wrap}
       className={`relative overflow-hidden ${className ?? ''}`}
       style={
-        medida === null
+        alturaDoQuadro === null
           ? { aspectRatio: String(aspect), backgroundColor: 'var(--color-obsidian-0)' }
-          : // Com a altura real, o quadro acompanha o documento reduzido.
-            { height: Math.round(medida * scale), backgroundColor: 'var(--color-obsidian-0)' }
+          : { height: alturaDoQuadro, backgroundColor: 'var(--color-obsidian-0)' }
       }
     >
       {!loaded && (
@@ -126,7 +151,7 @@ export function PreviewFrame({
           aria-hidden
         />
       )}
-      {visible && scale > 0 && (
+      {visible && escala > 0 && (
         <iframe
           ref={frame}
           title={title}
@@ -138,7 +163,7 @@ export function PreviewFrame({
           style={{
             width: virtualWidth,
             height: virtualHeight,
-            transform: `scale(${scale})`,
+            transform: `translate(${sobraX}px, ${sobraY}px) scale(${escala})`,
             pointerEvents: interactive ? 'auto' : 'none',
           }}
         />

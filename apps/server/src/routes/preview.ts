@@ -341,15 +341,71 @@ const montarScrollReplay = (
   function progressoEl(el){ var r=el.getBoundingClientRect(), cr=cont.getBoundingClientRect(); var top=r.top-cr.top; return Math.min(1,Math.max(0,1-(top+r.height)/(cr.height+r.height))); }
   function onScroll(){ for(var i=0;i<scrubs.length;i++){ scrub(scrubs[i].b, scrubs[i].el, progressoEl(scrubs[i].el)); } }
   cont.addEventListener('scroll', onScroll, {passive:true});
-  montar(); onScroll();
   function reiniciar(){ ios.forEach(function(o){o.disconnect()}); ios=[]; scrubs=[]; salvos.forEach(function(s){ if(s.css) s.el.setAttribute('style',s.css); else s.el.removeAttribute('style'); s.el.className=s.cls; }); vistos=new WeakSet(); salvos=[]; cont.scrollTop=0; montar(); onScroll(); msg.textContent='Reiniciado.'; }
   document.getElementById('ds-sc-reset').addEventListener('click', reiniciar);
   document.getElementById('ds-sc-top').addEventListener('click', function(){ cont.scrollTop=0; });
+
+  // ── Demonstração automática ────────────────────────────────────────────
+  // Rolar à mão já reproduzia entrada e saída, mas exigia descobrir isso. A
+  // demonstração desce até passar do bloco e volta, então a pessoa vê o efeito
+  // INTEIRO (aparecer e desaparecer) sem fazer nada. Continua sendo o scroll de
+  // verdade: nada é simulado, só a rolagem é automatizada.
+  var rodando = false, passe = 0, ultimoTop = -1;
+  function encerrar(texto){
+    rodando = false; passe++;
+    msg.textContent = texto;
+  }
+  function animarAte(destino, ms, aoFim){
+    var meuPasse = passe, inicioTop = cont.scrollTop, t0 = 0;
+    function passo(ts){
+      if(meuPasse !== passe) return; // alguém assumiu o controle
+      if(!t0) t0 = ts;
+      var p = Math.min(1, (ts - t0) / ms);
+      // easing suave nas duas pontas, para o movimento não parecer robô
+      var e = p < 0.5 ? 2*p*p : 1 - Math.pow(-2*p+2, 2)/2;
+      cont.scrollTop = inicioTop + (destino - inicioTop) * e;
+      ultimoTop = cont.scrollTop;
+      if(p < 1) requestAnimationFrame(passo); else if(aoFim) aoFim();
+    }
+    requestAnimationFrame(passo);
+  }
+  // Quem rolar por conta própria (pessoa, teclado ou script) assume o controle
+  // na hora: a demonstração para de puxar a página de volta. Detecta pela
+  // posição ter mudado para um valor que a própria demonstração não escreveu.
+  cont.addEventListener('scroll', function(){
+    if(rodando && Math.abs(cont.scrollTop - ultimoTop) > 2){
+      encerrar(B.length + ' efeito(s) de scroll. Role para ver de novo.');
+    }
+  }, {passive:true});
+  function demonstrar(){
+    if(rodando || reduz) return;
+    passe++;
+    rodando = true;
+    msg.textContent = 'Reproduzindo entrada e saída…';
+    cont.scrollTop = 0; ultimoTop = 0;
+    var alvoEl = document.getElementById('ds-sc-alvo');
+    var desceAte = alvoEl ? alvoEl.offsetTop + alvoEl.offsetHeight : cont.scrollHeight;
+    animarAte(desceAte, 2600, function(){
+      setTimeout(function(){
+        if(!rodando) return;
+        animarAte(0, 1600, function(){
+          encerrar(B.length + ' efeito(s) de scroll. Role para ver de novo.');
+        });
+      }, 500);
+    });
+  }
+  var btnDemo = document.getElementById('ds-sc-demo');
+  if(btnDemo) btnDemo.addEventListener('click', demonstrar);
+
+  montar(); onScroll();
   msg.textContent = B.length + ' efeito(s) de scroll' + (reduz?' (movimento reduzido)':'');
+  // Espera o layout assentar antes de rodar sozinho.
+  if(!reduz) setTimeout(demonstrar, 600);
 })();</script>`;
 
   const barra = `<div id="ds-sc-bar" role="toolbar" aria-label="Efeitos de scroll">
-<span class="ds-sc-tit">Role para reproduzir:</span>
+<span class="ds-sc-tit">Efeitos de scroll:</span>
+<button type="button" class="ds-sc-btn" id="ds-sc-demo">Reproduzir de novo</button>
 <button type="button" class="ds-sc-btn" id="ds-sc-reset">Reiniciar</button>
 <button type="button" class="ds-sc-btn" id="ds-sc-top">Voltar ao topo</button>
 ${avisoExterno}
