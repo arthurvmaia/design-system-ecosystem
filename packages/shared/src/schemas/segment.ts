@@ -58,6 +58,24 @@ export const ComponentKind = z.enum(['component', 'layout', 'animation', 'effect
 export type ComponentKind = z.infer<typeof ComponentKind>;
 
 /**
+ * Categorias de PEÇA — o que a subdivisão extrai de dentro de uma seção.
+ *
+ * Um subcomponente (`SegmentRecord.parentId` preenchido) é sempre uma peça:
+ * um botão, um selo, um campo. Classificá-lo como `hero` ou `pricing` seria um
+ * erro de categoria — ele é parte de uma seção dessas, não uma. O classifier
+ * usa esta lista como clamp e a Galeria como filtro de primeiro nível.
+ */
+export const CATEGORIAS_DE_PECA: ReadonlySet<string> = new Set([
+  'button',
+  'badge',
+  'input',
+  'accordion',
+  'card',
+  'nav',
+  'other',
+]);
+
+/**
  * Versão do pipeline de segmentação. Sobe quando a forma dos insights muda de um
  * jeito que a leitura precise saber. Vai gravado em cada insight para que dado
  * antigo continue interpretável (a rota aplica defaults seguros no que faltar).
@@ -155,7 +173,10 @@ export type SegmentScrollFile = z.infer<typeof SegmentScrollFile>;
  * validações antigas por hash (ver `previewHash`).
  */
 export const VALIDATOR_VERSION = 2;
-export const PREVIEW_VERSION = 4;
+// 5: o preview de extrações V2 passou a servir os assets do próprio vault
+// (`capture-v2/manifest.json`) em vez de depender da origem no ar — outra
+// composição, logo as validações anteriores não valem para ela.
+export const PREVIEW_VERSION = 5;
 
 /**
  * Resultado de uma validação de reprodução em navegador: qual segmento, qual

@@ -60,6 +60,12 @@ pnpm --filter @ds/explorer exec playwright install chromium
 2. Siga o `SYSTEM_PROMPT` de `packages/classifier/src/index.ts` — mesma taxonomia, mesmo formato de saída.
 3. Atualize `category`, `kind` e `suggestedName` de cada segmento.
 
+**Segmento com `parent_id` é um SUBCOMPONENTE** — uma peça extraída de dentro de
+uma seção (botão, selo, campo, item de acordeão). A `category` dele tem de ser de
+peça (`button`, `badge`, `input`, `accordion`, `card`, `nav`, `other`), nunca de
+seção: um botão do hero é `button`, não `hero`. No modo `api` o servidor recusa a
+troca sozinho; aqui a regra é sua.
+
 ### `generate`
 
 O payload é rico e é a fonte da verdade — não vá ler o banco por fora:

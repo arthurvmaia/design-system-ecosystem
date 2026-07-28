@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { CATEGORIAS_DE_PECA } from '@ds/shared';
 import { z } from 'zod';
 
 /**
@@ -51,6 +52,12 @@ export type ClassifyInput = {
   id: string;
   currentName: string;
   htmlSnippet: string;
+  /**
+   * Subcomponente extraído de dentro de uma seção (tem `parentId`). Vira uma
+   * dica no prompt — peça pede categoria de peça — sem mudar a saída; o clamp
+   * final de categoria é do servidor.
+   */
+  subcomponente?: boolean;
 };
 
 export type ClassifyOptions = {
@@ -67,6 +74,11 @@ Recebe uma lista de segmentos HTML e classifica cada um em:
 - category: uma de [${CATEGORIES.join(', ')}]
 - kind: uma de [${KINDS.join(', ')}] (quase sempre 'component' para blocos visuais)
 - suggestedName: nome curto em PT-BR (ex: "Hero Split 01", "Card de Preço", "Rodapé Multi-coluna")
+
+Um segmento marcado como SUBCOMPONENTE é uma peça extraída de dentro de uma
+seção (um botão, um selo, um campo) — não a seção. Para ele, category tem de ser
+de peça: [${[...CATEGORIAS_DE_PECA].join(', ')}]. Um botão dentro do hero é
+'button', nunca 'hero'.
 
 Responde APENAS com JSON válido no formato:
 {
@@ -90,7 +102,11 @@ export const classifySegments = async (
     const user = batch
       .map(
         (s) =>
-          `ID: ${s.id}\nNome atual: ${s.currentName}\nHTML (primeiros 2000 chars):\n${s.htmlSnippet.slice(0, 2000)}\n---`,
+          `ID: ${s.id}\nNome atual: ${s.currentName}\n${
+            s.subcomponente
+              ? 'Subcomponente de uma seção: use categoria de peça (button, badge, input, accordion, card, nav, other).\n'
+              : ''
+          }HTML (primeiros 2000 chars):\n${s.htmlSnippet.slice(0, 2000)}\n---`,
       )
       .join('\n\n');
 

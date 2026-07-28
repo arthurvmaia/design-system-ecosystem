@@ -4,6 +4,7 @@ import { runExtraction } from '@ds/extractor';
 import { getDb, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
 import {
+  CATEGORIAS_DE_PECA,
   CreateDesignSystemInput,
   SegmentValidationFile,
   SegmentsManifest,
@@ -419,7 +420,12 @@ designSystemsRoute.post('/:id/classify', async (c) => {
   const task = enqueueTask('classify', { dsId, count: rows.length }, async (_, onEvent) => {
     onEvent('info', `Classificando ${rows.length} segmentos`);
     const results = await classifySegments(
-      rows.map((r) => ({ id: r.id, currentName: r.name, htmlSnippet: r.htmlSnippet })),
+      rows.map((r) => ({
+        id: r.id,
+        currentName: r.name,
+        htmlSnippet: r.htmlSnippet,
+        subcomponente: r.parentId !== null,
+      })),
       {
         apiKey,
         model: models.classifier,
@@ -427,13 +433,19 @@ designSystemsRoute.post('/:id/classify', async (c) => {
       },
     );
 
+    const paiDe = new Map(rows.map((r) => [r.id, r.parentId]));
     const db2 = getDb();
     db2.transaction((tx) => {
       for (const r of results) {
-        tx.update(tables.segments)
-          .set({ category: r.category, kind: r.kind, name: r.suggestedName })
-          .where(eq(tables.segments.id, r.id))
-          .run();
+        // Clamp: um subcomponente é sempre uma PEÇA (botão, selo, campo…).
+        // Se o LLM devolver categoria de seção para um filho, o nome e o kind
+        // entram, mas a categoria fica a que a subdivisão determinou.
+        const ehFilho = (paiDe.get(r.id) ?? null) !== null;
+        const set =
+          ehFilho && !CATEGORIAS_DE_PECA.has(r.category)
+            ? { kind: r.kind, name: r.suggestedName }
+            : { category: r.category, kind: r.kind, name: r.suggestedName };
+        tx.update(tables.segments).set(set).where(eq(tables.segments.id, r.id)).run();
       }
       tx.update(tables.designSystems)
         .set({ status: 'ready' })

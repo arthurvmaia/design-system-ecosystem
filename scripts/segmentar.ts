@@ -13,7 +13,7 @@
  * consertar um design system que já ficou para trás.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { getDb, tables } from '@ds/indexer';
+import { getDb, runMigrations, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
 import {
   type SegmentRecord,
@@ -66,6 +66,11 @@ const MINIMO_ESPERADO = 4;
  * de inserir, então rodar duas vezes não duplica nada.
  */
 export const segmentarEIndexar = (dsId: `ds_${string}`): ResultadoSegmentacao => {
+  // O modo `queue` insere no banco sem passar pelo boot do servidor — quem
+  // atualiza o repo pelo GitHub e roda o PROCESSAR.bat antes de abrir o app
+  // tinha um banco parado numa migração antiga, e o insert quebrava na coluna
+  // nova. Idempotente: o drizzle só aplica o que falta.
+  runMigrations();
   // O sinal de que a extração foi do motor V2 é o manifesto em `capture-v2/`.
   const v2 = existsSync(vaultCaptureV2Manifest(dsId));
   const segments = v2 ? lerSegmentosV2(dsId) : segmentDesignSystem(dsId).segments;

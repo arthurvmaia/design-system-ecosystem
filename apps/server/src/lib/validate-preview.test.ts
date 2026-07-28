@@ -111,6 +111,7 @@ const seg = (id: string): SegmentsManifest['segments'][number] => ({
   previewPath: null,
   position: 0,
   inLibrary: false,
+  parentId: null,
 });
 
 const insight = (id: string): SegmentInsight => ({

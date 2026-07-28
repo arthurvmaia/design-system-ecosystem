@@ -23,6 +23,7 @@ import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  ChevronDown,
   Columns2,
   Heart,
   Loader2,
@@ -33,7 +34,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
@@ -49,6 +50,9 @@ const CATEGORIES = [
   'typography',
   'button',
   'card',
+  'badge',
+  'input',
+  'accordion',
   'interaction',
   'background',
   'overlay',
@@ -70,6 +74,9 @@ const CATEGORY_LABEL: Record<string, string> = {
   typography: 'Tipografia',
   button: 'Botões',
   card: 'Cards',
+  badge: 'Selos',
+  input: 'Campos',
+  accordion: 'Acordeões',
   interaction: 'Animações',
   background: 'Fundos',
   overlay: 'Overlays',
@@ -461,8 +468,14 @@ function SegmentsView({
   const [qualidade, setQualidade] = useState<'todos' | 'prontos' | 'ressalvas'>('todos');
 
   const filtered = useMemo(() => {
-    let items = segments.data?.items ?? [];
-    if (category !== 'all') items = items.filter((s) => s.category === category);
+    const todos = segments.data?.items ?? [];
+    // A grade é das seções (raízes). Os filhos da subdivisão vivem na expansão
+    // do card da seção — e só sobem para o primeiro nível quando o filtro de
+    // categoria os alcança, que é o caminho de "quero só os botões deste site".
+    let items =
+      category === 'all'
+        ? todos.filter((s) => s.parentId === null)
+        : todos.filter((s) => s.category === category);
     if (qualidade === 'prontos') {
       items = items.filter((s) => !s.fidelity || s.fidelity.support === 'completo');
     } else if (qualidade === 'ressalvas') {
@@ -475,8 +488,35 @@ function SegmentsView({
     return items;
   }, [segments.data, category, qualidade, search]);
 
+  // Subcomponentes agrupados pela seção de origem + nomes para o selo "de:".
+  const filhosPorPai = useMemo(() => {
+    const mapa = new Map<string, SegmentRecord[]>();
+    for (const s of segments.data?.items ?? []) {
+      if (s.parentId === null) continue;
+      const lista = mapa.get(s.parentId);
+      if (lista) lista.push(s);
+      else mapa.set(s.parentId, [s]);
+    }
+    return mapa;
+  }, [segments.data]);
+  const nomePorId = useMemo(
+    () => new Map((segments.data?.items ?? []).map((s) => [s.id, s.name])),
+    [segments.data],
+  );
+  const totalFilhos = useMemo(
+    () => (segments.data?.items ?? []).filter((s) => s.parentId !== null).length,
+    [segments.data],
+  );
+
+  // Expansão dos subcomponentes, por seção — recolhida por padrão.
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+
   // ── Seleção em massa ───────────────────────────────────────────────────────
-  const visiveis = useMemo(() => filtered.map((s) => s.id), [filtered]);
+  // Só as seções entram na seleção: o filho tem curtir/excluir próprios no card.
+  const visiveis = useMemo(
+    () => filtered.filter((s) => s.parentId === null).map((s) => s.id),
+    [filtered],
+  );
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [confirmExcluir, setConfirmExcluir] = useState(false);
   const selTodosRef = useRef<HTMLInputElement>(null);
@@ -553,6 +593,8 @@ function SegmentsView({
             <span>
               {filtered.length} de {segments.data?.items.length ?? 0}{' '}
               {(segments.data?.items.length ?? 0) === 1 ? 'componente' : 'componentes'}
+              {totalFilhos > 0 &&
+                ` · ${totalFilhos} ${totalFilhos === 1 ? 'subcomponente' : 'subcomponentes'}`}
             </span>
             {dsInfo.data?.item.sourceUrl && (
               <span style={{ color: 'var(--color-fg-subtle)' }}>
@@ -778,17 +820,77 @@ function SegmentsView({
       )}
 
       <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((seg, i) => (
-          <SegmentCard
-            key={seg.id}
-            segment={seg}
-            dsId={dsId}
-            index={i}
-            onOpen={setDetalhe}
-            selected={sel.has(seg.id)}
-            onToggle={() => setSel((s) => toggleSel(s, seg.id))}
-          />
-        ))}
+        {filtered.map((seg, i) => {
+          // Filho que casou com o filtro de categoria: card compacto de
+          // primeiro nível, com o selo "de:" dizendo a seção de origem.
+          if (seg.parentId !== null) {
+            return (
+              <SegmentCardFilho
+                key={seg.id}
+                segment={seg}
+                dsId={dsId}
+                nomeDoPai={nomePorId.get(seg.parentId)}
+                onOpen={setDetalhe}
+              />
+            );
+          }
+          const filhos = filhosPorPai.get(seg.id) ?? [];
+          const aberto = expandidos.has(seg.id);
+          return (
+            <Fragment key={seg.id}>
+              <SegmentCard
+                segment={seg}
+                dsId={dsId}
+                index={i}
+                onOpen={setDetalhe}
+                selected={sel.has(seg.id)}
+                onToggle={() => setSel((s) => toggleSel(s, seg.id))}
+                subcomponentes={filhos.length}
+                expandido={aberto}
+                onToggleExpansao={
+                  // No filtro de peça o filho já sobe para a grade — expandir
+                  // aqui duplicaria os mesmos cards na tela.
+                  category === 'all'
+                    ? () =>
+                        setExpandidos((e) => {
+                          const n = new Set(e);
+                          if (n.has(seg.id)) n.delete(seg.id);
+                          else n.add(seg.id);
+                          return n;
+                        })
+                    : undefined
+                }
+              />
+              {aberto && category === 'all' && filhos.length > 0 && (
+                <div
+                  className="col-span-full rounded-xl border p-4"
+                  style={{
+                    borderColor: 'var(--color-border)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                  }}
+                >
+                  <div
+                    className="mb-3 text-[10px] uppercase tracking-[0.2em]"
+                    style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
+                  >
+                    Subcomponentes de {seg.name}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+                    {filhos.map((f) => (
+                      <SegmentCardFilho
+                        key={f.id}
+                        segment={f}
+                        dsId={dsId}
+                        nomeDoPai={seg.name}
+                        onOpen={setDetalhe}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Fragment>
+          );
+        })}
         {filtered.length === 0 && !segments.isLoading && (
           <div
             className="col-span-full py-16 text-center text-[13px]"
@@ -883,6 +985,9 @@ function SegmentCard({
   onOpen,
   selected,
   onToggle,
+  subcomponentes = 0,
+  expandido = false,
+  onToggleExpansao,
 }: {
   segment: SegmentRecord;
   dsId: string;
@@ -890,6 +995,11 @@ function SegmentCard({
   onOpen: (s: SegmentRecord) => void;
   selected: boolean;
   onToggle: () => void;
+  /** Quantas peças a subdivisão extraiu de dentro desta seção. */
+  subcomponentes?: number;
+  expandido?: boolean;
+  /** Presente quando a vista atual permite expandir os subcomponentes. */
+  onToggleExpansao?: () => void;
 }) {
   const qc = useQueryClient();
   const [confirmDel, setConfirmDel] = useState(false);
@@ -983,6 +1093,29 @@ function SegmentCard({
                 <span className="truncate">{CATEGORY_LABEL[segment.category] ?? 'Outros'}</span>
                 <FidelityBadge fidelity={segment.fidelity} />
               </div>
+              {subcomponentes > 0 && onToggleExpansao !== undefined && (
+                <button
+                  type="button"
+                  onClick={onToggleExpansao}
+                  aria-expanded={expandido}
+                  className="ds-tag mt-1.5 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
+                  style={{
+                    borderColor: expandido ? 'var(--color-border-strong)' : 'var(--color-border)',
+                    color: expandido ? 'var(--color-fg)' : 'var(--color-fg-muted)',
+                  }}
+                  title={
+                    expandido
+                      ? 'Recolher os subcomponentes'
+                      : 'Ver as peças extraídas de dentro desta seção'
+                  }
+                >
+                  <ChevronDown
+                    size={10}
+                    className={cn('transition-transform duration-300', expandido && 'rotate-180')}
+                  />
+                  {subcomponentes} subcomponente{subcomponentes === 1 ? '' : 's'}
+                </button>
+              )}
             </div>
             <div className="ml-3 flex shrink-0 items-center gap-1.5">
               <button
@@ -1036,7 +1169,149 @@ function SegmentCard({
         confirmLabel="Excluir"
         onConfirm={() => del.mutate()}
         onClose={() => setConfirmDel(false)}
-        description="A Galeria é material de trabalho. Re-segmentar a extração recria a lista completa — o que você curou na Biblioteca não é afetado."
+        description={
+          subcomponentes > 0
+            ? `${
+                subcomponentes === 1
+                  ? 'O subcomponente extraído de dentro dela sai junto'
+                  : `Os ${subcomponentes} subcomponentes extraídos de dentro dela saem junto`
+              }. A Galeria é material de trabalho — re-segmentar a extração recria a lista completa; o que você curou na Biblioteca não é afetado.`
+            : 'A Galeria é material de trabalho. Re-segmentar a extração recria a lista completa — o que você curou na Biblioteca não é afetado.'
+        }
+      />
+    </div>
+  );
+}
+
+/**
+ * Card compacto de um subcomponente — a peça que a subdivisão extraiu de
+ * dentro de uma seção. Mesma prévia viva do caminho clássico
+ * (`previewSegmentUrl`); curtir e excluir são independentes do pai. O selo
+ * "de:" diz a origem, porque no filtro de peças o filho aparece na grade sem o
+ * card da seção por perto.
+ */
+function SegmentCardFilho({
+  segment,
+  dsId,
+  nomeDoPai,
+  onOpen,
+}: {
+  segment: SegmentRecord;
+  dsId: string;
+  nomeDoPai: string | undefined;
+  onOpen: (s: SegmentRecord) => void;
+}) {
+  const qc = useQueryClient();
+  const [confirmDel, setConfirmDel] = useState(false);
+
+  const add = useMutation({
+    mutationFn: () => api.addToLibrary(segment.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['segments', dsId] });
+      qc.invalidateQueries({ queryKey: ['library'] });
+      toast.ok(`"${segment.name}" foi para a Biblioteca.`);
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao curtir.'),
+  });
+
+  const del = useMutation({
+    mutationFn: () => api.deleteSegment(dsId, segment.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['segments', dsId] });
+      toast.ok('Subcomponente removido da triagem.');
+      setConfirmDel(false);
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir.'),
+  });
+
+  return (
+    <div className="ds-glass-static group relative overflow-hidden rounded-lg">
+      <button
+        type="button"
+        onClick={() => onOpen(segment)}
+        aria-label={`Ver ${segment.name} em detalhe`}
+        className="block w-full"
+      >
+        <PreviewFrame src={previewSegmentUrl(segment.id)} title={segment.name} aspect={4 / 3} />
+      </button>
+      <div
+        className="flex items-center justify-between border-t p-2.5"
+        style={{ borderColor: 'rgba(255, 255, 255, 0.06)' }}
+      >
+        <div className="min-w-0 flex-1">
+          <div
+            className="truncate text-[12px] font-medium"
+            style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-body)' }}
+          >
+            {segment.name}
+          </div>
+          <div
+            className="ds-data mt-0.5 flex items-center gap-1.5 text-[9px]"
+            style={{ color: 'var(--color-fg-subtle)' }}
+          >
+            <span className="shrink-0">{CATEGORY_LABEL[segment.category] ?? 'Outros'}</span>
+            {nomeDoPai !== undefined && (
+              <span
+                className="truncate rounded-full border px-1.5 py-px"
+                style={{ borderColor: 'var(--color-border)' }}
+                title={`Extraído da seção "${nomeDoPai}"`}
+              >
+                de: {nomeDoPai}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="ml-2 flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setConfirmDel(true)}
+            className="flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-all duration-300 hover:bg-[rgba(198,40,40,0.16)] group-hover:opacity-100"
+            title="Excluir da triagem"
+          >
+            <Trash2 size={11} style={{ color: 'var(--color-crimson-3)' }} />
+          </button>
+          <button
+            type="button"
+            onClick={() => add.mutate()}
+            disabled={segment.inLibrary || add.isPending}
+            className={cn(
+              'flex h-7 w-7 items-center justify-center rounded-full transition-all duration-300 disabled:cursor-not-allowed',
+              segment.inLibrary ? 'ds-glow' : 'hover:scale-110',
+            )}
+            style={{
+              backgroundColor: segment.inLibrary
+                ? 'var(--color-primary)'
+                : 'rgba(255, 255, 255, 0.06)',
+            }}
+            title={segment.inLibrary ? 'Já na biblioteca' : 'Adicionar à biblioteca'}
+          >
+            {add.isPending ? (
+              <Loader2
+                size={11}
+                className="animate-spin"
+                style={{ color: 'var(--color-fg-muted)' }}
+              />
+            ) : (
+              <Heart
+                size={11}
+                style={{
+                  color: segment.inLibrary ? 'var(--color-bone-1)' : 'var(--color-fg-muted)',
+                  fill: segment.inLibrary ? 'var(--color-bone-1)' : 'none',
+                }}
+              />
+            )}
+          </button>
+        </div>
+      </div>
+
+      <ConfirmPop
+        open={confirmDel}
+        title={`Excluir "${segment.name}" da triagem?`}
+        busy={del.isPending}
+        confirmLabel="Excluir"
+        onConfirm={() => del.mutate()}
+        onClose={() => setConfirmDel(false)}
+        description="Só este subcomponente sai — a seção de origem continua na Galeria. Re-segmentar a extração recria a lista completa."
       />
     </div>
   );
@@ -1087,7 +1362,7 @@ function SegmentDetail({
               className="ds-data mt-0.5 flex items-center gap-2 text-[11px]"
               style={{ color: 'var(--color-fg-subtle)' }}
             >
-              {CATEGORIAS_DE_SISTEMA.has(segment.category) && (
+              {CATEGORIAS_DE_SISTEMA.has(segment.category) && segment.parentId === null && (
                 <span
                   className="rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.12em]"
                   style={{

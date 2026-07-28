@@ -119,6 +119,27 @@ test('campo sobe ao wrapper com <label>; input hidden não vira filho', () => {
   );
 });
 
+test('<label> ENVOLVENDO o input também é o wrapper — o rótulo não fica para trás', () => {
+  // O outro padrão comum de formulário. Com dois campos, a subida parava no
+  // <form> (mais de um controle) e devolvia o input pelado, sem rótulo.
+  const form = `
+<section class="contato py-16">
+  <h2>Fale conosco</h2>
+  <form>
+    <label class="campo">Seu nome <input type="text" class="input rounded border"></label>
+    <label class="campo">Seu e-mail <input type="email" class="input rounded border"></label>
+  </form>
+  <p>Respondemos em até um dia útil, de segunda a sexta, no horário comercial.</p>
+</section>`;
+  const campos = subdividirSecao({ category: 'form', htmlSnippet: form }).filter(
+    (f) => f.category === 'input',
+  );
+  assert.equal(campos.length, 1, `campos: ${campos.map((f) => f.name).join(' | ')}`);
+  assert.equal(campos[0]?.name, 'Campo (×2)');
+  assert.ok(campos[0]?.htmlSnippet.includes('<label'), 'o rótulo viaja com o campo');
+  assert.ok(campos[0]?.htmlSnippet.includes('Seu nome'), 'o texto do rótulo viaja junto');
+});
+
 // ── Itens de navegação ──────────────────────────────────────────────────────
 
 const NAV = `

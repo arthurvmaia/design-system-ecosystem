@@ -178,7 +178,7 @@ if (problemas.length > 0) {
 // Extrair sem segmentar não entrega nada de útil, então os dois andam juntos.
 if (paraSegmentar !== null) {
   try {
-    const { total, suspeitoDeSpa } = segmentarEIndexar(paraSegmentar);
+    const { total, raizes, suspeitoDeSpa } = segmentarEIndexar(paraSegmentar);
     if (total === 0) {
       console.error('\nA segmentação não encontrou nenhum componente.');
       console.error('O design-system.html existe, mas o <body> não tem filhos');
@@ -187,8 +187,9 @@ if (paraSegmentar !== null) {
     }
     console.log(`\n${total} segmento(s) prontos na Galeria.`);
     // Aviso, não bloqueio: existe página legítima com poucas seções, e recusar
-    // fecharia o job de alguém que sabe o que está fazendo.
-    if (suspeitoDeSpa) console.log(avisoSpa(total));
+    // fecharia o job de alguém que sabe o que está fazendo. O número do aviso
+    // são as SEÇÕES — contar os filhos da subdivisão inflaria a mensagem.
+    if (suspeitoDeSpa) console.log(avisoSpa(raizes));
   } catch (err) {
     console.error(`\nFalha ao segmentar: ${err instanceof Error ? err.message : String(err)}`);
     console.error('O job continua pendente — corrija e rode de novo.\n');

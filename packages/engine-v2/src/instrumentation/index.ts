@@ -3,8 +3,15 @@
  *
  * Existe para o resto do motor importar de um lugar só e para ficar evidente
  * onde vive TODO o código que roda dentro da página. Nada fora desta pasta é
- * injetado no navegador.
+ * injetado no navegador — `css-externo.ts` é a leitura pura do que os coletores
+ * trouxeram, e roda no Node.
  */
+export {
+  type FolhaColetada,
+  hrefsDasFolhas,
+  particionarCss,
+  urlDaFolha,
+} from './css-externo.js';
 export {
   ATTR_REF,
   INIT_SCRIPT,

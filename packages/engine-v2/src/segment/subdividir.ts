@@ -189,7 +189,15 @@ const extrairBadges = (root: HTMLElement): FilhoBruto[] =>
  * O controle sozinho é meia peça: o rótulo mora no wrapper. Sobe até o menor
  * ancestral que contém um `<label>` e SÓ este controle — o item de formulário —
  * e fica no próprio controle quando não há.
+ *
+ * O ancestral vale tanto com o `<label>` dentro dele (`<div><label></label>
+ * <input></div>`) quanto quando ele PRÓPRIO é o label (`<label>Nome <input>
+ * </label>`, igualmente comum): o `querySelector` só enxerga descendentes, e
+ * sem a segunda checagem o segundo padrão subia até o form, batia no corte de
+ * "mais de um controle" e devolvia o input pelado — sem rótulo nenhum.
  */
+const ehLabel = (el: HTMLElement): boolean => el.tagName.toLowerCase() === 'label';
+
 const subirAoWrapperComLabel = (controle: HTMLElement): HTMLElement => {
   let atual: HTMLElement = controle;
   for (let nivel = 0; nivel < 3; nivel++) {
@@ -197,7 +205,7 @@ const subirAoWrapperComLabel = (controle: HTMLElement): HTMLElement => {
     if (!(pai instanceof HTMLElement)) break;
     // Mais de um controle dentro: já é o formulário, não o campo.
     if (pai.querySelectorAll('input, textarea, select').length > 1) break;
-    if (pai.querySelector('label') !== null) return pai;
+    if (ehLabel(pai) || pai.querySelector('label') !== null) return pai;
     atual = pai;
   }
   return controle;

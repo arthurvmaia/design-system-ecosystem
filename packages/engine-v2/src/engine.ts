@@ -52,7 +52,10 @@ import {
   ROLAR_ATE_REF_FN,
   ROLAR_PARA_FN,
   chamar,
+  hrefsDasFolhas,
   limparInstrumentacao,
+  particionarCss,
+  urlDaFolha,
 } from './instrumentation/index.js';
 import {
   construirBackgrounds,
@@ -706,6 +709,9 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       .map((f) => ({ ordem: f.ordem ?? 0, conteudo: f.content ?? '' }));
     const cssInline = cssInlineOrdenado.map((f) => f.conteudo).join('\n');
 
+    const absDaFolha = (href: string): string => urlDaFolha(href, finalUrl);
+    const hrefsDeFolhas = hrefsDasFolhas(folhas, finalUrl);
+
     const assets: CapturedAsset[] = [];
     const assetsLocais = new Set<string>();
     // Içados para fora do closure: o bundle precisa das folhas localizadas
@@ -720,15 +726,8 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       const sink = (localPath: string, bytes: Uint8Array): void => {
         gravar(opts.dirCaptura, join('assets', localPath), bytes);
       };
-      const cssRefs = refs.filter((r) => r.kind === 'css' && r.absolute !== null);
-      const outros = refs.filter((r) => r.kind !== 'css');
-      const resCss = await localizeCss(
-        cssRefs.map((r) => r.absolute as string),
-        fetcher,
-        sink,
-        limits,
-        signal,
-      );
+      const { cssUrls, outros } = particionarCss(refs, hrefsDeFolhas);
+      const resCss = await localizeCss(cssUrls, fetcher, sink, limits, signal);
       cssMapExterno = resCss.cssMap;
       assetsDeCss = resCss.assets;
       const res = await localizeAssets(outros, fetcher, sink, limits, signal);
@@ -755,12 +754,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     const externasSemCopia: string[] = [];
     for (const f of folhas) {
       if (f.inline || f.href === null) continue;
-      let abs = f.href;
-      try {
-        abs = new URL(f.href, finalUrl).href;
-      } catch {
-        // href inválido segue como veio — e cai em "sem cópia local"
-      }
+      const abs = absDaFolha(f.href);
       const localPath = cssMapExterno.get(abs) ?? cssMapExterno.get(f.href);
       if (localPath === undefined) {
         externasSemCopia.push(abs);

@@ -1,76 +1,72 @@
 # Status do plano — Fidelidade visual + Subdivisão fina dos componentes
 
-> Atualizado em 2026-07-28. Execução parou por limite de sessão da conta; **6 de 8 fases de implementação concluídas**. Nada foi commitado — todas as mudanças estão no working tree. A migração do banco (0003) **já foi aplicada** no SQLite real.
+> Concluído em 2026-07-28. **As 8 fases de implementação, a verificação global, a revisão adversarial e o smoke E2E foram executados.** A migração do banco (0003) está aplicada.
 
-## O problema que o plano resolve
+## O problema que o plano resolveu
 
 1. **Componentes extraídos não ficavam iguais ao site de origem.** Causa dominante: o bundle só recebia CSS `<style>` inline — CSS de `<link>` externo (Next.js/Vite/Tailwind build), fontes (Google Fonts) e tokens `:root` externos nunca entravam. Além disso o preview V2 dependia 100% do site de origem estar no ar, e o selo de fidelidade marcava hover/focus "completo" sem checar se o CSS veio junto.
 2. **Segmentação parava na seção inteira.** Faltava subdivisão menor (botões, cards, badges, inputs, accordions), no espírito da taxonomia do `Extract HTML Design System v3.md`.
 
 Decisões acordadas: corrigir **fidelidade + subdivisão**; subcomponentes entram como **filhos vinculados à seção pai** (`parentId`), trilháveis separadamente na Galeria.
 
-Plano completo original: `C:\Users\Jefferson\.claude\plans\analise-meu-projeto-e-wild-valiant.md`
-
 ---
 
-## ✅ FEITO
+## ✅ Fidelidade
 
-### A1 — Preview V2 com assets locais ✅
-`apps/server/src/routes/preview.ts`: `lerReescritor` ganhou fallback — quando o manifesto V1 não existe, lê `capture-v2/manifest.json` com parse tolerante (pick Zod só de `assets`) e reescreve as refs do preview para `/api/asset/<ds>/...`. O preview de extrações V2 não depende mais do site de origem estar no ar. Comportamento V1 e casos de `null` preservados.
+### A1 — Preview V2 com assets locais
+`apps/server/src/routes/preview.ts`: `lerReescritor` ganhou fallback — quando o manifesto V1 não existe, lê `capture-v2/manifest.json` com parse tolerante e reescreve as refs do preview para `/api/asset/<ds>/...`. O preview de extrações V2 não depende mais do site de origem estar no ar.
 
-### A2 — Coleta ordenada das folhas CSS ✅
-`packages/engine-v2/src/instrumentation/collectors.ts`: `COLETAR_CSS_FN` reescrito para percorrer `document.styleSheets` **na ordem do documento**, emitindo `{ ordem, origem: style|link|cssom|adopted|shadow, href, inline, content }`. Agora também coleta `adoptedStyleSheets` (teto global 4000 regras) e `<style>` de shadow roots abertos (com demarcador). `RawCss` ganhou `ordem?`/`origem?` opcionais (compatível com capturas antigas); `cssInline` em `engine.ts` respeita a ordem da cascata. Teste novo `collectors-css.test.ts` (7/7 sem navegador).
+### A2 — Coleta ordenada das folhas CSS
+`packages/engine-v2/src/instrumentation/collectors.ts`: `COLETAR_CSS_FN` percorre `document.styleSheets` **na ordem do documento**, emitindo `{ ordem, origem: style|link|cssom|adopted|shadow, href, inline, content }`, incluindo `adoptedStyleSheets` e `<style>` de shadow roots abertos. `cssInline` respeita a ordem da cascata.
 
-### A3 — CSS externo e fontes no bundle ✅ (coração da correção)
-`packages/engine-v2/src/engine.ts` + `compiler/bundle.ts`: o CSS externo que o `localizeCss` já baixava (e ficava órfão) agora **entra no bundle**. `EntradaBundle` ganhou `cssExternos`, `cssInlineOrdenado`, `assetsDeCss` e `dirAssetsCaptura`; `escreverBundle` copia folhas + fontes/imagens/@imports para `assets/<localPath>` **mantendo os nomes hashed** (os `@import` reescritos dependem deles). O `index.html` linka `[externos na ordem do documento, depois arquivos do organizarCss]`; com intercalação (`<style>` antes de `<link>`) cai para um arquivo por folha na ordem exata, com motivo no manifesto. `dependencies.css` lista as externas; `derivarContrato` recebe o conteúdo delas (tokens `:root` e `@font-face` externos entram no contrato). Folha sem cópia local vira limitação no manifesto e nos segmentos. Testes: bundle 5/5, compiler 37/37.
+### A3 — CSS externo e fontes no bundle (coração da correção)
+`engine.ts` + `compiler/bundle.ts`: o CSS externo que o `localizeCss` baixa agora **entra no bundle**. `escreverBundle` copia folhas + fontes/imagens/@imports para `assets/<localPath>` mantendo os nomes hashed; o `index.html` linka na ordem do documento, com fallback de intercalação. `derivarContrato` recebe o conteúdo das externas (tokens `:root` e `@font-face` externos entram no contrato).
 
-### A4 — Selo de fidelidade honesto ✅
-`packages/explorer/src/assess.ts`: hover/focus só saem "completo" quando o CSS que os define está embutido (`AssessOptions.cssEmbutido`); senão "parcial" com aviso "declarado no HTML; CSS não embutido". `packages/engine-v2/src/segment/segment-v2.ts`: `montarFidelidade` ganhou `cssExternoFaltando` → `f.css` "parcial" e selo "parcial" em componente portátil. Sinal ligado ao resultado da A3 em `engine.ts`. Testes: explorer 109/109, segment-v2 22/22.
+**Correção posterior (revisão):** o que é folha de estilo passou a sair da COLETA, não da extensão da URL — `packages/engine-v2/src/instrumentation/css-externo.ts`. O embed padrão do Google Fonts (`/css2?family=…`) não termina em `.css`, era baixado cru, ficava fora do `cssMap` e caía em "sem cópia local" — o bundle saía sem as fontes e **todo componente portátil era rebaixado a "parcial"**, exatamente o caso que a A3 existe para resolver.
 
-### B1 — `parentId` no schema + migração ✅ (migração JÁ APLICADA no banco real)
-`packages/shared/src/schemas/segment.ts`: `SegmentRecord.parentId` (nullable, default null — manifestos antigos seguem parseando). `packages/indexer`: coluna `parent_id` com FK auto-referente `ON DELETE cascade` + índice; migração `0003_puzzling_namorita.sql` gerada e aplicada (o SQL do drizzle-kit veio sem o `ON DELETE cascade` — corrigido à mão antes de aplicar; os 28 segmentos existentes ficaram com `parent_id = NULL`). Tipo cliente atualizado em `apps/web/src/lib/api.ts`.
+### A4 — Selo de fidelidade honesto
+`packages/explorer/src/assess.ts`: hover/focus só saem "completo" quando o CSS que os define está embutido. `segment-v2.ts`: `cssExternoFaltando` → `f.css` "parcial" e selo "parcial" em componente portátil.
 
-### B2 — Subdivisão por seção no motor V2 ✅
-Primitivas extraídas para `packages/segmenter/src/primitivas.ts` (assinatura, PARECE_BOTAO, PARECE_CARD, embrulhar...). Novo `packages/engine-v2/src/segment/subdividir.ts`: extrai por seção botões, cards (≥2 irmãos mesma assinatura), badges, campos (com wrapper de label), itens de acordeão e itens de nav; dedup por assinatura com contagem no nome ("Botão primário (×2)"), teto 8 filhos/seção, descartes de filho ≥60% da seção ou sem substância. `SegmentoV2.filhos` preenchido só em seção aprovada; `persist.ts` grava filhos com `parentId` do pai e `position` contínua após as seções (pais primeiro — FK ok; filhos sem insights). `scripts/segmentar.ts`: aviso de SPA conta só raízes. Teste novo `subdividir.test.ts` (9 casos). node-html-parser alinhado a ^6.1.13 nos dois pacotes.
+## ✅ Subdivisão
 
----
+### B1 — `parentId` no schema + migração
+`SegmentRecord.parentId` (nullable, default null — manifestos antigos seguem parseando). Coluna `parent_id` com FK auto-referente `ON DELETE cascade` + índice; migração `0003_puzzling_namorita.sql` aplicada.
 
-## ⬜ FALTA FAZER
+### B2 — Subdivisão por seção no motor V2
+Primitivas em `packages/segmenter/src/primitivas.ts`; `packages/engine-v2/src/segment/subdividir.ts` extrai por seção botões, cards (≥2 irmãos mesma assinatura), badges, campos (com wrapper de label), itens de acordeão e itens de nav. Dedup por assinatura com contagem no nome, teto de 8 filhos/seção, descartes de filho ≥60% da seção ou sem substância. `persist.ts` grava filhos com `parentId` do pai e `position` contínua após as seções.
 
-### B3 — Galeria: expandir seção e triar filhos ⬜ (não iniciada)
-`apps/web/src/routes/Gallery.tsx`:
-- Separar raízes (`parentId === null`) de `filhosPorPai` (Map); grade mostra raízes.
-- Card de seção com filhos ganha affordance "N subcomponentes" expandindo abaixo do card (`col-span-full`, mini-grid compacto), recolhido por padrão.
-- Filtro por categoria de peça (button/badge/input/accordion/card) mostra filhos que casam como cards de primeiro nível; adicionar `badge`, `input`, `accordion` a `CATEGORIES`/`CATEGORY_LABEL` (linhas ~47-87).
-- Card de filho: variação compacta do `SegmentCard`, mesmo `previewSegmentUrl(child.id)` (server já funciona), selo "de: <nome da seção>"; curtir/excluir independentes.
-- `ConfirmPop` de exclusão de seção menciona "e seus N subcomponentes" (cascade do banco já remove).
-- **Nenhuma rota nova no server.**
+**Correção posterior (revisão):** `subirAoWrapperComLabel` não reconhecia o padrão `<label>Nome <input></label>` (o `querySelector` só enxerga descendentes), e com 2+ campos no form devolvia o input pelado, sem rótulo.
 
-### B4 — Classifier clamp + validação + docs ⬜ (não iniciada)
-- `apps/server/src/routes/design-systems.ts` (~:430-442): clamp — segmento com `parentId` só aceita categoria de peça (button, badge, input, accordion, card, nav, other).
-- `packages/classifier/src/index.ts`: incluir flag de subcomponente no input do prompt (dica de categoria), sem mudar o contrato de saída.
-- Conferir que o validador de replay (`@ds/server/validate`, usado pelo `fila:concluir`) não falha com filho sem bundle/estados; corrigir minimamente se falhar.
-- Documentar o contrato no README do engine-v2 (filho = SegmentRecord com parentId, sem bundle próprio, position após as seções, preview pelo caminho clássico).
+### B3 — Galeria: expandir seção e triar filhos
+`apps/web/src/routes/Gallery.tsx`: a grade mostra as raízes; card de seção com filhos ganha "N subcomponentes" expandindo em mini-grid `col-span-full`, recolhido por padrão. O filtro por categoria de peça (`badge`, `input`, `accordion` entraram em `CATEGORIES`) sobe os filhos para cards de primeiro nível com selo "de: <seção>". Card de filho é variação compacta, com curtir/excluir independentes. O `ConfirmPop` da seção menciona os N subcomponentes. Nenhuma rota nova no server.
 
-### Verificação global ⬜ (não rodou)
-- `pnpm typecheck && pnpm lint` na raiz + suíte de testes de todos os pacotes alterados (cada pacote passou isolado, mas o repo inteiro nunca rodou junto).
-- **Ponto de atenção conhecido:** `apps/server/src/lib/validate-preview.test.ts:104` — fixture de `SegmentRecord` provavelmente ainda sem `parentId` (B2 corrigiu `persist.ts` e `segmenter/index.ts`, mas esse teste do server não estava no escopo de ninguém).
-- **Pendência de uma linha:** `scripts/fila-concluir.ts` imprime `avisoSpa(total)` — trocar para o novo campo `raizes` do resultado da segmentação (o gatilho já está certo; só a mensagem pode inflar).
+### B4 — Classifier clamp + validação + docs
+`CATEGORIAS_DE_PECA` em `@ds/shared`; clamp em `apps/server/src/routes/design-systems.ts` (categoria de seção devolvida para um filho é descartada — nome e `kind` entram). O `SYSTEM_PROMPT` do classifier carrega a regra, o que a faz valer também no modo `queue`, onde a classificação é trabalho do agente (documentado em `CLAUDE.md`). Contrato dos filhos documentado em `packages/engine-v2/README.md`.
 
-### Revisão adversarial ⬜ (não rodou)
-Três lentes sobre o diff completo (correção, conformidade com o plano, regressão/compatibilidade), 3 céticos por achado, correção só dos confirmados.
+## ✅ Verificação global
 
-### Smoke E2E ⬜ (não rodou)
-Extrair um site Next.js real (job rotulado `smoke-teste-`), depois validar: bundle `seg_0` funciona **offline** com folhas hashed na ordem e fontes locais; preview com `<link>` reescritos para `/api/asset/...`; `segments/manifest.json` e SQLite com filhos (`parent_id`); `pnpm segmentar` 2× sem duplicatas.
+- `pnpm typecheck` (12/12) e `pnpm lint` limpos; `pnpm test` verde.
+- Testes novos: `css-externo.test.ts` (4 casos), o caso do `<label>` envolvendo o input em `subdividir.test.ts`, além de `collectors-css.test.ts` e `subdividir.test.ts` das fases anteriores.
+- `validate-preview.test.ts`: fixture de `SegmentRecord` recebeu `parentId`.
+- `fila-concluir.ts`: o aviso de SPA usa `raizes`, não `total` — filho de subdivisão não infla a mensagem.
 
----
+## ✅ Revisão adversarial
 
-## Como retomar
+Três lentes (correção, conformidade, regressão) sobre o diff completo. Cinco achados; quatro verificados como reais e corrigidos:
 
-O workflow pode ser retomado do ponto onde parou (as 6 fases prontas voltam do cache; só B3, B4, verificação, revisão e smoke rodam de novo). Basta pedir ao Claude Code: **"continue a execução do plano"**. Alternativamente, as fases B3/B4 são pequenas o bastante para implementar direto, seguindo as seções acima.
+1. **Folha de estilo sem `.css` na URL** (Google Fonts) nunca era localizada — ver A3 acima.
+2. **Modo queue inseria sem migrar o banco**: nenhum script da fila chamava `runMigrations()` (só o boot do server e o `acervo:importar`). Quem atualizasse pelo GitHub e rodasse o `PROCESSAR.bat` antes de abrir o app quebrava no insert da coluna nova. `segmentarEIndexar` agora migra (idempotente).
+3. **`<label>` envolvendo o input** perdia o rótulo — ver B2 acima.
+4. **`PREVIEW_VERSION` não subiu** apesar de a A1 mudar a composição do preview V2, então validações antigas ficavam em cache afirmando "validated" sobre um preview que não era mais o validado. Subiu para 5.
 
-## Estado do repositório
+O quinto (ausência de clamp no modo `queue`) foi endereçado pela regra no `SYSTEM_PROMPT` + `CLAUDE.md`, com o README corrigido para não prometer um clamp de servidor onde ele não roda.
 
-- Nenhum commit foi feito — tudo está no working tree (`git status` / `git diff` mostram o conjunto).
-- Banco real (`~/design-system-ecosystem`): migração 0003 aplicada (aditiva e segura; dados antigos intactos com `parent_id = NULL`).
-- Arquivos novos criados: `packages/segmenter/src/primitivas.ts`, `packages/engine-v2/src/segment/subdividir.ts` (+ testes `subdividir.test.ts`, `collectors-css.test.ts`), migração `packages/indexer/migrations/0003_*`.
+## ✅ Smoke E2E
+
+Extração real de `nextjs.org` (Next.js, motor V2, 85s, parcial por orçamento de percurso — esperado):
+
+- Bundle `seg_0` offline: 6 folhas externas hashed + 4 inline na ordem exata do documento, 7 fontes `.woff2` locais, **zero referências absolutas** de CSS/fonte.
+- Preview da seção: 85 refs reescritas para `/api/asset/<ds>/…`, **zero** links de CSS para a origem.
+- Preview do filho pelo caminho clássico, com o embrulho `[data-ds-amostra]`.
+- Banco e manifesto: 11 seções + 21 filhos com `parent_id`, zero órfãos, `position` dos filhos começando em 11 (depois das seções).
+- `pnpm segmentar` 2× → 32 ids distintos, sem duplicatas.
