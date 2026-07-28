@@ -7,6 +7,7 @@ import {
   type SegmentRecord,
   api,
   frameUrl,
+  previewSegmentHoverUrl,
   previewSegmentReplayUrl,
   previewSegmentScrollUrl,
   previewSegmentUrl,
@@ -29,6 +30,7 @@ import {
   Heart,
   Layers,
   Loader2,
+  MousePointer2,
   MoveVertical,
   Play,
   Sparkles,
@@ -980,6 +982,13 @@ function SegmentCard({
 }) {
   const qc = useQueryClient();
   const [confirmDel, setConfirmDel] = useState(false);
+  const printDaDobra = segment.fidelity?.framePath;
+  // Camada que cobre a página inteira e referência visual não se explicam
+  // sozinhas num card: a primeira vira uma tira, a segunda vira um vazio. As
+  // duas mostram o RETRATO, que é o que a captura viu.
+  const mostraRetrato =
+    printDaDobra !== undefined &&
+    (segment.category === 'background' || segment.fidelity?.support === 'visual');
 
   const add = useMutation({
     mutationFn: () => api.addToLibrary(segment.id),
@@ -1040,14 +1049,29 @@ function SegmentCard({
             className="block w-full"
           >
             <div className="transition-transform duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.06]">
-              {/* Todos os cards com a mesma altura e o componente inteiro
-                  dentro, centralizado. Antes a grade ficava irregular e uma
-                  barra de navegação virava uma fatia de 20px. */}
-              <PreviewFrame
-                src={previewSegmentUrl(segment.id)}
-                title={segment.name}
-                ajuste="conter"
-              />
+              {/* Referência visual mostra o RETRATO, não o HTML: uma camada que
+                  cobre a página inteira, renderizada solta num card, vira uma
+                  tira sem sentido. O retrato é o que a captura viu.
+                  As demais mostram o componente inteiro, centralizado, com a
+                  mesma altura em todos os cards da linha. */}
+              {mostraRetrato && printDaDobra !== undefined ? (
+                <div
+                  className="w-full"
+                  style={{ aspectRatio: '16 / 10', backgroundColor: 'var(--color-obsidian-0)' }}
+                >
+                  <img
+                    src={frameUrl(dsId, printDaDobra)}
+                    alt={`Retrato de ${segment.name}`}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <PreviewFrame
+                  src={previewSegmentUrl(segment.id)}
+                  title={segment.name}
+                  ajuste="conter"
+                />
+              )}
             </div>
           </button>
           {/* Altura reservada: a linha de peças é opcional, e sem reservar o
@@ -1430,11 +1454,17 @@ function SegmentDetail({
   // mostrar sozinhas: o preview abriria um retângulo vazio. Quando existe
   // retrato, é ele que abre. O retrato do fundo sai com o conteúdo esmaecido,
   // então dá para ver o fundo sem perder a noção de onde ele fica.
-  const abreNoPrint = print !== undefined && segment.fidelity?.support === 'visual';
-  const [modo, setModo] = useState<'plano' | 'estados' | 'scroll' | 'print'>(
+  const abreNoPrint =
+    print !== undefined &&
+    (segment.fidelity?.support === 'visual' || segment.category === 'background');
+  const [modo, setModo] = useState<'plano' | 'estados' | 'scroll' | 'print' | 'hover'>(
     abreNoPrint ? 'print' : 'plano',
   );
   const temEstados = (segment.fidelity?.states?.length ?? 0) > 0;
+  // Hover medido na captura: é o que justifica oferecer a demonstração.
+  const temHover =
+    segment.fidelity?.interactions?.some((i) => i.kind === 'hover') === true ||
+    segment.fidelity?.pipeline?.some((p) => p.kind === 'hover') === true;
   // Referência visual (selo "visual"): o modal abre direto o movimento gravado
   // (loop das amostras) — a miniatura limpa fica só para o card da grade.
   const ehReferenciaVisual = segment.fidelity?.support === 'visual';
@@ -1513,6 +1543,22 @@ function SegmentDetail({
                 {modo === 'scroll' ? 'Rolando' : 'Ver ao rolar'}
               </button>
             )}
+            {temHover && (
+              <button
+                type="button"
+                onClick={() => setModo((m) => (m === 'hover' ? 'plano' : 'hover'))}
+                aria-pressed={modo === 'hover'}
+                title="Passa o mouse sozinho em cada elemento que reage, um de cada vez"
+                className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+                style={{
+                  borderColor: modo === 'hover' ? 'var(--color-primary)' : 'var(--color-border)',
+                  color: modo === 'hover' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+                }}
+              >
+                <MousePointer2 size={11} />
+                {modo === 'hover' ? 'Mostrando hover' : 'Ver hover'}
+              </button>
+            )}
             {print !== undefined && (
               <button
                 type="button"
@@ -1567,9 +1613,11 @@ function SegmentDetail({
               src={
                 modo === 'scroll'
                   ? previewSegmentScrollUrl(segment.id, bg)
-                  : modo === 'estados' || ehReferenciaVisual
-                    ? previewSegmentReplayUrl(segment.id, bg)
-                    : previewSegmentUrl(segment.id, bg)
+                  : modo === 'hover'
+                    ? previewSegmentHoverUrl(segment.id, bg)
+                    : modo === 'estados' || ehReferenciaVisual
+                      ? previewSegmentReplayUrl(segment.id, bg)
+                      : previewSegmentUrl(segment.id, bg)
               }
               title={segment.name}
               aspect={16 / 11}

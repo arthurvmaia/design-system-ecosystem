@@ -375,6 +375,13 @@ const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
 export const previewSegmentUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/segment/${segId}${bg ? `?bg=${bg}` : ''}`;
 /**
+ * Prévia em modo HOVER: reescreve as regras `:hover` do site como classe e as
+ * liga num elemento de cada vez. Existe porque `:hover` não se aciona por
+ * código, então sem isto o hover só aparecia por acaso.
+ */
+export const previewSegmentHoverUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
+  `/api/preview/segment/${segId}?hover=1${bg ? `&bg=${bg}` : ''}`;
+/**
  * O print da dobra, como a captura a viu no site. `framePath` vem do insight e
  * é relativo a `capture-v2/` (ex.: `frames/secao-ab12.png`).
  */

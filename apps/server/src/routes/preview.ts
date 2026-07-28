@@ -13,7 +13,9 @@ import {
   construirIndiceAssets,
   libraryComponentBundleDir,
   reescreverParaLocal,
+  vaultCaptureAssetsDir,
   vaultCaptureManifest,
+  vaultCaptureV2AssetsDir,
   vaultCaptureV2Dir,
   vaultCaptureV2Manifest,
   vaultExtractedDir,
@@ -32,6 +34,7 @@ import {
   lerRepresentacaoDeDir,
 } from '../lib/bundle-v2.js';
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
+import { montarDemoDeHover } from '../lib/hover-demo.js';
 
 /**
  * Parse TOLERANTE do manifesto V2: daqui só interessa o campo `assets`. O schema
@@ -201,7 +204,17 @@ function medir(){
   }
   if(max<=0)max=document.documentElement.scrollHeight;
   var h=Math.round(Math.min(12000,Math.max(80,max)));
-  if(Math.abs(h-ultimo)>4){ultimo=h;try{parent.postMessage({tipo:'ds-preview-altura',altura:h},'*');}catch(e){}}
+  // O fundo do documento viaja junto: quem exibe usa a MESMA cor na moldura, e
+  // a sobra ao redor de um componente curto deixa de parecer buraco preto.
+  var fundo='';
+  try{
+    var cs=getComputedStyle(document.body);
+    fundo=cs.backgroundColor;
+    if(!fundo||fundo==='rgba(0, 0, 0, 0)'||fundo==='transparent'){
+      fundo=getComputedStyle(document.documentElement).backgroundColor||'';
+    }
+  }catch(e){}
+  if(Math.abs(h-ultimo)>4){ultimo=h;try{parent.postMessage({tipo:'ds-preview-altura',altura:h,fundo:fundo},'*');}catch(e){}}
 }
 addEventListener('load',medir);addEventListener('resize',medir);
 try{if(window.ResizeObserver&&document.body)new ResizeObserver(medir).observe(document.body);}catch(e){}
@@ -585,6 +598,111 @@ const responderHtml = (html: string, status: 200 | 404 = 200): Response =>
     },
   });
 
+/**
+ * Palco do HOVER: liga a classe derivada num elemento de cada vez.
+ *
+ * Percorre os alvos em ordem, segura cada um por um tempo e destaca com um
+ * contorno, para ficar claro QUEM está sendo demonstrado. Passar o mouse de
+ * verdade continua funcionando (o `:hover` original está lá); a demonstração só
+ * mostra sozinha o que a pessoa veria se passasse.
+ */
+const montarHoverReplay = (
+  corpo: string,
+  cssTexts: readonly string[],
+): { corpo: string; head: string } | null => {
+  const demo = montarDemoDeHover(cssTexts);
+  if (demo === null) return null;
+
+  const head = `<style>
+#ds-hv-bar{position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;gap:8px;align-items:center;
+padding:8px 12px;background:#0b0b0e;color:#e7e5e4;font:12px system-ui;border-bottom:1px solid #26262b}
+.ds-hv-btn{border:1px solid #3f3f46;background:#18181b;color:#e7e5e4;border-radius:999px;padding:4px 10px;font:12px system-ui;cursor:pointer}
+#ds-hv-palco{padding-top:40px}
+.ds-hv-foco{outline:2px solid #c62828 !important;outline-offset:2px !important}
+${demo.estilo}
+</style>`;
+
+  const runtime = `<script>(function(){
+  var SEL = ${escaparParaScript(JSON.stringify(demo.alvos))};
+  var palco = document.getElementById('ds-hv-palco');
+  var msg = document.getElementById('ds-hv-msg');
+  if(!palco) return;
+  var reduz=false; try{ reduz=matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+  // Só os alvos que EXISTEM neste segmento: o CSS é do site inteiro.
+  var alvos = [];
+  SEL.forEach(function(s){
+    var achados;
+    try{ achados = palco.querySelectorAll(s); }catch(e){ return; }
+    for(var i=0;i<achados.length && alvos.length<24;i++){
+      var el = achados[i];
+      var r = el.getBoundingClientRect();
+      if(r.width < 8 || r.height < 8) continue; // invisível não se demonstra
+      if(alvos.indexOf(el) === -1) alvos.push(el);
+    }
+  });
+  if(alvos.length === 0){ msg.textContent = 'Nenhum elemento deste bloco tem hover.'; return; }
+  var i = -1, atual = null, timer = null, rodando = false;
+  function limpar(){ if(atual){ atual.classList.remove('ds-hv'); atual.classList.remove('ds-hv-foco'); atual = null; } }
+  function passo(){
+    limpar();
+    i = (i + 1) % alvos.length;
+    atual = alvos[i];
+    atual.classList.add('ds-hv');
+    atual.classList.add('ds-hv-foco');
+    try{ atual.scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){}
+    msg.textContent = 'Passando o mouse em ' + (i+1) + ' de ' + alvos.length;
+    timer = setTimeout(passo, 1500);
+  }
+  function tocar(){ if(rodando) return; rodando = true; passo(); }
+  function parar(){ rodando = false; if(timer) clearTimeout(timer); limpar(); msg.textContent = alvos.length + ' elemento(s) com hover. Passe o mouse para ver ao vivo.'; }
+  document.getElementById('ds-hv-play').addEventListener('click', function(){ rodando ? parar() : tocar(); });
+  msg.textContent = alvos.length + ' elemento(s) com hover.';
+  if(!reduz) setTimeout(tocar, 500);
+})();</script>`;
+
+  const barra = `<div id="ds-hv-bar" role="toolbar" aria-label="Demonstração de hover">
+<span>Hover:</span>
+<button type="button" class="ds-hv-btn" id="ds-hv-play">Tocar / parar</button>
+<span id="ds-hv-msg" aria-live="polite"></span>
+</div>
+<div id="ds-hv-palco">${corpo}</div>`;
+
+  return { corpo: `${barra}\n${runtime}`, head };
+};
+
+/**
+ * Todo o CSS que a prévia de fato carrega: os `<style>` do documento mais os
+ * arquivos que os `<link>` apontam para o vault. É a fonte da demonstração de
+ * hover — ler pelo CSSOM não serve, porque folha de outra origem não expõe as
+ * regras, e é justamente nelas que mora o hover de site com CSS de build.
+ */
+const cssDoDocumento = (head: string, dsId: string): string[] => {
+  const textos: string[] = [];
+  for (const m of head.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) {
+    if (m[1]) textos.push(m[1]);
+  }
+  for (const m of head.matchAll(/<link[^>]+href="\/api\/asset\/([^"]+)"/gi)) {
+    const rel = m[1];
+    if (rel === undefined) continue;
+    const semDs = rel.replace(`${dsId}/`, '');
+    for (const dir of [
+      vaultCaptureV2AssetsDir(dsId as `ds_${string}`),
+      vaultCaptureAssetsDir(dsId as `ds_${string}`),
+    ]) {
+      const caminho = join(dir, semDs);
+      if (!caminho.startsWith(dir)) continue; // guarda de travessia
+      if (!existsSync(caminho)) continue;
+      try {
+        textos.push(readFileSync(caminho, 'utf8'));
+      } catch {
+        // arquivo ilegível: segue sem ele
+      }
+      break;
+    }
+  }
+  return textos;
+};
+
 /** Prévia de um segmento bruto da Galeria. */
 previewRoute.get('/segment/:segId', (c) => {
   const segId = c.req.param('segId');
@@ -688,12 +806,21 @@ previewRoute.get('/segment/:segId', (c) => {
   const scroll = querScroll ? lerScroll(seg.designSystemId, seg.id) : [];
   const scrollReplay = scroll.length > 0 ? montarScrollReplay(corpo, scroll) : null;
   const replay = !scrollReplay && estados.length > 0 ? montarReplay(corpo, estados) : null;
-  const modo = scrollReplay ?? replay;
+
+  // Modo hover (`?hover=1`): reescreve as regras `:hover` do próprio site como
+  // classe e as liga uma de cada vez. É a única forma honesta de MOSTRAR o
+  // hover: o navegador não deixa ninguém acionar `:hover` por código.
+  const cabecaOriginal = reescreve(extrairHead(html));
+  const hoverDemo =
+    c.req.query('hover') === '1' && !scrollReplay && !replay
+      ? montarHoverReplay(corpo, cssDoDocumento(cabecaOriginal, seg.designSystemId))
+      : null;
+  const modo = scrollReplay ?? replay ?? hoverDemo;
 
   return responderHtml(
     compor({
       titulo: seg.name,
-      head: `${reescreve(extrairHead(html))}${modo ? modo.head : ''}`,
+      head: `${cabecaOriginal}${modo ? modo.head : ''}`,
       bodyAttrs: extrairBodyAttrs(html),
       corpo: modo ? modo.corpo : corpo,
       // Sem <base>: o design-system.html é absolutizado (refs absolutas), então a

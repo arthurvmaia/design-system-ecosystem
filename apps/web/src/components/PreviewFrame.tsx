@@ -63,6 +63,8 @@ export function PreviewFrame({
   const [visible, setVisible] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [alturaConteudo, setAlturaConteudo] = useState<number | null>(null);
+  // Cor de fundo do próprio documento, para a moldura combinar com ele.
+  const [fundoDoDoc, setFundoDoDoc] = useState<string | null>(null);
 
   // A altura chega do próprio documento. Origem opaca (sandbox sem
   // allow-same-origin) não dá para conferir, então a checagem é a janela que
@@ -71,9 +73,10 @@ export function PreviewFrame({
     if (!autoHeight && ajuste !== 'conter') return;
     const onMsg = (e: MessageEvent) => {
       if (frame.current === null || e.source !== frame.current.contentWindow) return;
-      const dado = e.data as { tipo?: unknown; altura?: unknown } | null;
+      const dado = e.data as { tipo?: unknown; altura?: unknown; fundo?: unknown } | null;
       if (dado?.tipo !== 'ds-preview-altura' || typeof dado.altura !== 'number') return;
       if (Number.isFinite(dado.altura)) setAlturaConteudo(dado.altura);
+      if (typeof dado.fundo === 'string' && dado.fundo.length > 0) setFundoDoDoc(dado.fundo);
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
@@ -138,11 +141,13 @@ export function PreviewFrame({
     <div
       ref={wrap}
       className={`relative overflow-hidden ${className ?? ''}`}
-      style={
-        alturaDoQuadro === null
-          ? { aspectRatio: String(aspect), backgroundColor: 'var(--color-obsidian-0)' }
-          : { height: alturaDoQuadro, backgroundColor: 'var(--color-obsidian-0)' }
-      }
+      style={{
+        ...(alturaDoQuadro === null ? { aspectRatio: String(aspect) } : { height: alturaDoQuadro }),
+        // A sobra em volta usa o fundo do próprio componente. Com o preto do
+        // app, um bloco largo e baixo virava uma tira no meio de um vazio e
+        // parecia defeito; com o fundo dele, lê como uma superfície só.
+        backgroundColor: fundoDoDoc ?? 'var(--color-obsidian-0)',
+      }}
     >
       {!loaded && (
         <div

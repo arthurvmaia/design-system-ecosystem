@@ -99,14 +99,19 @@ test('fetcher seguro: um travado NÃO bloqueia outro que responde (regra 7)', as
   process.env.DS_ASSET_ALLOW_LOCAL = '1';
   try {
     const fetcher = createSecureHttpFetcher({ ...DEFAULT_LIMITS, assetTimeoutMs: 150 });
-    const t0 = Date.now();
+    // O que importa aqui é o ISOLAMENTO: um download travado devolve null por
+    // timeout e o outro devolve os bytes normalmente, sem um contaminar o outro.
+    //
+    // Havia também um teto de tempo de parede (900ms) dizendo provar
+    // paralelismo. Não provava: com `Promise.all` e timeout de 150ms, a versão
+    // em série levaria ~155ms e passaria igual. Só rendia falha intermitente
+    // quando a máquina estava ocupada rodando o resto da suíte.
     const [rT, rR] = await Promise.all([
       fetcher(`http://localhost:${pT}/a.png`),
       fetcher(`http://localhost:${pR}/b.png`),
     ]);
     assert.equal(rT, null, 'o travado devolve null');
     assert.ok(rR && rR.bytes.byteLength > 0, 'o rápido devolve os bytes');
-    assert.ok(Date.now() - t0 < 900, 'rodaram em paralelo — o travado não segurou o rápido');
   } finally {
     process.env.DS_ASSET_ALLOW_LOCAL = undefined;
     await fecharServidor(travado);
