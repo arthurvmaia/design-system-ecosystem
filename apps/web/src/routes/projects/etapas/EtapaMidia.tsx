@@ -128,7 +128,7 @@ export function StepMidia({
   return (
     <div className="space-y-4">
       <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
-        Tudo aqui é <strong style={{ color: 'var(--color-fg)' }}>opcional</strong> — pode pular e
+        Tudo aqui é <strong style={{ color: 'var(--color-fg)' }}>opcional</strong>. Pode pular e
         gerar sem mídia: as seções saem bonitas no estilo do kit. A mídia fica presa à{' '}
         <strong style={{ color: 'var(--color-fg)' }}>seção</strong>: trocar a peça na Estrutura não
         apaga nada. As logos vêm da Marca e entram sozinhas nos lugares certos.
@@ -185,7 +185,7 @@ export function StepMidia({
                           : ' · sem espaço de mídia no componente'
                     }`
                   : guiada
-                    ? 'criada no estilo do kit — a mídia enviada vira o visual da seção'
+                    ? 'criada no estilo do kit: a mídia enviada vira o visual da seção'
                     : ''}
               </span>
               <label

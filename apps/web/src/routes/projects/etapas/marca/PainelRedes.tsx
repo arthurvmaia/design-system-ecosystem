@@ -62,7 +62,7 @@ export function PainelRedes({
     <div className="max-w-[560px] space-y-3">
       <SecaoCabecalho
         titulo="Redes sociais"
-        descricao="Preencha só as redes que a marca usa. Cada uma pode escolher onde aparece no site — o automático coloca no rodapé e na seção de contato."
+        descricao="Preencha só as redes que a marca usa. Cada uma pode escolher onde aparece no site. No automático, ela vai para o rodapé e para a seção de contato."
         opcional
       />
       {SOCIAL_PLATFORMS.map((p) => {

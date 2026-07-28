@@ -87,13 +87,13 @@ export function StepRevisao({
       )}
 
       <div className="ds-glass-static rounded-lg p-4">
-        <Linha rotulo="Projeto" valor={name || '—'} />
+        <Linha rotulo="Projeto" valor={name || 'sem nome ainda'} />
         <Linha
           rotulo="Kit base"
-          valor={kit ? `${kit.name} · ${kit.components.length} componentes` : '—'}
+          valor={kit ? `${kit.name} · ${kit.components.length} componentes` : 'nenhum escolhido'}
         />
-        <Linha rotulo="Marca" valor={branding.brandName || '—'} />
-        <Linha rotulo="Voz" valor={voz || branding.identidadeVerbal.observacao || '—'} />
+        <Linha rotulo="Marca" valor={branding.brandName || 'não preenchida'} />
+        <Linha rotulo="Voz" valor={voz || branding.identidadeVerbal.observacao || 'não definida'} />
         <Linha
           rotulo="Paleta"
           valor={

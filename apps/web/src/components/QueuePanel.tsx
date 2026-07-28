@@ -74,10 +74,9 @@ export function QueuePanel() {
           className="mt-3 text-[13px] leading-relaxed"
           style={{ color: 'var(--color-fg-muted)' }}
         >
-          O aplicativo não respondeu agora, então a fila não pôde ser lida. Feche e abra o
-          aplicativo de novo (dê dois cliques em{' '}
-          <strong style={{ color: 'var(--color-fg)' }}>INICIAR</strong> na pasta dele) — seus
-          pedidos continuam guardados.
+          O aplicativo não respondeu, então não deu para ler a fila. Feche e abra ele de novo: dê
+          dois cliques em <strong style={{ color: 'var(--color-fg)' }}>INICIAR</strong> na pasta do
+          aplicativo. Seus pedidos continuam guardados.
         </div>
       </div>
     );
@@ -105,7 +104,8 @@ export function QueuePanel() {
           {data.erros === 1
             ? 'Um pedido não foi concluído'
             : `${data.erros} pedidos não foram concluídos`}{' '}
-          na última rodada. Eles não se perderam: ao processar de novo, você pode tentar outra vez.
+          na última rodada. Nada se perdeu. Na próxima vez que você processar, dá para tentar de
+          novo.
         </div>
       )}
 
@@ -147,8 +147,8 @@ export function QueuePanel() {
             <MousePointerClick size={12} className="mt-0.5 shrink-0" />
             <span>
               Para processar, dê dois cliques em{' '}
-              <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do aplicativo
-              — ele mostra a fila e você escolhe o que rodar.
+              <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do
+              aplicativo. Ele mostra a fila e você escolhe o que quer rodar.
             </span>
           </div>
         </>

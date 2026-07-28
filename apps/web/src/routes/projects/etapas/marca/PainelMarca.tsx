@@ -70,7 +70,7 @@ export function PainelMarca({
     <div className="max-w-[560px] space-y-5">
       <SecaoCabecalho
         titulo="Marca"
-        descricao="O nome como aparece no site e as variações da logo. Quanto mais variações, melhor cada canto do site fica — mas uma só já resolve tudo."
+        descricao="O nome como aparece no site e as variações da logo. Quanto mais variações, melhor cada canto do site fica. Mas uma só já resolve tudo."
       />
       <Campo label="Nome da marca">
         <input
@@ -172,7 +172,7 @@ export function PainelMarca({
       {branding.logos.length > 0 && (
         <Recolhivel
           rotulo="Onde cada logo aparece"
-          detalhe="distribuição automática — ajuste se quiser"
+          detalhe="distribuição automática, dá para ajustar"
         >
           <div className="grid gap-2 sm:grid-cols-2">
             {LocalDeLogo.options.map((local) => {

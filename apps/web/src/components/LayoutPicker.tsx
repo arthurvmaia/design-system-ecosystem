@@ -43,7 +43,7 @@ export function LayoutPicker({
     queryKey: ['blueprints'],
     queryFn: async () => {
       const res = await fetch('/api/projects/blueprints');
-      if (!res.ok) throw new Error('falha ao carregar estruturas');
+      if (!res.ok) throw new Error('não deu para carregar as estruturas');
       return res.json() as Promise<{ items: Blueprint[]; directions: Direction[] }>;
     },
   });
@@ -56,14 +56,14 @@ export function LayoutPicker({
         <ModeCard
           active={value.mode === 'blueprint'}
           icon={<SlidersHorizontal size={14} />}
-          title="Composição guiada"
-          description="Você escolhe o esqueleto da página e decide o que ocupa cada seção. Resultado previsível, sob seu controle."
+          title="Você escolhe a estrutura"
+          description="Você monta o esqueleto da página e diz o que entra em cada seção. O site sai do jeito que você deixou, sem surpresa."
           onClick={() => onChange({ ...value, mode: 'blueprint' })}
         />
         <ModeCard
           active={value.mode === 'criativo'}
           icon={<Shuffle size={14} />}
-          title="Composição inteligente"
+          title="O gerador escolhe a estrutura"
           description="O gerador monta a página do jeito que achar melhor, usando só os componentes que você curou. Cada geração sai diferente."
           onClick={() => onChange({ ...value, mode: 'criativo' })}
         />
@@ -121,9 +121,9 @@ export function LayoutPicker({
       {value.mode === 'criativo' && (
         <div className="ds-slide-up ds-glass-static rounded-lg p-4">
           <div className="text-[12px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
-            A cada geração o sistema sorteia uma direção criativa — editorial, assimétrica, densa,
-            cinematográfica, minimalista ou narrativa — e se compromete com ela. Gerar o mesmo
-            projeto de novo produz uma página diferente.
+            A cada geração o sistema sorteia uma direção criativa e vai até o fim com ela. As
+            direções são: editorial, assimétrica, densa, cinematográfica, minimalista ou narrativa.
+            Se você gerar o mesmo projeto de novo, a página sai diferente.
           </div>
           <div className="ds-data mt-3 text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
             {(data?.directions ?? []).map((d) => d.name).join(' · ')}

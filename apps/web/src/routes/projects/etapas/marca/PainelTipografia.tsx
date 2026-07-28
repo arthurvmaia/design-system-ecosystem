@@ -305,7 +305,7 @@ export function PainelTipografia({
             }}
           >
             O texto de leitura fica assim: tamanho e respiro vêm do jeito escolhido, e a fonte é a
-            sua. Nada aqui é imagem — é a escala real do site.
+            sua. Nada aqui é imagem. Essa é a escala real do site.
           </p>
         </div>
       </div>

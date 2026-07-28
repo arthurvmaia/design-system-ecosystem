@@ -25,7 +25,7 @@ export const ROTULO_AUTOSAVE: Record<EstadoAutosave, string> = {
   pendente: 'Alterações pendentes',
   salvando: 'Salvando…',
   salvo: 'Salvo',
-  falha: 'Falha ao salvar — vamos tentar de novo',
+  falha: 'Não deu para salvar. Vamos tentar de novo',
 };
 
 export const reduzirAutosave = (estado: EstadoAutosave, evento: EventoAutosave): EstadoAutosave => {

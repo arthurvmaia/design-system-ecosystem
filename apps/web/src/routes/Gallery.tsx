@@ -621,7 +621,7 @@ function SegmentsView({
               />
               <span>
                 Esta captura <strong>não terminou dentro do tempo</strong>. O que deu para capturar
-                foi preservado, mas pode faltar conteúdo — extraia o site de novo para completar.
+                foi guardado, mas pode faltar conteúdo. Extraia o site de novo para completar.
               </span>
             </div>
           )}
@@ -647,8 +647,8 @@ function SegmentsView({
                 style={{ color: 'var(--color-signal)' }}
               />
               <span>
-                <strong style={{ color: 'var(--color-fg)' }}>{rejDoDs}</strong> bloco(s) o algoritmo
-                não conseguiu interpretar e foram para Pendências. Ver pendências →
+                <strong style={{ color: 'var(--color-fg)' }}>{rejDoDs}</strong> bloco(s) que o
+                algoritmo não conseguiu interpretar foram para Pendências. Ver pendências →
               </span>
             </button>
           )}
@@ -669,7 +669,7 @@ function SegmentsView({
           ) : (
             <Sparkles size={12} />
           )}
-          Classificar via LLM
+          Classificar com IA
         </button>
       </div>
 
@@ -895,7 +895,7 @@ function SegmentsView({
               Lado a lado
             </div>
             <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-              As prévias são vivas — passe o mouse e interaja para sentir a diferença.
+              As prévias estão vivas. Passe o mouse e interaja para sentir a diferença.
             </p>
             <div
               className={cn(
@@ -943,7 +943,7 @@ function SegmentsView({
         confirmLabel={`Excluir ${selCount}`}
         onConfirm={() => excluirLote.mutate()}
         onClose={() => setConfirmExcluir(false)}
-        description="A Galeria é material de trabalho. O que já foi curado na Biblioteca não é afetado — só some da triagem. Re-segmentar a extração recria a lista completa."
+        description="A Galeria é material de trabalho. O que você já curou na Biblioteca continua lá: some só da triagem. Se re-segmentar a extração, a lista completa volta."
       />
     </div>
   );
@@ -1141,8 +1141,8 @@ function SegmentCard({
                 subcomponentes === 1
                   ? 'O subcomponente extraído de dentro dela sai junto'
                   : `Os ${subcomponentes} subcomponentes extraídos de dentro dela saem junto`
-              }. A Galeria é material de trabalho — re-segmentar a extração recria a lista completa; o que você curou na Biblioteca não é afetado.`
-            : 'A Galeria é material de trabalho. Re-segmentar a extração recria a lista completa — o que você curou na Biblioteca não é afetado.'
+              }. A Galeria é material de trabalho: se re-segmentar a extração, a lista completa volta. O que você curou na Biblioteca continua lá.`
+            : 'A Galeria é material de trabalho. Se re-segmentar a extração, a lista completa volta. O que você curou na Biblioteca continua lá.'
         }
       />
     </div>
@@ -1202,7 +1202,7 @@ function PainelDePecas({
             </div>
             <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
               {pecas.length} {pecas.length === 1 ? 'peça extraída' : 'peças extraídas'} de dentro
-              desta seção. Curtir uma peça não leva a dobra junto — e vice-versa.
+              desta seção. Curtir uma peça não leva a dobra junto, nem o contrário.
             </p>
           </div>
           <button
@@ -1387,7 +1387,7 @@ function SegmentCardFilho({
         confirmLabel="Excluir"
         onConfirm={() => del.mutate()}
         onClose={() => setConfirmDel(false)}
-        description="Só este subcomponente sai — a seção de origem continua na Galeria. Re-segmentar a extração recria a lista completa."
+        description="Sai só este subcomponente. A seção de origem continua na Galeria. Se re-segmentar a extração, a lista completa volta."
       />
     </div>
   );
@@ -1405,8 +1405,15 @@ function SegmentDetail({
 }) {
   const qc = useQueryClient();
   const [bg, setBg] = useState<'claro' | 'escuro' | undefined>(undefined);
-  const [modo, setModo] = useState<'plano' | 'estados' | 'scroll' | 'print'>('plano');
   const print = segment.fidelity?.framePath;
+  // Camada que atravessa a página (o fundo) e referência visual não têm o que
+  // mostrar sozinhas: o preview abriria um retângulo vazio. Quando existe
+  // retrato, é ele que abre. O retrato do fundo sai com o conteúdo esmaecido,
+  // então dá para ver o fundo sem perder a noção de onde ele fica.
+  const abreNoPrint = print !== undefined && segment.fidelity?.support === 'visual';
+  const [modo, setModo] = useState<'plano' | 'estados' | 'scroll' | 'print'>(
+    abreNoPrint ? 'print' : 'plano',
+  );
   const temEstados = (segment.fidelity?.states?.length ?? 0) > 0;
   // Referência visual (selo "visual"): o modal abre direto o movimento gravado
   // (loop das amostras) — a miniatura limpa fica só para o card da grade.
@@ -1459,7 +1466,7 @@ function SegmentDetail({
                 type="button"
                 onClick={() => setModo((m) => (m === 'estados' ? 'plano' : 'estados'))}
                 aria-pressed={modo === 'estados'}
-                title="Reproduz os estados capturados (hover, clique, modal…) no preview isolado"
+                title="Mostra os estados capturados (hover, clique, modal) aqui na prévia isolada"
                 className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'estados' ? 'var(--color-primary)' : 'var(--color-border)',
@@ -1491,7 +1498,7 @@ function SegmentDetail({
                 type="button"
                 onClick={() => setModo((m) => (m === 'print' ? 'plano' : 'print'))}
                 aria-pressed={modo === 'print'}
-                title="A dobra como a captura a viu no site — para conferir o componente contra a origem"
+                title="A dobra como a captura viu no site, para você comparar o componente com o original"
                 className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'print' ? 'var(--color-primary)' : 'var(--color-border)',
@@ -1528,8 +1535,9 @@ function SegmentDetail({
               style={{ border: '1px solid var(--color-border)' }}
             />
             <p className="mt-3 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-              A dobra no site de origem, no momento da captura. Serve para conferir o componente
-              contra o original — o que a prévia reproduz e o que ficou pelo caminho.
+              {abreNoPrint
+                ? 'Esta camada cobre a página toda, então sozinha ela não mostra nada. Aqui o conteúdo está esmaecido de propósito: o que importa é o fundo.'
+                : 'A dobra no site de origem, no momento da captura. Compare com a prévia para ver o que veio junto e o que ficou pelo caminho.'}
             </p>
           </div>
         ) : (
@@ -1597,7 +1605,7 @@ function EmptyState() {
           Nenhuma extração ainda
         </h2>
         <p className="mt-3 text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>
-          Vá em Extrair e traga o primeiro site pro ecossistema.
+          Vá em Extrair e traga o primeiro site.
         </p>
       </div>
     </div>

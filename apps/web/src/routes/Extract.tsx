@@ -121,10 +121,10 @@ export function ExtractPage() {
       >
         {isQueueMode ? (
           <>
-            Cole o endereço de um site ou envie um arquivo HTML. O pedido fica guardado na fila —
-            nada roda agora. Quando quiser processar, dê dois cliques em{' '}
-            <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do aplicativo e
-            escolha o que rodar.
+            Cole o endereço de um site ou envie um arquivo HTML. O pedido fica guardado na fila.
+            Nada roda agora. Quando quiser processar, dê dois cliques em{' '}
+            <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong>, na pasta do aplicativo,
+            e escolha o que rodar.
           </>
         ) : (
           <>
@@ -144,8 +144,8 @@ export function ExtractPage() {
             color: 'var(--color-fg)',
           }}
         >
-          A extração automática não está ativa neste computador, então nada pode rodar por aqui
-          agora. Peça a quem fez a instalação para ativá-la — seus pedidos não se perdem.
+          A extração automática não está ativa neste computador, então nada roda por aqui agora.
+          Peça para quem fez a instalação ativar. Seus pedidos não se perdem.
         </div>
       )}
 
@@ -228,8 +228,8 @@ export function ExtractPage() {
             <MousePointerClick size={14} className="mt-0.5 shrink-0" />
             <span>
               Nada rodou ainda. Para processar, dê dois cliques em{' '}
-              <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do aplicativo
-              — ele mostra a fila e você escolhe o que rodar.
+              <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong>, na pasta do
+              aplicativo. Ele mostra a fila e você escolhe o que rodar.
             </span>
           </div>
         </div>
@@ -388,8 +388,8 @@ function TaskProgress({
           className="mt-4 text-[13px] leading-relaxed"
           style={{ color: 'var(--color-crimson-3)' }}
         >
-          Não deu para concluir esta extração. Você pode tentar de novo — se o problema repetir, o
-          site pode estar bloqueando a captura.
+          Não deu para concluir esta extração. Tente de novo. Se acontecer outra vez, pode ser que o
+          site esteja bloqueando a captura.
           {task.errorMessage && (
             <span className="mt-1 block text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
               Detalhe: {task.errorMessage}

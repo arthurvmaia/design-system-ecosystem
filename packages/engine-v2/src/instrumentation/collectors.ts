@@ -1268,6 +1268,59 @@ export const BLUR_FN = `
  * Rola até um elemento pelo ref de instrumentação e centraliza na viewport.
  * `(ref) => boolean` — false quando o elemento não existe mais.
  */
+/**
+ * Prepara a tela para o retrato de uma camada de FUNDO.
+ *
+ * Uma camada que atravessa a página não tem retrato próprio: fotografada
+ * sozinha, é um retângulo transparente; fotografada junto, some no meio do
+ * conteúdo. A saída é fotografar a página com o conteúdo ESMAECIDO — o fundo
+ * fica evidente e o contexto continua legível, que é como alguém apontaria "olha
+ * o fundo" numa captura de tela.
+ *
+ * Recebe os refs das camadas. Devolve `true` se preparou algo.
+ * `(refs) => boolean`
+ */
+export const DESTACAR_FUNDO_FN = `
+(refs) => {
+  var R = window['${REGISTRO_GLOBAL}'] || {};
+  var alvos = [];
+  for (var i = 0; i < refs.length; i++) {
+    var el = (R.els || [])[refs[i]];
+    if (!el) { try { el = document.querySelector('[${ATTR_REF}="' + refs[i] + '"]'); } catch (e) {} }
+    if (el) alvos.push(el);
+  }
+  if (alvos.length === 0) return false;
+  // Marca a camada E a linhagem dela até o body. O seletor de esmaecimento age
+  // sobre os filhos diretos do body; sem marcar os ancestrais, uma camada
+  // aninhada era apagada junto com o ramo em que vive, e os retratos dos dois
+  // grupos saíam idênticos (mesmo hash de bytes, medido).
+  for (var j = 0; j < alvos.length; j++) {
+    var no = alvos[j];
+    var saltos = 0;
+    while (no && no !== document.body && saltos < 30) {
+      no.setAttribute('data-dsx2-fundo', '1');
+      no = no.parentElement;
+      saltos++;
+    }
+  }
+  var st = document.createElement('style');
+  st.id = 'dsx2-destaque-fundo';
+  st.textContent =
+    'body > *:not([data-dsx2-fundo]):not(script):not(style){opacity:.12 !important;filter:grayscale(.6) !important}' +
+    '[data-dsx2-fundo]{opacity:1 !important;filter:none !important}';
+  document.head.appendChild(st);
+  return true;
+}`;
+
+/** Desfaz o preparo do retrato de fundo. `() => void` */
+export const LIMPAR_DESTAQUE_FN = `
+() => {
+  var st = document.getElementById('dsx2-destaque-fundo');
+  if (st && st.parentNode) st.parentNode.removeChild(st);
+  var m = document.querySelectorAll('[data-dsx2-fundo]');
+  for (var i = 0; i < m.length; i++) m[i].removeAttribute('data-dsx2-fundo');
+}`;
+
 export const ROLAR_ATE_REF_FN = `
 (ref) => {
   var el = document.querySelector('[${ATTR_REF}="' + ref + '"]');

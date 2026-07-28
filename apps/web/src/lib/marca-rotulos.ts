@@ -93,5 +93,5 @@ export const resumoDaVoz = (iv: IdentidadeVerbal): string | undefined => {
     iv.observacao?.trim() || undefined,
   ];
   const validas = partes.filter((p): p is string => p !== undefined);
-  return validas.length > 0 ? validas.join(' — ') : undefined;
+  return validas.length > 0 ? validas.join(' · ') : undefined;
 };

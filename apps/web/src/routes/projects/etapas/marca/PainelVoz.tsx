@@ -56,10 +56,10 @@ export function PainelVoz({
     <div className="max-w-[560px] space-y-5">
       <SecaoCabecalho
         titulo="Voz da marca"
-        descricao="Como a marca fala. O tom muda vocabulário e ritmo; a postura muda o argumento. O primeiro de cada lista domina — clique na estrela para trocar."
+        descricao="Como a marca fala. O tom muda vocabulário e ritmo; a postura muda o argumento. O primeiro de cada lista domina. Clique na estrela para trocar."
       />
 
-      <Campo label="Tom de voz (até 4 — o primeiro domina)">
+      <Campo label="Tom de voz (até 4, e o primeiro domina)">
         <MultiSelect
           opcoes={OPCOES_TONS}
           valores={iv.tons}
@@ -71,7 +71,7 @@ export function PainelVoz({
         />
       </Campo>
 
-      <Campo label="Postura (até 3 — a primeira domina)">
+      <Campo label="Postura (até 3, e a primeira domina)">
         <MultiSelect
           opcoes={OPCOES_ARQUETIPOS}
           valores={iv.arquetipos}

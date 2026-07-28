@@ -65,8 +65,8 @@ export function KitsPage() {
             className="ds-slide-up ds-d2 mt-3 max-w-[62ch] text-[14px] leading-[1.6]"
             style={{ color: 'var(--color-fg-muted)' }}
           >
-            Um kit é a curadoria da curadoria: um conjunto nomeado e coerente de componentes da
-            Biblioteca. É dele que um site é gerado.
+            Um kit é um grupo de componentes da Biblioteca que você juntou e deu nome. É a partir
+            dele que o site é gerado.
           </p>
         </div>
         <div className="ds-scale-in ds-d2">
@@ -203,11 +203,11 @@ function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
           kit.usedByProjects.length > 0 ? (
             <>
               <strong>{kit.usedByProjects.length} projeto(s)</strong> usam este kit (
-              {kit.usedByProjects.map((p) => p.name).join(', ')}). Eles continuam existindo, mas
-              perdem a referência de origem — os sites já gerados sobrevivem.
+              {kit.usedByProjects.map((p) => p.name).join(', ')}). Eles não somem: só perdem a
+              ligação com o kit de origem. Os sites que já foram gerados continuam lá.
             </>
           ) : (
-            'Os componentes na Biblioteca não são afetados — o kit é só a seleção.'
+            'O kit é só uma seleção. Os componentes continuam na Biblioteca, do jeito que estão.'
           )
         }
       />
@@ -346,7 +346,7 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                   className="px-2 py-10 text-center text-[12px]"
                   style={{ color: 'var(--color-fg-subtle)' }}
                 >
-                  Nenhum componente ainda. Adicione da Biblioteca ao lado.
+                  Nenhum componente ainda. Escolha na Biblioteca, ao lado.
                 </div>
               )}
               {selected.map((id, i) => {
@@ -454,8 +454,8 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                   style={{ color: 'var(--color-fg-subtle)' }}
                 >
                   {(lib.data.items.length ?? 0) === 0
-                    ? 'Biblioteca vazia — curta componentes na Galeria.'
-                    : 'Tudo já está no kit ou fora da busca.'}
+                    ? 'Sua Biblioteca está vazia. Vá até a Galeria e curta alguns componentes.'
+                    : 'Tudo já está no kit, ou nada aqui bate com a busca.'}
                 </div>
               )}
             </div>

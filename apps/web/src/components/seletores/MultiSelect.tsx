@@ -167,7 +167,7 @@ export function MultiSelect({
           className="mt-1 block text-[11px]"
           style={{ color: 'var(--color-signal, #eab308)' }}
         >
-          Limite de {limite} atingido — remova um para adicionar outro.
+          Você já escolheu {limite}. Remova um para adicionar outro.
         </output>
       )}
       <Flutuante aberto={aberto} gatilhoRef={gatilhoRef} aoFechar={() => fechar(false)}>

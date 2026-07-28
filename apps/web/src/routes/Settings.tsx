@@ -51,7 +51,7 @@ export function SettingsPage() {
 
         <Bloco
           titulo="Confirmar antes de excluir"
-          descricao="Com a confirmação ligada, excluir componentes ou blocos sempre pergunta antes. Desligue por sua conta e risco — exclusões passam a valer no primeiro clique."
+          descricao="Com a confirmação ligada, excluir componentes ou blocos sempre pergunta antes. Se você desligar, cada exclusão vale já no primeiro clique. O risco é seu."
         >
           <Opcoes
             valor={prefs.confirmarAntesDeExcluir ? 'sim' : 'nao'}

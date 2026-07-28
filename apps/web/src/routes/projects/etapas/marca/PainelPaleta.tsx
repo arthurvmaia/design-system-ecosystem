@@ -69,7 +69,7 @@ export function PainelPaleta({
     <div className="max-w-[560px] space-y-5">
       <SecaoCabecalho
         titulo="Paleta de cores"
-        descricao="A identidade visual do novo site — não é herdada dos componentes da Galeria. Nomeie suas cores; a distribuição pelos papéis do site é automática."
+        descricao="Esta é a identidade visual do novo site. Ela não é herdada dos componentes da Galeria. Nomeie suas cores; a distribuição pelos papéis do site é automática."
       />
 
       <Campo label={`Cores (${paleta.cores.length} de 12)`}>
@@ -187,7 +187,8 @@ export function PainelPaleta({
           style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
         >
           O texto pode ficar difícil de ler sobre esse fundo (contraste baixo). Vale escurecer ou
-          clarear uma das duas cores — ou atribuir outra cor ao papel “Texto” no ajuste fino.
+          clarear uma das duas cores. Você também pode atribuir outra cor ao papel “Texto” no ajuste
+          fino.
         </output>
       )}
 

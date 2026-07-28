@@ -27,11 +27,28 @@ export const usePreferencias = create<Store>()(
     (set) => ({
       movimento: 'sistema',
       confirmarAntesDeExcluir: true,
-      introAoAbrir: 'primeira-vez',
+      introAoAbrir: 'sempre',
       jaViuIntro: false,
       definir: (patch) => set(patch),
     }),
-    { name: 'ds-preferencias' },
+    {
+      name: 'ds-preferencias',
+      /**
+       * A abertura passou a rodar toda vez.
+       *
+       * O padrão anterior era só na primeira visita, e o efeito prático foi que
+       * a abertura desapareceu depois do primeiro uso e ninguém entendeu por
+       * quê. Quem já tem preferência salva vem do padrão antigo, não de uma
+       * escolha, então a migração troca o valor uma vez. Quem preferir sem
+       * abertura desliga em Configurações, e a escolha fica valendo.
+       */
+      version: 1,
+      migrate: (estado, versao) => {
+        const anterior = estado as Partial<Preferencias> | undefined;
+        if (versao >= 1 || anterior === undefined) return anterior as Preferencias;
+        return { ...anterior, introAoAbrir: 'sempre' } as Preferencias;
+      },
+    },
   ),
 );
 

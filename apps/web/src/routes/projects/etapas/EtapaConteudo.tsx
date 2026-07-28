@@ -99,13 +99,13 @@ export function StepConteudo({
                     }}
                   >
                     A IA escreve esta seção com a sua marca, a sua voz e o que você já contou nas
-                    outras etapas. Ela não inventa fatos, números nem clientes — sem informação, o
-                    texto sai seguro e fácil de editar depois. O que você já escreveu aqui fica
-                    guardado.
+                    outras etapas. Ela não inventa fatos, números nem clientes. Quando faltar
+                    informação, o texto sai seguro e fácil de editar depois. O que você já escreveu
+                    aqui fica guardado.
                   </p>
                 ) : roteiro === null ? (
                   <p className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                    Esta seção usa a marca, o contato e as redes — nada a preencher aqui.
+                    Esta seção usa a marca, o contato e as redes. Não há nada para preencher aqui.
                   </p>
                 ) : (
                   <div className="space-y-2.5">

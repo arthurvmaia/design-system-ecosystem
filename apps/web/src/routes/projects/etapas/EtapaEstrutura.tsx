@@ -96,8 +96,8 @@ export function StepEstrutura({
             style={{ color: 'var(--color-fg-muted)' }}
           >
             Cada seção já tem uma sugestão. Toque em uma para trocar a peça, dar uma instrução ou
-            desligá-la — o seu kit pode ter menos peças que seções: uma peça pode se repetir, e o
-            que faltar é criado no estilo do kit.
+            desligá-la. O seu kit pode ter menos peças que seções: uma peça pode se repetir, e o que
+            faltar é criado no estilo do kit.
           </p>
 
           <div className="space-y-1.5">
@@ -116,7 +116,7 @@ export function StepEstrutura({
                     style={{ borderColor: 'var(--color-border)', opacity: 0.6 }}
                   >
                     <span className="text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                      {s.label} — desligada
+                      {s.label} está desligada
                     </span>
                     <button
                       type="button"
@@ -137,7 +137,7 @@ export function StepEstrutura({
               const resumo =
                 r?.componente != null
                   ? r.origem === 'escolhido'
-                    ? `${r.componente.name} — escolhida por você`
+                    ? `${r.componente.name}, escolhida por você`
                     : r.componente.name
                   : 'criada no estilo do kit';
 
@@ -216,8 +216,8 @@ export function StepEstrutura({
                               valor: '',
                               rotulo:
                                 r?.origem !== 'escolhido' && r?.componente != null
-                                  ? `Automático — ${r.componente.name}`
-                                  : 'Automático — criada no estilo do kit',
+                                  ? `Automático: ${r.componente.name}`
+                                  : 'Automático: criada no estilo do kit',
                               descricao: 'A sugestão pode mudar se o kit mudar.',
                             },
                             ...components.map((c) => ({

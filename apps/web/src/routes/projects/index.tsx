@@ -70,7 +70,7 @@ export function ProjectsPage() {
             style={{ color: 'var(--color-fg-muted)' }}
           >
             Escolha um kit como base visual e traga a sua identidade e o seu conteúdo. O site nunca
-            copia texto ou marca do site de origem — só o jeito visual do kit.
+            copia texto ou marca do site de origem. Do kit vem só o jeito visual.
           </p>
         </div>
         <div className="ds-scale-in ds-d2">

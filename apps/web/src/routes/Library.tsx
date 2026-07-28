@@ -308,14 +308,13 @@ export function LibraryPage() {
           <div className="space-y-1.5">
             {(emUsoPendente ?? []).slice(0, 5).map((u) => (
               <div key={u.id} className="text-[12px] leading-snug">
-                <strong>{u.name}</strong> — faz parte de {u.kits.join(', ')}
-                {u.projetos.length > 0 ? ` e dos sites ${u.projetos.join(', ')}` : ''}
+                <strong>{u.name}</strong> está em {u.kits.join(', ')}
+                {u.projetos.length > 0 ? ` e nos sites ${u.projetos.join(', ')}` : ''}
               </div>
             ))}
             <div className="pt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-              Excluir mesmo assim remove{' '}
-              {(emUsoPendente?.length ?? 0) === 1 ? 'a peça' : 'as peças'} desses kits — os sites já
-              gerados continuam como estão.
+              Excluir mesmo assim tira {(emUsoPendente?.length ?? 0) === 1 ? 'a peça' : 'as peças'}{' '}
+              desses kits. Os sites que você já gerou continuam como estão.
             </div>
           </div>
         }
@@ -613,8 +612,8 @@ function LibraryDetail({
           (impacto.data?.usadoEmKits.length ?? 0) > 0 ? (
             <>
               Este componente está em <strong>{impacto.data?.usadoEmKits.length} kit(s)</strong> (
-              {impacto.data?.usadoEmKits.map((k) => k.name).join(', ')}). Removê-lo o tira desses
-              kits também. Os arquivos em disco são apagados.
+              {impacto.data?.usadoEmKits.map((k) => k.name).join(', ')}). Remover aqui tira ele
+              desses kits também, e apaga os arquivos do disco.
             </>
           ) : (
             'Apaga o bundle do disco e desfaz o vínculo com o segmento de origem. Não afeta nenhum kit.'

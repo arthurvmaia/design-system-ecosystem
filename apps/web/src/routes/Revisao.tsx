@@ -55,9 +55,9 @@ export function RevisaoPage() {
         className="ds-slide-up ds-d2 mt-3 max-w-[64ch] text-[15px] leading-[1.7]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        A Galeria recebe o que foi lido com confiança. Estes blocos ficaram de fora — cada um com o
-        motivo. Se algo bom foi deixado para trás, é só aproveitar mesmo assim que ele vai para a
-        Galeria. Se concordar, descarte e a lista fica limpa.
+        A Galeria recebe o que foi lido com confiança. Estes blocos ficaram de fora, cada um com o
+        motivo à vista. Se algo bom sobrou aqui, use aproveitar mesmo assim e ele vai para a
+        Galeria. Se você concordar com o motivo, descarte e a lista fica limpa.
       </p>
 
       {total === 0 ? (

@@ -59,20 +59,23 @@ export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
   // ── Bloqueantes: sem isso o site não tem como nascer certo ──
   if (d.nome.trim() === '') bloq(ETAPA.projeto, 'O projeto está sem nome.');
   if (d.kitComponentes === null) {
-    bloq(ETAPA.projeto, 'Nenhum kit escolhido — o site nasce dos componentes de um kit.');
+    bloq(
+      ETAPA.projeto,
+      'Você ainda não escolheu um kit. O site é montado com os componentes dele.',
+    );
   } else if (d.kitComponentes.length === 0) {
-    bloq(ETAPA.projeto, 'O kit escolhido está vazio — adicione componentes a ele.');
+    bloq(ETAPA.projeto, 'O kit escolhido está vazio. Adicione componentes a ele.');
   }
 
   // ── Avisos: geram, mas com resultado visivelmente pior ──
   if (d.brandName.trim() === '') {
-    aviso(ETAPA.marca, 'A marca está sem nome — o site sai com um espaço vazio no lugar.');
+    aviso(ETAPA.marca, 'A marca está sem nome. O site sai com um espaço vazio no lugar.');
   }
   if (d.nLogos === 0) {
-    aviso(ETAPA.marca, 'Nenhuma logo enviada — o site usa o nome da marca como texto.');
+    aviso(ETAPA.marca, 'Você não enviou nenhuma logo. O site usa o nome da marca escrito.');
   }
   if (d.tons.length === 0 && d.arquetipos.length === 0) {
-    aviso(ETAPA.marca, 'A voz da marca está vazia — o texto sai num tom genérico.');
+    aviso(ETAPA.marca, 'A voz da marca está vazia. O texto sai num tom genérico.');
   }
   const tokens = distribuirTokens(d.paleta);
   if (
@@ -80,7 +83,7 @@ export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
     tokens.body !== undefined &&
     contrasteRatio(tokens.background, tokens.body) < 4.5
   ) {
-    aviso(ETAPA.marca, 'O contraste entre texto e fundo da paleta está baixo — difícil de ler.');
+    aviso(ETAPA.marca, 'O texto e o fundo da paleta têm pouco contraste. Fica difícil de ler.');
   }
 
   if (d.kitComponentes !== null) {
@@ -89,7 +92,7 @@ export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
       if (p.escolha === 'componente' && p.componentId !== null && !ids.has(p.componentId)) {
         aviso(
           ETAPA.estrutura,
-          'Uma seção fixava um componente que saiu do kit — voltou para o automático.',
+          'Uma seção fixava um componente que saiu do kit. Ela voltou para o automático.',
         );
       }
     }
@@ -97,13 +100,13 @@ export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
 
   const briefsPreenchidos = Object.values(d.briefs).filter((b) => !briefVazio(b)).length;
   if (briefsPreenchidos === 0) {
-    aviso(ETAPA.conteudo, 'Nenhuma seção tem conteúdo seu — o texto sai todo inventado no tom.');
+    aviso(ETAPA.conteudo, 'Nenhuma seção tem conteúdo seu. O texto inteiro sai inventado no tom.');
   }
   if (d.ctaPrincipal.trim() === '') {
-    aviso(ETAPA.conteudo, 'Sem CTA principal — os botões saem com um texto padrão.');
+    aviso(ETAPA.conteudo, 'Você não definiu o CTA principal. Os botões saem com um texto padrão.');
   }
   if (d.nMidias === 0) {
-    aviso(ETAPA.midia, 'Nenhuma mídia enviada — as seções visuais são criadas só no estilo.');
+    aviso(ETAPA.midia, 'Você não enviou nenhuma mídia. As seções visuais saem só com o estilo.');
   }
 
   return problemas;

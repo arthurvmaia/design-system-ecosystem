@@ -47,8 +47,10 @@ import {
   COLETAR_INSTRUMENTACAO_FN,
   COLETAR_JS_INLINE_FN,
   COLETAR_MAPA_FN,
+  DESTACAR_FUNDO_FN,
   HTML_DO_REF_FN,
   INIT_SCRIPT,
+  LIMPAR_DESTAQUE_FN,
   ROLAR_ATE_REF_FN,
   ROLAR_PARA_FN,
   chamar,
@@ -676,6 +678,43 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       await page.esperar(200);
     } catch {
       // rolagem de volta é cortesia, não pré-condição
+    }
+
+    // ── Retrato das camadas de fundo ──────────────────────────────────────
+    // Uma camada que atravessa a página não tem retrato próprio: sozinha é um
+    // retângulo transparente, junto ela some no meio do conteúdo. O retrato é a
+    // tela com o CONTEÚDO ESMAECIDO — o fundo fica evidente e o contexto
+    // continua legível. Sem isto o componente de fundo abria vazio na Galeria.
+    const refPorHash = new Map<string, (typeof coletaFinal.nos)[number]['ref']>();
+    for (const n of coletaFinal.nos) {
+      const h = porRef.get(n.ref)?.fingerprint.hash;
+      if (h !== undefined && !refPorHash.has(h)) refPorHash.set(h, n.ref);
+    }
+    for (const grupo of [camadasDePagina.comRuntime, camadasDePagina.soCss]) {
+      if (grupo.length === 0) continue;
+      const refs = grupo.flatMap((h) => {
+        const r = refPorHash.get(h);
+        return r === undefined ? [] : [r];
+      });
+      if (refs.length === 0) continue;
+      try {
+        const preparou = await page.evaluate<boolean>(chamar(DESTACAR_FUNDO_FN, refs));
+        if (preparou) {
+          await page.esperar(220);
+          const bytes = await page.screenshot({});
+          const nome = `fundo-${(grupo[0] ?? '').slice(0, 10)}-${hashBytes(bytes).slice(0, 8)}.png`;
+          const caminho = gravar(opts.dirCaptura, join('frames', nome), bytes);
+          for (const h of grupo) framePorHash.set(h, caminho);
+        }
+      } catch {
+        // sem retrato, a camada declara a limitação em vez de abrir vazia
+      } finally {
+        try {
+          await page.evaluate(LIMPAR_DESTAQUE_FN);
+        } catch {
+          // a página já pode ter navegado; o destaque morre com ela
+        }
+      }
     }
     log('frames-secao', { total: framePorHash.size });
 
