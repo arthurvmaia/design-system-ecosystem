@@ -829,6 +829,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           mediaDetections,
           runtimeDetections,
           temporalObservations: temporais,
+          scrollPasses: passes,
           pointerResponses: respostasPonteiro,
           scrollObservations,
           stateGraph: grafo?.grafo,

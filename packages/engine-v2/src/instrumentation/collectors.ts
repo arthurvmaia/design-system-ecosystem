@@ -1119,19 +1119,39 @@ export const HTML_DO_REF_FN = `
       var c = copias[i];
       var cs = getComputedStyle(o);
       var g = svg.cloneNode(true);
-      g.setAttribute('width', '100%');
-      g.setAttribute('height', '100%');
-      c.innerHTML = '';
-      c.appendChild(g);
-      // A caixa e a cor vinham do shadow (:host), que não viaja. Fixa o que
-      // foi MEDIDO, para o ícone ocupar o mesmo espaço de antes.
-      var atual = c.getAttribute('style') || '';
-      c.setAttribute(
+      // Tamanho em PIXELS medidos: porcentagem depende do bloco de contenção,
+      // que um elemento sem o runtime dele não estabelece.
+      var caixa = o.getBoundingClientRect();
+      var larg = Math.round(caixa.width) || Number.parseFloat(cs.width) || 24;
+      var alt = Math.round(caixa.height) || Number.parseFloat(cs.height) || 24;
+      g.setAttribute('width', String(larg));
+      g.setAttribute('height', String(alt));
+
+      // TROCA A TAG por um <span>, em vez de só preencher o elemento.
+      //
+      // Guardar o SVG dentro do próprio <iconify-icon> não bastava: o preview
+      // carrega o head do site, o script da biblioteca roda, o elemento é
+      // promovido a custom element e ganha um shadow root SEM <slot> — e um
+      // shadow root sem slot ESCONDE os filhos da luz. Medido: o host ficava
+      // 24x24, o SVG dentro dele ia a 0x0 e o ícone sumia, mesmo estando no
+      // HTML. Como <span> não pode ser promovido, o ícone fica.
+      var s = document.createElement('span');
+      var classe = c.getAttribute('class');
+      if (classe) s.setAttribute('class', classe);
+      var rotulo = o.getAttribute('icon') || o.getAttribute('aria-label');
+      if (rotulo) s.setAttribute('data-ds-icone-origem', rotulo);
+      s.setAttribute(
         'style',
-        atual + ';display:' + (cs.display === 'inline' ? 'inline-block' : cs.display) +
-        ';width:' + cs.width + ';height:' + cs.height + ';color:' + cs.color
+        (c.getAttribute('style') || '') +
+          ';display:' +
+          (cs.display === 'inline' ? 'inline-block' : cs.display) +
+          ';width:' + larg + 'px;height:' + alt + 'px;color:' + cs.color
       );
-      c.setAttribute('data-ds-icone', 'inline');
+      s.setAttribute('data-ds-icone', 'inline');
+      s.appendChild(g);
+      if (c === clone) clone = s;
+      else if (c.parentNode) c.parentNode.replaceChild(s, c);
+      copias[i] = s;
     }
     return clone.outerHTML;
   } catch (e) {

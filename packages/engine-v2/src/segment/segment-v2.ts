@@ -15,6 +15,7 @@ import type {
   RuntimeKind,
   ScrollBehavior,
   ScrollBehaviorKind,
+  ScrollViewportPass,
   SegmentEvidence,
   StateGraph,
   StructuralNode,
@@ -362,6 +363,12 @@ export type EntradaSegmentacao = {
   mediaDetections: readonly MediaDetection[];
   runtimeDetections: readonly RuntimeDetection[];
   temporalObservations: readonly TemporalObservation[];
+  /**
+   * Paradas do percurso de scroll. Ligam cada observação temporal à tela em que
+   * ela foi feita (`temporalIds`) e ao que estava visível ali (`visible`) — é o
+   * que permite atribuir movimento a uma dobra sem inventar.
+   */
+  scrollPasses?: readonly ScrollViewportPass[];
   pointerResponses: readonly PointerResponse[];
   scrollObservations: readonly ScrollBehavior[];
   stateGraph?: StateGraph;
@@ -546,7 +553,13 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     const midias = entrada.mediaDetections.filter(
       (m) => m.ownerSection === secao.hash || hashesMembros.has(m.fingerprint.hash),
     );
-    const temporais = entrada.temporalObservations.filter((t) => hashesMembros.has(t.target));
+    const temporais = temporaisDaSecao({
+      observacoes: entrada.temporalObservations,
+      passes: entrada.scrollPasses ?? [],
+      hashesMembros,
+      pageBox: secao.pageBox,
+      alturaDaViewport: entrada.viewport.height,
+    });
     const ponteiro = entrada.pointerResponses.filter((p) => {
       if (p.fingerprint !== undefined && hashesMembros.has(p.fingerprint.hash)) return true;
       // Reação sem DOM: pertence à seção se a região cai dentro dela.
@@ -980,6 +993,72 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
   }
 
   return { segmentos, rejeitados };
+};
+
+/**
+ * Fração da tela que a dobra precisa ocupar, NAQUELA parada, para o movimento
+ * medido ali ser atribuído a ela.
+ *
+ * A observação temporal é POR PARADA de scroll, não por elemento — medir cada
+ * elemento custaria mais que todo o resto do pipeline. Ela responde "algo se
+ * mexeu nesta tela", não "este elemento se mexeu". Atribuir a toda dobra visível
+ * marcaria como animado um bloco de texto parado só porque o fundo da página se
+ * move atrás dele.
+ *
+ * O corte resolve isso pelo único critério defensável: quando a dobra ERA
+ * praticamente a tela inteira, "algo se mexeu na tela" e "algo se mexeu nesta
+ * dobra" são a mesma frase.
+ */
+const DOMINIO_DA_TELA = 0.6;
+
+/**
+ * As observações temporais que pertencem a esta dobra.
+ *
+ * Aceita as duas formas de alvo: hash de elemento (observação dirigida) e
+ * `viewport:<n>` (observação da parada). No segundo caso a ligação é
+ * GEOMÉTRICA: a parada guarda o `scrollY`, então a tela daquele momento é
+ * `[scrollY, scrollY + altura]`, e a pergunta vira "quanto desta tela era esta
+ * dobra?".
+ *
+ * A geometria foi escolhida em vez da lista `visible` da parada porque essa
+ * lista não traz os nós de seção — medido nesta captura: zero dobras entre os
+ * visíveis, nas nove paradas. `pageBox` e `scrollY` são medidos e confiáveis.
+ *
+ * Antes disto o filtro comparava id de viewport com hash de elemento e nunca
+ * casava: `temMovimento` era falso em todo segmento de toda extração.
+ */
+export const temporaisDaSecao = (opts: {
+  observacoes: readonly TemporalObservation[];
+  passes: readonly ScrollViewportPass[];
+  hashesMembros: ReadonlySet<string>;
+  pageBox: BoxPx;
+  alturaDaViewport: number;
+}): TemporalObservation[] => {
+  const { observacoes, passes, hashesMembros, pageBox, alturaDaViewport } = opts;
+
+  const passePorObservacao = new Map<string, ScrollViewportPass>();
+  for (const p of passes) {
+    for (const id of p.temporalIds) passePorObservacao.set(id, p);
+  }
+
+  /** Quanto da tela daquela parada era ocupado por esta dobra (0..1). */
+  const fracaoDaTela = (passe: ScrollViewportPass): number => {
+    if (alturaDaViewport <= 0) return 0;
+    const topoDaTela = passe.scrollY;
+    const baseDaTela = passe.scrollY + alturaDaViewport;
+    const sobreposicao =
+      Math.min(baseDaTela, pageBox.y + pageBox.h) - Math.max(topoDaTela, pageBox.y);
+    return sobreposicao <= 0 ? 0 : sobreposicao / alturaDaViewport;
+  };
+
+  return observacoes.filter((t) => {
+    // Observação dirigida a um elemento desta dobra: ligação direta.
+    if (hashesMembros.has(t.target)) return true;
+    if (!t.target.startsWith('viewport:')) return false;
+    const passe = passePorObservacao.get(t.id);
+    if (passe === undefined) return false;
+    return fracaoDaTela(passe) >= DOMINIO_DA_TELA;
+  });
 };
 
 const maiorDelta = (obs: readonly TemporalObservation[]): string => {
