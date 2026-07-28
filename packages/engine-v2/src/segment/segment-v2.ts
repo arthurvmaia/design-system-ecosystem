@@ -27,6 +27,7 @@ import type {
 import { contido, intersecao } from '../mapper/build-maps.js';
 import type { BoxPx } from '../mapper/raw.js';
 import type { CamadasDePagina } from './camadas-de-pagina.js';
+import type { ComportamentoCandidato } from './comportamentos.js';
 import { nomeEhGenerico, nomearPorEvidencia } from './naming.js';
 import type { PecaCandidata } from './pecas.js';
 import { type EvidenciaRepresentacao, classificarRepresentacao } from './representation.js';
@@ -388,6 +389,12 @@ export type EntradaSegmentacao = {
    * Viram componente próprio DEPOIS das dobras: não pertencem a nenhuma delas.
    */
   camadasDePagina?: CamadasDePagina;
+  /**
+   * Comportamentos que viram componente (revelar ao rolar, parallax, fixar).
+   * Saem depois das dobras, como as camadas de página: o comportamento é do
+   * site, não de uma seção só.
+   */
+  comportamentos?: readonly ComportamentoCandidato[];
   /** URLs de asset que têm cópia local. */
   assetsLocais: ReadonlySet<string>;
   /** Scripts de que a página depende e que NÃO foram obtidos. */
@@ -987,6 +994,97 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
         ...midiasDoFundo.flatMap((m) => m.limitations),
       ].slice(0, 12),
       framePath: frameDoFundo,
+      filhos: [],
+    });
+    posicao++;
+  }
+
+  // ── Comportamentos ─────────────────────────────────────────────────────────
+  // "Quero que meus cards apareçam assim quando eu rolo" é um pedido de
+  // componente, não de etiqueta. Aqui o que a captura mediu vira item da
+  // Galeria, com os alvos reais lado a lado e o `scrollIds` preenchido — é ele
+  // que liga o item ao modo "Ver ao rolar" do preview, que já existia.
+  for (const comp of entrada.comportamentos ?? []) {
+    const comHtml = comp.hashes.filter((h) => entrada.htmlPorHash.has(h));
+    if (comHtml.length === 0) continue;
+    const html = comHtml.map((h) => entrada.htmlPorHash.get(h) ?? '').join('\n');
+    if (html.trim().length === 0) continue;
+
+    const scrollDoComp = entrada.scrollObservations.filter((s) => comp.scrollIds.includes(s.id));
+    const representacao = classificarRepresentacao({
+      runtimes: [],
+      midias: [],
+      assetsLocais: true,
+      assetsExternos: 0,
+      scriptsNaoLocalizados: entrada.scriptsNaoLocalizados,
+      iframeCrossOrigin: false,
+      shadowFechado: false,
+      estadosCapturados: 0,
+      movimentoMedido: true,
+      // Reveal/parallax/sticky são reproduzidos por CSS e observador de
+      // viewport no preview, sem o JS da origem.
+      movimentoPorCss: true,
+      reageAoPonteiro: false,
+      regiaoReativaSemDom: false,
+      dependeDeJs: false,
+      bootstrapIdentificado: false,
+    });
+
+    const fidelity = montarFidelidade({
+      representacao,
+      cssExternoFaltando: entrada.cssExternoFaltando,
+      temTexto: false,
+      temMovimento: true,
+      movimentoPorCss: true,
+      backgrounds: [],
+      midias: [],
+      externos: 0,
+      totalAssets: 0,
+      estados: 0,
+      acoes: [],
+      ponteiro: [],
+      scroll: scrollDoComp,
+      runtimes: [],
+      temFrame: false,
+    });
+
+    segmentos.push({
+      position: posicao,
+      category: 'interaction',
+      kind: 'animation',
+      name: comp.nome,
+      htmlSnippet: html,
+      hash: `comportamento-${comp.familia}-${comHtml[0] ?? ''}`,
+      evidence: {
+        segmentId: `comportamento-${comp.familia}`,
+        members: comHtml,
+        signals: [
+          {
+            kind: 'scroll',
+            weight: PESO.scroll,
+            detail: `${comp.quantidade} elemento(s) com este comportamento`,
+          },
+          { kind: 'comportamento', weight: PESO.comportamento, detail: comp.explicacao },
+        ],
+        backgroundIds: [],
+        mediaIds: [],
+        runtimeIds: [],
+        stateIds: [],
+        pointerResponseIds: [],
+        scrollIds: comp.scrollIds,
+        assetKeys: [],
+        nameEvidence: [comp.explicacao],
+        confidence: 'alta',
+      },
+      representation: representacao,
+      fidelity,
+      support: seloDe(fidelity, representacao),
+      interactions: ['scroll'],
+      limitations: [
+        comp.explicacao,
+        'Aqui o comportamento é o componente: os elementos servem de amostra para você ver o movimento. Use o botão de rolar para reproduzir.',
+        ...scrollDoComp.flatMap((s) => s.limitations),
+      ].slice(0, 12),
       filhos: [],
     });
     posicao++;

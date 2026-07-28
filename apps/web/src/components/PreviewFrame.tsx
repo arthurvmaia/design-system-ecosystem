@@ -21,6 +21,7 @@ export function PreviewFrame({
   virtualWidth = 1280,
   interactive = false,
   autoHeight = false,
+  alturaMaxima,
   className,
 }: {
   src: string;
@@ -41,6 +42,14 @@ export function PreviewFrame({
    * (replay e scroll têm palco próprio).
    */
   autoHeight?: boolean;
+  /**
+   * Teto para a altura automática, em px do canvas virtual.
+   *
+   * Na grade o teto é a própria proporção do card: conteúdo curto (uma barra de
+   * navegação de 80px) encolhe o card em vez de deixar meia tela de fundo vazio,
+   * e conteúdo longo continua recortado como antes. No detalhe não há teto.
+   */
+  alturaMaxima?: number;
   className?: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -95,7 +104,8 @@ export function PreviewFrame({
     return () => io.disconnect();
   }, [visible]);
 
-  const medida = autoHeight ? alturaConteudo : null;
+  const teto = alturaMaxima ?? Number.POSITIVE_INFINITY;
+  const medida = autoHeight && alturaConteudo !== null ? Math.min(alturaConteudo, teto) : null;
   const virtualHeight = medida ?? Math.round(virtualWidth / aspect);
 
   return (

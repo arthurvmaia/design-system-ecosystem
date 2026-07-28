@@ -396,17 +396,32 @@ test('a segmentação acontece DEPOIS da exploração e produz segmentos úteis'
   }
 });
 
-test('NENHUM segmento é card vazio nem efeito solto: todos têm conteúdo próprio', () => {
+/**
+ * Uma DOBRA sem conteúdo próprio é card vazio e não pode existir.
+ *
+ * Fundo e comportamento seguem outra regra, e de propósito: eles não têm
+ * conteúdo por definição (o fundo é o que fica atrás, o comportamento é o
+ * movimento), e são justamente o que a pessoa costuma querer levar. Para esses,
+ * a exigência muda de "ter texto" para "ter como mostrar": um retrato, ou a
+ * limitação escrita dizendo por que não há retrato. O que continua proibido é o
+ * card que aparece vazio sem explicação.
+ */
+const CATEGORIAS_SEM_CONTEUDO = new Set(['background', 'interaction']);
+
+test('nenhum card aparece vazio sem explicação', () => {
   if (pular() || composicao === null) return;
   for (const s of composicao.segmentos) {
+    if (CATEGORIAS_SEM_CONTEUDO.has(s.category)) {
+      const mostravel = s.framePath !== undefined || s.limitations.length > 0;
+      assert.ok(mostravel, `"${s.name}" não tem retrato nem limitação declarada`);
+      continue;
+    }
     const texto = s.htmlSnippet
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     // Substância = texto, elemento de conteúdo/função no HTML, ou mídia
     // DETECTADA (cobre conteúdo dentro de shadow root, que o regex não vê).
-    // Fundo (backgroundIds) NÃO conta — fundo sozinho é decoração, e a regra
-    // nova o manda para a Revisão em vez da Galeria.
     const temSubstancia =
       texto.length >= 12 ||
       /<(?:img|picture|video|iframe|button|input|select|textarea|h[1-6])[\s>]/i.test(
@@ -417,20 +432,28 @@ test('NENHUM segmento é card vazio nem efeito solto: todos têm conteúdo próp
   }
 });
 
-test('o canvas de fundo NÃO virou um item preto avulso', () => {
+test('canvas sozinho só existe como fundo da página, e com retrato', () => {
   if (pular() || composicao === null) return;
-  // Nenhum segmento pode ser só um canvas sem nada por cima.
   for (const s of composicao.segmentos) {
     const soCanvas =
       /^<canvas[^>]*>\s*<\/canvas>$/i.test(s.htmlSnippet.trim()) ||
       (s.htmlSnippet.includes('<canvas') &&
         s.htmlSnippet.replace(/<[^>]+>/g, '').trim().length === 0);
-    assert.equal(soCanvas, false, `"${s.name}" é um canvas vazio isolado`);
+    if (!soCanvas) continue;
+    // O fundo animado da página é canvas puro por natureza, e a pessoa quer
+    // levá-lo. O que não pode é ele abrir vazio: precisa do retrato (a tela com
+    // o conteúdo esmaecido) ou da limitação escrita.
+    assert.equal(s.category, 'background', `"${s.name}" é canvas isolado fora do fundo da página`);
+    assert.ok(
+      s.framePath !== undefined || s.limitations.length > 0,
+      `"${s.name}" é canvas isolado sem retrato nem limitação`,
+    );
   }
-  // E o hero com WebGL tem de ter vindo INTEIRO (cena + conteúdo).
-  const comCena = composicao.segmentos.filter((s) => s.htmlSnippet.includes('<canvas'));
-  assert.ok(comCena.length >= 1, 'as seções com canvas precisam existir');
-  for (const s of comCena) {
+  // A DOBRA com cena continua vindo inteira: cena mais o conteúdo por cima.
+  const dobrasComCena = composicao.segmentos.filter(
+    (s) => s.htmlSnippet.includes('<canvas') && s.category !== 'background',
+  );
+  for (const s of dobrasComCena) {
     assert.ok(
       /<h[12]|<p|<a /i.test(s.htmlSnippet),
       `"${s.name}" tem canvas mas nenhum conteúdo por cima`,

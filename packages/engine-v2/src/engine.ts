@@ -78,6 +78,7 @@ import type {
 import { hashBytes } from './observe/pixel.js';
 import { atribuirMovimento, observarTemporal } from './observe/temporal.js';
 import { escolherCamadasDePagina } from './segment/camadas-de-pagina.js';
+import { escolherComportamentos } from './segment/comportamentos.js';
 import { escolherPecas } from './segment/pecas.js';
 import { type RejeitadoV2, type SegmentoV2, segmentarPorEvidencia } from './segment/segment-v2.js';
 
@@ -586,10 +587,22 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       soCss: camadasDePagina.soCss.length,
     });
 
+    // Comportamentos (revelar ao rolar, parallax, fixar) como componente. O
+    // alvo de cada um precisa do HTML, igual às peças.
+    const comportamentos = escolherComportamentos({
+      scroll: scrollObservations,
+      nos: structuralMap,
+    });
+    log('comportamentos', {
+      total: comportamentos.length,
+      familias: comportamentos.map((c) => c.familia).join(','),
+    });
+
     const hashesDePeca = new Set([
       ...pecas.map((p) => p.hash),
       ...camadasDePagina.comRuntime,
       ...camadasDePagina.soCss,
+      ...comportamentos.flatMap((c) => c.hashes),
     ]);
 
     for (const n of coletaFinal.nos) {
@@ -877,6 +890,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           framePorHash,
           pecas,
           camadasDePagina,
+          comportamentos,
           assetsLocais,
           scriptsNaoLocalizados,
           cssExternoFaltando: externasSemCopia.length > 0,

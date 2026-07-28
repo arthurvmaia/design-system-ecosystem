@@ -823,7 +823,9 @@ function SegmentsView({
         </section>
       )}
 
-      <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
+      {/* `items-start`: com o card acompanhando a altura do conteúdo, as linhas
+          da grade não devem esticar o card curto até a altura do vizinho. */}
+      <div className="grid flex-1 grid-cols-1 items-start gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map((seg, i) => {
           // Filho que casou com o filtro de categoria: card compacto de
           // primeiro nível, com o selo "de:" dizendo a seção de origem.
@@ -1035,7 +1037,15 @@ function SegmentCard({
             className="block w-full"
           >
             <div className="transition-transform duration-[600ms] ease-[cubic-bezier(0.4,0,0.2,1)] group-hover:scale-[1.06]">
-              <PreviewFrame src={previewSegmentUrl(segment.id)} title={segment.name} />
+              {/* Conteúdo curto encolhe o card; conteúdo longo é recortado na
+                  proporção, como antes. Uma barra de navegação de 80px deixava
+                  meia tela de fundo vazio e parecia defeito. */}
+              <PreviewFrame
+                src={previewSegmentUrl(segment.id)}
+                title={segment.name}
+                autoHeight
+                alturaMaxima={Math.round(1280 / (16 / 10))}
+              />
             </div>
           </button>
           <div
@@ -1308,7 +1318,13 @@ function SegmentCardFilho({
         aria-label={`Ver ${segment.name} em detalhe`}
         className="block w-full"
       >
-        <PreviewFrame src={previewSegmentUrl(segment.id)} title={segment.name} aspect={4 / 3} />
+        <PreviewFrame
+          src={previewSegmentUrl(segment.id)}
+          title={segment.name}
+          aspect={4 / 3}
+          autoHeight
+          alturaMaxima={Math.round(1280 / (4 / 3))}
+        />
       </button>
       <div
         className="flex items-center justify-between border-t p-2.5"
