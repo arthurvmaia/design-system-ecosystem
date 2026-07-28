@@ -1091,7 +1091,52 @@ export const HTML_DO_REF_FN = `
   var R = window['${REGISTRO_GLOBAL}'] || {};
   var el = (R.els || [])[ref];
   if (!el) { try { el = document.querySelector('[${ATTR_REF}="' + ref + '"]'); } catch (e) { el = null; } }
-  return el ? el.outerHTML : '';
+  if (!el) return '';
+  try {
+    // Ícone de biblioteca é um web component: o SVG mora no shadow root e NÃO
+    // sai no outerHTML. Sem isto o bundle recebe a casca vazia
+    // (<iconify-icon></iconify-icon>) e o componente aparece sem ícone — foi o
+    // que aconteceu com os cards de estatística. O SVG JÁ ESTÁ RENDERIZADO
+    // aqui, então basta trazê-lo para a luz: assim o ícone sobrevive sem o
+    // runtime da biblioteca e sem rede, que é o ponto do bundle offline.
+    //
+    // Trabalha sobre um CLONE: mexer no DOM vivo estragaria as capturas
+    // seguintes, que leem a mesma página.
+    var clone = el.cloneNode(true);
+    var origens = [el];
+    var copias = [clone];
+    var todosO = el.querySelectorAll('*');
+    var todosC = clone.querySelectorAll('*');
+    for (var k = 0; k < todosO.length; k++) origens.push(todosO[k]);
+    for (var k2 = 0; k2 < todosC.length; k2++) copias.push(todosC[k2]);
+    var n = Math.min(origens.length, copias.length);
+    for (var i = 0; i < n; i++) {
+      var o = origens[i];
+      var raiz = o.shadowRoot; // fechado devolve null: nada a fazer
+      if (!raiz) continue;
+      var svg = raiz.querySelector('svg');
+      if (!svg) continue;
+      var c = copias[i];
+      var cs = getComputedStyle(o);
+      var g = svg.cloneNode(true);
+      g.setAttribute('width', '100%');
+      g.setAttribute('height', '100%');
+      c.innerHTML = '';
+      c.appendChild(g);
+      // A caixa e a cor vinham do shadow (:host), que não viaja. Fixa o que
+      // foi MEDIDO, para o ícone ocupar o mesmo espaço de antes.
+      var atual = c.getAttribute('style') || '';
+      c.setAttribute(
+        'style',
+        atual + ';display:' + (cs.display === 'inline' ? 'inline-block' : cs.display) +
+        ';width:' + cs.width + ';height:' + cs.height + ';color:' + cs.color
+      );
+      c.setAttribute('data-ds-icone', 'inline');
+    }
+    return clone.outerHTML;
+  } catch (e) {
+    return el.outerHTML;
+  }
 }
 `;
 

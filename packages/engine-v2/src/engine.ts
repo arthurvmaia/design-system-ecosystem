@@ -575,6 +575,15 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       // mais que todo o resto do pipeline.
       if (!PAPEIS_COM_HTML.has(node.role) && !hashesDePeca.has(node.fingerprint.hash)) continue;
       try {
+        // Ler o elemento ENQUANTO ele está visível.
+        //
+        // Conteúdo preguiçoso não existe no DOM fora da viewport, e não é só
+        // imagem: o `iconify-icon` REMOVE o SVG do shadow root quando o ícone
+        // sai da tela (medido: 20 dos 22 ícones desta página têm SVG no topo,
+        // 3 depois de rolar de volta). Lendo com a página parada no topo, todo
+        // componente abaixo da primeira dobra vinha sem ícone.
+        const rolou = await page.evaluate<boolean>(chamar(ROLAR_ATE_REF_FN, n.ref));
+        if (rolou) await page.esperar(120);
         const bruto = await page.evaluate<string>(chamar(HTML_DO_REF_FN, n.ref));
         if (bruto.length > 0)
           htmlPorHash.set(

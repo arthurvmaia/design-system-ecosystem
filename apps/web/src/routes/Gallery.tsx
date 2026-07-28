@@ -23,9 +23,9 @@ import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
-  ChevronDown,
   Columns2,
   Heart,
+  Layers,
   Loader2,
   MoveVertical,
   Play,
@@ -34,7 +34,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
@@ -508,8 +508,10 @@ function SegmentsView({
     [segments.data],
   );
 
-  // Expansão dos subcomponentes, por seção — recolhida por padrão.
-  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  // A dobra cujas peças estão abertas no painel dedicado. Fora da grade de
+  // propósito: peça e dobra são coisas diferentes e misturá-las na mesma grade
+  // fazia a triagem perder o fio.
+  const [pecasDe, setPecasDe] = useState<SegmentRecord | null>(null);
 
   // ── Seleção em massa ───────────────────────────────────────────────────────
   // Só as seções entram na seleção: o filho tem curtir/excluir próprios no card.
@@ -835,60 +837,20 @@ function SegmentsView({
             );
           }
           const filhos = filhosPorPai.get(seg.id) ?? [];
-          const aberto = expandidos.has(seg.id);
           return (
-            <Fragment key={seg.id}>
-              <SegmentCard
-                segment={seg}
-                dsId={dsId}
-                index={i}
-                onOpen={setDetalhe}
-                selected={sel.has(seg.id)}
-                onToggle={() => setSel((s) => toggleSel(s, seg.id))}
-                subcomponentes={filhos.length}
-                expandido={aberto}
-                onToggleExpansao={
-                  // No filtro de peça o filho já sobe para a grade — expandir
-                  // aqui duplicaria os mesmos cards na tela.
-                  category === 'all'
-                    ? () =>
-                        setExpandidos((e) => {
-                          const n = new Set(e);
-                          if (n.has(seg.id)) n.delete(seg.id);
-                          else n.add(seg.id);
-                          return n;
-                        })
-                    : undefined
-                }
-              />
-              {aberto && category === 'all' && filhos.length > 0 && (
-                <div
-                  className="col-span-full rounded-xl border p-4"
-                  style={{
-                    borderColor: 'var(--color-border)',
-                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                  }}
-                >
-                  <div
-                    className="mb-3 text-[10px] uppercase tracking-[0.2em]"
-                    style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
-                  >
-                    Subcomponentes de {seg.name}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-                    {filhos.map((f) => (
-                      <SegmentCardFilho
-                        key={f.id}
-                        segment={f}
-                        dsId={dsId}
-                        nomeDoPai={seg.name}
-                        onOpen={setDetalhe}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </Fragment>
+            <SegmentCard
+              key={seg.id}
+              segment={seg}
+              dsId={dsId}
+              index={i}
+              onOpen={setDetalhe}
+              selected={sel.has(seg.id)}
+              onToggle={() => setSel((s) => toggleSel(s, seg.id))}
+              subcomponentes={filhos.length}
+              // No filtro de peça o filho já sobe para a grade; abrir o painel
+              // ali mostraria os mesmos cards duas vezes.
+              onAbrirPecas={category === 'all' ? () => setPecasDe(seg) : undefined}
+            />
           );
         })}
         {filtered.length === 0 && !segments.isLoading && (
@@ -900,6 +862,18 @@ function SegmentsView({
           </div>
         )}
       </div>
+
+      {/* Peças de UMA dobra, num painel só delas: a triagem da dobra e a das
+          peças são decisões diferentes e não disputam a mesma grade. */}
+      {pecasDe !== null && (
+        <PainelDePecas
+          secao={pecasDe}
+          pecas={filhosPorPai.get(pecasDe.id) ?? []}
+          dsId={dsId}
+          onAbrirPeca={setDetalhe}
+          onClose={() => setPecasDe(null)}
+        />
+      )}
 
       {detalhe && <SegmentDetail segment={detalhe} dsId={dsId} onClose={() => setDetalhe(null)} />}
 
@@ -986,8 +960,7 @@ function SegmentCard({
   selected,
   onToggle,
   subcomponentes = 0,
-  expandido = false,
-  onToggleExpansao,
+  onAbrirPecas,
 }: {
   segment: SegmentRecord;
   dsId: string;
@@ -997,9 +970,8 @@ function SegmentCard({
   onToggle: () => void;
   /** Quantas peças a subdivisão extraiu de dentro desta seção. */
   subcomponentes?: number;
-  expandido?: boolean;
-  /** Presente quando a vista atual permite expandir os subcomponentes. */
-  onToggleExpansao?: () => void;
+  /** Presente quando a vista atual permite abrir o painel de peças. */
+  onAbrirPecas?: () => void;
 }) {
   const qc = useQueryClient();
   const [confirmDel, setConfirmDel] = useState(false);
@@ -1093,27 +1065,19 @@ function SegmentCard({
                 <span className="truncate">{CATEGORY_LABEL[segment.category] ?? 'Outros'}</span>
                 <FidelityBadge fidelity={segment.fidelity} />
               </div>
-              {subcomponentes > 0 && onToggleExpansao !== undefined && (
+              {subcomponentes > 0 && onAbrirPecas !== undefined && (
                 <button
                   type="button"
-                  onClick={onToggleExpansao}
-                  aria-expanded={expandido}
+                  onClick={onAbrirPecas}
                   className="ds-tag mt-1.5 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
                   style={{
-                    borderColor: expandido ? 'var(--color-border-strong)' : 'var(--color-border)',
-                    color: expandido ? 'var(--color-fg)' : 'var(--color-fg-muted)',
+                    borderColor: 'var(--color-border)',
+                    color: 'var(--color-fg-muted)',
                   }}
-                  title={
-                    expandido
-                      ? 'Recolher os subcomponentes'
-                      : 'Ver as peças extraídas de dentro desta seção'
-                  }
+                  title="Abrir as peças extraídas de dentro desta seção"
                 >
-                  <ChevronDown
-                    size={10}
-                    className={cn('transition-transform duration-300', expandido && 'rotate-180')}
-                  />
-                  {subcomponentes} subcomponente{subcomponentes === 1 ? '' : 's'}
+                  <Layers size={10} />
+                  {subcomponentes} peça{subcomponentes === 1 ? '' : 's'}
                 </button>
               )}
             </div>
@@ -1180,6 +1144,116 @@ function SegmentCard({
         }
       />
     </div>
+  );
+}
+
+/**
+ * As peças de UMA dobra, numa tela só delas.
+ *
+ * Antes elas abriam em linha no meio da grade, e o resultado era a triagem
+ * perdendo o fio: dobra e peça são decisões diferentes — "quero esta seção
+ * inteira" não é "quero este botão". Aqui a dobra fica no cabeçalho, como
+ * contexto, e a grade abaixo é só das peças.
+ */
+function PainelDePecas({
+  secao,
+  pecas,
+  dsId,
+  onAbrirPeca,
+  onClose,
+}: {
+  secao: SegmentRecord;
+  pecas: SegmentRecord[];
+  dsId: string;
+  onAbrirPeca: (s: SegmentRecord) => void;
+  onClose: () => void;
+}) {
+  const porCategoria = useMemo(() => {
+    const mapa = new Map<string, SegmentRecord[]>();
+    for (const p of pecas) {
+      const lista = mapa.get(p.category);
+      if (lista) lista.push(p);
+      else mapa.set(p.category, [p]);
+    }
+    return [...mapa.entries()];
+  }, [pecas]);
+
+  return (
+    <Modal open onClose={onClose} size="xl" title={`Peças de ${secao.name}`}>
+      <div className="flex flex-col">
+        <div
+          className="flex items-start justify-between gap-4 border-b px-6 py-4"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <div className="min-w-0">
+            <div
+              className="text-[10px] uppercase tracking-[0.24em]"
+              style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
+            >
+              Peças desta dobra
+            </div>
+            <div
+              className="mt-1 truncate text-[17px] font-medium"
+              style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
+            >
+              {secao.name}
+            </div>
+            <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+              {pecas.length} {pecas.length === 1 ? 'peça extraída' : 'peças extraídas'} de dentro
+              desta seção. Curtir uma peça não leva a dobra junto — e vice-versa.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onAbrirPeca(secao)}
+            className="ds-tag flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-[12px]"
+            style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg)' }}
+            title="Ver a dobra inteira, com os estados e o scroll"
+          >
+            <Play size={11} />
+            Ver a dobra inteira
+          </button>
+        </div>
+
+        <div className="max-h-[62vh] overflow-y-auto p-6">
+          {porCategoria.map(([categoria, itens]) => (
+            <div key={categoria} className="mb-7 last:mb-0">
+              <div
+                className="mb-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em]"
+                style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
+              >
+                {CATEGORY_LABEL[categoria] ?? categoria}
+                <span
+                  className="rounded-full px-1.5 py-px text-[9px]"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
+                >
+                  {itens.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {itens.map((p) => (
+                  <SegmentCardFilho
+                    key={p.id}
+                    segment={p}
+                    dsId={dsId}
+                    nomeDoPai={undefined}
+                    onOpen={onAbrirPeca}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+          {pecas.length === 0 && (
+            <div
+              className="py-14 text-center text-[13px]"
+              style={{ color: 'var(--color-fg-subtle)' }}
+            >
+              Nenhuma peça foi extraída desta dobra.
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
   );
 }
 
