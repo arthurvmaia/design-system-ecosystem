@@ -210,6 +210,10 @@ export type RawAlvoNoPonto = {
 };
 
 export type RawCss = {
+  /** Posição na ordem do documento — a ordem é a cascata. Ausente em coletas antigas. */
+  ordem?: number;
+  /** De onde veio: 'style' | 'link' | 'cssom' | 'adopted' | 'shadow'. Ausente em coletas antigas. */
+  origem?: string;
   href: string | null;
   inline: boolean;
   content?: string;

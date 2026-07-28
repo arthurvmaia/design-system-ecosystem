@@ -56,6 +56,28 @@ test('toggle por JS inline: parcial sem captura, completo com estados capturados
   assert.equal(toggle?.support, 'completo');
 });
 
+test('hover declarado no HTML sem CSS embutido: parcial, não completo', () => {
+  const html = '<a class="btn hover:bg-red-500 focus:ring">Comprar</a>';
+  const sem = assessFidelity(html, '', { bundledAssets: true });
+  const hover = sem.interactions.find((i) => i.kind === 'hover');
+  const focus = sem.interactions.find((i) => i.kind === 'focus');
+  assert.equal(hover?.support, 'parcial');
+  assert.equal(focus?.support, 'parcial');
+  assert.match(hover?.description ?? '', /CSS não embutido/);
+  assert.equal(sem.support, 'parcial', 'hover sem o CSS que o define rebaixa o selo');
+});
+
+test('hover com o CSS que o define embutido (ou sinal do chamador): completo', () => {
+  const html = '<a class="btn hover:bg-red-500">Comprar</a>';
+  const comCss = assessFidelity(html, '.btn:hover{background:red}', { bundledAssets: true });
+  assert.equal(comCss.interactions.find((i) => i.kind === 'hover')?.support, 'completo');
+  assert.equal(comCss.support, 'completo');
+
+  const comSinal = assessFidelity(html, '', { bundledAssets: true, cssEmbutido: true });
+  assert.equal(comSinal.interactions.find((i) => i.kind === 'hover')?.support, 'completo');
+  assert.equal(comSinal.support, 'completo');
+});
+
 test('lottie: externo quando não embutido', () => {
   const a = assessFidelity('<lottie-player src="/a.json"></lottie-player>', '', {
     bundledAssets: false,

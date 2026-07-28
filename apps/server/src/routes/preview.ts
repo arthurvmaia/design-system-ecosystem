@@ -3,6 +3,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { getDb, tables } from '@ds/indexer';
 import {
   CaptureManifest,
+  CapturedAsset,
   RejeitadosManifest,
   type ScrollBehavior,
   SegmentScrollFile,
@@ -14,6 +15,7 @@ import {
   reescreverParaLocal,
   vaultCaptureManifest,
   vaultCaptureV2Dir,
+  vaultCaptureV2Manifest,
   vaultExtractedDir,
   vaultRejeitadosPath,
   vaultSegmentBundlesDir,
@@ -22,6 +24,7 @@ import {
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { z } from 'zod';
 import {
   MIME_BUNDLE,
   framesDoMovimento,
@@ -31,24 +34,50 @@ import {
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
 
 /**
- * Reescritor de refs para o LOCAL. Lê o índice de assets do manifesto de captura
- * e devolve uma função que troca as URLs da origem pela rota do vault. Quando não
- * há manifesto/assets (extração antiga ou rápida), devolve `null` — o preview cai
- * no comportamento de sempre (refs da origem via `<base>`), sem quebrar.
+ * Parse TOLERANTE do manifesto V2: daqui só interessa o campo `assets`. O schema
+ * completo `CaptureManifestV2` é grande e versiona rápido — validá-lo inteiro
+ * derrubaria o reescritor por divergências que não afetam os assets.
  */
-const lerReescritor = (dsId: string): ((t: string) => string) | null => {
-  const path = vaultCaptureManifest(dsId as `ds_${string}`);
-  if (!existsSync(path)) return null;
+const ManifestoV2SoAssets = z.object({ assets: z.array(CapturedAsset) });
+
+/**
+ * Assets LOCAIS do manifesto de captura. Tenta o V1 (`capture/`) primeiro; sem
+ * ele, cai no manifesto do motor V2 (`capture-v2/`) — o `localPath` é o mesmo
+ * formato content-addressed, e a rota `/api/asset` já serve `capture-v2/assets/`
+ * como fallback. Sem manifesto (ou ilegível), devolve `null`.
+ */
+const lerAssetsLocais = (dsId: `ds_${string}`): CapturedAsset[] | null => {
+  const pathV1 = vaultCaptureManifest(dsId);
+  if (existsSync(pathV1)) {
+    try {
+      const manifest = CaptureManifest.parse(JSON.parse(readFileSync(pathV1, 'utf8')));
+      return (manifest.assets ?? []).filter((a) => !a.status || a.status === 'local');
+    } catch {
+      return null;
+    }
+  }
+  const pathV2 = vaultCaptureV2Manifest(dsId);
+  if (!existsSync(pathV2)) return null;
   try {
-    const manifest = CaptureManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
-    const locais = (manifest.assets ?? []).filter((a) => !a.status || a.status === 'local');
-    if (locais.length === 0) return null;
-    const index = construirIndiceAssets(locais);
-    const prefix = assetRoutePrefix(dsId);
-    return (t: string) => reescreverParaLocal(t, index, prefix).text;
+    const manifest = ManifestoV2SoAssets.parse(JSON.parse(readFileSync(pathV2, 'utf8')));
+    return manifest.assets.filter((a) => !a.status || a.status === 'local');
   } catch {
     return null;
   }
+};
+
+/**
+ * Reescritor de refs para o LOCAL. Lê o índice de assets do manifesto de captura
+ * (V1 ou V2) e devolve uma função que troca as URLs da origem pela rota do vault.
+ * Quando não há manifesto/assets (extração antiga ou rápida), devolve `null` — o
+ * preview cai no comportamento de sempre (refs da origem via `<base>`), sem quebrar.
+ */
+const lerReescritor = (dsId: string): ((t: string) => string) | null => {
+  const locais = lerAssetsLocais(dsId as `ds_${string}`);
+  if (locais === null || locais.length === 0) return null;
+  const index = construirIndiceAssets(locais);
+  const prefix = assetRoutePrefix(dsId);
+  return (t: string) => reescreverParaLocal(t, index, prefix).text;
 };
 
 /**

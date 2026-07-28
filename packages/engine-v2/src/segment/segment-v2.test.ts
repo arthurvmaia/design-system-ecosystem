@@ -103,6 +103,7 @@ const entradaVazia = (over: Partial<EntradaSegmentacao> = {}): EntradaSegmentaca
   framePorHash: new Map(),
   assetsLocais: new Set(),
   scriptsNaoLocalizados: 0,
+  cssExternoFaltando: false,
   animacoesCssQueRodaram: [],
   shadowFechados: 0,
   viewport: VP,
@@ -684,6 +685,43 @@ test('seção de texto puro: portátil, editável, sem limitação inventada', (
   assert.equal(s.support, 'completo');
   assert.equal(s.fidelity.temporal, 'ausente', 'sem movimento medido, temporal é ausente');
   assert.deepEqual(s.limitations, []);
+});
+
+test('folha externa sem cópia local: css `parcial` e selo `parcial` mesmo no portátil', () => {
+  const secaoFp = fp({ tag: 'section', id: 'features' });
+  const entrada = (cssExternoFaltando: boolean) =>
+    entradaVazia({
+      cssExternoFaltando,
+      structuralMap: [
+        node({
+          fingerprint: secaoFp,
+          role: 'section',
+          subtreeTextLength: 300,
+          areaShare: 0.8,
+          pageBox: { x: 0, y: 900, w: 1440, h: 720 },
+        }),
+      ],
+      visualLayers: [camada({ fingerprint: secaoFp, ownerSection: secaoFp.hash })],
+      htmlPorHash: new Map([
+        [
+          secaoFp.hash,
+          '<section id="features"><h2>Recursos</h2><div class="card p-6">Um</div><div class="card p-6">Dois</div></section>',
+        ],
+      ]),
+    });
+
+  // Com todas as folhas localizadas, o portátil segue completo.
+  const completo = segmentarPorEvidencia(entrada(false)).segmentos[0];
+  assert.ok(completo);
+  assert.equal(completo.fidelity.css, 'portatil');
+  assert.equal(completo.support, 'completo');
+
+  // Uma folha externa perdida: o CSS que viaja está incompleto — o selo diz.
+  const parcial = segmentarPorEvidencia(entrada(true)).segmentos[0];
+  assert.ok(parcial);
+  assert.equal(parcial.representation.type, 'componente-portatil');
+  assert.equal(parcial.fidelity.css, 'parcial');
+  assert.equal(parcial.support, 'parcial', 'portátil sem parte dos estilos não é completo');
 });
 
 test('toda evidência que aprova também nomeia — aprovado não sai genérico', () => {

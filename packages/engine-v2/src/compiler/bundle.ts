@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   type CapturedAsset,
@@ -33,10 +33,35 @@ import { classificarSvg, isolarIdsSvg } from './svg-classify.js';
 
 export const COMPILER_VERSION = 1;
 
+/**
+ * Uma folha de estilo EXTERNA já localizada pela fase de assets.
+ *
+ * O `localPath` é o nome hashed do `localizeCss` (`css/<hash>.css`) e NÃO pode
+ * mudar: os `@import` reescritos referenciam vizinhos por `<hash>.css` e as
+ * fontes por `../font/<hash>.woff2`. A posição na cascata é dada pela sequência
+ * dos `<link>` no `index.html`, nunca pelo nome do arquivo.
+ */
+export type FolhaExternaBundle = {
+  /** Posição na ordem do documento — a ordem é a cascata. */
+  ordem: number;
+  /** URL absoluta original do `<link>`, para o manifesto e auditoria. */
+  href: string;
+  /** Caminho hashed relativo a `assets/` da captura (ex.: `css/ab12cd.css`). */
+  localPath: string;
+};
+
 export type EntradaBundle = {
   segmento: SegmentoV2;
   /** CSS que este segmento usa (já filtrado pelo motor). */
   css: string;
+  /** Folhas externas localizadas, na ordem do documento — entram ANTES do inline. */
+  cssExternos?: readonly FolhaExternaBundle[];
+  /** Folhas inline individuais com posição — habilita o fallback de intercalação. */
+  cssInlineOrdenado?: readonly { ordem: number; conteudo: string }[];
+  /** Fontes/imagens/@imports internos das folhas externas (`localizeCss`). */
+  assetsDeCss?: readonly CapturedAsset[];
+  /** Diretório `assets/` da captura, de onde os arquivos hashed são copiados. */
+  dirAssetsCaptura?: string;
   /** Scripts inline relevantes, na ordem original. */
   scripts: readonly RawJsInline[];
   /** Assets de que o segmento depende. */
@@ -192,9 +217,104 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
   for (const a of svg.assets) arquivos.push(escrever(dir, a.caminho, a.conteudo));
   avisos.push(...svg.notas);
 
+  // ── CSS externo ─────────────────────────────────────────────────────────
+  // Os arquivos entram no bundle com o MESMO nome hashed da captura — renomear
+  // quebraria os `@import` reescritos (vizinhos por `<hash>.css`) e o layout
+  // `css/`/`font/` que os `url(...)` relativos assumem.
+  const externos: Array<{ ordem: number; caminho: string; conteudo: string }> = [];
+  const jaCopiados = new Set<string>();
+  for (const folha of [...(entrada.cssExternos ?? [])].sort((a, b) => a.ordem - b.ordem)) {
+    if (entrada.dirAssetsCaptura === undefined) {
+      avisos.push(`Folha externa não embutida (sem diretório de captura): ${folha.href}.`);
+      continue;
+    }
+    let conteudo: string;
+    try {
+      conteudo = readFileSync(join(entrada.dirAssetsCaptura, folha.localPath), 'utf8');
+    } catch {
+      avisos.push(`Folha externa sem arquivo na captura: ${folha.localPath} (${folha.href}).`);
+      continue;
+    }
+    const caminho = `assets/${folha.localPath}`;
+    if (!jaCopiados.has(folha.localPath)) {
+      arquivos.push(escrever(dir, caminho, conteudo));
+      jaCopiados.add(folha.localPath);
+    }
+    externos.push({ ordem: folha.ordem, caminho, conteudo });
+  }
+  // Fontes, imagens e @imports internos das folhas: mesmos bytes, mesmos nomes —
+  // é o que faz `url(../font/<hash>.woff2)` resolver dentro do bundle.
+  for (const a of entrada.assetsDeCss ?? []) {
+    if (jaCopiados.has(a.localPath)) continue;
+    if (a.status !== undefined && a.status !== 'local') continue;
+    if (entrada.dirAssetsCaptura === undefined) continue;
+    try {
+      const bytes = readFileSync(join(entrada.dirAssetsCaptura, a.localPath));
+      arquivos.push(escrever(dir, `assets/${a.localPath}`, bytes));
+      jaCopiados.add(a.localPath);
+    } catch {
+      avisos.push(`Asset de CSS sem arquivo na captura: ${a.localPath}.`);
+    }
+  }
+
   // ── CSS ─────────────────────────────────────────────────────────────────
-  const css = organizarCss(entrada.css);
-  for (const a of css.arquivos) arquivos.push(escrever(dir, a.caminho, a.conteudo));
+  // Caso comum (todos os `<link>` antes do primeiro `<style>` — layout
+  // Next/Vite/Tailwind build): externos na frente, inline dividido por
+  // responsabilidade como sempre. Com INTERCALAÇÃO (um `<style>` com regras
+  // antes de um `<link>`), a divisão alteraria a cascata — sai um arquivo por
+  // folha, na ordem exata do documento, no mesmo espírito do fallback de
+  // inversão do `organizarCss`.
+  const inlineOrdenado = (entrada.cssInlineOrdenado ?? []).filter(
+    (f) => f.conteudo.trim().length > 0,
+  );
+  const intercalado =
+    externos.length > 0 && inlineOrdenado.some((f) => externos.some((e) => f.ordem < e.ordem));
+
+  let css: ResultadoCss;
+  let caminhosCss: string[];
+  let cssParaContrato: Array<[string, string]>;
+  if (intercalado) {
+    const porOrdem = [
+      ...inlineOrdenado.map((f) => ({
+        ordem: f.ordem,
+        caminho: `assets/css/inline-${String(f.ordem).padStart(2, '0')}.css`,
+        conteudo: f.conteudo,
+      })),
+      ...externos,
+    ].sort((a, b) => a.ordem - b.ordem);
+    css = {
+      arquivos: porOrdem
+        .filter((f) => f.caminho.includes('/inline-'))
+        .map((f) => ({
+          caminho: f.caminho,
+          conteudo: f.conteudo,
+          responsabilidade: 'components' as const,
+        })),
+      dividido: false,
+      motivo:
+        'Folhas inline e externas intercaladas no documento: dividir por responsabilidade alteraria a cascata. Um arquivo por folha, na ordem exata.',
+      inversoes: [],
+      contagem: {
+        tokens: 0,
+        layout: 0,
+        components: inlineOrdenado.length,
+        animations: 0,
+        interactions: 0,
+        runtime: 0,
+      },
+    };
+    for (const a of css.arquivos) arquivos.push(escrever(dir, a.caminho, a.conteudo));
+    caminhosCss = porOrdem.map((f) => f.caminho);
+    cssParaContrato = porOrdem.map((f) => [f.caminho, f.conteudo]);
+  } else {
+    css = organizarCss(entrada.css);
+    for (const a of css.arquivos) arquivos.push(escrever(dir, a.caminho, a.conteudo));
+    caminhosCss = [...externos.map((e) => e.caminho), ...css.arquivos.map((a) => a.caminho)];
+    cssParaContrato = [
+      ...externos.map((e): [string, string] => [e.caminho, e.conteudo]),
+      ...css.arquivos.map((a): [string, string] => [a.caminho, a.conteudo]),
+    ];
+  }
   if (!css.dividido && css.motivo !== undefined) avisos.push(css.motivo);
 
   // ── JS ──────────────────────────────────────────────────────────────────
@@ -212,7 +332,6 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
   avisos.push(...js.notas);
 
   // ── HTML ────────────────────────────────────────────────────────────────
-  const caminhosCss = css.arquivos.map((a) => a.caminho);
   const corpo =
     segmento.representation.type === 'referencia-visual'
       ? [
@@ -287,7 +406,9 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
   // string não sobrevive a marcação real).
   const contract = derivarContrato({
     html: corpo,
-    css: Object.fromEntries(css.arquivos.map((a) => [a.caminho, a.conteudo])),
+    // Na ordem da cascata, com as folhas EXTERNAS incluídas — é onde vivem os
+    // tokens `:root` e os `@font-face` de sites com CSS de build.
+    css: Object.fromEntries(cssParaContrato),
     jsFiles: js.arquivos.map((a) => a.caminho),
     assets: entrada.assets.map((a) => ({
       originalUrl: a.originalUrl,

@@ -1226,37 +1226,130 @@ export const ROLAR_PARA_FN = `
 }
 `;
 
-/** Folhas de estilo: inline com conteúdo, externas com href. `() => [...]`. */
+/**
+ * Folhas de estilo NA ORDEM DO DOCUMENTO — a ordem é a cascata.
+ *
+ * O coletor antigo listava todo <style> primeiro e todo <link> depois, e a
+ * precedência real entre as folhas se perdia. Aqui o percurso é por
+ * `document.styleSheets`, que já vem em ordem de documento, e cada folha sai
+ * com `ordem` e `origem`:
+ *
+ * - `style`   — <style> com texto: o conteúdo é o próprio `textContent`.
+ * - `cssom`   — <style> vazio (CSS-in-JS): as regras só existem no CSSOM.
+ * - `link`    — folha externa: SÓ o href (ler `cssRules` de folha
+ *               cross-origin lança SecurityError; o download é da fase de assets).
+ * - `adopted` — `document.adoptedStyleSheets`, que nunca aparece em
+ *               `document.styleSheets`.
+ * - `shadow`  — <style> e adoptedStyleSheets de shadow roots ABERTOS, com
+ *               comentário demarcador do host: preservar é mais honesto que
+ *               perder, mas o escopo real é o do root, não o do documento.
+ *
+ * Assinatura: `() => RawCss[]`.
+ */
 export const COLETAR_CSS_FN = `
 () => {
   var out = [];
+  var ordem = 0;
+  var TETO_REGRAS = 4000;
+  var totalRegras = 0;
+
+  /** Serializa cssRules respeitando o teto GLOBAL. Pode lançar (cross-origin). */
+  var serializarRegras = function (folha) {
+    var texto = '';
+    var regras = folha.cssRules;
+    for (var i = 0; i < regras.length; i++) {
+      if (totalRegras >= TETO_REGRAS) break;
+      texto += regras[i].cssText + '\\n';
+      totalRegras++;
+    }
+    return texto;
+  };
+
+  // ── Folhas do documento, na ordem da cascata ─────────────────────────────
   try {
-    var estilos = document.querySelectorAll('style');
-    for (var i = 0; i < estilos.length; i++) {
-      out.push({ href: null, inline: true, content: estilos[i].textContent || '' });
+    var folhas = document.styleSheets;
+    for (var i = 0; i < folhas.length; i++) {
+      var ss = folhas[i];
+      var dono = ss.ownerNode;
+      var tag = dono && dono.tagName ? dono.tagName.toUpperCase() : '';
+      if (tag === 'STYLE') {
+        var textoDono = dono.textContent || '';
+        if (textoDono.length > 0) {
+          out.push({ ordem: ordem++, origem: 'style', href: null, inline: true, content: textoDono });
+          continue;
+        }
+        // <style> vazio é CSS-in-JS: as regras só existem no CSSOM.
+        var texto = '';
+        try { texto = serializarRegras(ss); } catch (e) { continue; }
+        if (texto) out.push({ ordem: ordem++, origem: 'cssom', href: null, inline: true, content: texto, viaCssom: true });
+      } else if (tag === 'LINK') {
+        var href = ss.href || dono.href || '';
+        if (href) out.push({ ordem: ordem++, origem: 'link', href: href, inline: false });
+      }
     }
   } catch (e) {}
+
+  // <link rel=stylesheet> que ainda não carregou (ou falhou) não aparece em
+  // document.styleSheets — o href não pode se perder por isso.
   try {
+    var jaVistos = {};
+    for (var v = 0; v < out.length; v++) { if (out[v].href) jaVistos[out[v].href] = 1; }
     var links = document.querySelectorAll('link[rel="stylesheet"]');
     for (var j = 0; j < links.length; j++) {
-      out.push({ href: links[j].href, inline: false });
+      var h = links[j].href;
+      if (h && !jaVistos[h]) { jaVistos[h] = 1; out.push({ ordem: ordem++, origem: 'link', href: h, inline: false }); }
     }
   } catch (e) {}
-  // Regras injetadas por CSS-in-JS não têm <style> com texto: lê do CSSOM.
+
+  // ── adoptedStyleSheets do documento ──────────────────────────────────────
   try {
-    for (var k = 0; k < document.styleSheets.length; k++) {
-      var ss = document.styleSheets[k];
-      var dono = ss.ownerNode;
-      if (!dono || dono.tagName !== 'STYLE') continue;
-      if ((dono.textContent || '').length > 0) continue;
-      var texto = '';
-      try {
-        var regras = ss.cssRules;
-        for (var m = 0; m < regras.length && m < 4000; m++) texto += regras[m].cssText + '\\n';
-      } catch (e) { continue; }
-      if (texto) out.push({ href: null, inline: true, content: texto, viaCssom: true });
+    var adotadas = document.adoptedStyleSheets || [];
+    for (var a = 0; a < adotadas.length; a++) {
+      var textoA = '';
+      try { textoA = serializarRegras(adotadas[a]); } catch (e) { continue; }
+      if (textoA) out.push({ ordem: ordem++, origem: 'adopted', href: null, inline: true, content: textoA, viaCssom: true });
     }
   } catch (e) {}
+
+  // ── Shadow roots ABERTOS ─────────────────────────────────────────────────
+  // Walk por elementos com shadowRoot (pega também os declarativos, que a
+  // instrumentação de attachShadow não vê), descendo em roots aninhados.
+  try {
+    var fila = [document];
+    var raizes = 0;
+    while (fila.length > 0 && raizes < 200) {
+      var escopo = fila.shift();
+      var els;
+      try { els = escopo.querySelectorAll('*'); } catch (e) { continue; }
+      for (var n = 0; n < els.length && raizes < 200; n++) {
+        var raiz = els[n].shadowRoot;
+        if (!raiz) continue;
+        raizes++;
+        fila.push(raiz);
+        var tagHost = els[n].tagName ? els[n].tagName.toLowerCase() : '?';
+        var demarcador = '/* shadow-root de <' + tagHost + '> */\\n';
+        try {
+          var estilos = raiz.querySelectorAll('style');
+          for (var s = 0; s < estilos.length; s++) {
+            var conteudo = estilos[s].textContent || '';
+            if (!conteudo) {
+              try { conteudo = estilos[s].sheet ? serializarRegras(estilos[s].sheet) : ''; } catch (e) { conteudo = ''; }
+            }
+            if (conteudo) out.push({ ordem: ordem++, origem: 'shadow', href: null, inline: true, content: demarcador + conteudo });
+          }
+        } catch (e) {}
+        try {
+          var adotadasRaiz = raiz.adoptedStyleSheets || [];
+          for (var r = 0; r < adotadasRaiz.length; r++) {
+            var textoR = '';
+            try { textoR = serializarRegras(adotadasRaiz[r]); } catch (e) { continue; }
+            if (textoR) out.push({ ordem: ordem++, origem: 'shadow', href: null, inline: true, content: demarcador + textoR, viaCssom: true });
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+
   return out;
 }
 `;

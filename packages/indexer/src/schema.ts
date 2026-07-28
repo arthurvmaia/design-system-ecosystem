@@ -1,4 +1,5 @@
 import {
+  type AnySQLiteColumn,
   index,
   integer,
   primaryKey,
@@ -52,10 +53,20 @@ export const segments = sqliteTable(
     previewPath: text('preview_path'),
     position: integer('position').notNull(),
     inLibrary: integer('in_library', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * Seção pai quando o segmento é um subcomponente extraído dela (botão,
+     * card, badge…). NULL = seção raiz. Cascade: excluir a seção leva os
+     * filhos junto. A anotação `AnySQLiteColumn` quebra o ciclo de tipos da
+     * auto-referência.
+     */
+    parentId: text('parent_id').references((): AnySQLiteColumn => segments.id, {
+      onDelete: 'cascade',
+    }),
   },
   (t) => ({
     dsCategoryIdx: index('segments_ds_category_idx').on(t.designSystemId, t.category),
     inLibraryIdx: index('segments_in_library_idx').on(t.inLibrary),
+    parentIdx: index('segments_parent_idx').on(t.parentId),
   }),
 );
 

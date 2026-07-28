@@ -27,6 +27,7 @@ import { contido, intersecao } from '../mapper/build-maps.js';
 import type { BoxPx } from '../mapper/raw.js';
 import { nomeEhGenerico, nomearPorEvidencia } from './naming.js';
 import { type EvidenciaRepresentacao, classificarRepresentacao } from './representation.js';
+import { type FilhoDeSecao, subdividirSecao } from './subdividir.js';
 
 /**
  * Segmentação PÓS-exploração.
@@ -371,6 +372,11 @@ export type EntradaSegmentacao = {
   assetsLocais: ReadonlySet<string>;
   /** Scripts de que a página depende e que NÃO foram obtidos. */
   scriptsNaoLocalizados: number;
+  /**
+   * Alguma folha de estilo externa do documento ficou SEM cópia local. O bundle
+   * sai sem parte dos estilos — o CSS de nenhum segmento pode se dizer portátil.
+   */
+  cssExternoFaltando: boolean;
   /** Animações CSS que de fato rodaram (nome → contagem). */
   animacoesCssQueRodaram: readonly string[];
   /** Shadow roots fechados encontrados. */
@@ -395,6 +401,11 @@ export type SegmentoV2 = {
   interactions: InteractionKind[];
   /** Limitações honestas, prontas para a UI. */
   limitations: string[];
+  /**
+   * Subcomponentes extraídos de dentro da seção (botão, card, badge…). Só
+   * seção aprovada tem filhos — ver `subdividirSecao`.
+   */
+  filhos: FilhoDeSecao[];
 };
 
 export type RejeitadoV2 = {
@@ -750,6 +761,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
 
     const fidelity = montarFidelidade({
       representacao,
+      cssExternoFaltando: entrada.cssExternoFaltando,
       temTexto: sinais.texto.length >= 12,
       temMovimento,
       movimentoPorCss,
@@ -766,6 +778,10 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     });
 
     const interactions = inferirInteracoesDoSegmento({ estados, acoes, ponteiro, scroll, html });
+
+    // Subdivisão fina, SÓ depois do veredito: as peças reutilizáveis de dentro
+    // da seção (botão, card, badge…). Seção rejeitada não deixa descendência.
+    const filhos = subdividirSecao({ category: categoria, htmlSnippet: html });
 
     segmentos.push({
       position: posicao,
@@ -788,6 +804,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
           ? ['O nome saiu genérico: a seção não apresentou evidência suficiente.']
           : []),
       ].slice(0, 12),
+      filhos,
     });
     posicao++;
   }
@@ -833,6 +850,8 @@ const detectarParticulas = (
 
 const montarFidelidade = (opts: {
   representacao: RepresentationDecision;
+  /** Folha externa do documento sem cópia local — o CSS embutido está incompleto. */
+  cssExternoFaltando: boolean;
   temTexto: boolean;
   temMovimento: boolean;
   movimentoPorCss: boolean;
@@ -853,7 +872,14 @@ const montarFidelidade = (opts: {
 
   const f: FidelityV2 = {
     estrutura: portatil ? 'portatil' : referencia ? 'referencia-visual' : 'capturado',
-    css: portatil || capsula ? 'portatil' : 'referencia-visual',
+    // Folha externa sem cópia local = o CSS que viaja está incompleto. `parcial`
+    // em vez de `portatil` — o selo honesto começa aqui.
+    css:
+      portatil || capsula
+        ? opts.cssExternoFaltando
+          ? 'parcial'
+          : 'portatil'
+        : 'referencia-visual',
     visual: referencia ? 'referencia-visual' : opts.temFrame ? 'capturado' : 'detectado',
     assets:
       opts.totalAssets === 0
@@ -927,6 +953,9 @@ export const seloDe = (f: FidelityV2, r: RepresentationDecision): SupportLevel =
   if (r.type === 'referencia-visual') return 'visual';
   if (f.assets === 'externo' || f.runtime === 'externo') return 'externo';
   if (r.type === 'capsula-runtime') return 'parcial';
+  // Componente portátil com CSS incompleto (folha externa sem cópia local) não
+  // pode se dizer completo: parte dos estilos ficou na origem.
+  if (f.css !== 'portatil') return 'parcial';
   const pendentes = [f.click, f.pointer, f.scroll, f.temporal].filter(
     (d) => d === 'detectado' || d === 'capturado' || d === 'associado',
   );

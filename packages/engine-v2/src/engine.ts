@@ -29,7 +29,7 @@ import {
   type TemporalObservation,
 } from '@ds/shared';
 import { PlaywrightIndisponivel, type SessaoV2, abrirSessao } from './browser/page.js';
-import { escreverBundle } from './compiler/bundle.js';
+import { type FolhaExternaBundle, escreverBundle } from './compiler/bundle.js';
 import { detectarFerramentas, montarStack } from './compiler/stack.js';
 import { type Candidato, descobrirCandidatos } from './explore/candidates.js';
 import { TRAJETORIAS_COMPLEMENTARES, TRAJETORIA_COBERTURA } from './explore/pointer-paths.js';
@@ -696,13 +696,22 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     }
 
     // ── Assets ────────────────────────────────────────────────────────────
-    const cssInline = folhas
+    // Concatena na ordem do documento — a ordem é a cascata. O coletor já
+    // emite ordenado; o sort estável só protege coletas sem `ordem` (ficam
+    // onde estavam) e futuras fontes fora de sequência. As folhas individuais
+    // seguem para o bundle: é o que permite o fallback de intercalação.
+    const cssInlineOrdenado = folhas
       .filter((f) => f.inline && f.content !== undefined)
-      .map((f) => f.content ?? '')
-      .join('\n');
+      .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+      .map((f) => ({ ordem: f.ordem ?? 0, conteudo: f.content ?? '' }));
+    const cssInline = cssInlineOrdenado.map((f) => f.conteudo).join('\n');
 
     const assets: CapturedAsset[] = [];
     const assetsLocais = new Set<string>();
+    // Içados para fora do closure: o bundle precisa das folhas localizadas
+    // (`cssMap`) e dos assets internos delas (fontes, imagens, @imports).
+    let cssMapExterno = new Map<string, string>();
+    let assetsDeCss: CapturedAsset[] = [];
     await tel.faseCooperativa(FASE_V2.assets, async (signal) => {
       const refs = extractAssetRefs(html, cssInline, finalUrl);
       const seguro = createSecureHttpFetcher(limits, { signal, contador: tel });
@@ -720,6 +729,8 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         limits,
         signal,
       );
+      cssMapExterno = resCss.cssMap;
+      assetsDeCss = resCss.assets;
       const res = await localizeAssets(outros, fetcher, sink, limits, signal);
       for (const a of [...res.assets, ...resCss.assets]) {
         assets.push(a);
@@ -734,6 +745,35 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
 
     const drenoTimeout = Math.min(limits.faseDrenarMs, Math.max(0, tel.restanteTotal()));
     await tel.medir(FASE_V2.drenar, () => rede.aguardar(drenoTimeout));
+
+    // ── Folhas externas do documento ──────────────────────────────────────
+    // Cada `<link>` da coleta resolve para a cópia local que o `localizeCss`
+    // gravou. A lista sai na ordem do documento — é a frente da cascata dos
+    // bundles. Folha sem cópia local vira limitação, do manifesto e dos
+    // segmentos: o bundle sai sem parte dos estilos e precisa dizer isso.
+    const cssExternos: FolhaExternaBundle[] = [];
+    const externasSemCopia: string[] = [];
+    for (const f of folhas) {
+      if (f.inline || f.href === null) continue;
+      let abs = f.href;
+      try {
+        abs = new URL(f.href, finalUrl).href;
+      } catch {
+        // href inválido segue como veio — e cai em "sem cópia local"
+      }
+      const localPath = cssMapExterno.get(abs) ?? cssMapExterno.get(f.href);
+      if (localPath === undefined) {
+        externasSemCopia.push(abs);
+        continue;
+      }
+      cssExternos.push({ ordem: f.ordem ?? 0, href: abs, localPath });
+    }
+    if (externasSemCopia.length > 0) {
+      limitacoes.push(
+        `${externasSemCopia.length} folha(s) de estilo externa(s) sem cópia local (ex.: ${externasSemCopia[0]}): os bundles podem perder estilos dessas folhas.`,
+      );
+    }
+    log('css-externo', { localizadas: cssExternos.length, semCopia: externasSemCopia.length });
 
     // ── Segmentação ───────────────────────────────────────────────────────
     const scriptsNaoLocalizados = instrumentacao.scripts.filter((u) => !assetsLocais.has(u)).length;
@@ -756,6 +796,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           framePorHash,
           assetsLocais,
           scriptsNaoLocalizados,
+          cssExternoFaltando: externasSemCopia.length > 0,
           animacoesCssQueRodaram: animacoesCss,
           shadowFechados: instrumentacao.shadowRoots.closed,
           viewport,
@@ -765,6 +806,18 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     );
     tel.inc('segmentos', segmentos.length);
     log('segmentos', { total: segmentos.length, rejeitados: rejeitados.length });
+
+    // Folha externa perdida afeta todo segmento que renderiza por CSS — a
+    // referência visual não, ela é frame. A limitação vai no segmento para a
+    // Galeria mostrar o aviso onde ele importa.
+    if (externasSemCopia.length > 0) {
+      const avisoCss = `Folha de estilo externa sem cópia local: ${externasSemCopia[0]}${
+        externasSemCopia.length > 1 ? ` (+${externasSemCopia.length - 1})` : ''
+      } — o bundle pode sair sem parte dos estilos.`;
+      for (const seg of segmentos) {
+        if (seg.representation.type !== 'referencia-visual') seg.limitations.push(avisoCss);
+      }
+    }
 
     // ── STACK ─────────────────────────────────────────────────────────────
     const stack: StackEntry[] = montarStack(
@@ -800,6 +853,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             escreverBundle(join(dirBundles, `seg_${seg.position}`), {
               segmento: seg,
               css: cssInline,
+              cssExternos,
+              cssInlineOrdenado,
+              assetsDeCss,
+              dirAssetsCaptura: join(opts.dirCaptura, 'assets'),
               scripts: seg.representation.type === 'referencia-visual' ? [] : scriptsInline,
               assets: assets.filter((a) => dosMeus.has(a.originalUrl)),
               stack,

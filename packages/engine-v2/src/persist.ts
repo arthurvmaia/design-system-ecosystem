@@ -27,6 +27,7 @@ import {
 } from '@ds/shared';
 import type { ResultadoCaptura } from './engine.js';
 import type { SegmentoV2 } from './segment/segment-v2.js';
+import type { FilhoDeSecao } from './segment/subdividir.js';
 
 /**
  * Persistência do V2 no formato que a Galeria já lê.
@@ -220,6 +221,8 @@ export const persistirCapturaV2 = (
 
   const segments: SegmentRecord[] = [];
   const insights: SegmentInsight[] = [];
+  /** Filhos de cada seção, esperando o id do pai já gerado para serem gravados. */
+  const filhosDosPais: Array<{ paiId: `seg_${string}`; filhos: FilhoDeSecao[] }> = [];
   const statesDir = vaultSegmentStatesDir(dsId);
   const scrollDir = vaultSegmentScrollDir(dsId);
   let escreveuEstado = false;
@@ -267,7 +270,9 @@ export const persistirCapturaV2 = (
       previewPath: null,
       position: seg.position,
       inLibrary: false,
+      parentId: null,
     });
+    if (seg.filhos.length > 0) filhosDosPais.push({ paiId: id, filhos: seg.filhos });
 
     const caps = capabilitiesDoV2(seg, m);
     const temEstados = armazenados.length > 0;
@@ -339,6 +344,31 @@ export const persistirCapturaV2 = (
         behaviors: scroll,
       };
       writeFileSync(vaultSegmentScroll(dsId, id), `${JSON.stringify(arquivo, null, 2)}\n`, 'utf8');
+    }
+  }
+
+  // Filhos das seções: as peças de dentro (botão, card, badge…), gravadas como
+  // `SegmentRecord` com `parentId` — sem bundle de compilador e SEM insight na
+  // v1 (a UI já tolera `fidelity: null`; o preview cai no caminho clássico).
+  // A `position` continua DEPOIS de todas as seções, para o esquema de pastas
+  // dos bundles não mudar: a seção i segue sendo `seg_<i>`. No manifesto os
+  // pais vêm primeiro, filhos depois — a FK do banco exige essa ordem no insert.
+  let posicaoFilho = captura.segmentos.length;
+  for (const { paiId, filhos } of filhosDosPais) {
+    for (const filho of filhos) {
+      segments.push({
+        id: newSegmentId(),
+        designSystemId: dsId,
+        category: filho.category,
+        kind: filho.kind,
+        name: filho.name,
+        htmlSnippet: filho.htmlSnippet,
+        previewPath: null,
+        position: posicaoFilho,
+        inLibrary: false,
+        parentId: paiId,
+      });
+      posicaoFilho++;
     }
   }
 

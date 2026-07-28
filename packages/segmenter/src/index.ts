@@ -671,10 +671,16 @@ export type SegmentationResult = {
  * sobre o HTML do segmento. Passa `css` vazio de propósito: a detecção de
  * animação/JS deve sair das classes DO segmento, não do CSS global do site
  * (senão todo segmento herdaria "tem animação" de qualquer `@keyframes` solto).
+ * O `cssEmbutido` viaja à parte: diz se o CSS do vault define os estados
+ * (`:hover`/`:focus`) — sem ele, hover/focus declarados no HTML saem `parcial`.
  */
-const fazerInsight = (segmentId: `seg_${string}`, htmlSnippet: string): SegmentInsight => ({
+const fazerInsight = (
+  segmentId: `seg_${string}`,
+  htmlSnippet: string,
+  cssEmbutido: boolean,
+): SegmentInsight => ({
   segmentId,
-  ...assessFidelity(htmlSnippet, '', { bundledAssets: false }),
+  ...assessFidelity(htmlSnippet, '', { bundledAssets: false, cssEmbutido }),
 });
 
 /**
@@ -814,6 +820,11 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
   // As seções raramente ficam direto no <body>. Ver `coletarCandidatos`.
   const candidatos = coletarCandidatos(body);
 
+  // O CSS que o vault carrega define os estados? `hover:` numa classe do HTML é
+  // só declaração — o efeito mora no CSS. O sinal alimenta o selo dos insights.
+  const cssDoVault = lerCssDoVault(extractedDir, html);
+  const cssEmbutido = /:hover|:focus/i.test(cssDoVault);
+
   const segments: SegmentRecord[] = [];
   const insights: SegmentInsight[] = [];
   const rejeitados: RejectedSegment[] = [];
@@ -888,15 +899,16 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
       previewPath: null,
       position,
       inLibrary: false,
+      parentId: null,
     });
-    insights.push(fazerInsight(id, snippet));
+    insights.push(fazerInsight(id, snippet, cssEmbutido));
     position++;
   }
 
   // Segundo passe: os sistemas que atravessam a página inteira (tipografia,
   // botões, cards, interações). Vêm depois das seções de propósito — são a
   // leitura transversal do mesmo material, não mais um pedaço dele.
-  for (const padrao of extrairPadroes(body, lerCssDoVault(extractedDir, html))) {
+  for (const padrao of extrairPadroes(body, cssDoVault)) {
     const id = newSegmentId();
     segments.push({
       id,
@@ -908,8 +920,9 @@ export const segmentDesignSystem = (designSystemId: `ds_${string}`): Segmentatio
       previewPath: null,
       position,
       inLibrary: false,
+      parentId: null,
     });
-    insights.push(fazerInsight(id, padrao.htmlSnippet));
+    insights.push(fazerInsight(id, padrao.htmlSnippet, cssEmbutido));
     position++;
   }
 
@@ -972,6 +985,14 @@ export {
   associarManifesto,
 } from './associar.js';
 export { enriquecerInsight, montarDimensoes } from './enriquecer.js';
+export {
+  CLASSE_DE_POSICAO,
+  PARECE_BOTAO,
+  PARECE_CARD,
+  assinatura,
+  embrulhar,
+  porAssinatura,
+} from './primitivas.js';
 
 /**
  * Retorna o head do design-system.html isolado (para injeção em preview iframe).

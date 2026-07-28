@@ -23,7 +23,12 @@ import {
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 
-export type ResultadoSegmentacao = { total: number; suspeitoDeSpa: boolean };
+export type ResultadoSegmentacao = {
+  total: number;
+  /** Só as seções (parentId null) — os filhos da subdivisão não contam aqui. */
+  raizes: number;
+  suspeitoDeSpa: boolean;
+};
 
 /**
  * Segmentos de uma captura V2, já gravados no vault pela extração.
@@ -82,7 +87,10 @@ export const segmentarEIndexar = (dsId: `ds_${string}`): ResultadoSegmentacao =>
   });
 
   const total = segments.length;
-  return { total, suspeitoDeSpa: total > 0 && total < MINIMO_ESPERADO };
+  // O sintoma de SPA se mede nas SEÇÕES: 1 seção com 7 botões-filhos continua
+  // sendo uma página de uma seção só — contar os filhos mascararia o aviso.
+  const raizes = segments.filter((s) => s.parentId === null).length;
+  return { total, raizes, suspeitoDeSpa: raizes > 0 && raizes < MINIMO_ESPERADO };
 };
 
 /** Texto do aviso, compartilhado entre este script e o `fila:concluir`. */
@@ -109,14 +117,14 @@ if (process.argv[1]?.includes('segmentar')) {
   }
 
   try {
-    const { total, suspeitoDeSpa } = segmentarEIndexar(dsId as `ds_${string}`);
+    const { total, raizes, suspeitoDeSpa } = segmentarEIndexar(dsId as `ds_${string}`);
     if (total === 0) {
       console.log('\n  Nenhum segmento encontrado.');
       console.log('  O design-system.html existe, mas o <body> não tem filhos diretos');
       console.log('  que sirvam como componente. Confira se a extração saiu completa.\n');
     } else {
       console.log(`\n  ${total} segmento(s) gravados. Abra a Galeria.`);
-      if (suspeitoDeSpa) console.log(avisoSpa(total));
+      if (suspeitoDeSpa) console.log(avisoSpa(raizes));
       else console.log('');
     }
   } catch (err) {

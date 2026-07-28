@@ -24,6 +24,13 @@ export type AssessOptions = {
   hasCapturedStates?: boolean;
   /** Os assets referenciados foram baixados e embutidos localmente. */
   bundledAssets?: boolean;
+  /**
+   * O CSS que define os estados (`:hover`/`:focus`) acompanha o componente.
+   * `hover:` numa classe do HTML é declaração, não efeito — sem o CSS embutido,
+   * hover/focus não passam de `parcial`. Ausente, `assessFidelity` deduz do
+   * próprio `css` recebido.
+   */
+  cssEmbutido?: boolean;
   /** Interações já conhecidas (do mapa de interação), para enriquecer a lista. */
   knownInteractions?: InteractionKind[];
 };
@@ -102,16 +109,29 @@ export const pickRenderMode = (caps: Required<ComponentCapabilities>): RenderMod
 export const inferInteractions = (
   html: string,
   caps: Required<ComponentCapabilities>,
-  hasCapturedStates: boolean,
+  opts: AssessOptions = {},
 ): InteractionInfo[] => {
-  const nivelJs: SupportLevel = hasCapturedStates ? 'completo' : 'parcial';
+  const nivelJs: SupportLevel = opts.hasCapturedStates === true ? 'completo' : 'parcial';
+  // Hover/focus vistos no HTML são só a DECLARAÇÃO — o efeito mora no CSS. Sem
+  // o CSS embutido, dizer `completo` seria o falso-positivo clássico do selo.
+  const nivelCss: SupportLevel = opts.cssEmbutido === true ? 'completo' : 'parcial';
   const out: InteractionInfo[] = [];
   const push = (kind: InteractionKind, support: SupportLevel, description: string): void => {
     out.push({ kind, support, description });
   };
 
-  if (/hover:|group-hover:|:hover/i.test(html)) push('hover', 'completo', 'Hover via CSS.');
-  if (/focus:|focus-visible:|:focus/i.test(html)) push('focus', 'completo', 'Foco via CSS.');
+  if (/hover:|group-hover:|:hover/i.test(html))
+    push(
+      'hover',
+      nivelCss,
+      nivelCss === 'completo' ? 'Hover via CSS.' : 'Hover declarado no HTML; CSS não embutido.',
+    );
+  if (/focus:|focus-visible:|:focus/i.test(html))
+    push(
+      'focus',
+      nivelCss,
+      nivelCss === 'completo' ? 'Foco via CSS.' : 'Foco declarado no HTML; CSS não embutido.',
+    );
   if (/aria-expanded|data-(toggle|accordion|dropdown)/i.test(html))
     push('toggle', nivelJs, 'Abre/fecha — depende de JS.');
   if (/role\s*=\s*["']?tab|data-tab/i.test(html))
@@ -186,11 +206,15 @@ export const assessFidelity = (
   else if (caps.dependsOnJs) support = opts.hasCapturedStates ? 'completo' : 'parcial';
   else support = 'completo';
 
-  const interactions = inferInteractions(html, caps, opts.hasCapturedStates ?? false);
+  // O chamador que sabe o que embutiu manda; sem o sinal, a prova é o próprio
+  // `css` recebido definir os estados que o HTML declara.
+  const cssEmbutido = opts.cssEmbutido ?? /:hover|:focus/i.test(css);
+  const interactions = inferInteractions(html, caps, { ...opts, cssEmbutido });
 
-  // Honestidade: se o componente tem uma interação que depende de JS e que NÃO
-  // foi capturada (uma aba, um menu), ele não é "completo" mesmo que o HTML
-  // estático não tenha disparado `dependsOnJs`. Rebaixa para parcial.
+  // Honestidade: se o componente tem uma interação que NÃO está garantida — um
+  // toggle sem estados capturados, um hover cujo CSS não veio junto —, ele não
+  // é "completo" mesmo que o HTML estático não tenha disparado `dependsOnJs`.
+  // Rebaixa para parcial.
   if (support === 'completo' && interactions.some((i) => i.support === 'parcial')) {
     support = 'parcial';
   }

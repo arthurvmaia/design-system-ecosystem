@@ -172,6 +172,7 @@ export {
 export {
   type BundleEscrito,
   type EntradaBundle,
+  type FolhaExternaBundle,
   COMPILER_VERSION,
   escreverBundle,
   escreverValidacao,

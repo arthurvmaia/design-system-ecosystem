@@ -111,6 +111,8 @@ export type SegmentRecord = {
   previewPath: string | null;
   position: number;
   inLibrary: boolean;
+  /** Seção pai quando o segmento é um subcomponente dela; null = seção raiz. */
+  parentId: string | null;
   /** Presente quando a segmentação gerou avaliação (extrações novas). */
   fidelity?: SegmentFidelity | null;
   /** Resumo das interações por estado (contagens). Presente na listagem nova. */

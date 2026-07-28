@@ -75,6 +75,12 @@ export const SegmentRecord = z.object({
   previewPath: z.string().nullable(),
   position: z.number().int().nonnegative(),
   inLibrary: z.boolean(),
+  /**
+   * Seção pai quando este segmento é um SUBCOMPONENTE (botão, card, badge…)
+   * extraído de dentro dela. `null` = segmento raiz (seção). O default mantém
+   * manifestos antigos parseando sem mudança.
+   */
+  parentId: z.string().startsWith('seg_').nullable().default(null),
 });
 export type SegmentRecord = z.infer<typeof SegmentRecord>;
 

@@ -183,12 +183,15 @@ importers:
       '@ds/explorer':
         specifier: workspace:*
         version: link:../explorer
+      '@ds/segmenter':
+        specifier: workspace:*
+        version: link:../segmenter
       '@ds/shared':
         specifier: workspace:*
         version: link:../shared
       node-html-parser:
-        specifier: ^7.0.1
-        version: 7.1.0
+        specifier: ^6.1.13
+        version: 6.1.13
     optionalDependencies:
       playwright:
         specifier: ^1.61.1

@@ -15,8 +15,9 @@
   },
   "dependencies": {
     "@ds/explorer": "workspace:*",
+    "@ds/segmenter": "workspace:*",
     "@ds/shared": "workspace:*",
-    "node-html-parser": "^7.0.1"
+    "node-html-parser": "^6.1.13"
   },
   "optionalDependencies": {
     "playwright": "^1.61.1"
