@@ -26,8 +26,9 @@ import type {
 import { contido, intersecao } from '../mapper/build-maps.js';
 import type { BoxPx } from '../mapper/raw.js';
 import { nomeEhGenerico, nomearPorEvidencia } from './naming.js';
+import type { PecaCandidata } from './pecas.js';
 import { type EvidenciaRepresentacao, classificarRepresentacao } from './representation.js';
-import { type FilhoDeSecao, subdividirSecao } from './subdividir.js';
+import { type FilhoDeSecao, subdividirPorEvidencia, subdividirSecao } from './subdividir.js';
 
 /**
  * Segmentação PÓS-exploração.
@@ -368,6 +369,12 @@ export type EntradaSegmentacao = {
   htmlPorHash: ReadonlyMap<string, string>;
   /** Frames gravados por hash (referência visual / estado). */
   framePorHash: ReadonlyMap<string, string>;
+  /**
+   * Peças escolhidas por evidência medida (card, botão, mockup, mídia), com a
+   * dobra que as contém. É o insumo da subdivisão fina — sem elas ela cai no
+   * caminho antigo, que adivinha por nome de classe.
+   */
+  pecas?: readonly PecaCandidata[];
   /** URLs de asset que têm cópia local. */
   assetsLocais: ReadonlySet<string>;
   /** Scripts de que a página depende e que NÃO foram obtidos. */
@@ -780,8 +787,17 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     const interactions = inferirInteracoesDoSegmento({ estados, acoes, ponteiro, scroll, html });
 
     // Subdivisão fina, SÓ depois do veredito: as peças reutilizáveis de dentro
-    // da seção (botão, card, badge…). Seção rejeitada não deixa descendência.
-    const filhos = subdividirSecao({ category: categoria, htmlSnippet: html });
+    // da seção (botão, card, mockup…). Seção rejeitada não deixa descendência.
+    //
+    // Preferência pela MEDIÇÃO: as peças que o navegador viu dentro desta dobra.
+    // O caminho por string entra quando não houve medição (captura antiga) ou
+    // quando ela não rendeu nada aqui — nunca os dois, para não duplicar peça.
+    const pecasDaSecao = (entrada.pecas ?? []).filter((p) => p.secaoHash === secao.hash);
+    const porEvidencia = subdividirPorEvidencia(pecasDaSecao, entrada.htmlPorHash, html.length);
+    const filhos =
+      porEvidencia.length > 0
+        ? porEvidencia
+        : subdividirSecao({ category: categoria, htmlSnippet: html });
 
     segmentos.push({
       position: posicao,

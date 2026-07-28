@@ -176,6 +176,38 @@ const extrairBodyAttrs = (html: string): string => {
   return m?.[1] ?? '';
 };
 
+/**
+ * Reporta ao app a altura REAL do conteúdo.
+ *
+ * Sem isso o preview é uma janela de altura fixa e uma seção alta aparece
+ * cortada — foi o que fazia o detalhe "não descer". Mede o rodapé do filho mais
+ * baixo do body em vez de `scrollHeight` porque o `min-height:100vh` do estilo
+ * base infla o documento: um botão sozinho reportaria uma tela inteira.
+ *
+ * O documento é sandbox de origem opaca, então quem escuta confere
+ * `event.source` (não dá para conferir origem). A mensagem é só um número.
+ */
+const REPORTE_DE_ALTURA = `<script>(function(){
+var ultimo=0;
+function medir(){
+  var filhos=document.body?document.body.children:[],base=window.scrollY||0,max=0;
+  for(var i=0;i<filhos.length;i++){
+    var e=filhos[i];
+    if(!e.getBoundingClientRect)continue;
+    var cs=getComputedStyle(e);
+    if(cs.position==='fixed')continue; // fundo fixo não define a altura do bloco
+    var b=e.getBoundingClientRect().bottom+base;
+    if(b>max)max=b;
+  }
+  if(max<=0)max=document.documentElement.scrollHeight;
+  var h=Math.round(Math.min(12000,Math.max(80,max)));
+  if(Math.abs(h-ultimo)>4){ultimo=h;try{parent.postMessage({tipo:'ds-preview-altura',altura:h},'*');}catch(e){}}
+}
+addEventListener('load',medir);addEventListener('resize',medir);
+try{if(window.ResizeObserver&&document.body)new ResizeObserver(medir).observe(document.body);}catch(e){}
+setTimeout(medir,150);setTimeout(medir,700);setTimeout(medir,2000);
+})()</script>`;
+
 const compor = (opts: {
   titulo: string;
   head: string;
@@ -197,6 +229,7 @@ ${opts.head}
 </head>
 <body${opts.bodyAttrs}${override}>
 ${opts.corpo}
+${REPORTE_DE_ALTURA}
 </body>
 </html>`;
 };

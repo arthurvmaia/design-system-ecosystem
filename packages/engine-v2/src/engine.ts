@@ -75,6 +75,7 @@ import type {
 } from './mapper/raw.js';
 import { hashBytes } from './observe/pixel.js';
 import { atribuirMovimento, observarTemporal } from './observe/temporal.js';
+import { escolherPecas } from './segment/pecas.js';
 import { type RejeitadoV2, type SegmentoV2, segmentarPorEvidencia } from './segment/segment-v2.js';
 
 /**
@@ -556,12 +557,23 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       'footer',
       'form',
     ]);
+    // As PEÇAS de dentro das dobras (card, botão, mockup, mídia) escolhidas por
+    // evidência medida. Sem o HTML delas a subdivisão só podia adivinhar por
+    // nome de classe no HTML da seção — e perdia o que não tem irmão igual.
+    // Continua sendo uma lista curta e escolhida, não os 3000 nós do documento.
+    const pecas = escolherPecas({
+      nos: structuralMap,
+      pageHeight: coletaFinal.pageHeight,
+      viewportWidth: viewport.width,
+    });
+    const hashesDePeca = new Set(pecas.map((p) => p.hash));
+
     for (const n of coletaFinal.nos) {
       const node = porRef.get(n.ref);
       if (node === undefined) continue;
-      // Só as seções: capturar o outerHTML de 3000 nós custaria mais que todo o
-      // resto do pipeline, e o que a segmentação precisa é o HTML da seção.
-      if (!PAPEIS_COM_HTML.has(node.role)) continue;
+      // Seções + as peças escolhidas: capturar o outerHTML de 3000 nós custaria
+      // mais que todo o resto do pipeline.
+      if (!PAPEIS_COM_HTML.has(node.role) && !hashesDePeca.has(node.fingerprint.hash)) continue;
       try {
         const bruto = await page.evaluate<string>(chamar(HTML_DO_REF_FN, n.ref));
         if (bruto.length > 0)
@@ -577,7 +589,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       const primeiro = t.frames[0];
       if (primeiro !== undefined) framePorHash.set(t.target, join('frames', primeiro));
     }
-    log('html-secoes', { total: htmlPorHash.size });
+    log('html-secoes', { total: htmlPorHash.size, pecas: pecas.length });
 
     // ── Frame de fallback por seção ───────────────────────────────────────
     // Toda seção que pode acabar como REFERÊNCIA VISUAL precisa de um frame, ou
@@ -788,6 +800,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           safeActions: grafo?.acoes ?? [],
           htmlPorHash,
           framePorHash,
+          pecas,
           assetsLocais,
           scriptsNaoLocalizados,
           cssExternoFaltando: externasSemCopia.length > 0,

@@ -297,7 +297,14 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
   };
 
   return (
-    <Modal open onClose={onClose} size="xl" title={kit ? 'Editar kit' : 'Novo kit'}>
+    // Colunas com rolagem própria: o corpo do modal não deve rolar por fora.
+    <Modal
+      open
+      onClose={onClose}
+      size="xl"
+      title={kit ? 'Editar kit' : 'Novo kit'}
+      bodyScroll={false}
+    >
       <div className="flex max-h-[88vh] flex-col">
         <div
           className="grid grid-cols-1 gap-3 border-b px-6 py-4 md:grid-cols-[1fr_1.5fr]"

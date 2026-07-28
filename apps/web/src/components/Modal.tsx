@@ -49,6 +49,7 @@ export function Modal({
   size = 'md',
   title,
   className,
+  bodyScroll = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -56,6 +57,15 @@ export function Modal({
   size?: keyof typeof LARGURA;
   title?: string;
   className?: string;
+  /**
+   * O corpo rola quando passa da altura do painel (padrão).
+   *
+   * O painel é limitado a 88vh e corta o que sobra; sem um rolável dentro, o
+   * conteúdo mais alto que a tela ficava inalcançável — era o detalhe do
+   * segmento que "não descia". Só desligue quando o conteúdo já gerencia a
+   * própria altura com colunas roláveis (o editor de kits).
+   */
+  bodyScroll?: boolean;
 }) {
   const painelRef = useRef<HTMLDivElement>(null);
   const idRef = useRef<symbol | null>(null);
@@ -151,7 +161,11 @@ export function Modal({
         >
           <X size={16} style={{ color: 'var(--color-fg)' }} />
         </button>
-        {children}
+        {bodyScroll ? (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );

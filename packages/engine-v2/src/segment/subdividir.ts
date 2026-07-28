@@ -26,6 +26,60 @@ export type FilhoDeSecao = {
   htmlSnippet: string;
 };
 
+/**
+ * Subdivisão POR EVIDÊNCIA: as peças que o navegador mediu dentro desta dobra.
+ *
+ * É o caminho preferido, e a razão é simples — aqui o que decide é o que o
+ * elemento É na tela (papel observado, caixa em pixels, mídia), não o que o
+ * nome da classe sugere. O caminho por string (abaixo) fica como rede de
+ * segurança: captura antiga sem medição, ou dobra cujas peças não renderam
+ * HTML.
+ *
+ * O HTML de cada peça vem do mesmo mapa das seções (`htmlPorHash`), já
+ * limpo da instrumentação e com as referências absolutas.
+ */
+export const subdividirPorEvidencia = (
+  pecas: readonly { hash: string; categoria: ComponentCategory; nome: string }[],
+  htmlPorHash: ReadonlyMap<string, string>,
+  tamanhoDaSecao: number,
+): FilhoDeSecao[] => {
+  const filhos: FilhoDeSecao[] = [];
+  const vistos = new Set<string>();
+  for (const peca of pecas) {
+    if (filhos.length >= MAX_FILHOS) break;
+    const html = htmlPorHash.get(peca.hash)?.trim();
+    if (html === undefined || html.length === 0) continue;
+    // Mesmo corte do caminho por string: peça que é quase a dobra inteira é a
+    // dobra de novo. Com a medição isso é raro, mas sai de graça.
+    if (tamanhoDaSecao > 0 && html.length >= tamanhoDaSecao * FATIA_MAXIMA) continue;
+    // Duas peças com HTML idêntico são a mesma peça vista duas vezes.
+    const chave = `${peca.categoria}:${html.length}:${html.slice(0, 120)}`;
+    if (vistos.has(chave)) continue;
+    vistos.add(chave);
+    filhos.push({
+      category: peca.categoria,
+      kind: 'component',
+      name: peca.nome,
+      htmlSnippet: embrulhar([html], legendaDe(peca.categoria)),
+    });
+  }
+  return filhos;
+};
+
+/** Legenda do embrulho `[data-ds-amostra]`, que o preview já estiliza. */
+const legendaDe = (categoria: ComponentCategory): string => {
+  switch (categoria) {
+    case 'button':
+      return 'botao';
+    case 'card':
+      return 'card';
+    case 'gallery':
+      return 'galeria';
+    default:
+      return 'peca';
+  }
+};
+
 /** O que a subdivisão precisa saber da seção. */
 export type SecaoParaSubdividir = {
   category: ComponentCategory;

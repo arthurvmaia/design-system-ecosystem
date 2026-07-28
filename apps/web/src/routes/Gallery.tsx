@@ -1436,6 +1436,8 @@ function SegmentDetail({
             title={segment.name}
             aspect={16 / 11}
             interactive
+            // No detalhe a seção aparece inteira; a proporção fixa é da grade.
+            autoHeight={modo === 'plano' && !ehReferenciaVisual}
             className="rounded-lg"
           />
         </div>

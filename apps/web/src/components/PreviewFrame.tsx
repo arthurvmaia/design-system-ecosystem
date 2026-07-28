@@ -20,6 +20,7 @@ export function PreviewFrame({
   aspect = 16 / 10,
   virtualWidth = 1280,
   interactive = false,
+  autoHeight = false,
   className,
 }: {
   src: string;
@@ -30,12 +31,42 @@ export function PreviewFrame({
   virtualWidth?: number;
   /** no card, false (cliques passam para o card); no modal, true. */
   interactive?: boolean;
+  /**
+   * Cresce até a altura real do conteúdo, em vez de recortar na proporção.
+   *
+   * Na grade o recorte é proposital — cards de altura igual. No detalhe não:
+   * uma seção alta aparecia cortada e não havia como ver o resto. O documento
+   * de preview informa a própria altura; enquanto não informa, vale a
+   * proporção, então nada pisca nem quebra em preview que não reporta
+   * (replay e scroll têm palco próprio).
+   */
+  autoHeight?: boolean;
   className?: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
   const [scale, setScale] = useState(0);
   const [visible, setVisible] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [alturaConteudo, setAlturaConteudo] = useState<number | null>(null);
+
+  // A altura chega do próprio documento. Origem opaca (sandbox sem
+  // allow-same-origin) não dá para conferir, então a checagem é a janela que
+  // enviou ser a DESTE iframe — nenhum outro documento consegue forjar isso.
+  useEffect(() => {
+    if (!autoHeight) return;
+    const onMsg = (e: MessageEvent) => {
+      if (frame.current === null || e.source !== frame.current.contentWindow) return;
+      const dado = e.data as { tipo?: unknown; altura?: unknown } | null;
+      if (dado?.tipo !== 'ds-preview-altura' || typeof dado.altura !== 'number') return;
+      if (Number.isFinite(dado.altura)) setAlturaConteudo(dado.altura);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [autoHeight]);
+
+  // Troca de documento recomeça a medição — senão a altura do anterior fica.
+  useEffect(() => setAlturaConteudo(null), []);
 
   useEffect(() => {
     const el = wrap.current;
@@ -64,13 +95,19 @@ export function PreviewFrame({
     return () => io.disconnect();
   }, [visible]);
 
-  const virtualHeight = Math.round(virtualWidth / aspect);
+  const medida = autoHeight ? alturaConteudo : null;
+  const virtualHeight = medida ?? Math.round(virtualWidth / aspect);
 
   return (
     <div
       ref={wrap}
       className={`relative overflow-hidden ${className ?? ''}`}
-      style={{ aspectRatio: String(aspect), backgroundColor: 'var(--color-obsidian-0)' }}
+      style={
+        medida === null
+          ? { aspectRatio: String(aspect), backgroundColor: 'var(--color-obsidian-0)' }
+          : // Com a altura real, o quadro acompanha o documento reduzido.
+            { height: Math.round(medida * scale), backgroundColor: 'var(--color-obsidian-0)' }
+      }
     >
       {!loaded && (
         <div
@@ -81,6 +118,7 @@ export function PreviewFrame({
       )}
       {visible && scale > 0 && (
         <iframe
+          ref={frame}
           title={title}
           src={src}
           loading="lazy"
