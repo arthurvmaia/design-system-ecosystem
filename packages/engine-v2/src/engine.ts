@@ -75,6 +75,7 @@ import type {
 } from './mapper/raw.js';
 import { hashBytes } from './observe/pixel.js';
 import { atribuirMovimento, observarTemporal } from './observe/temporal.js';
+import { escolherCamadasDePagina } from './segment/camadas-de-pagina.js';
 import { escolherPecas } from './segment/pecas.js';
 import { type RejeitadoV2, type SegmentoV2, segmentarPorEvidencia } from './segment/segment-v2.js';
 
@@ -566,7 +567,28 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       pageHeight: coletaFinal.pageHeight,
       viewportWidth: viewport.width,
     });
-    const hashesDePeca = new Set(pecas.map((p) => p.hash));
+
+    // O fundo que atravessa TODAS as dobras (canvas animado, blobs, grão). A
+    // posse dele cai no `<body>`, que não é dobra escolhida — sem isto ele não
+    // pertencia a segmento nenhum e sumia da Galeria.
+    const camadasDePagina = escolherCamadasDePagina({
+      camadas: visualLayers,
+      nos: structuralMap,
+      viewport,
+      // Mídia é o que liga uma camada a runtime: canvas/WebGL/vídeo têm
+      // detecção com elemento. `RuntimeDetection` é por script, sem elemento.
+      hashesComRuntime: new Set(mediaDetections.map((m) => m.fingerprint.hash)),
+    });
+    log('camadas-de-pagina', {
+      comRuntime: camadasDePagina.comRuntime.length,
+      soCss: camadasDePagina.soCss.length,
+    });
+
+    const hashesDePeca = new Set([
+      ...pecas.map((p) => p.hash),
+      ...camadasDePagina.comRuntime,
+      ...camadasDePagina.soCss,
+    ]);
 
     for (const n of coletaFinal.nos) {
       const node = porRef.get(n.ref);
@@ -810,6 +832,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           htmlPorHash,
           framePorHash,
           pecas,
+          camadasDePagina,
           assetsLocais,
           scriptsNaoLocalizados,
           cssExternoFaltando: externasSemCopia.length > 0,

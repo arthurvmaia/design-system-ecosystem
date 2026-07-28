@@ -25,6 +25,7 @@ import type {
 } from '@ds/shared';
 import { contido, intersecao } from '../mapper/build-maps.js';
 import type { BoxPx } from '../mapper/raw.js';
+import type { CamadasDePagina } from './camadas-de-pagina.js';
 import { nomeEhGenerico, nomearPorEvidencia } from './naming.js';
 import type { PecaCandidata } from './pecas.js';
 import { type EvidenciaRepresentacao, classificarRepresentacao } from './representation.js';
@@ -375,6 +376,11 @@ export type EntradaSegmentacao = {
    * caminho antigo, que adivinha por nome de classe.
    */
   pecas?: readonly PecaCandidata[];
+  /**
+   * Camadas que atravessam a página inteira (fundo animado, gradientes fixos).
+   * Viram componente próprio DEPOIS das dobras: não pertencem a nenhuma delas.
+   */
+  camadasDePagina?: CamadasDePagina;
   /** URLs de asset que têm cópia local. */
   assetsLocais: ReadonlySet<string>;
   /** Scripts de que a página depende e que NÃO foram obtidos. */
@@ -821,6 +827,136 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
           : []),
       ].slice(0, 12),
       filhos,
+    });
+    posicao++;
+  }
+
+  // ── Fundo da página ────────────────────────────────────────────────────────
+  // Depois das dobras, e não dentro de nenhuma: estas camadas atravessam todas.
+  for (const grupo of ['comRuntime', 'soCss'] as const) {
+    const hashes = (entrada.camadasDePagina?.[grupo] ?? []).filter((h) =>
+      entrada.htmlPorHash.has(h),
+    );
+    if (hashes.length === 0) continue;
+
+    const nos = hashes.flatMap((h) => {
+      const n = porHash.get(h);
+      return n === undefined ? [] : [n];
+    });
+    const html = hashes.map((h) => entrada.htmlPorHash.get(h) ?? '').join('\n');
+    if (html.trim().length === 0) continue;
+
+    const midiasDoFundo = entrada.mediaDetections.filter((m) =>
+      hashes.includes(m.fingerprint.hash),
+    );
+    const runtimesDoFundo =
+      grupo === 'comRuntime' ? entrada.runtimeDetections.filter((r) => r.scripts.length > 0) : [];
+    const fundosDoFundo = entrada.backgroundDetections.filter((b) =>
+      hashes.includes(b.fingerprint.hash),
+    );
+    const temporaisDoFundo = entrada.temporalObservations.filter((t) => hashes.includes(t.target));
+    const scrollDoFundo = entrada.scrollObservations.filter((s) => {
+      const alvoId = s.target.id ?? '';
+      return nos.some((n) => alvoId.length > 0 && n.fingerprint.id === alvoId);
+    });
+    const temMovimento = temporaisDoFundo.some((t) => t.moving);
+
+    // MESMO caminho das dobras: nada aqui declara fidelidade por conta própria.
+    const representacao = classificarRepresentacao({
+      runtimes: runtimesDoFundo.map((r) => r.kind),
+      midias: midiasDoFundo.map((m) => m.kind),
+      assetsLocais: true,
+      assetsExternos: 0,
+      scriptsNaoLocalizados: entrada.scriptsNaoLocalizados,
+      iframeCrossOrigin: false,
+      shadowFechado: false,
+      estadosCapturados: 0,
+      movimentoMedido: temMovimento,
+      // Camada de canvas se move por script; camada de CSS, por CSS.
+      movimentoPorCss: grupo === 'soCss',
+      reageAoPonteiro: false,
+      regiaoReativaSemDom: grupo === 'comRuntime' && temMovimento,
+      dependeDeJs: grupo === 'comRuntime',
+      bootstrapIdentificado: false,
+    });
+
+    const fidelity = montarFidelidade({
+      representacao,
+      cssExternoFaltando: entrada.cssExternoFaltando,
+      temTexto: false,
+      temMovimento,
+      movimentoPorCss: grupo === 'soCss',
+      backgrounds: fundosDoFundo,
+      midias: midiasDoFundo,
+      externos: 0,
+      totalAssets: 0,
+      estados: 0,
+      acoes: [],
+      ponteiro: [],
+      scroll: scrollDoFundo,
+      runtimes: runtimesDoFundo,
+      temFrame: false,
+    });
+
+    const nome =
+      grupo === 'comRuntime'
+        ? 'Fundo animado da página'
+        : temMovimento
+          ? 'Fundo em camadas da página'
+          : 'Fundo da página';
+
+    segmentos.push({
+      position: posicao,
+      category: 'background',
+      kind: 'effect',
+      name: nome,
+      htmlSnippet: html,
+      hash: `fundo-${grupo}-${hashes[0] ?? ''}`,
+      evidence: {
+        segmentId: `fundo-${grupo}`,
+        members: hashes,
+        signals: [
+          { kind: 'layout', weight: PESO.layout, detail: 'camada fixa do tamanho da tela' },
+          ...(fundosDoFundo.length > 0
+            ? [
+                {
+                  kind: 'fundo-compartilhado' as const,
+                  weight: PESO['fundo-compartilhado'],
+                  detail: `${fundosDoFundo.length} camada(s) de fundo`,
+                },
+              ]
+            : []),
+          ...(temMovimento
+            ? [
+                {
+                  kind: 'pixel-diff' as const,
+                  weight: PESO['pixel-diff'],
+                  detail: `movimento medido (Δ até ${maiorDelta(temporaisDoFundo)})`,
+                },
+              ]
+            : []),
+        ],
+        backgroundIds: fundosDoFundo.map((b) => b.id),
+        mediaIds: midiasDoFundo.map((m) => m.id),
+        runtimeIds: runtimesDoFundo.map((r) => r.id),
+        stateIds: [],
+        pointerResponseIds: [],
+        scrollIds: scrollDoFundo.map((s) => s.id),
+        assetKeys: [],
+        nameEvidence: ['camada fixa que cobre a viewport em toda a página'],
+        confidence: 'alta',
+      },
+      representation: representacao,
+      fidelity,
+      support: seloDe(fidelity, representacao),
+      interactions: [],
+      limitations: [
+        'Esta camada atravessa a página inteira: no site de origem ela fica por trás de todas as seções.',
+        ...representacao.limitations,
+        ...fundosDoFundo.flatMap((b) => b.limitations),
+        ...midiasDoFundo.flatMap((m) => m.limitations),
+      ].slice(0, 12),
+      filhos: [],
     });
     posicao++;
   }
