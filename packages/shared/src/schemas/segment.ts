@@ -276,6 +276,14 @@ export const SegmentInsight = FidelityAssessment.extend({
   dependencies: z.array(SegmentDependency).optional(),
   /** Limitações honestas, prontas para a UI. */
   limitations: z.array(z.string()).optional(),
+  /**
+   * Print da dobra, relativo a `capture-v2/` (ex.: `frames/secao-ab12-cd34.png`).
+   *
+   * É a dobra como a pessoa a viu no site, no momento da captura. Serve para
+   * ler o que o HTML não conta — o que está ali, como se compõe, que efeito
+   * está em jogo — e para comparar o componente com a origem sem abrir o site.
+   */
+  framePath: z.string().optional(),
   /** Versão do manifesto de captura que gerou este insight. */
   manifestVersion: z.number().int().optional(),
   /** Versão do pipeline de segmentação (`PIPELINE_VERSION`). */

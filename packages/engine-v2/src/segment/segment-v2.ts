@@ -414,6 +414,8 @@ export type SegmentoV2 = {
   interactions: InteractionKind[];
   /** Limitações honestas, prontas para a UI. */
   limitations: string[];
+  /** Print da dobra (relativo a `capture-v2/`), quando houve. */
+  framePath?: string;
   /**
    * Subcomponentes extraídos de dentro da seção (botão, card, badge…). Só
    * seção aprovada tem filhos — ver `subdividirSecao`.
@@ -826,6 +828,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
           ? ['O nome saiu genérico: a seção não apresentou evidência suficiente.']
           : []),
       ].slice(0, 12),
+      framePath: entrada.framePorHash.get(secao.hash),
       filhos,
     });
     posicao++;
@@ -860,6 +863,12 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       return nos.some((n) => alvoId.length > 0 && n.fingerprint.id === alvoId);
     });
     const temMovimento = temporaisDoFundo.some((t) => t.moving);
+    // Um canvas sem o script é um retângulo vazio. Se a observação temporal
+    // gravou o movimento desta camada, é ESSE quadro que a Galeria mostra —
+    // sem ele, a referência visual não teria o que exibir.
+    const frameDoFundo = hashes
+      .map((h) => entrada.framePorHash.get(h))
+      .find((f) => f !== undefined);
 
     // MESMO caminho das dobras: nada aqui declara fidelidade por conta própria.
     const representacao = classificarRepresentacao({
@@ -895,7 +904,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       ponteiro: [],
       scroll: scrollDoFundo,
       runtimes: runtimesDoFundo,
-      temFrame: false,
+      temFrame: frameDoFundo !== undefined,
     });
 
     const nome =
@@ -953,9 +962,18 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       limitations: [
         'Esta camada atravessa a página inteira: no site de origem ela fica por trás de todas as seções.',
         ...representacao.limitations,
+        // Sem quadro gravado, uma camada de runtime não tem o que mostrar: o
+        // canvas chega como retângulo vazio. Dizer isso é melhor que exibir a
+        // área em branco como se fosse o componente.
+        ...(grupo === 'comRuntime' && frameDoFundo === undefined
+          ? [
+              'O movimento desta camada não foi gravado em quadro: sem o script da origem ela aparece vazia na prévia.',
+            ]
+          : []),
         ...fundosDoFundo.flatMap((b) => b.limitations),
         ...midiasDoFundo.flatMap((m) => m.limitations),
       ].slice(0, 12),
+      framePath: frameDoFundo,
       filhos: [],
     });
     posicao++;

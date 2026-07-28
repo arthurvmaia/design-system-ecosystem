@@ -6,6 +6,7 @@ import {
   type SegmentFidelity,
   type SegmentRecord,
   api,
+  frameUrl,
   previewSegmentReplayUrl,
   previewSegmentScrollUrl,
   previewSegmentUrl,
@@ -23,6 +24,7 @@ import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  Camera,
   Columns2,
   Heart,
   Layers,
@@ -1403,7 +1405,8 @@ function SegmentDetail({
 }) {
   const qc = useQueryClient();
   const [bg, setBg] = useState<'claro' | 'escuro' | undefined>(undefined);
-  const [modo, setModo] = useState<'plano' | 'estados' | 'scroll'>('plano');
+  const [modo, setModo] = useState<'plano' | 'estados' | 'scroll' | 'print'>('plano');
+  const print = segment.fidelity?.framePath;
   const temEstados = (segment.fidelity?.states?.length ?? 0) > 0;
   // Referência visual (selo "visual"): o modal abre direto o movimento gravado
   // (loop das amostras) — a miniatura limpa fica só para o card da grade.
@@ -1483,6 +1486,22 @@ function SegmentDetail({
                 {modo === 'scroll' ? 'Rolando' : 'Ver ao rolar'}
               </button>
             )}
+            {print !== undefined && (
+              <button
+                type="button"
+                onClick={() => setModo((m) => (m === 'print' ? 'plano' : 'print'))}
+                aria-pressed={modo === 'print'}
+                title="A dobra como a captura a viu no site — para conferir o componente contra a origem"
+                className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+                style={{
+                  borderColor: modo === 'print' ? 'var(--color-primary)' : 'var(--color-border)',
+                  color: modo === 'print' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+                }}
+              >
+                <Camera size={11} />
+                {modo === 'print' ? 'Vendo o print' : 'Print da dobra'}
+              </button>
+            )}
             <BgToggle bg={bg} onChange={setBg} />
             <button
               type="button"
@@ -1497,24 +1516,42 @@ function SegmentDetail({
           </div>
         </div>
         <FidelityPanel fidelity={segment.fidelity} />
-        <div className="p-4">
-          <PreviewFrame
-            key={`${bg ?? 'auto'}-${ehReferenciaVisual ? 'ref' : modo}`}
-            src={
-              modo === 'scroll'
-                ? previewSegmentScrollUrl(segment.id, bg)
-                : modo === 'estados' || ehReferenciaVisual
-                  ? previewSegmentReplayUrl(segment.id, bg)
-                  : previewSegmentUrl(segment.id, bg)
-            }
-            title={segment.name}
-            aspect={16 / 11}
-            interactive
-            // No detalhe a seção aparece inteira; a proporção fixa é da grade.
-            autoHeight={modo === 'plano' && !ehReferenciaVisual}
-            className="rounded-lg"
-          />
-        </div>
+        {modo === 'print' && print !== undefined ? (
+          <div className="p-4">
+            {/* Imagem, não iframe: é registro do que a captura viu, não o
+                componente rodando. A distinção importa — misturar os dois é
+                como o "card preto" nasce. */}
+            <img
+              src={frameUrl(dsId, print)}
+              alt={`Print da dobra ${segment.name} no site de origem`}
+              className="w-full rounded-lg"
+              style={{ border: '1px solid var(--color-border)' }}
+            />
+            <p className="mt-3 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+              A dobra no site de origem, no momento da captura. Serve para conferir o componente
+              contra o original — o que a prévia reproduz e o que ficou pelo caminho.
+            </p>
+          </div>
+        ) : (
+          <div className="p-4">
+            <PreviewFrame
+              key={`${bg ?? 'auto'}-${ehReferenciaVisual ? 'ref' : modo}`}
+              src={
+                modo === 'scroll'
+                  ? previewSegmentScrollUrl(segment.id, bg)
+                  : modo === 'estados' || ehReferenciaVisual
+                    ? previewSegmentReplayUrl(segment.id, bg)
+                    : previewSegmentUrl(segment.id, bg)
+              }
+              title={segment.name}
+              aspect={16 / 11}
+              interactive
+              // No detalhe a seção aparece inteira; a proporção fixa é da grade.
+              autoHeight={modo === 'plano' && !ehReferenciaVisual}
+              className="rounded-lg"
+            />
+          </div>
+        )}
       </div>
     </Modal>
   );

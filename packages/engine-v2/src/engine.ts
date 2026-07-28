@@ -622,19 +622,23 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     }
     log('html-secoes', { total: htmlPorHash.size, pecas: pecas.length });
 
-    // ── Frame de fallback por seção ───────────────────────────────────────
-    // Toda seção que pode acabar como REFERÊNCIA VISUAL precisa de um frame, ou
-    // ela é reprovada — e reprovar por falta de imagem seria perder o item por um
-    // detalhe que o motor tinha como resolver. Só as seções com cena/mídia
-    // recebem o frame: são as únicas que podem cair nessa representação, e um
-    // screenshot por seção de texto seria custo sem retorno.
-    const REFS_DE_CENA = new Set(['canvas', 'video', 'iframe', 'svg']);
-    const secoesComCena = coletaFinal.nos.filter((n) => {
+    // ── Print de cada dobra ───────────────────────────────────────────────
+    // Duas necessidades, um mesmo screenshot.
+    //
+    // A antiga: toda seção que pode acabar como REFERÊNCIA VISUAL precisa de um
+    // frame, ou é reprovada — perder o item por falta de imagem seria perder por
+    // um detalhe que o motor resolve.
+    //
+    // A nova: o print é como a pessoa VÊ a dobra. O HTML conta a estrutura, o
+    // print conta o resultado — o que está ali, como se compõe, que efeito está
+    // em jogo. Por isso deixou de sair só das seções com cena e passa a sair de
+    // TODAS: uma dobra de texto sem print é uma dobra que ninguém consegue
+    // conferir sem abrir o site de origem.
+    const secoesParaPrint = coletaFinal.nos.filter((n) => {
       const node = porRef.get(n.ref);
-      if (node === undefined || !PAPEIS_COM_HTML.has(node.role)) return false;
-      return n.midiaTags.some((t) => REFS_DE_CENA.has(t));
+      return node !== undefined && PAPEIS_COM_HTML.has(node.role);
     });
-    for (const n of secoesComCena.slice(0, 10)) {
+    for (const n of secoesParaPrint.slice(0, 24)) {
       const node = porRef.get(n.ref);
       if (node === undefined) continue;
       try {

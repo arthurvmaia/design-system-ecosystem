@@ -99,6 +99,8 @@ export type SegmentFidelity = {
   limitations?: string[];
   /** Comportamentos de scroll associados (reveal/parallax/sticky/progress-*). */
   scroll?: { kind: string; scrub?: boolean; pin?: boolean }[];
+  /** Print da dobra no momento da captura, relativo a `capture-v2/`. */
+  framePath?: string;
 };
 
 export type SegmentRecord = {
@@ -372,6 +374,12 @@ const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
  */
 export const previewSegmentUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/segment/${segId}${bg ? `?bg=${bg}` : ''}`;
+/**
+ * O print da dobra, como a captura a viu no site. `framePath` vem do insight e
+ * é relativo a `capture-v2/` (ex.: `frames/secao-ab12.png`).
+ */
+export const frameUrl = (dsId: string, framePath: string): string =>
+  `/api/frame/${dsId}/${framePath.replace(/^frames[/\\]/, '')}`;
 /**
  * Prévia em modo REPLAY: injeta a barra de interações capturadas e o runtime que
  * reproduz cada estado (com botão Reiniciar). Só faz efeito quando o segmento

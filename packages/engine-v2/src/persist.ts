@@ -305,6 +305,7 @@ export const persistirCapturaV2 = (
         method: s.method,
         hasPortal: s.hasPortal,
       })),
+      framePath: normalizarRef(seg.framePath),
       pipeline: pipelineDoV2(seg, temEstados),
       dimensions: dimensoesDoV2(seg),
       scroll: scroll.length > 0 ? scroll : undefined,

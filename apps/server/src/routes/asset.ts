@@ -4,6 +4,7 @@ import {
   libraryComponentBundleDir,
   vaultCaptureAssetsDir,
   vaultCaptureV2AssetsDir,
+  vaultCaptureV2FramesDir,
 } from '@ds/shared/paths';
 import { Hono } from 'hono';
 
@@ -20,6 +21,7 @@ import { Hono } from 'hono';
  */
 export const assetRoute = new Hono();
 export const libraryAssetRoute = new Hono();
+export const frameRoute = new Hono();
 
 const MIME: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
@@ -130,6 +132,23 @@ assetRoute.get('/:dsId/*', (c) => {
   // Extração V2: os assets moram em `capture-v2/assets/`, no mesmo formato
   // content-addressed. Mesmas guardas, outra raiz.
   return servirDe(vaultCaptureV2AssetsDir(dsId as `ds_${string}`), resto, range);
+});
+
+/**
+ * O print da dobra: `capture-v2/frames/<nome>.png`.
+ *
+ * Fica separado da rota de assets porque não é asset do site — é registro do
+ * que a captura VIU. Mesmas guardas (sem traversal, sem listar diretório, sem
+ * vazar caminho físico) e a mesma raiz `capture-v2/`, outra subpasta.
+ */
+frameRoute.get('/:dsId/*', (c) => {
+  const dsId = c.req.param('dsId');
+  if (!/^ds_[a-z0-9]+$/i.test(dsId)) return jsonResp(400, 'invalid_id');
+  return servirDe(
+    vaultCaptureV2FramesDir(dsId as `ds_${string}`),
+    restoDaUrl(c.req.url, '/api/frame', dsId),
+    c.req.header('range'),
+  );
 });
 
 libraryAssetRoute.get('/:cmpId/*', (c) => {
