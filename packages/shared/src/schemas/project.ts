@@ -66,11 +66,41 @@ export const espelhoDoBrief = (b: BriefDaSecao): string => {
  * pessoa tenha DELEGADO a seção à IA (delegar é uma decisão, não um vazio). */
 export const briefVazio = (b: BriefDaSecao): boolean => !b.iaDecide && espelhoDoBrief(b) === '';
 
+/**
+ * Um produto do usuário.
+ *
+ * Existe separado de `services` porque produto é outra coisa: tem preço, tem
+ * foto e costuma virar card numa vitrine. Só o nome é obrigatório — quem quer
+ * listar seis produtos sem preço consegue, e quem quer catálogo completo
+ * também. A foto aponta para uma mídia já enviada (`MediaItem.path`), então não
+ * há caminho solto nem arquivo órfão.
+ */
+export const Produto = z.object({
+  id: z.string().min(1),
+  nome: z.string().min(1),
+  descricao: z.string().optional(),
+  /** Texto livre de propósito: "R$ 89", "a partir de 200", "sob consulta". */
+  preco: z.string().optional(),
+  /** Caminho de uma mídia do projeto (relativo a `projects/<id>/media/`). */
+  imagemPath: z.string().optional(),
+  /** Para onde o card leva: página do produto, WhatsApp, checkout. */
+  link: z.string().optional(),
+  /** Selo curto no card: "novo", "mais vendido", "últimas unidades". */
+  destaque: z.string().optional(),
+});
+export type Produto = z.infer<typeof Produto>;
+
 export const ProjectContent = z.object({
   schemaVersion: z.number().int().positive().optional(),
   about: z.string().optional(),
   slogan: z.string().optional(),
   services: z.array(z.object({ title: z.string(), description: z.string() })).optional(),
+  /**
+   * Produtos a exibir no site. O gerador monta a vitrine com as peças do kit;
+   * lista vazia significa que o site não tem seção de produto, e não que ela
+   * deve ser inventada.
+   */
+  produtos: z.array(Produto).optional(),
   faq: z.array(z.object({ question: z.string(), answer: z.string() })).optional(),
   cta: z.string().optional(),
   testimonials: z

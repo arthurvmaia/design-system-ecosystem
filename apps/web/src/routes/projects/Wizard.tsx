@@ -18,6 +18,7 @@ import { bloqueantes, validarProjeto } from '@/lib/revisao-core';
 import { toast } from '@/lib/toast';
 import {
   type BriefDaSecao,
+  type Produto,
   distribuirTokens,
   espelhoDoBrief,
   normalizarProjectBranding,
@@ -36,7 +37,14 @@ import type { WizardBranding } from './partes';
 
 // ── Wizard ───────────────────────────────────────────────────────────────────
 
-const ETAPAS = ['Projeto', 'Marca', 'Estrutura', 'Conteúdo', 'Mídia', 'Revisão'] as const;
+const ETAPAS = [
+  'Projeto',
+  'Marca',
+  'Estrutura',
+  'Conteúdo',
+  'Mídia e produtos',
+  'Revisão',
+] as const;
 
 export function ProjectWizard({
   existing,
@@ -71,6 +79,8 @@ export function ProjectWizard({
     placements: Array.isArray(parsedLayout?.placements) ? parsedLayout.placements : [],
   });
   const [briefs, setBriefs] = useState<Record<string, BriefDaSecao>>(parsedContent.briefs ?? {});
+  // Produtos vivem no conteúdo do projeto, ao lado dos briefs.
+  const [produtos, setProdutos] = useState<Produto[]>(parsedContent.produtos ?? []);
   const [media, setMedia] = useState<MediaItem[]>(parseMedia(existing?.mediaManifestJson));
 
   // Espelho legado: quem ainda lê texto plano por seção continua atendido.
@@ -151,7 +161,7 @@ export function ProjectWizard({
     await api.updateProject(id, {
       name: name.trim() || 'Sem nome',
       kitId,
-      content: { sections: sectionsEspelho, briefs },
+      content: { sections: sectionsEspelho, briefs, produtos },
       branding: toBranding(),
       layout,
     });
@@ -178,7 +188,7 @@ export function ProjectWizard({
   // primeira letra do nome não pode criar um projeto). A máquina de estados e
   // as decisões vivem em lib/autosave-core, testadas sem navegador.
   const [autosave, setAutosave] = useState<EstadoAutosave>('ocioso');
-  const assinatura = JSON.stringify({ name, kitId, branding, layout, briefs });
+  const assinatura = JSON.stringify({ name, kitId, branding, layout, briefs, produtos });
   const ultimaSalva = useRef(existing !== null ? assinatura : '');
   const emVoo = useRef(false);
 
@@ -297,6 +307,8 @@ export function ProjectWizard({
               kitId={kitId}
               media={media}
               onMedia={setMedia}
+              produtos={produtos}
+              onProdutos={setProdutos}
             />
           )}
           {step === 5 && (

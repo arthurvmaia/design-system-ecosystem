@@ -564,6 +564,12 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
     return res.json();
   },
+  /** Move a mídia de seção. `slotRole: null` devolve para "o gerador decide". */
+  updateMedia: (id: string, path: string, patch: { slotRole: string | null }) =>
+    jsonFetch<{ media: MediaItem[] }>(`/api/projects/${id}/media`, {
+      method: 'PATCH',
+      body: JSON.stringify({ path, ...patch }),
+    }),
   deleteMedia: (id: string, path: string) =>
     jsonFetch<{ deleted: boolean; media: MediaItem[] }>(
       `/api/projects/${id}/media?path=${encodeURIComponent(path)}`,

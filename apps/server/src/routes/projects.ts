@@ -263,6 +263,40 @@ projectsRoute.post('/:id/media', async (c) => {
   return c.json({ item, media }, 201);
 });
 
+/**
+ * Move uma mídia de seção sem reenviar o arquivo.
+ *
+ * `slotRole: null` devolve a mídia para "o gerador decide": ela perde a âncora
+ * e passa a ser posicionada por quem monta o site.
+ */
+const PatchMediaInput = z.object({
+  path: z.string().min(1),
+  slotRole: z.string().min(1).nullable(),
+});
+
+projectsRoute.patch('/:id/media', zValidator('json', PatchMediaInput), (c) => {
+  const id = c.req.param('id');
+  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  const { path, slotRole } = c.req.valid('json');
+
+  const db = getDb();
+  const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
+  if (!row) return c.json({ error: 'not_found' }, 404);
+
+  const atual = lerManifest(row.mediaManifestJson);
+  if (!atual.some((m) => m.path === path)) return c.json({ error: 'media_not_found' }, 404);
+
+  const media = atual.map((m) =>
+    m.path === path ? { ...m, ...(slotRole === null ? { slotRole: undefined } : { slotRole }) } : m,
+  );
+  db.update(tables.projects)
+    .set({ mediaManifestJson: JSON.stringify(media), updatedAt: Date.now() })
+    .where(eq(tables.projects.id, id))
+    .run();
+
+  return c.json({ media });
+});
+
 /** Remove uma mídia do manifest e do disco. */
 projectsRoute.delete('/:id/media', (c) => {
   const id = c.req.param('id');
