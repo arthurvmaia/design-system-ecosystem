@@ -188,7 +188,13 @@ export function ProjectWizard({
   // primeira letra do nome não pode criar um projeto). A máquina de estados e
   // as decisões vivem em lib/autosave-core, testadas sem navegador.
   const [autosave, setAutosave] = useState<EstadoAutosave>('ocioso');
-  const assinatura = JSON.stringify({ name, kitId, branding, secoes, produtos });
+  // Tudo que `salvar()` grava precisa estar aqui.
+  //
+  // O `objetivo` ficou de fora quando foi criado, e o efeito era silencioso e
+  // caro: escolher "Vender um produto" não mudava a assinatura, o autosave não
+  // disparava, e a escolha se perdia ao fechar o wizard. A pessoa via o botão
+  // marcado e o app não guardava nada.
+  const assinatura = JSON.stringify({ name, kitId, branding, secoes, produtos, objetivo });
   const ultimaSalva = useRef(existing !== null ? assinatura : '');
   const emVoo = useRef(false);
 

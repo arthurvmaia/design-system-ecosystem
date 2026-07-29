@@ -34,6 +34,7 @@ import {
   vaultExtractedDir,
   vaultSegmentBundlesDir,
 } from '@ds/shared';
+import { executadoDireto } from './executado-direto.js';
 
 const arquivoDaLinhaDeBase = (): string => join(getRoot(), 'fidelidade.json');
 
@@ -140,7 +141,7 @@ const imprimir = (l: LinhaDeBase): void => {
   }
 };
 
-if (process.argv[1]?.includes('medir-fidelidade')) {
+if (executadoDireto(import.meta.url)) {
   const forcarGravar = process.argv.includes('--gravar');
   const caminho = arquivoDaLinhaDeBase();
   const agora = medirAcervo();

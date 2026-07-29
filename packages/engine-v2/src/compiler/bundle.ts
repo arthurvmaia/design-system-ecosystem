@@ -111,6 +111,22 @@ export type EntradaBundle = {
   stack: readonly StackEntry[];
   /** Frames gravados (caminhos relativos ao diretório de captura). */
   frames: readonly string[];
+  /**
+   * O diretório da CAPTURA, de onde os frames são copiados para dentro do
+   * bundle.
+   *
+   * Sem ele o `<img>` da referência visual apontava para `frames/x.png`, que
+   * mora em `capture-v2/frames/` — uma árvore IRMÃ da de bundles. O caminho
+   * nunca resolvia a partir da pasta do bundle, contradizendo a promessa no
+   * topo deste arquivo ("o `index.html` referencia só caminhos relativos
+   * internos").
+   *
+   * No app o defeito não aparecia: a rota de prévia reescreve a raiz de
+   * `frames/`, e a Biblioteca copia os frames na promoção. Ficava invisível até
+   * alguém abrir o bundle direto — o `.zip` entregue ao cliente, ou a
+   * comparação de pixel, que abre por `file://` e não reescreve nada.
+   */
+  dirFramesCaptura?: string;
   /** Runtimes necessários, com os arquivos deles. */
   runtimeScripts: readonly string[];
   /** URL de origem, só para registro. */
@@ -447,13 +463,41 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
     );
   }
 
+  // O frame da referência visual VEM PARA DENTRO do bundle.
+  //
+  // Ele mora em `capture-v2/frames/`, uma árvore irmã da de bundles, e o
+  // `<img src="frames/x.png">` nunca resolvia a partir daqui. Passava
+  // despercebido porque a prévia do app reescreve a raiz e a Biblioteca copia
+  // os frames na promoção — mas o `.zip` entregue ao cliente abria com a imagem
+  // quebrada, que é justamente a única coisa que uma referência visual TEM.
+  //
+  // Só a referência visual: é o único bundle cujo HTML exibe o frame. Copiar em
+  // todos poria um PNG de sobra dentro de cada peça portátil, que nunca o abre.
+  let frameNoBundle: string | null = null;
+  const primeiroFrame =
+    segmento.representation.type === 'referencia-visual' ? entrada.frames[0] : undefined;
+  if (primeiroFrame !== undefined && entrada.dirFramesCaptura !== undefined) {
+    const rel = primeiroFrame.replace(/\\/g, '/');
+    if (!rel.split('/').includes('..')) {
+      try {
+        const bytes = readFileSync(join(entrada.dirFramesCaptura, primeiroFrame));
+        arquivos.push(escrever(dir, rel, bytes));
+        frameNoBundle = rel;
+      } catch {
+        avisos.push(
+          `O frame da referência visual não estava na captura (${primeiroFrame}): o bundle abre sem a imagem.`,
+        );
+      }
+    }
+  }
+
   const corpo =
     segmento.representation.type === 'referencia-visual'
       ? [
           avisoDeReferencia(segmento.representation),
           // Frame de fallback como imagem: é o que se vê, e é honesto.
-          entrada.frames.length > 0
-            ? `<img src="${entrada.frames[0]}" alt="${segmento.name.replace(/"/g, '&quot;')}" style="display:block;max-width:100%;height:auto">`
+          frameNoBundle !== null
+            ? `<img src="${frameNoBundle}" alt="${segmento.name.replace(/"/g, '&quot;')}" style="display:block;max-width:100%;height:auto">`
             : '<p style="font:14px system-ui;padding:16px">Sem frame de fallback disponível.</p>',
         ].join('\n')
       : `${fundo}${corpoLocalizado}`;

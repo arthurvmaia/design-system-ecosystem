@@ -1063,6 +1063,16 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       regiaoReativaSemDom: grupo === 'comRuntime' && temMovimento,
       dependeDeJs: grupo === 'comRuntime',
       bootstrapIdentificado: false,
+      // A mesma evidência que as dobras recebem.
+      //
+      // Sem estas duas linhas, a camada de fundo era classificada por um
+      // conjunto de fatos MENOR do que o que a captura tinha: na mesma rodada,
+      // uma dobra saía `componente-portatil` (o CSS do Tailwind foi capturado)
+      // e o fundo saía `capsula-runtime` com a limitação "o CSS resultante não
+      // foi capturado: as classes ficam sem estilo". A captura era a mesma; o
+      // que mudava era o que a chamada informava.
+      cssCompiladoCapturado: !entrada.cssExternoFaltando,
+      runtimesLocais: entrada.runtimesQueViajam ?? [],
     });
 
     const fidelity = montarFidelidade({

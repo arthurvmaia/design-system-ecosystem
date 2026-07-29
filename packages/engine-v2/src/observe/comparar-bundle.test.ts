@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { deflateSync } from 'node:zlib';
 import type { SegmentoV2 } from '../segment/segment-v2.js';
 import {
+  ORIGEM_DA_REGIAO_FN,
   type PaginaParaComparar,
   compararBundlesComOriginal,
   naturezaDoSegmento,
@@ -411,4 +412,79 @@ test('região que cabe folgada não é mexida', async () => {
   const c = clip as unknown as { x: number; y: number; w: number; h: number };
   assert.equal(c.x, 40);
   assert.equal(c.y, 60);
+});
+
+// ── Quem é a "região" dentro do bundle ──────────────────────────────────────
+//
+// O recorte sai do primeiro filho do `<body>` que conta como conteúdo. Eleger o
+// filho errado não dá erro em lugar nenhum: dá um número de diferença alto num
+// item que estava certo, e a fidelidade medida vira ficção.
+//
+// A função roda dentro do navegador, então aqui ela é avaliada contra um DOM de
+// mentira com só o que ela usa. É a mesma string que o Playwright executa.
+
+/** Um elemento suficiente para a função da região: atributos, tag e caixa. */
+const elemento = (
+  tag: string,
+  attrs: readonly string[],
+  caixa: { x: number; y: number; w: number; h: number },
+) => ({
+  tagName: tag.toUpperCase(),
+  hasAttribute: (nome: string) => attrs.includes(nome),
+  getBoundingClientRect: () => ({ x: caixa.x, y: caixa.y, width: caixa.w, height: caixa.h }),
+});
+
+/** Roda a função da região sobre uma lista de filhos do body. */
+const regiaoDe = (
+  filhos: readonly ReturnType<typeof elemento>[],
+): { x: number; y: number; w: number; h: number; vw: number; vh: number } | null => {
+  const documento = { body: { children: filhos } };
+  const janela = { scrollTo: () => {}, innerWidth: 1440, innerHeight: 900 };
+  const fn = new Function('document', 'window', `return (${ORIGEM_DA_REGIAO_FN})()`);
+  return fn(documento, janela);
+};
+
+test('a região é o primeiro filho de conteúdo do body', () => {
+  const r = regiaoDe([elemento('section', [], { x: 0, y: 8, w: 1440, h: 600 })]);
+  assert.deepEqual(r, { x: 0, y: 8, w: 1440, h: 600, vw: 1440, vh: 900 });
+});
+
+test('o aviso da referência visual NÃO é a região', () => {
+  // O `<aside data-ds-aviso>` é conversa do bundle com quem cura. Elegê-lo fazia
+  // o recorte sair do canto do aviso, e todo bundle de referência visual era
+  // reprovado por um motivo que não tem a ver com o que ele mostra.
+  const r = regiaoDe([
+    elemento('aside', ['data-ds-aviso'], { x: 0, y: 8, w: 1440, h: 52 }),
+    elemento('img', [], { x: 0, y: 60, w: 1440, h: 600 }),
+  ]);
+  assert.equal(r?.y, 60, 'a região é a imagem, não o aviso');
+  assert.equal(r?.h, 600);
+});
+
+test('as camadas de fundo recompostas também ficam de fora', () => {
+  const r = regiaoDe([
+    elemento('div', ['data-ds-camadas-de-fundo'], { x: 0, y: 0, w: 1440, h: 900 }),
+    elemento('section', [], { x: 0, y: 8, w: 1440, h: 400 }),
+  ]);
+  assert.equal(r?.h, 400);
+});
+
+test('script, style e link não são conteúdo', () => {
+  const r = regiaoDe([
+    elemento('style', [], { x: 0, y: 0, w: 0, h: 0 }),
+    elemento('link', [], { x: 0, y: 0, w: 0, h: 0 }),
+    elemento('script', [], { x: 0, y: 0, w: 0, h: 0 }),
+    elemento('main', [], { x: 0, y: 8, w: 1200, h: 300 }),
+  ]);
+  assert.equal(r?.w, 1200);
+});
+
+test('body só com aviso e camadas não tem região: a comparação não acontece', () => {
+  // Melhor devolver nada e o item ser contado como `sem-regiao` do que medir a
+  // diferença de uma tarja de aviso e chamar isso de fidelidade.
+  const r = regiaoDe([
+    elemento('div', ['data-ds-camadas-de-fundo'], { x: 0, y: 0, w: 1440, h: 900 }),
+    elemento('aside', ['data-ds-aviso'], { x: 0, y: 8, w: 1440, h: 52 }),
+  ]);
+  assert.equal(r, null);
 });

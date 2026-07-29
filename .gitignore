@@ -33,3 +33,8 @@ queue/
 *.db
 *.db-shm
 *.db-wal
+
+# Rascunho de job (geração de site, reprodução de defeito). Sai com o prefixo
+# `_tmp-` e não é código do repo: sem esta linha, um script de uma tarefa que já
+# acabou derruba o `pnpm lint` de todo mundo — o biome lê este arquivo.
+scripts/_tmp-*

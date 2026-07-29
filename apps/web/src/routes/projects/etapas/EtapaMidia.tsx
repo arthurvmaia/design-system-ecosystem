@@ -529,9 +529,13 @@ function MidiaThumb({
           <Trash2 size={11} style={{ color: 'var(--color-ion-3)' }} />
         </button>
       </div>
-      {/* Trocar de seção sem reenviar o arquivo. */}
+      {/* Trocar de seção sem reenviar o arquivo.
+          O valor é o `secaoId`, que é o que as opções carregam e o que
+          `onMover` grava. Estava lendo `slotRole` — um espelho DERIVADO, que
+          nunca casa com um `sec_...` — então o seletor abria sempre em branco,
+          mesmo numa mídia já ancorada numa seção. */}
       <select
-        value={item.slotRole ?? ''}
+        value={item.secaoId ?? ''}
         onChange={(e) => onMover(e.target.value)}
         aria-label={`Seção de ${item.originalName}`}
         className="w-full border-t px-1.5 py-1 text-[10px] outline-none"

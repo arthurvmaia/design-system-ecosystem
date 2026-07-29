@@ -34,7 +34,7 @@ import {
   persistirCapturaV2,
 } from '@ds/engine-v2';
 import { decidirProfundidade, explorePage, renderPage, resolveDepthMode } from '@ds/explorer';
-import { getDb, tables } from '@ds/indexer';
+import { eq, getDb, tables } from '@ds/indexer';
 import {
   type DesignSystemId,
   type TelemetriaRelatorio,
@@ -52,7 +52,6 @@ import {
   vaultSegmentBundlesDir,
   vaultSourceDir,
 } from '@ds/shared';
-import { eq } from 'drizzle-orm';
 
 /**
  * Relatório agregado da telemetria (regra 15): duração por fase, contadores e —

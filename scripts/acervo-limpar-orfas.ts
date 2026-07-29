@@ -19,12 +19,13 @@
  * que a promoção copia em vez de referenciar.
  */
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { getDb, runMigrations, tables } from '@ds/indexer';
-import { vaultDir } from '@ds/shared';
+import { podeApagarDesignSystem, vaultDir } from '@ds/shared';
+import { executadoDireto } from './executado-direto.js';
 
 /** Tamanho de um diretório, em bytes. Recursivo e tolerante a erro de leitura. */
-const tamanhoDe = (dir: string): number => {
+export const tamanhoDe = (dir: string): number => {
   let total = 0;
   const pilha = [dir];
   while (pilha.length > 0) {
@@ -54,6 +55,27 @@ const emMb = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(1)} MB`
 
 export type Orfa = { id: string; dir: string; bytes: number };
 
+/**
+ * Quais nomes de pasta não têm dono. Função PURA, de propósito.
+ *
+ * A decisão de "o que não pertence a ninguém" precede a de "o que apagar", e é
+ * ela que erra primeiro se errar. Separada da leitura do disco e do banco, ela
+ * pode ser testada com uma lista na mão — que é o único jeito de conferir os
+ * casos que ninguém quer descobrir em produção.
+ */
+export const orfasEntre = (pastas: readonly string[], idsNoBanco: ReadonlySet<string>): string[] =>
+  pastas.filter((n) => n.startsWith('ds_') && !idsNoBanco.has(n));
+
+/**
+ * A guarda de caminho — a última coisa entre um engano e os arquivos de alguém.
+ *
+ * Ela vive em `@ds/shared`, não aqui, porque DOIS lugares apagam: este comando e
+ * a rota de exclusão do servidor. Cada um tinha a sua versão escrita à mão, e
+ * duas guardas que precisam concordar acabam discordando — só que aqui a que
+ * discordar primeiro leva arquivo junto.
+ */
+export const podeApagar = podeApagarDesignSystem;
+
 /** As pastas do vault sem linha correspondente no banco. */
 export const acharOrfas = (): Orfa[] => {
   const raiz = vaultDir();
@@ -65,8 +87,7 @@ export const acharOrfas = (): Orfa[] => {
       .all()
       .map((l) => l.id),
   );
-  return readdirSync(raiz)
-    .filter((n) => n.startsWith('ds_') && !noBanco.has(n))
+  return orfasEntre(readdirSync(raiz), noBanco)
     .map((id) => {
       const dir = join(raiz, id);
       return { id, dir, bytes: tamanhoDe(dir) };
@@ -79,12 +100,9 @@ export const acharOrfas = (): Orfa[] => {
  * disco o que está DENTRO do vault e tem nome de design system.
  */
 export const apagarOrfa = (orfa: Orfa): boolean => {
-  const raiz = resolve(vaultDir());
-  const alvo = resolve(orfa.dir);
-  if (!alvo.startsWith(raiz + sep)) return false;
-  if (!/^ds_[A-Za-z0-9]+$/.test(orfa.id)) return false;
+  if (!podeApagar(orfa.dir, vaultDir(), orfa.id)) return false;
   try {
-    rmSync(alvo, { recursive: true, force: true });
+    rmSync(resolve(orfa.dir), { recursive: true, force: true });
     return true;
   } catch {
     return false;
@@ -132,4 +150,4 @@ const principal = (): void => {
   console.log(`  ${removidas} pasta(s) removida(s), ${emMb(liberado)} liberados.\n`);
 };
 
-if (process.argv[1]?.includes('acervo-limpar-orfas')) principal();
+if (executadoDireto(import.meta.url)) principal();

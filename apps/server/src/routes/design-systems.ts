@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import { runExtraction } from '@ds/extractor';
 import { getDb, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
@@ -10,6 +10,7 @@ import {
   SegmentsManifest,
   aplicarValidacoes,
   listarAssetsFaltando,
+  podeApagarDesignSystem,
   resumirPipeline,
   vaultDir,
   vaultDsDir,
@@ -218,9 +219,8 @@ designSystemsRoute.delete('/:id', (c) => {
   db.delete(tables.designSystems).where(eq(tables.designSystems.id, id)).run();
 
   let arquivosRemovidos = false;
-  const dir = resolve(vaultDsDir(id as `ds_${string}`));
-  const raiz = resolve(vaultDir());
-  if (dir.startsWith(raiz + sep) && existsSync(dir)) {
+  const dir = vaultDsDir(id as `ds_${string}`);
+  if (podeApagarDesignSystem(dir, vaultDir(), id) && existsSync(dir)) {
     try {
       rmSync(dir, { recursive: true, force: true });
       arquivosRemovidos = true;

@@ -40,6 +40,7 @@ import {
   vaultExtractedDir,
   vaultSegmentBundlesDir,
 } from '@ds/shared';
+import { executadoDireto } from './executado-direto.js';
 
 /** O que aconteceu com um design system. */
 type Relato = {
@@ -122,7 +123,12 @@ export const recompilar = (dsId: DesignSystemId, seco: boolean): Relato | null =
     depois: { regras: 0, dsx: 0, iconesVazios: 0 },
   };
 
-  for (const pasta of readdirSync(raiz)) {
+  // As cópias que ESTE laço cria (`seg_3.anterior`) ficam dentro da mesma pasta.
+  // Sem o filtro, a segunda rodada as varre como se fossem bundles: conta cada
+  // um duas vezes ("61 de 128 ancoraram" em vez de "61 de 64"), soma a
+  // instrumentação da cópia suja ao total de "antes", e — pior — recompila a
+  // cópia, sobrescrevendo o backup com um backup do backup.
+  for (const pasta of readdirSync(raiz).filter((n) => !n.endsWith('.anterior'))) {
     const dir = join(raiz, pasta);
     const indexPath = join(dir, 'index.html');
     if (!existsSync(indexPath)) continue;
@@ -176,7 +182,7 @@ export const recompilar = (dsId: DesignSystemId, seco: boolean): Relato | null =
   return relato;
 };
 
-if (process.argv[1]?.includes('regiao-recompilar')) {
+if (executadoDireto(import.meta.url)) {
   const seco = process.argv.includes('--seco');
   const todos = process.argv.includes('--todos');
   const alvo = process.argv[2];

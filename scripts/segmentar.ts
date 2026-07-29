@@ -13,7 +13,7 @@
  * consertar um design system que já ficou para trás.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { getDb, runMigrations, tables } from '@ds/indexer';
+import { eq, getDb, runMigrations, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
 import {
   type SegmentRecord,
@@ -21,7 +21,7 @@ import {
   vaultCaptureV2Manifest,
   vaultSegmentsManifest,
 } from '@ds/shared';
-import { eq } from 'drizzle-orm';
+import { executadoDireto } from './executado-direto.js';
 
 export type ResultadoSegmentacao = {
   total: number;
@@ -112,7 +112,7 @@ export const avisoSpa = (total: number): string =>
   ].join('\n');
 
 // Execução direta pela linha de comando.
-if (process.argv[1]?.includes('segmentar')) {
+if (executadoDireto(import.meta.url)) {
   const dsId = process.argv[2];
 
   if (dsId === undefined || !dsId.startsWith('ds_')) {

@@ -1167,6 +1167,8 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
                 .filter((h) => h.length > 0),
               stack,
               frames: framesDoSegmento,
+              // De onde copiar o frame para dentro do bundle.
+              dirFramesCaptura: opts.dirCaptura,
               runtimeScripts: runtimeDetections
                 .filter((r) => seg.evidence.runtimeIds.includes(r.id))
                 .flatMap((r) => r.scripts)

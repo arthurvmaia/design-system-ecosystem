@@ -86,7 +86,7 @@ export type EntradaComparacao = {
  * As camadas de fundo recompostas também são puladas: elas são irmãs do
  * conteúdo e ficam ANTES dele, então o primeiro filho do body não é a região.
  */
-const ORIGEM_DA_REGIAO_FN = `
+export const ORIGEM_DA_REGIAO_FN = `
 () => {
   var corpo = document.body;
   if (!corpo) return null;
@@ -94,6 +94,10 @@ const ORIGEM_DA_REGIAO_FN = `
   for (var i = 0; i < corpo.children.length; i++) {
     var f = corpo.children[i];
     if (f.hasAttribute('data-ds-camadas-de-fundo')) continue;
+    // O aviso da referencia visual e conversa do app com quem cura, nao a
+    // regiao. Elege-lo fazia o recorte sair do canto do aviso e o delta
+    // explodir num item que estava certo.
+    if (f.hasAttribute('data-ds-aviso')) continue;
     var tag = f.tagName ? f.tagName.toLowerCase() : '';
     if (tag === 'script' || tag === 'style' || tag === 'link') continue;
     alvo = f;

@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import type { ComponentId, DesignSystemId, ProjectId, TaskId } from './ids.js';
 
 /**
@@ -114,6 +114,29 @@ export const libraryComponentMetadata = (id: ComponentId): string =>
   join(libraryComponentDir(id), 'metadata.json');
 export const libraryComponentTokens = (id: ComponentId): string =>
   join(libraryComponentDir(id), 'tokens.json');
+
+/**
+ * Este diretório de design system pode ser apagado do disco?
+ *
+ * A ÚLTIMA coisa entre um engano e os arquivos de alguém. Mora aqui, e não em
+ * quem apaga, porque dois lugares apagam — a rota de exclusão do servidor e o
+ * `pnpm acervo:limpar-orfas` — e cada um tinha a sua versão escrita à mão.
+ * Duas guardas que precisam concordar acabam discordando, e a que discordar
+ * primeiro leva arquivo junto.
+ *
+ * Duas condições, as duas obrigatórias:
+ *
+ * - o alvo está DENTRO do vault: não é o próprio vault, não é irmão dele, e não
+ *   sobe por `..`;
+ * - o nome é um id de design system, e nada mais — `..`, `*`, vazio ou nome com
+ *   separador de caminho reprovam.
+ */
+export const podeApagarDesignSystem = (dir: string, raizDoVault: string, id: string): boolean => {
+  if (!/^ds_[A-Za-z0-9]+$/.test(id)) return false;
+  const raiz = resolve(raizDoVault);
+  const alvo = resolve(dir);
+  return alvo !== raiz && alvo.startsWith(raiz + sep);
+};
 
 // ── Projects ───────────────────────────────────────────────────────────────
 export const projectsDir = (): string => join(getRoot(), 'projects');

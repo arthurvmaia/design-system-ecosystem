@@ -15,7 +15,7 @@
  * inalcançável. Recusa se a pasta não existir ou se o id já estiver no banco.
  */
 import { existsSync, readdirSync } from 'node:fs';
-import { getDb, runMigrations, tables } from '@ds/indexer';
+import { eq, getDb, runMigrations, tables } from '@ds/indexer';
 import {
   DEFAULT_LAYOUT,
   DEFAULT_PROJECT_BRANDING,
@@ -24,7 +24,6 @@ import {
   projectDir,
   projectGeneratedDir,
 } from '@ds/shared';
-import { eq } from 'drizzle-orm';
 
 const [, , idBruto, nomeBruto] = process.argv;
 

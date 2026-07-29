@@ -6,6 +6,7 @@
  *   pnpm reextrair --todos          # o acervo inteiro
  *   pnpm reextrair --todos --continuar   # retoma, pulando o que já foi refeito
  *   pnpm reextrair <ds_id> --seco   # só diz o que faria
+ *   pnpm reextrair --descartar-anterior  # joga fora as cópias de segurança
  *
  * Por que existe: as correções do motor valem para captura NOVA. Um bundle
  * antigo aponta para o site de origem — scripts e imagens — e perde o conteúdo
@@ -34,11 +35,12 @@ import {
   readdirSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { capturarComV2, persistirCapturaV2 } from '@ds/engine-v2';
-import { getDb, runMigrations, tables } from '@ds/indexer';
+import { eq, getDb, runMigrations, tables } from '@ds/indexer';
 import {
   type DesignSystemId,
   vaultCaptureV2Dir,
@@ -48,7 +50,8 @@ import {
   vaultExtractedDir,
   vaultSegmentBundlesDir,
 } from '@ds/shared';
-import { eq } from 'drizzle-orm';
+import { tamanhoDe } from './acervo-limpar-orfas.js';
+import { executadoDireto } from './executado-direto.js';
 import { segmentarEIndexar } from './segmentar.js';
 
 type Relato = {
@@ -167,8 +170,12 @@ export const reextrair = async (dsId: DesignSystemId, seco: boolean): Promise<Re
   const tmpCaptura = join(tmp, 'capture-v2');
   const tmpBundles = join(tmp, 'bundles');
 
+  // ── 1. Capturar, fora do lugar definitivo ────────────────────────────────
+  // Aqui mora tudo que pode falhar por causas externas: rede, orçamento, site
+  // fora do ar. Nada foi tocado no acervo ainda.
+  let r: Awaited<ReturnType<typeof capturarComV2>>;
   try {
-    const r = await capturarComV2(url, {
+    r = await capturarComV2(url, {
       dirCaptura: tmpCaptura,
       dirBundles: tmpBundles,
       // A conferência de pixel fica de fora: numa fila de 30 sites ela cobraria
@@ -176,17 +183,39 @@ export const reextrair = async (dsId: DesignSystemId, seco: boolean): Promise<Re
       // no meio da fila. O `pnpm medir-fidelidade` mede tudo no fim, de graça.
       verificarVisual: false,
     });
-
-    // ── A troca ──────────────────────────────────────────────────────────
-    // Daqui para baixo é rápido e local. O que podia falhar (rede, orçamento,
-    // navegador) já falhou lá em cima, sem tocar no que estava no lugar.
-    arquivar(vaultCaptureV2Dir(dsId));
-    arquivar(vaultSegmentBundlesDir(dsId));
-    mkdirSync(dirname(vaultCaptureV2Dir(dsId)), { recursive: true });
-    renameSync(tmpCaptura, vaultCaptureV2Dir(dsId));
-    renameSync(tmpBundles, vaultSegmentBundlesDir(dsId));
+  } catch (err) {
     rmSync(tmp, { recursive: true, force: true });
+    return { ...base, erro: err instanceof Error ? err.message : String(err) };
+  }
 
+  // ── 2. Trocar, com volta ─────────────────────────────────────────────────
+  //
+  // A versão anterior tinha UM `try` cobrindo captura E troca, com o comentário
+  // "o antigo continua no lugar: nada foi movido antes da captura terminar".
+  // A frase estava certa sobre a captura e errada sobre o resto: `persistir` e
+  // `segmentarEIndexar` rodam DEPOIS dos renames, e quando um deles falhava o
+  // catch reportava erro com os arquivos novos já no lugar e o antigo já
+  // arquivado — o estado misto que este script existe para evitar.
+  //
+  // Não é hipótese: aconteceu. Uma passada inteira falhou com
+  // `FOREIGN KEY constraint failed` no `segmentarEIndexar`, e seis design
+  // systems ficaram com a captura nova no disco, sem carimbo e sem os segmentos
+  // no banco.
+  //
+  // Agora a troca tem volta: se o passo seguinte falhar, o anterior é
+  // restaurado antes de o erro subir.
+  const capturaDir = vaultCaptureV2Dir(dsId);
+  const bundlesDir = vaultSegmentBundlesDir(dsId);
+  arquivar(capturaDir);
+  arquivar(bundlesDir);
+  mkdirSync(dirname(capturaDir), { recursive: true });
+  renameSync(tmpCaptura, capturaDir);
+  renameSync(tmpBundles, bundlesDir);
+  rmSync(tmp, { recursive: true, force: true });
+
+  const desfazer = (): void => restaurarAnterior([capturaDir, bundlesDir]);
+
+  try {
     const extraido = join(vaultExtractedDir(dsId), 'design-system.html');
     mkdirSync(vaultExtractedDir(dsId), { recursive: true });
     writeFileSync(extraido, r.html, 'utf8');
@@ -198,18 +227,98 @@ export const reextrair = async (dsId: DesignSystemId, seco: boolean): Promise<Re
       ...base,
       ok: true,
       modo: r.manifesto.captureMode,
-      depois: { segmentos: total, ...medirBundles(vaultSegmentBundlesDir(dsId)) },
+      depois: { segmentos: total, ...medirBundles(bundlesDir) },
       limitacoes: r.manifesto.limitations.slice(0, 3),
     };
   } catch (err) {
-    // O antigo continua no lugar: nada foi movido antes da captura terminar.
-    rmSync(tmp, { recursive: true, force: true });
-    return { ...base, erro: err instanceof Error ? err.message : String(err) };
+    desfazer();
+    return {
+      ...base,
+      erro: `${err instanceof Error ? err.message : String(err)} (a captura anterior foi restaurada)`,
+    };
   }
 };
 
-/** Já foi refeito nesta rodada? O carimbo permite `--continuar`. */
+/**
+ * Põe de volta o que estava lá antes da troca.
+ *
+ * É a volta do passo 2: cada `<dir>.anterior` volta a ser `<dir>`, e o que a
+ * captura nova tinha escrito é descartado. Uma pasta sem `.anterior` é deixada
+ * em paz — apagar seria transformar um erro no passo seguinte em perda de
+ * dados, que é o oposto do que esta função existe para fazer.
+ *
+ * Está aqui fora, e não como fechamento dentro de `reextrair`, porque é o
+ * caminho que só roda quando algo já deu errado: sem teste, ele só seria
+ * exercitado no dia em que estivesse valendo.
+ */
+export const restaurarAnterior = (dirs: readonly string[]): void => {
+  for (const dir of dirs) {
+    const anterior = `${dir}.anterior`;
+    if (!existsSync(anterior)) continue;
+    rmSync(dir, { recursive: true, force: true });
+    renameSync(anterior, dir);
+  }
+};
+
+/**
+ * Já foi refeito nesta rodada? O carimbo permite `--continuar`.
+ *
+ * "Nesta rodada" é a parte que quase ficou faltando. O carimbo não expirava, e
+ * o efeito seria pior que o problema que ele resolve: depois de uma passada
+ * completa, todo `--continuar` seguinte pularia o acervo inteiro em silêncio —
+ * a pessoa veria "0 de 2 para refazer" e concluiria que já estava tudo pronto.
+ *
+ * Por isso a passada limpa os carimbos ao terminar sem falha: eles são estado
+ * de UMA execução, não uma marca permanente no acervo.
+ */
 const carimbo = (dsId: DesignSystemId): string => join(vaultDsDir(dsId), '.reextraido');
+
+/**
+ * As cópias de segurança que a re-extração deixa (`capture-v2.anterior/`,
+ * `bundles.anterior/`).
+ *
+ * Elas existem para você poder conferir antes de perder o anterior — mas
+ * ninguém as recolhia: nem o `acervo:limpar-orfas` (que só olha pastas `ds_`
+ * inteiras fora do banco), nem esta rodada. Ficariam no disco para sempre,
+ * dobrando o tamanho de cada design system refeito.
+ */
+export const copiasAnteriores = (): string[] => {
+  const raiz = vaultDir();
+  if (!existsSync(raiz)) return [];
+  const out: string[] = [];
+  const ehPasta = (p: string): boolean => {
+    // `existsSync` diz sim para arquivo. Um arquivo com nome de cópia entrando
+    // numa lista que termina em `rmSync` recursivo apagaria dado do usuário.
+    try {
+      return statSync(p).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+
+  for (const ds of readdirSync(raiz).filter((n) => n.startsWith('ds_'))) {
+    for (const cand of [
+      join(raiz, ds, 'capture-v2.anterior'),
+      join(raiz, ds, 'segments', 'bundles.anterior'),
+    ]) {
+      if (ehPasta(cand)) out.push(cand);
+    }
+  }
+
+  // O `pnpm regiao:recompilar` guarda de outro jeito: uma cópia POR BUNDLE,
+  // dentro da própria pasta de bundles (`segments/bundles/seg_3.anterior`).
+  // Ninguém as recolhia — ficavam para sempre, e o comando de descarte não as
+  // via porque só procurava as duas formas de cima.
+  for (const ds of readdirSync(raiz).filter((n) => n.startsWith('ds_'))) {
+    const bundles = join(raiz, ds, 'segments', 'bundles');
+    if (!ehPasta(bundles)) continue;
+    for (const p of readdirSync(bundles).filter((n) => n.endsWith('.anterior'))) {
+      const cand = join(bundles, p);
+      if (ehPasta(cand)) out.push(cand);
+    }
+  }
+  return out;
+};
 
 /**
  * A linha de comando.
@@ -219,6 +328,24 @@ const carimbo = (dsId: DesignSystemId): string => join(vaultDsDir(dsId), '.reext
  */
 const principal = async (): Promise<void> => {
   const seco = process.argv.includes('--seco');
+
+  // Descartar as cópias de segurança é uma operação por si: quem já conferiu na
+  // Galeria não deveria precisar rodar uma re-extração inteira para recuperar o
+  // espaço.
+  if (process.argv.includes('--descartar-anterior')) {
+    const copias = copiasAnteriores();
+    if (copias.length === 0) {
+      console.log('\n  Nenhuma cópia anterior guardada.\n');
+      return;
+    }
+    const bytes = copias.reduce((n, d) => n + tamanhoDe(d), 0);
+    for (const d of copias) rmSync(d, { recursive: true, force: true });
+    console.log(
+      `\n  ${copias.length} cópia(s) descartada(s), ${(bytes / 1024 / 1024).toFixed(0)} MB liberados.\n`,
+    );
+    return;
+  }
+
   const todos = process.argv.includes('--todos');
   const continuar = process.argv.includes('--continuar');
   const alvo = process.argv[2];
@@ -304,10 +431,30 @@ const principal = async (): Promise<void> => {
     );
   }
   for (const f of falhas.slice(0, 8)) console.log(`    ${f.dsId}: ${f.erro}`);
+
+  // Os carimbos são estado DESTA execução. Deixá-los faria todo `--continuar`
+  // seguinte pular o acervo inteiro em silêncio: a pessoa leria "0 de 2 para
+  // refazer" e concluiria que estava tudo pronto.
+  //
+  // Só são apagados quando a passada terminou sem falha — se algo falhou, o
+  // `--continuar` ainda serve para retomar de onde parou, que é para isso que
+  // eles existem.
+  if (!seco && falhas.length === 0) {
+    for (const id of pendentes) rmSync(carimbo(id), { force: true });
+  }
+
+  const copias = copiasAnteriores();
   console.log('');
-  console.log('  O anterior de cada um ficou em capture-v2.anterior/ e bundles.anterior/.');
-  console.log('  Confira na Galeria e rode `pnpm medir-fidelidade` para comparar.');
+  if (copias.length > 0 && !seco) {
+    const bytes = copias.reduce((n, d) => n + tamanhoDe(d), 0);
+    console.log(
+      `  O anterior de cada um está guardado (${copias.length} pasta(s), ${(bytes / 1024 / 1024).toFixed(0)} MB).`,
+    );
+    console.log('  Confira na Galeria e, quando estiver satisfeito, descarte:');
+    console.log('    pnpm reextrair --descartar-anterior');
+  }
+  console.log('  Rode `pnpm medir-fidelidade` para comparar com a linha de base.');
   console.log('');
 };
 
-if (process.argv[1]?.includes('reextrair')) principal();
+if (executadoDireto(import.meta.url)) principal();

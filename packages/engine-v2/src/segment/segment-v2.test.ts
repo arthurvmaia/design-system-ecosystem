@@ -949,3 +949,137 @@ test('o teto de 12 continua valendo: uma ficha não é um relatório', () => {
   const muitas = Array.from({ length: 30 }, (_, i) => `limitação ${i}`);
   assert.equal(limitacoesDe(muitas).length, 12);
 });
+
+// ── A camada de fundo é classificada pela MESMA evidência que as dobras ──────
+//
+// A chamada que classifica o fundo da página omitia dois fatos que a chamada
+// das dobras informava: se o CSS compilado pelo Tailwind foi capturado, e quais
+// runtimes viajam dentro do bundle. Não era uma divergência de opinião entre
+// dois classificadores — era o mesmo classificador recebendo menos fatos.
+//
+// O efeito, na MESMA captura: a dobra saía `componente-portatil` porque o CSS
+// do Tailwind estava no CSSOM, e o fundo saía `capsula-runtime` dizendo "o CSS
+// resultante não foi capturado: as classes ficam sem estilo".
+
+test('o fundo e a dobra concordam sobre o CSS que o Tailwind compilou', () => {
+  const secaoFp = fp({ tag: 'section', id: 'precos', text: 'Planos e preços' });
+  const fundoFp = fp({ tag: 'div', classes: ['bg-grain'] });
+
+  const tailwind: RuntimeDetection = {
+    id: 'rt_tw',
+    kind: 'tailwind-cdn',
+    label: 'Tailwind por CDN',
+    evidence: ['script cdn.tailwindcss.com'],
+    confidence: 'alta',
+    scripts: ['https://cdn.tailwindcss.com'],
+    targets: [secaoFp.hash, fundoFp.hash],
+    assets: [],
+    encapsulable: true,
+    limitations: [],
+  };
+
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      // A captura leu o CSSOM: o CSS compilado veio junto.
+      cssExternoFaltando: false,
+      runtimeDetections: [tailwind],
+      structuralMap: [
+        node({
+          fingerprint: secaoFp,
+          role: 'section',
+          subtreeTextLength: 300,
+          areaShare: 0.8,
+          pageBox: { x: 0, y: 0, w: 1440, h: 800 },
+        }),
+        node({
+          fingerprint: fundoFp,
+          role: 'unknown',
+          areaShare: 1,
+          pageBox: { x: 0, y: 0, w: 1440, h: 3600 },
+        }),
+      ],
+      visualLayers: [camada({ fingerprint: secaoFp, ownerSection: secaoFp.hash })],
+      camadasDePagina: { comRuntime: [fundoFp.hash], soCss: [] },
+      htmlPorHash: new Map([
+        [
+          secaoFp.hash,
+          '<section id="precos"><h2>Planos e preços</h2><div class="card p-6">Um plano com descrição suficiente para contar como conteúdo próprio.</div></section>',
+        ],
+        [fundoFp.hash, '<div class="bg-grain fixed inset-0"></div>'],
+      ]),
+    }),
+  );
+
+  const dobra = r.segmentos.find((s) => s.hash === secaoFp.hash);
+  const fundo = r.segmentos.find((s) => s.category === 'background');
+  assert.ok(dobra, 'a dobra tem de sair');
+  assert.ok(fundo, 'a camada de fundo tem de sair');
+
+  const semCss = (s: (typeof r.segmentos)[number]) =>
+    s.representation.limitations.some((l) => l.includes('o CSS resultante não foi capturado'));
+
+  assert.equal(semCss(dobra), false);
+  assert.equal(
+    semCss(fundo),
+    false,
+    'o fundo não pode declarar CSS perdido numa captura em que a dobra o declara capturado',
+  );
+  assert.equal(fundo.representation.type, dobra.representation.type);
+});
+
+test('quando o CSS compilado NÃO veio, o fundo também diz isso', () => {
+  // A correção não é "o fundo sempre passa": é o fundo receber a mesma
+  // evidência. Com a folha perdida, os dois têm de reclamar juntos.
+  const secaoFp = fp({ tag: 'section', id: 'precos', text: 'Planos e preços' });
+  const fundoFp = fp({ tag: 'div', classes: ['bg-grain'] });
+
+  const tailwind: RuntimeDetection = {
+    id: 'rt_tw',
+    kind: 'tailwind-cdn',
+    label: 'Tailwind por CDN',
+    evidence: ['script cdn.tailwindcss.com'],
+    confidence: 'alta',
+    scripts: ['https://cdn.tailwindcss.com'],
+    targets: [secaoFp.hash, fundoFp.hash],
+    assets: [],
+    encapsulable: true,
+    limitations: [],
+  };
+
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      cssExternoFaltando: true,
+      runtimeDetections: [tailwind],
+      structuralMap: [
+        node({
+          fingerprint: secaoFp,
+          role: 'section',
+          subtreeTextLength: 300,
+          areaShare: 0.8,
+          pageBox: { x: 0, y: 0, w: 1440, h: 800 },
+        }),
+        node({
+          fingerprint: fundoFp,
+          role: 'unknown',
+          areaShare: 1,
+          pageBox: { x: 0, y: 0, w: 1440, h: 3600 },
+        }),
+      ],
+      visualLayers: [camada({ fingerprint: secaoFp, ownerSection: secaoFp.hash })],
+      camadasDePagina: { comRuntime: [fundoFp.hash], soCss: [] },
+      htmlPorHash: new Map([
+        [
+          secaoFp.hash,
+          '<section id="precos"><h2>Planos e preços</h2><div class="card p-6">Um plano com descrição suficiente para contar como conteúdo próprio.</div></section>',
+        ],
+        [fundoFp.hash, '<div class="bg-grain fixed inset-0"></div>'],
+      ]),
+    }),
+  );
+
+  const fundo = r.segmentos.find((s) => s.category === 'background');
+  assert.ok(fundo);
+  assert.ok(
+    fundo.representation.limitations.some((l) => l.includes('o CSS resultante não foi capturado')),
+  );
+});

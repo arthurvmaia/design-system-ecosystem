@@ -510,3 +510,132 @@ test('a cápsula continua tendo o que a distingue: a CSP', () => {
   assert.ok(capsula.includes('Content-Security-Policy'));
   assert.ok(!index.includes('Content-Security-Policy'));
 });
+
+// ── O frame da referência visual vem PARA DENTRO do bundle ──────────────────
+//
+// Quando um segmento não é portátil, o bundle mostra o print daquela dobra: é
+// a única coisa que uma referência visual tem para mostrar. O `<img>` apontava
+// para `frames/x.png`, caminho da pasta de CAPTURA — uma árvore irmã da de
+// bundles, que nunca resolve daqui.
+//
+// O defeito não aparecia no app: a rota de prévia reescreve a raiz de `frames/`
+// e a Biblioteca copia os frames na promoção. Aparecia no `.zip` entregue ao
+// cliente e na comparação de pixel, que abrem o arquivo direto.
+
+const segmentoDeReferencia = (): SegmentoV2 =>
+  segmentoFixture({
+    representation: {
+      type: 'referencia-visual',
+      reasons: ['o conteúdo é desenhado por um runtime que não viaja'],
+      rejected: [],
+      runtimes: [],
+      editable: false,
+      confidence: 'alta',
+      limitations: [],
+    },
+  });
+
+/** Um PNG mínimo de verdade, para o teste copiar bytes e não uma string. */
+const pngFalso = Buffer.from(
+  '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489',
+  'hex',
+);
+
+test('o frame da referência visual é copiado para dentro do bundle', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'bundle-frame-'));
+  try {
+    const captura = join(raiz, 'capture-v2');
+    mkdirSync(join(captura, 'frames'), { recursive: true });
+    writeFileSync(join(captura, 'frames', 'dobra-1.png'), pngFalso);
+
+    const dir = join(raiz, 'bundles', 'seg_0');
+    escreverBundle(dir, {
+      ...entradaMinima(),
+      segmento: segmentoDeReferencia(),
+      frames: ['frames/dobra-1.png'],
+      dirFramesCaptura: captura,
+    });
+
+    // O arquivo existe DENTRO do bundle, com os mesmos bytes.
+    const copiado = join(dir, 'frames', 'dobra-1.png');
+    assert.ok(existsSync(copiado), 'o frame tem de estar dentro do bundle');
+    assert.deepEqual(readFileSync(copiado), pngFalso);
+
+    // E o HTML aponta para ele por caminho relativo interno.
+    const index = readFileSync(join(dir, 'index.html'), 'utf8');
+    assert.ok(index.includes('src="frames/dobra-1.png"'));
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('frame que não está na captura vira aviso, não <img> quebrada', () => {
+  // Um `<img>` apontando para nada é pior que a frase: parece que o bundle
+  // deveria mostrar algo e falhou, sem dizer o quê.
+  const raiz = mkdtempSync(join(tmpdir(), 'bundle-frame-'));
+  try {
+    const captura = join(raiz, 'capture-v2');
+    mkdirSync(captura, { recursive: true });
+    const dir = join(raiz, 'bundles', 'seg_0');
+    const r = escreverBundle(dir, {
+      ...entradaMinima(),
+      segmento: segmentoDeReferencia(),
+      frames: ['frames/sumiu.png'],
+      dirFramesCaptura: captura,
+    });
+
+    const index = readFileSync(join(dir, 'index.html'), 'utf8');
+    assert.ok(!index.includes('<img'), 'não pode sobrar imagem apontando para nada');
+    assert.ok(index.includes('Sem frame de fallback'));
+    assert.ok(r.avisos.some((a) => a.includes('sumiu.png')));
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('o bundle não escreve fora da própria pasta por causa de um frame', () => {
+  // `frames` vem do manifesto da captura. Um caminho com `..` faria o bundle
+  // gravar num diretório irmão — e o `<img>` sairia apontando para lá.
+  const raiz = mkdtempSync(join(tmpdir(), 'bundle-frame-'));
+  try {
+    const captura = join(raiz, 'capture-v2');
+    mkdirSync(captura, { recursive: true });
+    writeFileSync(join(raiz, 'vizinho.png'), pngFalso);
+
+    const dir = join(raiz, 'bundles', 'seg_0');
+    escreverBundle(dir, {
+      ...entradaMinima(),
+      segmento: segmentoDeReferencia(),
+      frames: ['../../vizinho.png'],
+      dirFramesCaptura: captura,
+    });
+
+    const index = readFileSync(join(dir, 'index.html'), 'utf8');
+    assert.ok(!index.includes('..'), 'nenhum caminho pode sair da pasta do bundle');
+    assert.ok(index.includes('Sem frame de fallback'));
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('peça portátil não ganha um PNG que ela nunca abre', () => {
+  // O frame só é exibido pela referência visual. Copiar em todo bundle poria uma
+  // imagem de sobra dentro de cada peça — peso no `.zip` sem nada em troca.
+  const raiz = mkdtempSync(join(tmpdir(), 'bundle-frame-'));
+  try {
+    const captura = join(raiz, 'capture-v2');
+    mkdirSync(join(captura, 'frames'), { recursive: true });
+    writeFileSync(join(captura, 'frames', 'dobra-1.png'), pngFalso);
+
+    const dir = join(raiz, 'bundles', 'seg_0');
+    escreverBundle(dir, {
+      ...entradaMinima(),
+      frames: ['frames/dobra-1.png'],
+      dirFramesCaptura: captura,
+    });
+
+    assert.equal(existsSync(join(dir, 'frames', 'dobra-1.png')), false);
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});

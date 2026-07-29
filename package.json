@@ -21,7 +21,7 @@
     "regiao:recompilar": "tsx scripts/regiao-recompilar.ts",
     "projeto:restaurar": "tsx scripts/projeto-restaurar.ts",
     "mascote": "tsx scripts/mascote.ts",
-    "test": "node --import tsx --test \"packages/**/src/**/*.test.ts\" \"apps/**/src/**/*.test.ts\"",
+    "test": "node --import tsx --test \"packages/**/src/**/*.test.ts\" \"apps/**/src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
     "testar:segmentacao": "tsx scripts/testar-segmentacao.ts",
     "fila:escolher": "tsx scripts/selecionar.ts",
     "fila:progresso": "tsx scripts/fila-progresso.ts",
