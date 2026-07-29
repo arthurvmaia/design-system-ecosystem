@@ -140,7 +140,7 @@ export function ExtractPage() {
         <div
           className="ds-glow-border ds-backdrop ds-slide-up ds-d3 mt-8 rounded-lg p-4 text-[13px]"
           style={{
-            backgroundColor: 'rgba(107, 20, 20, 0.16)',
+            backgroundColor: 'rgba(245,158,11,0.14)',
             color: 'var(--color-fg)',
           }}
         >
@@ -204,7 +204,7 @@ export function ExtractPage() {
         </button>
 
         {start.error && (
-          <div className="mt-3 text-[12px]" style={{ color: 'var(--color-crimson-3)' }}>
+          <div className="mt-3 text-[12px]" style={{ color: 'var(--color-ion-3)' }}>
             {start.error.message}
           </div>
         )}
@@ -306,7 +306,7 @@ function TextInput({
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="ds-data w-full rounded-md border px-3.5 py-2.5 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)]"
+        className="ds-data w-full rounded-md border px-3.5 py-2.5 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]"
         style={{
           borderColor: 'var(--color-border)',
           backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -333,7 +333,7 @@ function FileDropzone({
 
   return (
     <label
-      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-12 text-center transition-all duration-300 hover:border-[var(--color-signal)] hover:bg-white/[0.02] hover:shadow-[0_0_30px_rgba(198,40,40,0.12)]"
+      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-12 text-center transition-all duration-300 hover:border-[var(--color-signal)] hover:bg-white/[0.02] hover:shadow-[0_0_30px_rgba(56,189,248,0.18)]"
       style={{ borderColor: 'var(--color-border-strong)' }}
     >
       <UploadCloud size={20} style={{ color: 'var(--color-fg-muted)' }} />
@@ -384,10 +384,7 @@ function TaskProgress({
       {running && <div className="ds-progress mt-5 rounded-full" />}
 
       {failed && (
-        <div
-          className="mt-4 text-[13px] leading-relaxed"
-          style={{ color: 'var(--color-crimson-3)' }}
-        >
+        <div className="mt-4 text-[13px] leading-relaxed" style={{ color: 'var(--color-ion-3)' }}>
           Não deu para concluir esta extração. Tente de novo. Se acontecer outra vez, pode ser que o
           site esteja bloqueando a captura.
           {task.errorMessage && (
@@ -429,7 +426,7 @@ function TaskProgress({
               borderColor: 'var(--color-border)',
               color:
                 ev.level === 'error'
-                  ? 'var(--color-crimson-3)'
+                  ? 'var(--color-ion-3)'
                   : ev.level === 'warn'
                     ? 'var(--color-fg-muted)'
                     : 'var(--color-fg)',
@@ -448,7 +445,7 @@ function StatusBadge({ status }: { status: TaskRecord['status'] }) {
     queued: { rotulo: 'Na fila', cor: 'var(--color-fg-subtle)' },
     running: { rotulo: 'Trabalhando', cor: 'var(--color-signal)' },
     succeeded: { rotulo: 'Concluída', cor: 'var(--color-signal)' },
-    failed: { rotulo: 'Não concluída', cor: 'var(--color-crimson-3)' },
+    failed: { rotulo: 'Não concluída', cor: 'var(--color-ion-3)' },
     cancelled: { rotulo: 'Cancelada', cor: 'var(--color-fg-subtle)' },
   };
   return (

@@ -70,7 +70,7 @@ export function SettingsPage() {
 
         <Bloco
           titulo="Abertura do aplicativo"
-          descricao="A cortina de abertura que aparece ao entrar."
+          descricao="A sequência de inicialização que aparece ao entrar."
         >
           <Opcoes
             valor={prefs.introAoAbrir}
@@ -80,6 +80,25 @@ export function SettingsPage() {
             ]}
             aoMudar={(v) =>
               definir({ introAoAbrir: v as Preferencias['introAoAbrir'] }, 'Preferência salva.')
+            }
+          />
+        </Bloco>
+
+        <Bloco
+          titulo="Som da abertura"
+          descricao="A abertura toca uma trilha curta. Desligue se você costuma abrir o aplicativo perto de outras pessoas — a escolha fica guardada e não pergunta de novo."
+        >
+          <Opcoes
+            valor={prefs.somDaIntro ? 'sim' : 'nao'}
+            opcoes={[
+              ['sim', 'Com som'],
+              ['nao', 'Mudo'],
+            ]}
+            aoMudar={(v) =>
+              definir(
+                { somDaIntro: v === 'sim' },
+                v === 'sim' ? 'A abertura volta a ter som.' : 'A abertura fica muda.',
+              )
             }
           />
         </Bloco>
@@ -133,7 +152,7 @@ function Opcoes({
           className="rounded-full border px-4 py-2 text-[13px] transition-colors"
           style={{
             borderColor: valor === v ? 'var(--color-primary)' : 'var(--color-border)',
-            backgroundColor: valor === v ? 'rgba(107,20,20,0.2)' : 'transparent',
+            backgroundColor: valor === v ? 'rgba(14,165,233,0.18)' : 'transparent',
             color: valor === v ? 'var(--color-fg)' : 'var(--color-fg-muted)',
           }}
         >

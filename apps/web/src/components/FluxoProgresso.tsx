@@ -232,7 +232,7 @@ function Bolinha({ feito, emAndamento }: { feito: boolean; emAndamento: boolean 
       {emAndamento && (
         <span
           className="absolute inset-0 animate-ping rounded-full"
-          style={{ backgroundColor: 'var(--color-crimson-5)', opacity: 0.35 }}
+          style={{ backgroundColor: 'var(--color-ion-5)', opacity: 0.35 }}
         />
       )}
       <div
@@ -241,10 +241,9 @@ function Bolinha({ feito, emAndamento }: { feito: boolean; emAndamento: boolean 
           backgroundColor: feito
             ? 'var(--color-primary)'
             : emAndamento
-              ? 'var(--color-crimson-8)'
+              ? 'var(--color-ion-8)'
               : 'transparent',
-          borderColor:
-            feito || emAndamento ? 'var(--color-crimson-4)' : 'var(--color-border-strong)',
+          borderColor: feito || emAndamento ? 'var(--color-ion-4)' : 'var(--color-border-strong)',
         }}
       >
         {feito ? (
@@ -268,7 +267,7 @@ function Linha({ ativa, invisivel }: { ativa: boolean; invisivel: boolean }) {
         backgroundColor: invisivel
           ? 'transparent'
           : ativa
-            ? 'var(--color-crimson-6)'
+            ? 'var(--color-ion-6)'
             : 'var(--color-border-strong)',
       }}
     />

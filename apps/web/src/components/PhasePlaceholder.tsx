@@ -89,7 +89,7 @@ function StatusColumn({
                   style={{
                     backgroundColor:
                       tone === 'ready' ? 'var(--color-signal)' : 'var(--color-border-strong)',
-                    boxShadow: tone === 'ready' ? '0 0 10px rgba(198, 40, 40, 0.5)' : undefined,
+                    boxShadow: tone === 'ready' ? '0 0 10px rgba(16,185,129,0.5)' : undefined,
                   }}
                 />
                 <span className="text-[14px] leading-[1.5]" style={{ color: 'var(--color-fg)' }}>

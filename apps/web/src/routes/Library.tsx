@@ -180,7 +180,7 @@ export function LibraryPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="buscar por nome ou tag..."
-            className="ds-data w-[240px] rounded-full border px-3.5 py-2 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)]"
+            className="ds-data w-[240px] rounded-full border px-3.5 py-2 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]"
             style={{
               borderColor: 'var(--color-border)',
               backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -350,7 +350,7 @@ function LibraryCard({
     <div className={`ds-scale-in ${delay}`}>
       <div
         className="ds-card ds-glass-static group relative rounded-xl"
-        style={selected ? { outline: '2px solid var(--color-crimson-5)' } : undefined}
+        style={selected ? { outline: '2px solid var(--color-ion-5)' } : undefined}
       >
         <label
           className={cn(
@@ -520,7 +520,7 @@ function LibraryDetail({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)]"
+              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]"
               style={inputStyle}
             />
           </Field>
@@ -571,7 +571,7 @@ function LibraryDetail({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)] resize-none"
+              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)] resize-none"
               style={inputStyle}
               placeholder="anotações internas sobre este componente"
             />
@@ -582,7 +582,7 @@ function LibraryDetail({
               type="button"
               onClick={() => setConfirmDel(true)}
               className="flex items-center gap-1.5 text-[12px] transition-colors"
-              style={{ color: 'var(--color-crimson-3)' }}
+              style={{ color: 'var(--color-ion-3)' }}
             >
               <HeartOff size={13} />
               Remover

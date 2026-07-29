@@ -101,7 +101,7 @@ export function PainelTipografia({
                   className="rounded-md border px-3 py-2 text-left transition-colors"
                   style={{
                     borderColor: ativo ? 'var(--color-primary)' : 'var(--color-border)',
-                    backgroundColor: ativo ? 'rgba(107,20,20,0.16)' : 'transparent',
+                    backgroundColor: ativo ? 'rgba(14,165,233,0.14)' : 'transparent',
                   }}
                 >
                   <span className="block text-[12px]" style={{ color: 'var(--color-fg)' }}>
@@ -138,7 +138,7 @@ export function PainelTipografia({
                   className="rounded-md border px-3 py-2 text-left transition-colors"
                   style={{
                     borderColor: ativo ? 'var(--color-primary)' : 'var(--color-border)',
-                    backgroundColor: ativo ? 'rgba(107,20,20,0.16)' : 'transparent',
+                    backgroundColor: ativo ? 'rgba(14,165,233,0.14)' : 'transparent',
                   }}
                 >
                   <span className="block text-[12px]" style={{ color: 'var(--color-fg)' }}>

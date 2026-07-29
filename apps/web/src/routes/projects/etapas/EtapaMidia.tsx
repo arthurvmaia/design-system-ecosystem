@@ -391,11 +391,11 @@ function BlocoProdutos({
                 <button
                   type="button"
                   onClick={() => onProdutos(produtos.filter((x) => x.id !== p.id))}
-                  className="shrink-0 rounded-full p-1 hover:bg-[rgba(198,40,40,0.16)]"
+                  className="shrink-0 rounded-full p-1 hover:bg-[rgba(239,68,68,0.16)]"
                   title="Remover produto"
                   aria-label={`Remover ${p.nome || 'produto'}`}
                 >
-                  <Trash2 size={12} style={{ color: 'var(--color-crimson-3)' }} />
+                  <Trash2 size={12} style={{ color: 'var(--color-ion-3)' }} />
                 </button>
               </div>
               <textarea
@@ -492,7 +492,7 @@ function MidiaThumb({
     <div className="ds-glass-static group relative overflow-hidden rounded-md">
       <div
         className="flex aspect-[16/10] items-center justify-center overflow-hidden"
-        style={{ backgroundColor: 'var(--color-obsidian-2)' }}
+        style={{ backgroundColor: 'var(--color-ink-2)' }}
       >
         {item.kind === 'video' ? (
           <video
@@ -517,11 +517,11 @@ function MidiaThumb({
         <button
           type="button"
           onClick={onRemover}
-          className="shrink-0 rounded-full p-0.5 hover:bg-[rgba(198,40,40,0.16)]"
+          className="shrink-0 rounded-full p-0.5 hover:bg-[rgba(239,68,68,0.16)]"
           title="Remover"
           aria-label={`Remover ${item.originalName}`}
         >
-          <Trash2 size={11} style={{ color: 'var(--color-crimson-3)' }} />
+          <Trash2 size={11} style={{ color: 'var(--color-ion-3)' }} />
         </button>
       </div>
       {/* Trocar de seção sem reenviar o arquivo. */}

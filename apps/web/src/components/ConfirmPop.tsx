@@ -63,7 +63,7 @@ export function ConfirmPop({
             disabled={busy}
             className="ds-btn flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium disabled:opacity-50"
             style={{
-              backgroundColor: danger ? 'var(--color-crimson-6)' : 'var(--color-primary)',
+              backgroundColor: danger ? 'var(--color-ion-6)' : 'var(--color-primary)',
               color: 'var(--color-bone-1)',
             }}
           >

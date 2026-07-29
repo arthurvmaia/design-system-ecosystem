@@ -26,7 +26,7 @@ export const classeGatilho = (invalido: boolean, desabilitado: boolean): string 
     'flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-[13px] transition-colors',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]',
     invalido
-      ? 'border-[var(--color-crimson-6)]'
+      ? 'border-[var(--color-ion-6)]'
       : 'border-[var(--color-border)] hover:border-[var(--color-border-strong)]',
     desabilitado && 'cursor-not-allowed opacity-50',
   );

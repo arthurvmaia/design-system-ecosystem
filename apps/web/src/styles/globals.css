@@ -1,72 +1,96 @@
 @import "tailwindcss";
 
 /**
- * Tema: obsidian + crimson + bone.
+ * Tema: laboratório.
  *
- * Preto, branco e vermelho escuro. O vermelho nunca aparece chapado em área
- * grande — ele sempre nasce do preto por gradiente, o que dá profundidade sem
- * transformar a tela num alerta.
+ * Três decisões estruturais, tiradas da referência (saas-developer.aura.build):
  *
- * A linguagem de superfície é vidro: painéis translúcidos com blur e saturação
- * sobre um fundo com luz ambiente em movimento lento. Isso é o que separa uma
- * interface viva de uma tabela pintada de escuro.
+ * 1. NÃO EXISTE PALETA DE CINZAS. O fundo é preto puro e toda superfície é
+ *    branco com alfa empilhado sobre ele. É o que faz um painel parecer vidro
+ *    sobre uma luz, e não uma caixa pintada de escuro. Por isso `--color-border`
+ *    e `--color-surface` são `rgb(255 255 255 / …)`, não hex: assim funcionam
+ *    sobre qualquer fundo, inclusive dentro de outro painel.
  *
- * O vocabulário de superfície e movimento vem da referência glass-green-effect,
- * recolorido: onde ela usa teal, aqui é crimson. Cards que inclinam em 3D sob o
- * cursor, bordas em gradiente recortado, brilho pulsante e flutuação lenta —
- * tudo apoiado no mesmo vidro.
+ * 2. UM ACENTO SÓ, EM DOSE MÍNIMA. O ciano aparece em coisas de pouco peso
+ *    visual — pontos de 6px, cursores, hairlines de 1px, ícones ativos, foco.
+ *    Nunca como preenchimento grande. É isso que lê como equipamento ligado em
+ *    vez de alerta. A exceção é o botão principal, que precisa de área para ser
+ *    encontrado.
+ *
+ * 3. MONO É TELEMETRIA. Tudo que é número, id, hex, contagem, carimbo de tempo
+ *    ou status vai em mono; nos micro-rótulos, em caixa alta com tracking
+ *    aberto. O contraste entre a display apertada e a mono espaçada é o que dá
+ *    o ar de instrumento — mais do que qualquer efeito.
+ *
+ * Sombra aqui é sempre glow negativo (`0 0 Npx -Mpx`), nunca sombra projetada:
+ * a tela é um plano de instrumentação, não uma mesa com objetos em cima.
  */
 @theme {
-  /* Cores. */
-  --color-obsidian-0: #000000;
-  --color-obsidian-1: #060606;
-  --color-obsidian-2: #0d0d0d;
-  --color-obsidian-3: #141414;
-  --color-obsidian-4: #1f1f1f;
-  --color-obsidian-5: #2a2a2a;
+  /* Preto e os quase-pretos. O fundo do app é o 0 mesmo. */
+  --color-ink-0: #000000;
+  --color-ink-1: #000000;
+  --color-ink-2: #08090b;
+  --color-ink-3: #0d0f12;
+  --color-ink-4: #161a1f;
+  --color-ink-5: #222831;
 
-  --color-crimson-9: #3d0a0a;
-  --color-crimson-8: #520f0f;
-  --color-crimson-7: #6b1414;
-  --color-crimson-6: #8a1a1a;
-  --color-crimson-5: #a81f1f;
-  --color-crimson-4: #c62828;
-  --color-crimson-3: #e03535;
+  /* O acento, em família única (sky). Índices preservados do tema anterior para
+     a substituição ser mecânica: o 3 é o mais claro, o 9 o mais fundo. */
+  --color-ion-9: #0c4a6e;
+  --color-ion-8: #075985;
+  --color-ion-7: #0369a1;
+  --color-ion-6: #0284c7;
+  --color-ion-5: #0ea5e9;
+  --color-ion-4: #38bdf8;
+  --color-ion-3: #7dd3fc;
 
+  /* Brancos, levemente frios para conversar com o ciano. */
   --color-bone-1: #ffffff;
-  --color-bone-2: #e8e8e8;
-  --color-bone-3: #a8a8a8;
-  --color-bone-4: #757575;
-  --color-bone-5: #4f4f4f;
-  --color-bone-6: #383838;
+  --color-bone-2: #e6eaee;
+  --color-bone-3: #9aa3ab;
+  --color-bone-4: #78828c;
+  --color-bone-5: #4a525a;
+  --color-bone-6: #333a41;
 
-  /* Semânticas. */
-  --color-bg: var(--color-obsidian-1);
-  --color-surface: var(--color-obsidian-2);
-  --color-surface-elevated: var(--color-obsidian-3);
-  --color-border: var(--color-obsidian-4);
-  --color-border-strong: var(--color-obsidian-5);
+  /* Semânticas — é por aqui que passam 570 das 644 cores da interface, então
+     mudar estes valores repinta o app inteiro sem tocar nas telas. */
+  --color-bg: var(--color-ink-0);
+  --color-surface: rgb(255 255 255 / 0.03);
+  --color-surface-elevated: rgb(255 255 255 / 0.05);
+  --color-border: rgb(255 255 255 / 0.08);
+  --color-border-strong: rgb(255 255 255 / 0.16);
   --color-fg: var(--color-bone-1);
   --color-fg-muted: var(--color-bone-3);
   --color-fg-subtle: var(--color-bone-4);
-  --color-primary: var(--color-crimson-7);
-  --color-primary-hover: var(--color-crimson-6);
-  --color-signal: var(--color-crimson-4);
+  --color-primary: var(--color-ion-7);
+  --color-primary-hover: var(--color-ion-6);
+  --color-signal: var(--color-ion-4);
+
+  /* Sinais SEMÂNTICOS, que não são a marca.
+     O acento único é o ciano, mas destruir, avisar e confirmar precisam de cor
+     própria: um botão de excluir que acende ciano perde o aviso, e "tudo certo"
+     em ciano fica indistinguível de "ligado". A própria referência faz isso —
+     mantém vermelho, âmbar e verde ao lado do acento. Doses igualmente pequenas. */
+  --color-danger: #ef4444;
+  --color-warn: #f59e0b;
+  --color-ok: #10b981;
 
   /* Tipografia: display angular e técnica, corpo neutro, mono para dados. */
   --font-display: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  /* Raios generosos, como na referência. Vidro com canto quase reto lê como
-     recorte; com canto redondo lê como painel flutuando sobre o fundo. */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  /* Cantos mais contidos que antes: painel de instrumento tem canto medido, não
+     cápsula. O `full` continua existindo via utilitário do Tailwind. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
 
-  /* Curva única para todo movimento da interface. */
+  /* Duas curvas. A padrão para reações; a expo para entradas — é o easing que a
+     referência usa e o que dá a sensação de "assentar" em vez de "chegar". */
   --ease-ds: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-entrada: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer base {
@@ -86,17 +110,19 @@
     overflow-x: hidden;
   }
 
+  /* Título apertado, micro-rótulo aberto: a regra tipográfica do tema é "quanto
+     maior, mais junto; quanto menor, mais espaçado". */
   h1,
   h2,
   h3,
   .font-display {
     font-family: var(--font-display);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
   }
 
   ::selection {
-    background-color: var(--color-crimson-7);
-    color: var(--color-bone-1);
+    background-color: rgb(56 189 248 / 0.3);
+    color: var(--color-ion-3);
   }
 
   :focus-visible {
@@ -111,138 +137,119 @@
   }
 }
 
-/* ── Luz ambiente ────────────────────────────────────────────────────────────
-   Duas manchas de vermelho muito diluído que derivam devagar atrás de todo o
-   conteúdo. É o que impede o preto de parecer morto. Fica em z-index 0 e não
-   captura ponteiro. */
-.ds-ambient {
+/* ── Fundo de bancada ─────────────────────────────────────────────────────────
+   Substitui as duas manchas que vagavam. Grade fina desbotando nas bordas por
+   máscara radial, mais um halo ciano fixo bem acima do centro. Fundo parado é o
+   que deixa o movimento do CONTEÚDO ser percebido; fundo que se mexe compete
+   com ele. Fica em z-index 0 e não captura ponteiro. */
+.ds-grid {
   position: fixed;
-  border-radius: 50%;
-  pointer-events: none;
+  inset: 0;
   z-index: 0;
-  will-change: transform;
+  pointer-events: none;
+  background-image: linear-gradient(rgb(255 255 255 / 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.022) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 20%, transparent 78%);
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 20%, transparent 78%);
 }
 
-.ds-ambient-1 {
-  top: -10%;
-  left: -5%;
-  width: 45vw;
-  height: 45vw;
-  background: radial-gradient(circle, rgba(138, 26, 26, 0.16) 0%, transparent 68%);
+.ds-halo {
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+  top: -22vh;
+  left: 50%;
+  width: 70vw;
+  height: 46vh;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgb(14 165 233 / 0.13) 0%, transparent 68%);
   filter: blur(60px);
-  animation: ds-drift-1 22s var(--ease-ds) infinite alternate;
 }
 
-.ds-ambient-2 {
-  bottom: -15%;
-  right: -8%;
-  width: 55vw;
-  height: 55vw;
-  background: radial-gradient(circle, rgba(107, 20, 20, 0.13) 0%, transparent 70%);
-  filter: blur(80px);
-  animation: ds-drift-2 28s var(--ease-ds) infinite alternate;
+/* Separador que nasce e morre em transparente. Onde a interface antiga usava uma
+   borda inteira, aqui a linha some nas pontas — é o que faz a divisão parecer
+   régua de instrumento em vez de moldura de tabela. */
+.ds-hairline {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.14), transparent);
 }
 
-@keyframes ds-drift-1 {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  100% {
-    transform: translate(12vw, 8vh) scale(1.18);
-  }
+.ds-hairline-ion {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, rgb(56 189 248 / 0.45), transparent);
 }
 
-@keyframes ds-drift-2 {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  100% {
-    transform: translate(-10vw, -6vh) scale(0.88);
-  }
-}
-
-/* ── Vidro ───────────────────────────────────────────────────────────────── */
+/* ── Vidro ───────────────────────────────────────────────────────────────────
+   Branco 3% com blur. Sem saturação exagerada: o fundo é preto, saturar não tem
+   o que puxar e só suja a borda. */
 .ds-glass {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.045) 0%,
-    rgba(255, 255, 255, 0.015) 100%
-  );
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  transition: all 0.35s var(--ease-ds);
+  background: rgb(255 255 255 / 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  transition: background 0.3s var(--ease-ds), border-color 0.3s var(--ease-ds), box-shadow 0.3s
+    var(--ease-ds);
 }
 
 .ds-glass:hover {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.075) 0%, rgba(198, 40, 40, 0.05) 100%);
-  border-color: rgba(198, 40, 40, 0.28);
-  transform: translateY(-2px);
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(198, 40, 40, 0.1);
+  background: rgb(255 255 255 / 0.05);
+  border-color: rgb(56 189 248 / 0.35);
+  box-shadow: 0 0 30px -12px rgb(56 189 248 / 0.45);
 }
 
-/* Vidro que não reage ao mouse — para painéis de leitura. */
+/* Vidro que não reage ao cursor — para painéis de leitura. */
 .ds-glass-static {
-  background: rgba(255, 255, 255, 0.035);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 0.028);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 0.07);
 }
 
-/* Blur forte isolado, para barras que flutuam sobre conteúdo rolando. */
+/* Blur isolado, para barras que flutuam sobre conteúdo rolando. */
 .ds-backdrop {
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-/* Vidro que adensa sob o cursor — para barras de métrica sobre imagem. */
-.ds-glass-lift {
-  transition: all 0.4s var(--ease-ds);
-}
-
-.ds-glass-lift:hover {
-  backdrop-filter: blur(30px) saturate(200%);
-  -webkit-backdrop-filter: blur(30px) saturate(200%);
-  background: rgba(255, 255, 255, 0.12);
-  transform: translateY(-3px);
-}
-
-/* ── Cartão com profundidade ─────────────────────────────────────────────────
-   A assinatura da referência: o cartão não sobe reto, ele inclina. O `perspective`
-   precisa estar aqui — a referência original o esqueceu, e sem ele o rotateX/Y
-   vira uma deformação chapada e o translateZ do conteúdo não faz nada. Com ele,
-   o conteúdo descola da borda e ganha paralaxe. */
+/* ── Cartão ──────────────────────────────────────────────────────────────────
+   O tilt 3D saiu. Um cartão que inclina sob o cursor é vitrine; aqui ele é
+   amostra sob a lente, então o que acontece no hover é a borda ACENDER e a
+   superfície subir um passo de alfa. O `translateZ` do conteúdo virou um
+   deslocamento de 1px, o suficiente para dar vida sem tirar o texto do lugar. */
 .ds-card {
   position: relative;
-  perspective: 1000px;
-  transform-style: preserve-3d;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
-  transition: transform 0.4s var(--ease-ds), box-shadow 0.4s var(--ease-ds);
+  border: 1px solid rgb(255 255 255 / 0.07);
+  background: rgb(255 255 255 / 0.02);
+  transition: background 0.35s var(--ease-ds), border-color 0.35s var(--ease-ds), box-shadow 0.35s
+    var(--ease-ds);
 }
 
 .ds-card:hover {
-  transform: perspective(1000px) translateY(-8px) rotateX(2deg) rotateY(-2deg);
-  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1), 0 0 60px
-    rgba(198, 40, 40, 0.2);
+  background: rgb(255 255 255 / 0.04);
+  border-color: rgb(56 189 248 / 0.34);
+  box-shadow: 0 0 40px -14px rgb(56 189 248 / 0.5);
 }
 
 .ds-card-content {
-  transition: transform 0.4s var(--ease-ds);
+  transition: transform 0.35s var(--ease-ds);
 }
 
 .ds-card:hover .ds-card-content {
-  transform: translateZ(20px);
+  transform: translateY(-1px);
 }
 
 /* ── Borda em gradiente ──────────────────────────────────────────────────────
    A moldura vive num pseudo-elemento e é recortada por mask-composite, deixando
-   visível só o 1px da borda. É o jeito de animar um gradiente de contorno sem
-   repintar a superfície. A referência usa `xor`, que só existe no prefixo webkit;
-   a propriedade padrão pede `exclude`. Declaramos as duas. */
+   visível só o 1px do contorno. É o jeito de ter um gradiente de borda sem
+   repintar a superfície. `xor` só existe no prefixo webkit e a propriedade
+   padrão pede `exclude` — as duas ficam declaradas. */
 .ds-glow-border {
   position: relative;
-  border: 1px solid rgba(198, 40, 40, 0.3);
-  transition: all 0.3s var(--ease-ds);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  transition: border-color 0.3s var(--ease-ds), box-shadow 0.3s var(--ease-ds);
 }
 
 .ds-glow-border::before {
@@ -253,9 +260,9 @@
   border-radius: inherit;
   background: linear-gradient(
     135deg,
-    rgba(198, 40, 40, 0.6),
-    rgba(224, 53, 53, 0.3),
-    rgba(198, 40, 40, 0.6)
+    rgb(56 189 248 / 0),
+    rgb(56 189 248 / 0.55),
+    rgb(56 189 248 / 0)
   );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
@@ -271,88 +278,97 @@
 }
 
 .ds-glow-border:hover {
-  border-color: rgba(198, 40, 40, 0.6);
-  box-shadow: 0 0 20px rgba(198, 40, 40, 0.3);
-  transform: translateY(-1px);
+  border-color: rgb(56 189 248 / 0.4);
+  box-shadow: 0 0 24px -8px rgb(56 189 248 / 0.5);
+}
+
+/* ── Feixe que percorre a borda ──────────────────────────────────────────────
+   Um cônico girando atrás de uma máscara de 1px. Marca o painel que está em
+   foco sem precisar de cor de fundo. Custa uma composição por quadro: usar em
+   um elemento por tela, nunca numa grade inteira. */
+.ds-beam {
+  position: relative;
+  overflow: hidden;
+}
+
+.ds-beam::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 300deg,
+    var(--color-ion-4) 355deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: ds-beam 4s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes ds-beam {
+  to {
+    transform: rotate(1turn);
+  }
 }
 
 /* ── Brilho ──────────────────────────────────────────────────────────────────
-   Onde a referência usa teal, aqui é crimson. Duas camadas de sombra sem blur
-   de superfície: uma curta e saturada, outra larga e diluída. */
+   Glow negativo: o raio é grande e o spread é negativo, então a luz fica presa
+   ao contorno em vez de virar sombra debaixo do elemento. */
 .ds-glow {
-  box-shadow: 0 0 20px rgba(198, 40, 40, 0.3), 0 0 40px rgba(198, 40, 40, 0.1);
+  box-shadow: 0 0 24px -8px rgb(56 189 248 / 0.55);
 }
 
-.ds-glow-intense {
-  box-shadow: 0 0 30px rgba(198, 40, 40, 0.4), 0 0 60px rgba(198, 40, 40, 0.2), inset 0 1px 0
-    rgba(255, 255, 255, 0.1);
-  transition: all 0.3s var(--ease-ds);
+.ds-glow-pulse {
+  animation: ds-glow-pulse 2.4s ease-in-out infinite alternate;
 }
 
-.ds-glow-intense:hover {
-  box-shadow: 0 0 40px rgba(198, 40, 40, 0.6), 0 0 80px rgba(198, 40, 40, 0.3), inset 0 1px 0
-    rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px) scale(1.05);
+@keyframes ds-glow-pulse {
+  from {
+    box-shadow: 0 0 16px -6px rgb(56 189 248 / 0.4);
+  }
+  to {
+    box-shadow: 0 0 30px -6px rgb(56 189 248 / 0.75);
+  }
 }
 
-/* ── Reações ao cursor ───────────────────────────────────────────────────── */
-.ds-hover-lift {
-  transition: all 0.3s var(--ease-ds);
-}
+/* ── Reações ao cursor ─────────────────────────────────────────────────────── */
 
-.ds-hover-lift:hover {
-  transform: translateY(-4px) scale(1.02);
-}
-
-.ds-hover-float {
-  transition: all 0.4s var(--ease-ds);
-}
-
-.ds-hover-float:hover {
-  transform: translateY(-6px);
-  filter: drop-shadow(0 10px 30px rgba(198, 40, 40, 0.2));
-}
-
-.ds-hover-glow {
-  transition: all 0.3s var(--ease-ds);
-}
-
-.ds-hover-glow:hover {
-  color: var(--color-crimson-3);
-  text-shadow: 0 0 25px rgba(198, 40, 40, 0.6), 0 0 50px rgba(198, 40, 40, 0.3);
-}
-
-/* Etiqueta que cresce e acende sob o cursor. */
+/* Etiqueta que acende sob o cursor. Sem crescer: uma grade de etiquetas que
+   escalam faz a linha inteira dançar quando o cursor atravessa. */
 .ds-tag {
-  transition: all 0.3s var(--ease-ds);
+  transition: background 0.25s var(--ease-ds), border-color 0.25s var(--ease-ds), color 0.25s
+    var(--ease-ds);
 }
 
 .ds-tag:hover {
-  background: linear-gradient(135deg, rgba(198, 40, 40, 0.2), rgba(107, 20, 20, 0.1));
-  border-color: rgba(198, 40, 40, 0.6);
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 8px 25px rgba(198, 40, 40, 0.2);
+  background: rgb(56 189 248 / 0.1);
+  border-color: rgb(56 189 248 / 0.4);
+  color: var(--color-ion-3);
 }
 
-/* Texto que vira gradiente sob o cursor. */
+/* Texto que acende sob o cursor. */
 .ds-interactive-text {
-  transition: all 0.3s var(--ease-ds);
+  transition: color 0.25s var(--ease-ds), text-shadow 0.25s var(--ease-ds);
 }
 
 .ds-interactive-text:hover {
-  background: linear-gradient(135deg, var(--color-crimson-4), var(--color-crimson-3));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--color-ion-3);
+  text-shadow: 0 0 18px rgb(56 189 248 / 0.5);
 }
 
-/* A marca inclina e o ponto pulsa. */
+/* A marca inclina e o ponto bate. */
 .ds-logo-hover {
-  transition: all 0.4s var(--ease-ds);
+  transition: transform 0.35s var(--ease-ds);
 }
 
 .ds-logo-hover:hover {
-  transform: rotate(-5deg) scale(1.1);
+  transform: rotate(-4deg) scale(1.06);
 }
 
 .ds-logo-hover:hover .ds-logo-dot {
@@ -365,66 +381,27 @@
     transform: scale(1);
   }
   50% {
-    transform: scale(1.1);
+    transform: scale(1.25);
   }
 }
 
-/* ── Movimento contínuo ──────────────────────────────────────────────────────
-   Flutuação e brilho pulsante. Só em elemento isolado — se dois vizinhos
-   flutuam fora de fase, a tela inteira parece tremer. */
-.ds-float {
-  animation: ds-float 6s ease-in-out infinite;
+/* ── Superfícies com gradiente ─────────────────────────────────────────────── */
+.ds-gradient-ion {
+  background: linear-gradient(135deg, var(--color-ion-7) 0%, var(--color-ink-0) 135%);
 }
 
-@keyframes ds-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
-.ds-glow-pulse {
-  animation: ds-glow-pulse 2s ease-in-out infinite alternate;
-}
-
-@keyframes ds-glow-pulse {
-  from {
-    box-shadow: 0 0 20px rgba(198, 40, 40, 0.3), 0 0 40px rgba(198, 40, 40, 0.1);
-  }
-  to {
-    box-shadow: 0 0 30px rgba(198, 40, 40, 0.5), 0 0 60px rgba(198, 40, 40, 0.2);
-  }
-}
-
-/* ── Superfícies com gradiente para o preto ──────────────────────────────── */
-.ds-gradient-crimson {
-  background: linear-gradient(135deg, var(--color-crimson-7) 0%, var(--color-obsidian-0) 130%);
-}
-
-.ds-gradient-panel {
-  background: linear-gradient(160deg, rgba(107, 20, 20, 0.14) 0%, rgba(0, 0, 0, 0) 55%);
-}
-
-/* Lavagem de cor bem fraca, para diferenciar um painel do vizinho sem borda. */
+/* Lavagem fraca, para separar um painel do vizinho sem desenhar borda. */
 .ds-gradient-glow {
-  background: linear-gradient(135deg, rgba(198, 40, 40, 0.1), rgba(107, 20, 20, 0.05));
+  background: linear-gradient(135deg, rgb(56 189 248 / 0.07), rgb(3 105 161 / 0.04));
 }
 
-.ds-gradient-text {
-  background: linear-gradient(120deg, var(--color-bone-1) 20%, var(--color-crimson-3) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-/* ── Botão com varredura ─────────────────────────────────────────────────── */
+/* ── Botão com varredura ─────────────────────────────────────────────────────
+   A varredura ficou: é o único movimento coreografado do tema, e acontece só
+   sob o cursor, no elemento que a pessoa está prestes a acionar. */
 .ds-btn {
   position: relative;
   overflow: hidden;
-  transition: all 0.3s var(--ease-ds);
+  transition: transform 0.25s var(--ease-ds), box-shadow 0.25s var(--ease-ds);
 }
 
 .ds-btn::before {
@@ -432,7 +409,7 @@
   position: absolute;
   inset: 0 auto 0 -100%;
   width: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.14), transparent);
   transition: left 0.55s var(--ease-ds);
 }
 
@@ -442,7 +419,7 @@
 
 .ds-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(107, 20, 20, 0.45);
+  box-shadow: 0 0 28px -10px rgb(56 189 248 / 0.7);
 }
 
 .ds-btn:active {
@@ -450,20 +427,21 @@
 }
 
 /* ── Entradas ────────────────────────────────────────────────────────────────
-   Atenção ao combinar com hover: `ds-slide-up` e `ds-scale-in` animam transform
+   ATENÇÃO ao combinar com hover: `ds-slide-up` e `ds-scale-in` animam transform
    com fill-mode `both`, então continuam aplicando o valor final depois de
-   terminar — e animação vence :hover na cascata. Quem precisar de entrada E de
-   hover com transform (`.ds-card`, `.ds-hover-lift`, `.ds-tag`) põe a entrada
-   num invólucro e o hover no filho. `ds-fade-in` não tem esse problema: só mexe
-   em opacidade. */
+   terminar — e animação vence :hover na cascata. Quem precisa de entrada E de
+   hover com transform põe a entrada num invólucro e o hover no filho.
+   `ds-fade-in` não tem esse problema: só mexe em opacidade.
+   (Hoje o `.ds-card` reage por cor, não por transform, então o risco caiu — mas
+   a regra continua valendo para `.ds-tag` e para qualquer classe nova.) */
 .ds-fade-in {
-  animation: ds-fade-in 0.7s var(--ease-ds) both;
+  animation: ds-fade-in 0.7s var(--ease-entrada) both;
 }
 .ds-slide-up {
-  animation: ds-slide-up 0.6s var(--ease-ds) both;
+  animation: ds-slide-up 0.6s var(--ease-entrada) both;
 }
 .ds-scale-in {
-  animation: ds-scale-in 0.5s var(--ease-ds) both;
+  animation: ds-scale-in 0.5s var(--ease-entrada) both;
 }
 
 @keyframes ds-fade-in {
@@ -478,7 +456,7 @@
 @keyframes ds-slide-up {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(14px);
   }
   to {
     opacity: 1;
@@ -489,7 +467,7 @@
 @keyframes ds-scale-in {
   from {
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(0.98);
   }
   to {
     opacity: 1;
@@ -519,8 +497,8 @@
 /* ── Revelação no scroll ─────────────────────────────────────────────────── */
 .ds-reveal {
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.65s var(--ease-ds), transform 0.65s var(--ease-ds);
+  transform: translateY(18px);
+  transition: opacity 0.65s var(--ease-entrada), transform 0.65s var(--ease-entrada);
 }
 
 .ds-reveal.ds-visible {
@@ -528,7 +506,9 @@
   transform: translateY(0);
 }
 
-/* ── Sinais ──────────────────────────────────────────────────────────────── */
+/* ── Sinais ──────────────────────────────────────────────────────────────────
+   O vocabulário de "ligado": ponto que respira, halo que expande, barra do item
+   ativo. É aqui que o ciano trabalha. */
 @keyframes ds-pulse {
   0%,
   100% {
@@ -546,8 +526,8 @@
   height: 6px;
   border-radius: 999px;
   background-color: var(--color-signal);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-signal) 22%, transparent);
-  animation: ds-pulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 0 3px rgb(56 189 248 / 0.18);
+  animation: ds-pulse 2s ease-in-out infinite;
 }
 
 .ds-active-bar {
@@ -556,9 +536,9 @@
   top: 8px;
   bottom: 8px;
   width: 2px;
-  background: linear-gradient(180deg, var(--color-crimson-4), var(--color-crimson-8));
+  background: var(--color-ion-4);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  box-shadow: 0 0 12px rgba(198, 40, 40, 0.5);
+  box-shadow: 0 0 12px rgb(56 189 248 / 0.7);
 }
 
 /* Barra de progresso indeterminada. */
@@ -575,7 +555,7 @@
   position: relative;
   overflow: hidden;
   height: 2px;
-  background: var(--color-obsidian-4);
+  background: rgb(255 255 255 / 0.07);
 }
 
 .ds-progress::after {
@@ -583,26 +563,38 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 25%;
-  background: linear-gradient(90deg, transparent, var(--color-crimson-4), transparent);
+  background: linear-gradient(90deg, transparent, var(--color-ion-4), transparent);
   animation: ds-sweep 1.4s var(--ease-ds) infinite;
 }
 
-/* Texto com brilho discreto — só em títulos de destaque. */
+/* Brilho discreto — só em títulos de destaque. */
 .ds-text-glow {
-  text-shadow: 0 0 24px rgba(198, 40, 40, 0.35);
+  text-shadow: 0 0 28px rgb(56 189 248 / 0.28);
 }
 
-/* Números e identificadores em mono, com tracking técnico. */
+/* ── Telemetria ──────────────────────────────────────────────────────────────
+   `ds-data` é a classe de número, id, hex e carimbo de tempo: mono com
+   `tabular-nums`, para uma coluna de valores não dançar quando o número muda.
+   `ds-label` é o micro-rótulo de instrumento — caixa alta, tracking aberto,
+   9 a 11px. Os dois juntos são o que dá o ar de bancada. */
 .ds-data {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
 
+.ds-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--color-fg-subtle);
+}
+
 /* ── Intro (abertura do app) ──────────────────────────────────────────────────
-   A cortina que abre o app no INICIAR. Fundo obsidian com brasas de canvas por
-   trás; o typemark da marca se revela com o mesmo gradiente bone→crimson do
-   resto da interface. Pode ser pulada e some ao terminar. */
+   Sequência de inicialização: linhas de terminal aparecendo uma a uma com os
+   números reais do acervo, e o nome se formando no fim. */
 .intro-root {
   position: fixed;
   inset: 0;
@@ -610,7 +602,7 @@
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: radial-gradient(120% 120% at 50% 42%, #0d0d0d 0%, #000000 72%);
+  background: #000000;
   opacity: 1;
   transition: opacity 0.8s var(--ease-ds);
 }
@@ -618,107 +610,201 @@
   opacity: 0;
   pointer-events: none;
 }
-.intro-canvas {
+
+/* Grade e halo próprios da intro: mais densos que os do app, porque aqui a tela
+   está vazia e a grade É o cenário. */
+.intro-bg {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
   z-index: 1;
+  pointer-events: none;
+  background-image: linear-gradient(rgb(56 189 248 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(56 189 248 / 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 5%, transparent 72%);
+  mask-image: radial-gradient(ellipse at center, #000 5%, transparent 72%);
 }
+
+.intro-halo {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  inset: 0;
+  background: radial-gradient(ellipse 50% 40% at 50% 50%, rgb(14 165 233 / 0.16), transparent 70%);
+  filter: blur(50px);
+}
+
+/* A varredura que atravessa a tela uma vez, no momento em que o núcleo "liga". */
+.intro-scan {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgb(56 189 248 / 0.65), transparent);
+  filter: blur(1px);
+  animation: intro-scan 2.6s var(--ease-ds) 0.2s both;
+}
+
+@keyframes intro-scan {
+  from {
+    top: 8%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    top: 92%;
+    opacity: 0;
+  }
+}
+
 .intro-stage {
   position: relative;
-  z-index: 2;
-  text-align: center;
+  z-index: 3;
   padding: 24px;
+  width: min(560px, 88vw);
 }
+
+/* O bloco de boot. Alinhado à esquerda de propósito: log se lê de cima para
+   baixo, encostado na margem, como saída de terminal. */
+.intro-log {
+  font-family: var(--font-mono);
+  font-size: clamp(11px, 1.5vw, 14px);
+  line-height: 2;
+  color: var(--color-fg-muted);
+  text-align: left;
+}
+
+.intro-linha {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  opacity: 0;
+  animation: intro-linha 0.45s var(--ease-entrada) both;
+}
+
+.intro-linha > .rotulo {
+  color: var(--color-fg-subtle);
+  white-space: nowrap;
+}
+
+/* Os pontinhos que ligam o rótulo ao valor. É o detalhe que faz parecer relatório
+   de máquina em vez de lista. */
+.intro-linha > .pontos {
+  flex: 1;
+  border-bottom: 1px dotted rgb(255 255 255 / 0.16);
+  transform: translateY(-4px);
+}
+
+.intro-linha > .valor {
+  color: var(--color-ion-3);
+  white-space: nowrap;
+}
+
+@keyframes intro-linha {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.intro-marca {
+  margin-top: 30px;
+  text-align: left;
+}
+
 .intro-line1 {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: clamp(30px, 8vw, 92px);
-  line-height: 1;
-  background: linear-gradient(120deg, var(--color-bone-1) 28%, var(--color-crimson-3) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: 0 0 44px rgba(198, 40, 40, 0.35);
+  letter-spacing: 0.1em;
+  font-size: clamp(22px, 5vw, 46px);
+  line-height: 1.05;
+  color: var(--color-bone-1);
+  text-shadow: 0 0 40px rgb(56 189 248 / 0.35);
   opacity: 0;
-  animation: intro-rise 1.1s var(--ease-ds) 0.35s both;
+  animation: intro-rise 1s var(--ease-entrada) both;
 }
+
 .intro-line2 {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-top: 10px;
-  font-family: var(--font-display);
-  font-weight: 500;
+  font-family: var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.34em;
-  font-size: clamp(12px, 2.4vw, 24px);
-  color: var(--color-fg-muted);
+  letter-spacing: 0.3em;
+  font-size: clamp(10px, 1.6vw, 13px);
+  color: var(--color-fg-subtle);
   opacity: 0;
-  animation: intro-rise 1.1s var(--ease-ds) 0.7s both;
+  animation: intro-fade 0.9s var(--ease-ds) both;
 }
+
 .intro-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: var(--color-signal);
-  box-shadow: 0 0 16px rgba(198, 40, 40, 0.8);
-  animation: ds-glow-pulse 2s ease-in-out infinite alternate;
+  box-shadow: 0 0 14px rgb(56 189 248 / 0.9);
 }
+
 .intro-underline {
-  height: 2px;
+  height: 1px;
   width: 0;
-  margin: 22px auto 0;
-  background: linear-gradient(90deg, transparent, var(--color-crimson-4), transparent);
-  animation: intro-sweep-w 0.9s var(--ease-ds) 1.15s both;
+  margin: 18px 0 0;
+  background: linear-gradient(90deg, var(--color-ion-4), transparent);
+  animation: intro-sweep-w 0.9s var(--ease-entrada) both;
 }
-.intro-tag {
-  margin-top: 24px;
-  color: var(--color-fg-subtle);
-  font-family: var(--font-mono);
-  font-size: clamp(11px, 1.5vw, 15px);
-  letter-spacing: 0.04em;
-  opacity: 0;
-  animation: intro-fade 1s var(--ease-ds) 1.7s both;
-}
+
 .intro-controls {
   position: absolute;
-  z-index: 3;
+  z-index: 4;
   inset: auto 0 0 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  padding-bottom: clamp(28px, 6vh, 64px);
+  gap: 10px;
+  padding-bottom: clamp(24px, 5vh, 56px);
 }
+
 .intro-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 8px 16px;
   border-radius: 999px;
-  font-family: var(--font-body);
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
   color: var(--color-fg-muted);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--color-border);
+  background: rgb(255 255 255 / 0.04);
+  border: 1px solid rgb(255 255 255 / 0.1);
   cursor: pointer;
-  transition: all 0.3s var(--ease-ds);
+  transition: color 0.25s var(--ease-ds), border-color 0.25s var(--ease-ds), box-shadow 0.25s
+    var(--ease-ds);
 }
+
 .intro-btn:hover {
-  color: var(--color-fg);
-  border-color: rgba(198, 40, 40, 0.5);
-  box-shadow: 0 0 20px rgba(198, 40, 40, 0.18);
-  transform: translateY(-1px);
+  color: var(--color-ion-3);
+  border-color: rgb(56 189 248 / 0.45);
+  box-shadow: 0 0 20px -8px rgb(56 189 248 / 0.6);
 }
+
 @keyframes intro-rise {
   from {
     opacity: 0;
-    transform: translateY(26px) scale(0.96);
-    filter: blur(6px);
+    transform: translateY(18px);
+    filter: blur(5px);
   }
   to {
     opacity: 1;
@@ -726,6 +812,7 @@
     filter: none;
   }
 }
+
 @keyframes intro-fade {
   from {
     opacity: 0;
@@ -734,18 +821,19 @@
     opacity: 1;
   }
 }
+
 @keyframes intro-sweep-w {
   from {
     width: 0;
   }
   to {
-    width: min(440px, 62vw);
+    width: min(320px, 60vw);
   }
 }
 
 /* ── Acessibilidade ──────────────────────────────────────────────────────────
    Quem pede menos movimento recebe a interface inteira sem animação, incluindo
-   as manchas de fundo — que são o efeito mais pesado da página. */
+   o feixe e a grade da intro, que são os efeitos mais pesados. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -755,8 +843,8 @@
     transition-duration: 0.01ms !important;
   }
 
-  .ds-ambient,
-  .ds-embers {
+  .ds-beam::after,
+  .intro-scan {
     display: none;
   }
 
@@ -765,23 +853,19 @@
     transform: none;
   }
 
-  /* As transformações de hover não são animação — precisam ser desligadas uma
-     a uma, senão continuam saltando de imediato mesmo sem transição. */
-  .ds-card:hover,
+  /* Transformações de hover não são animação — precisam ser desligadas uma a
+     uma, senão continuam saltando de imediato mesmo sem transição. A lista é
+     curta agora porque o tema reage por cor, não por deslocamento. */
   .ds-card:hover .ds-card-content,
-  .ds-glow-border:hover,
-  .ds-glow-intense:hover,
-  .ds-glass-lift:hover,
-  .ds-hover-lift:hover,
-  .ds-hover-float:hover,
-  .ds-tag:hover,
+  .ds-btn:hover,
   .ds-logo-hover:hover {
     transform: none;
   }
 }
 
 /* A MESMA redução, por escolha manual em Configurações (classe no <html>) —
-   independe do sistema operacional. Espelho do bloco acima. */
+   independe do sistema operacional. Espelho do bloco acima: toda regra nova de
+   hover precisa entrar nos DOIS. */
 :root.reduz-movimento *,
 :root.reduz-movimento *::before,
 :root.reduz-movimento *::after {
@@ -789,22 +873,16 @@
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
 }
-:root.reduz-movimento .ds-ambient,
-:root.reduz-movimento .ds-embers {
+:root.reduz-movimento .ds-beam::after,
+:root.reduz-movimento .intro-scan {
   display: none;
 }
 :root.reduz-movimento .ds-reveal {
   opacity: 1;
   transform: none;
 }
-:root.reduz-movimento .ds-card:hover,
 :root.reduz-movimento .ds-card:hover .ds-card-content,
-:root.reduz-movimento .ds-glow-border:hover,
-:root.reduz-movimento .ds-glow-intense:hover,
-:root.reduz-movimento .ds-glass-lift:hover,
-:root.reduz-movimento .ds-hover-lift:hover,
-:root.reduz-movimento .ds-hover-float:hover,
-:root.reduz-movimento .ds-tag:hover,
+:root.reduz-movimento .ds-btn:hover,
 :root.reduz-movimento .ds-logo-hover:hover {
   transform: none;
 }

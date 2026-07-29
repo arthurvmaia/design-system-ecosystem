@@ -1,148 +1,80 @@
-import { criarEmbers } from '@/lib/embers';
-import { SkipForward } from 'lucide-react';
+import { api } from '@/lib/api';
+import { usePreferencias } from '@/lib/preferencias';
+import { useQuery } from '@tanstack/react-query';
+import { SkipForward, Volume2, VolumeX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Abertura do app (INICIAR).
+ * Abertura do app: uma sequência de inicialização.
  *
- * É a intro DO app — não redireciona para lugar nenhum: ao terminar (ou ao
- * pular), entra direto na aplicação. Conteúdo original na paleta obsidian +
- * crimson + bone: brasas em canvas atrás do typemark da marca, com trilha
- * gerada por Web Audio. Nada de vídeo de terceiros embutido.
+ * A anterior era um typemark surgindo sobre brasas — bonita e muda. Esta conta
+ * uma coisa: o que existe no seu laboratório. As linhas trazem os números REAIS
+ * do acervo, lidos das mesmas rotas que a barra lateral usa, então além de abrir
+ * o app ela já aquece o cache do react-query para a primeira tela.
  *
- * Vídeo próprio (opcional): se existir um arquivo em `public/intro.mp4`, a intro
- * toca esse vídeo no lugar da animação — é onde você pluga a SUA abertura, se
- * tiver os direitos dela.
+ * Regra acima de tudo: **a abertura nunca espera o servidor**. Se uma contagem
+ * não chegou até a hora daquela linha aparecer, ela entra com um traço e a
+ * sequência segue. Cortina que trava porque o backend demorou é pior que
+ * cortina nenhuma.
  *
- * Som: começa COM som. O navegador bloqueia autoplay com áudio sem um gesto, e
- * isso não dá para burlar por código; então, se ele barrar, o som entra no
- * PRIMEIRO toque/tecla em qualquer lugar — sem botão de mudo. Só há o de pular.
- * Para autoplay-com-som garantido, abra o app com
- * `--autoplay-policy=no-user-gesture-required` (ver o INICIAR).
+ * O modo vídeo continua existindo: quem largar um `/intro.mp4` em `public/`
+ * (ver `intro.README.md`) tem a própria abertura no lugar desta.
  */
 
 const VIDEO_SRC = '/intro.mp4';
-const DURACAO_MS = 7200;
-const DURACAO_REDUZIDA_MS = 2600;
+const DURACAO_MS = 5200;
+const DURACAO_REDUZIDA_MS = 2000;
+/** Intervalo entre as linhas do log. */
+const PASSO_S = 0.42;
 
-type Modo = 'checando' | 'canvas' | 'video';
-
-/**
- * Trilha original: um drone grave que cresce, um "whoosh" de ruído filtrado e um
- * impacto grave no momento da revelação. Tudo sintetizado — sem sample de
- * terceiros. Devolve um `stop` que faz fade-out.
- */
-const tocarSting = (ctx: AudioContext, master: GainNode, reduzido: boolean): (() => void) => {
-  const now = ctx.currentTime;
-
-  // Drone (55 + 110 Hz) que cresce e sustenta.
-  const droneGain = ctx.createGain();
-  droneGain.gain.setValueAtTime(0.0001, now);
-  droneGain.gain.exponentialRampToValueAtTime(0.06, now + 2.2);
-  droneGain.gain.setValueAtTime(0.06, now + 5.0);
-  droneGain.gain.exponentialRampToValueAtTime(0.0001, now + 6.6);
-  const lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 600;
-  droneGain.connect(lp);
-  lp.connect(master);
-  for (const f of [55, 110]) {
-    const o = ctx.createOscillator();
-    o.type = 'sine';
-    o.frequency.value = f;
-    o.connect(droneGain);
-    o.start(now);
-    o.stop(now + 6.8);
-  }
-
-  // Impacto grave alinhado com a revelação do typemark.
-  const tImp = now + (reduzido ? 0.2 : 0.4);
-  const impGain = ctx.createGain();
-  impGain.gain.setValueAtTime(0.0001, tImp);
-  impGain.gain.exponentialRampToValueAtTime(0.16, tImp + 0.02);
-  impGain.gain.exponentialRampToValueAtTime(0.0001, tImp + 0.9);
-  impGain.connect(master);
-  const oi = ctx.createOscillator();
-  oi.type = 'sine';
-  oi.frequency.setValueAtTime(150, tImp);
-  oi.frequency.exponentialRampToValueAtTime(50, tImp + 0.4);
-  oi.connect(impGain);
-  oi.start(tImp);
-  oi.stop(tImp + 1.0);
-
-  // Whoosh de ruído com passa-banda subindo.
-  const dur = 1.4;
-  const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-  const noise = ctx.createBufferSource();
-  noise.buffer = buf;
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.setValueAtTime(300, now + 0.4);
-  bp.frequency.exponentialRampToValueAtTime(2400, now + 1.6);
-  bp.Q.value = 0.8;
-  const nGain = ctx.createGain();
-  nGain.gain.setValueAtTime(0.0001, now + 0.4);
-  nGain.gain.exponentialRampToValueAtTime(0.05, now + 1.0);
-  nGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.9);
-  noise.connect(bp);
-  bp.connect(nGain);
-  nGain.connect(master);
-  noise.start(now + 0.4);
-  noise.stop(now + 2.0);
-
-  return () => {
-    try {
-      const t = ctx.currentTime;
-      master.gain.cancelScheduledValues(t);
-      master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), t);
-      master.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-    } catch {
-      // contexto já encerrado
-    }
-  };
-};
-
-const criarAudioContext = (): AudioContext | null => {
-  const w = window as unknown as {
-    AudioContext?: typeof AudioContext;
-    webkitAudioContext?: typeof AudioContext;
-  };
-  const AC = w.AudioContext ?? w.webkitAudioContext;
-  return AC ? new AC() : null;
-};
+type Modo = 'descobrindo' | 'canvas' | 'video';
+type Linha = { rotulo: string; valor: string | undefined };
 
 export function Intro({ onFinish }: { onFinish: () => void }) {
-  const [modo, setModo] = useState<Modo>('checando');
   const [saindo, setSaindo] = useState(false);
-
+  const [modo, setModo] = useState<Modo>('descobrindo');
   const jaFinalizou = useRef(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<{
-    ctx: AudioContext;
-    master: GainNode;
-    iniciar: () => void;
-    stop: () => void;
-  } | null>(null);
+  const pararSom = useRef<(() => void) | null>(null);
+
+  const somLigado = usePreferencias((s) => s.somDaIntro);
+  const definir = usePreferencias((s) => s.definir);
 
   const reduzido =
-    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  const duracao = reduzido ? DURACAO_REDUZIDA_MS : DURACAO_MS;
+
+  // `retry: false` de propósito: rota que falhou vira traço na linha e a
+  // abertura segue. Repetir só atrasaria o que já está decidido.
+  const opcoes = { retry: false as const, staleTime: 30_000 };
+  const ds = useQuery({ queryKey: ['design-systems'], queryFn: api.listDesignSystems, ...opcoes });
+  const lib = useQuery({ queryKey: ['library'], queryFn: api.listLibrary, ...opcoes });
+  const kits = useQuery({ queryKey: ['kits'], queryFn: api.listKits, ...opcoes });
+  const saude = useQuery({ queryKey: ['health'], queryFn: api.health, ...opcoes });
+
+  const conta = (n: number | undefined, um: string, varios: string): string | undefined =>
+    n === undefined ? undefined : `${n} ${n === 1 ? um : varios}`;
+
+  const linhas: Linha[] = [
+    {
+      rotulo: 'núcleo',
+      valor: saude.isLoading ? undefined : saude.data?.status === 'ok' ? 'no ar' : 'fora do ar',
+    },
+    { rotulo: 'acervo', valor: conta(ds.data?.items.length, 'sistema', 'sistemas') },
+    { rotulo: 'biblioteca', valor: conta(lib.data?.items.length, 'peça', 'peças') },
+    { rotulo: 'design systems', valor: conta(kits.data?.items.length, 'kit', 'kits') },
+  ];
 
   const finalizar = (): void => {
     if (jaFinalizou.current) return;
     jaFinalizou.current = true;
+    pararSom.current?.();
     setSaindo(true);
-    try {
-      audioRef.current?.stop();
-    } catch {
-      // sem áudio ativo
-    }
     window.setTimeout(onFinish, 800);
   };
 
-  // Descobre se há um vídeo próprio do usuário; senão, animação.
+  // Descobre se há um vídeo próprio; senão, a sequência de boot.
   useEffect(() => {
     let vivo = true;
     fetch(VIDEO_SRC, { method: 'HEAD' })
@@ -158,125 +90,161 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
     };
   }, []);
 
-  // Modo canvas: brasas + timer mestre + trilha.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: roda uma vez por modo; incluir finalizar reiniciaria a intro
+  // O relógio da abertura. No modo vídeo quem manda é o `onEnded`, mas o timer
+  // fica de rede: vídeo que não dispara `ended` deixaria a cortina para sempre.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `finalizar` é idempotente por guarda de ref (`jaFinalizou`), então não precisa reagendar quando a identidade dela muda
   useEffect(() => {
-    if (modo !== 'canvas') return;
-    const cv = canvasRef.current;
-    const pararBrasas =
-      cv && !reduzido ? criarEmbers(cv, { count: 90, peakAlpha: 0.8, glows: true }) : () => {};
+    const t = window.setTimeout(finalizar, duracao + (modo === 'video' ? 20000 : 0));
+    return () => window.clearTimeout(t);
+  }, [duracao, modo]);
 
-    const ctx = criarAudioContext();
-    let onGesto: (() => void) | null = null;
-    if (ctx) {
-      const master = ctx.createGain();
-      master.gain.value = 0.9;
-      master.connect(ctx.destination);
-      let stopSting: (() => void) | null = null;
-      const iniciar = (): void => {
-        if (stopSting || jaFinalizou.current) return;
-        stopSting = tocarSting(ctx, master, reduzido);
-      };
-      audioRef.current = { ctx, master, iniciar, stop: () => stopSting?.() };
-      // Começa com som na hora. Se o navegador barrar (autoplay), o som entra no
-      // primeiro gesto em qualquer lugar — sem botão, sem opção de mudo.
-      ctx
-        .resume()
-        .then(() => {
-          if (ctx.state === 'running') iniciar();
-        })
-        .catch(() => {});
-      onGesto = () =>
-        ctx
-          .resume()
-          .then(iniciar)
-          .catch(() => {});
-      window.addEventListener('pointerdown', onGesto, { once: true });
-      window.addEventListener('keydown', onGesto, { once: true });
-    }
-
-    const timer = window.setTimeout(finalizar, reduzido ? DURACAO_REDUZIDA_MS : DURACAO_MS);
-    return () => {
-      window.clearTimeout(timer);
-      pararBrasas();
-      if (onGesto) {
-        window.removeEventListener('pointerdown', onGesto);
-        window.removeEventListener('keydown', onGesto);
-      }
-      const a = audioRef.current;
-      audioRef.current = null;
-      if (a) {
-        try {
-          a.stop();
-          a.ctx.close();
-        } catch {
-          // já encerrado
-        }
-      }
-    };
-  }, [modo, reduzido]);
-
-  // Modo vídeo: começa com som; se o navegador barrar, toca e desmuta no
-  // primeiro gesto (toque ou tecla). Sem botão de mudo.
   useEffect(() => {
-    if (modo !== 'video') return;
-    const v = videoRef.current;
-    if (!v) return;
-    v.muted = false;
-    let onGesto: (() => void) | null = null;
-    v.play().catch(() => {
-      v.muted = true;
-      v.play().catch(() => {});
-      onGesto = () => {
-        v.muted = false;
-        v.play().catch(() => {});
-      };
-      window.addEventListener('pointerdown', onGesto, { once: true });
-      window.addEventListener('keydown', onGesto, { once: true });
-    });
+    if (modo !== 'canvas' || !somLigado || reduzido) return;
+    const parar = tocarBoot(duracao);
+    pararSom.current = parar;
     return () => {
-      if (onGesto) {
-        window.removeEventListener('pointerdown', onGesto);
-        window.removeEventListener('keydown', onGesto);
-      }
+      parar();
+      pararSom.current = null;
     };
-  }, [modo]);
+  }, [modo, somLigado, reduzido, duracao]);
+
+  const atraso = (i: number): string => (reduzido ? '0s' : `${0.35 + i * PASSO_S}s`);
+  const atrasoMarca = (extra: number): string =>
+    reduzido ? '0s' : `${0.35 + linhas.length * PASSO_S + extra}s`;
 
   return (
-    <div className={`intro-root ${saindo ? 'intro-out' : ''}`} aria-label="Abertura do app">
-      {modo === 'canvas' && <canvas ref={canvasRef} className="intro-canvas" aria-hidden />}
-      {modo === 'video' && (
-        // biome-ignore lint/a11y/useMediaCaption: abertura decorativa, sem diálogo
+    <div className={`intro-root${saindo ? ' intro-out' : ''}`} role="presentation">
+      {modo === 'video' ? (
         <video
           ref={videoRef}
-          className="intro-canvas"
           src={VIDEO_SRC}
-          playsInline
           autoPlay
+          muted={!somLigado}
+          playsInline
           onEnded={finalizar}
-          onError={() => setModo('canvas')}
-          style={{ objectFit: 'cover' }}
+          className="absolute inset-0 h-full w-full object-cover"
         />
-      )}
+      ) : (
+        <>
+          <div className="intro-halo" aria-hidden />
+          <div className="intro-bg" aria-hidden />
+          <div className="intro-scan" aria-hidden />
 
-      {modo === 'canvas' && (
-        <div className="intro-stage">
-          <div className="intro-line1">Design System</div>
-          <div className="intro-line2">
-            Ecosystem
-            <span className="intro-dot" aria-hidden />
+          <div className="intro-stage">
+            <div className="intro-log">
+              {linhas.map((l, i) => (
+                <div key={l.rotulo} className="intro-linha" style={{ animationDelay: atraso(i) }}>
+                  <span className="rotulo">&gt; {l.rotulo}</span>
+                  <span className="pontos" aria-hidden />
+                  <span className="valor">{l.valor ?? '—'}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="intro-marca">
+              <div className="intro-line1" style={{ animationDelay: atrasoMarca(0) }}>
+                Design System
+              </div>
+              <div className="intro-underline" style={{ animationDelay: atrasoMarca(0.15) }} />
+              <div className="intro-line2" style={{ animationDelay: atrasoMarca(0.35) }}>
+                <span className="intro-dot" aria-hidden />
+                extrai · cura · gera
+              </div>
+            </div>
           </div>
-          <div className="intro-underline" aria-hidden />
-          <div className="intro-tag">extrai · cura · gera</div>
-        </div>
+        </>
       )}
 
       <div className="intro-controls">
+        <button
+          type="button"
+          className="intro-btn"
+          onClick={() => definir({ somDaIntro: !somLigado })}
+          aria-pressed={!somLigado}
+          title={somLigado ? 'Silenciar a abertura' : 'Ligar o som da abertura'}
+        >
+          {somLigado ? <Volume2 size={12} /> : <VolumeX size={12} />}
+          {somLigado ? 'som' : 'mudo'}
+        </button>
         <button type="button" className="intro-btn" onClick={finalizar}>
-          Pular intro
-          <SkipForward size={14} />
+          <SkipForward size={12} />
+          pular
         </button>
       </div>
     </div>
   );
+}
+
+/**
+ * A trilha, sintetizada em Web Audio.
+ *
+ * Sintetizada em vez de arquivo por dois motivos: a abertura não depende de
+ * baixar nada, e dá para cortar no meio sem estalo. Devolve a função que corta —
+ * quem clica em "pular" não pode continuar ouvindo o fim de um som que já não
+ * tem imagem. O ganho desce em rampa antes de parar, porque cortar um oscilador
+ * no seco produz um clique audível.
+ */
+function tocarBoot(duracaoMs: number): () => void {
+  let ctx: AudioContext;
+  try {
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (Ctor === undefined) return () => {};
+    ctx = new Ctor();
+  } catch {
+    return () => {};
+  }
+
+  const agora = ctx.currentTime;
+  const fim = agora + duracaoMs / 1000;
+  const mestre = ctx.createGain();
+  mestre.gain.value = 0.0001;
+  mestre.connect(ctx.destination);
+  mestre.gain.exponentialRampToValueAtTime(0.16, agora + 1.2);
+  mestre.gain.exponentialRampToValueAtTime(0.0001, fim);
+
+  // Drone: duas ondas quase afinadas. O batimento lento entre elas é o que dá a
+  // sensação de máquina ligada, em vez de uma nota musical parada.
+  const filtro = ctx.createBiquadFilter();
+  filtro.type = 'lowpass';
+  filtro.frequency.value = 520;
+  filtro.connect(mestre);
+
+  for (const hz of [55, 55.6, 110]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.value = hz;
+    osc.connect(filtro);
+    osc.start(agora);
+    osc.stop(fim + 0.1);
+  }
+
+  // Um bipe curto por linha do log, subindo de tom: é o que amarra o som ao que
+  // está acontecendo na tela, em vez de ser trilha por cima.
+  for (let i = 0; i < 4; i++) {
+    const t = agora + 0.35 + i * PASSO_S;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880 + i * 110;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.06, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    osc.connect(g);
+    g.connect(mestre);
+    osc.start(t);
+    osc.stop(t + 0.2);
+  }
+
+  return () => {
+    try {
+      mestre.gain.cancelScheduledValues(ctx.currentTime);
+      mestre.gain.setValueAtTime(mestre.gain.value, ctx.currentTime);
+      mestre.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.15);
+      window.setTimeout(() => void ctx.close(), 200);
+    } catch {
+      /* contexto já fechado */
+    }
+  };
 }

@@ -146,7 +146,7 @@ export function PreviewFrame({
         // A sobra em volta usa o fundo do próprio componente. Com o preto do
         // app, um bloco largo e baixo virava uma tira no meio de um vazio e
         // parecia defeito; com o fundo dele, lê como uma superfície só.
-        backgroundColor: fundoDoDoc ?? 'var(--color-obsidian-0)',
+        backgroundColor: fundoDoDoc ?? 'var(--color-ink-0)',
       }}
     >
       {!loaded && (

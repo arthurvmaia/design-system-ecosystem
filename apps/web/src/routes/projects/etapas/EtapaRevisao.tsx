@@ -48,16 +48,12 @@ export function StepRevisao({
               className="flex items-center gap-2.5 rounded-md border px-3 py-2 text-[12px]"
               style={{
                 borderColor:
-                  p.nivel === 'bloqueante' ? 'var(--color-crimson-5)' : 'var(--color-border)',
+                  p.nivel === 'bloqueante' ? 'var(--color-ion-5)' : 'var(--color-border)',
                 color: 'var(--color-fg)',
               }}
             >
               {p.nivel === 'bloqueante' ? (
-                <OctagonX
-                  size={13}
-                  className="shrink-0"
-                  style={{ color: 'var(--color-crimson-3)' }}
-                />
+                <OctagonX size={13} className="shrink-0" style={{ color: 'var(--color-ion-3)' }} />
               ) : (
                 <AlertTriangle
                   size={13}
@@ -130,7 +126,7 @@ export function StepRevisao({
 
       <div
         className="flex items-start gap-2 rounded-lg p-3 text-[12px] leading-relaxed"
-        style={{ backgroundColor: 'rgba(107,20,20,0.16)', color: 'var(--color-fg)' }}
+        style={{ backgroundColor: 'rgba(14,165,233,0.14)', color: 'var(--color-fg)' }}
       >
         <Sparkles size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-signal)' }} />
         <span>

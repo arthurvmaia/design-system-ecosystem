@@ -166,7 +166,7 @@ export function StepEstrutura({
                   <span
                     className="shrink-0 text-[14px] font-medium"
                     style={{
-                      color: s.nome.trim() === '' ? 'var(--color-crimson-3)' : 'var(--color-fg)',
+                      color: s.nome.trim() === '' ? 'var(--color-ion-3)' : 'var(--color-fg)',
                     }}
                   >
                     {s.nome.trim() === '' ? 'sem nome' : s.nome}
@@ -196,8 +196,8 @@ export function StepEstrutura({
                   type="button"
                   onClick={() => onSecoes(removerSecao(secoes, s.id))}
                   aria-label={`Remover a seção ${s.nome || 'sem nome'}`}
-                  className="rounded p-1.5 transition-all hover:scale-110 hover:bg-[rgba(198,40,40,0.16)]"
-                  style={{ color: 'var(--color-crimson-3)' }}
+                  className="rounded p-1.5 transition-all hover:scale-110 hover:bg-[rgba(239,68,68,0.16)]"
+                  style={{ color: 'var(--color-ion-3)' }}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -272,7 +272,7 @@ export function StepEstrutura({
                               type="button"
                               onClick={() => tirarPeca(s.id, j)}
                               aria-label={`Tirar ${p.name} desta seção`}
-                              className="rounded-full p-0.5 hover:bg-[rgba(198,40,40,0.2)]"
+                              className="rounded-full p-0.5 hover:bg-[rgba(239,68,68,0.2)]"
                               style={{ color: 'var(--color-fg-muted)' }}
                             >
                               <X size={11} />

@@ -78,7 +78,7 @@ export function ProjectsPage() {
             type="button"
             onClick={() => setWizard('novo')}
             disabled={kitCount === 0}
-            className="ds-btn ds-gradient-crimson ds-glow flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40"
+            className="ds-btn ds-gradient-ion ds-glow flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40"
             style={{ color: 'var(--color-bone-1)' }}
           >
             <Rocket size={13} />
@@ -275,8 +275,8 @@ function ProjectCard({
                   ? 'Excluir'
                   : 'Tem um pedido na fila para este projeto. Cancele ele antes de apagar.'
               }
-              className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(198,40,40,0.16)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100 disabled:hover:bg-transparent"
-              style={{ color: 'var(--color-crimson-3)' }}
+              className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(239,68,68,0.16)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100 disabled:hover:bg-transparent"
+              style={{ color: 'var(--color-ion-3)' }}
             >
               <Trash2 size={13} />
             </button>
@@ -326,7 +326,7 @@ function TaskCard({ task }: { task: TaskRecord }) {
             className="ds-data border-t py-1 text-[11px]"
             style={{
               borderColor: 'var(--color-border)',
-              color: ev.level === 'error' ? 'var(--color-crimson-3)' : 'var(--color-fg)',
+              color: ev.level === 'error' ? 'var(--color-ion-3)' : 'var(--color-fg)',
             }}
           >
             {ev.message}
@@ -346,7 +346,7 @@ function StatusBadge({ status }: { status: string }) {
     generating: 'var(--color-signal)',
     succeeded: 'var(--color-primary)',
     generated: 'var(--color-primary)',
-    failed: 'var(--color-crimson-3)',
+    failed: 'var(--color-ion-3)',
   };
   return (
     <span

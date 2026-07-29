@@ -81,9 +81,7 @@ export function PainelRedes({
                   placeholder={p.placeholder}
                   aria-invalid={erro ? true : undefined}
                   className={INPUT}
-                  style={
-                    erro ? { ...inputStyle, borderColor: 'var(--color-crimson-4)' } : inputStyle
-                  }
+                  style={erro ? { ...inputStyle, borderColor: 'var(--color-ion-4)' } : inputStyle}
                 />
                 {entrada !== undefined && (
                   <button
@@ -105,7 +103,7 @@ export function PainelRedes({
                 <div
                   role="alert"
                   className="mt-1 text-[11px]"
-                  style={{ color: 'var(--color-crimson-3)' }}
+                  style={{ color: 'var(--color-ion-3)' }}
                 >
                   {erro}
                 </div>

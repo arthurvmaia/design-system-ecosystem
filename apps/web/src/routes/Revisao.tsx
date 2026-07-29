@@ -83,7 +83,7 @@ export function RevisaoPage() {
                 <span
                   className="ds-data rounded-full px-2 py-0.5 text-[10px]"
                   style={{
-                    backgroundColor: 'var(--color-crimson-8)',
+                    backgroundColor: 'var(--color-ion-8)',
                     color: 'var(--color-bone-1)',
                   }}
                 >
@@ -195,7 +195,7 @@ function CardRejeitado({
                   ? setConfirmaDescarte(true)
                   : descartar.mutate()
               }
-              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:bg-[rgba(198,40,40,0.12)] disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:bg-[rgba(239,68,68,0.14)] disabled:opacity-40"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               {descartar.isPending ? (

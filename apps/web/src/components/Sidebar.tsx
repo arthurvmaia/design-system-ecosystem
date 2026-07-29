@@ -20,19 +20,25 @@ const ITEM_ATIVO = 'ds-glass-static text-[var(--color-fg)]';
 
 /**
  * Navegação fixa. É vidro, não uma coluna pintada: o fundo é preto translúcido
- * com blur, então as manchas de luz ambiente atravessam a coluna em vez de
- * morrerem atrás dela.
+ * com blur, então a grade e o halo atravessam a coluna em vez de morrerem atrás
+ * dela.
  *
  * Duas zonas com pesos diferentes: as funcionalidades PRINCIPAIS (fluxo de
  * criar/organizar/gerar) na lista de cima; as AUXILIARES (Pendências e
  * Configurações — exceção e operação) no rodapé, separadas por um divisor. A
  * config das duas listas mora em `@/lib/nav`.
+ *
+ * O fluxo é NUMERADO. É a mudança que mais muda a leitura da coluna: uma lista
+ * de links diz "escolha um lugar"; uma lista numerada diz "este é o caminho, e
+ * você está no passo 3". O trabalho aqui tem ordem — extrair, escolher, curar,
+ * montar, gerar — e a numeração torna essa ordem visível sem uma linha de texto
+ * explicando.
  */
 export function Sidebar() {
   return (
     <aside
       className="ds-backdrop relative z-20 flex h-full w-[260px] shrink-0 flex-col border-r"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(6, 6, 6, 0.55)' }}
+      style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
     >
       {/* Cabeçalho da marca. */}
       <div
@@ -47,9 +53,9 @@ export function Sidebar() {
         <div className="px-3">
           <SectionLabel>Fluxo</SectionLabel>
           <ul className="mt-3 flex flex-col gap-1">
-            {primaryNav.map((item) => (
+            {primaryNav.map((item, i) => (
               <li key={item.to}>
-                <NavItem item={item} />
+                <NavItem item={item} passo={i + 1} />
               </li>
             ))}
           </ul>
@@ -77,22 +83,19 @@ export function Sidebar() {
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="px-3 text-[10px] font-medium uppercase tracking-[0.28em]"
-      style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
-    >
-      {children}
-    </div>
-  );
+  return <div className="ds-label px-3">{children}</div>;
 }
 
 /**
- * Item genérico da navegação. O ativo vira vidro e ganha a barra vermelha na
- * borda; o inativo desliza 2px sob o cursor. O `title` dá tooltip (útil se um dia
- * a coluna recolher para ícones).
+ * Item genérico da navegação. O ativo vira vidro e ganha a barra ciano na borda;
+ * o inativo desliza 2px sob o cursor. O `title` dá tooltip (útil se um dia a
+ * coluna recolher para ícones).
+ *
+ * `passo` só é passado pelo fluxo principal: o número é a posição no caminho.
+ * Os itens auxiliares não recebem, porque não são etapa de nada — e numerá-los
+ * sugeriria uma ordem que não existe.
  */
-function NavItem({ item }: { item: NavItemDef }) {
+function NavItem({ item, passo }: { item: NavItemDef; passo?: number }) {
   const Icon = item.icon;
   return (
     <NavLink
@@ -103,8 +106,19 @@ function NavItem({ item }: { item: NavItemDef }) {
       {({ isActive }) => (
         <>
           {isActive && <span className="ds-active-bar" aria-hidden />}
-          <Icon size={16} strokeWidth={1.75} />
-          <span style={{ fontFamily: 'var(--font-body)' }}>{item.label}</span>
+          {passo !== undefined && (
+            <span
+              aria-hidden
+              className="ds-data w-[16px] shrink-0 text-[10px]"
+              style={{ color: isActive ? 'var(--color-ion-4)' : 'var(--color-fg-subtle)' }}
+            >
+              {String(passo).padStart(2, '0')}
+            </span>
+          )}
+          <Icon size={15} strokeWidth={1.75} />
+          <span className="min-w-0 truncate" style={{ fontFamily: 'var(--font-body)' }}>
+            {item.label}
+          </span>
           <BadgeInfoDaRota to={item.to} />
         </>
       )}
@@ -147,9 +161,9 @@ function PendenciasNavItem({ item }: { item: NavItemDef }) {
               aria-hidden
               className="ds-data ml-auto rounded-full border px-2 py-0.5 text-[10px] font-medium"
               style={{
-                backgroundColor: 'rgba(198, 40, 40, 0.16)',
-                borderColor: 'rgba(198, 40, 40, 0.4)',
-                color: 'var(--color-crimson-3)',
+                backgroundColor: 'rgba(245,158,11,0.16)',
+                borderColor: 'rgba(245,158,11,0.45)',
+                color: 'var(--color-ion-3)',
               }}
             >
               {badge.valor}

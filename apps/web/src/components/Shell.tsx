@@ -1,5 +1,4 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import { AmbientEmbers } from './AmbientEmbers';
 import { Sidebar } from './Sidebar';
 import { Toaster } from './Toaster';
 import { TopBar } from './TopBar';
@@ -7,9 +6,11 @@ import { TopBar } from './TopBar';
 /**
  * Layout raiz da aplicação.
  *
- * Sidebar fixa à esquerda, topbar fina, área principal rolável. As duas manchas
- * de luz ambiente ficam fixas atrás de tudo — são o fundo vivo sobre o qual os
- * painéis de vidro se apoiam.
+ * O fundo mudou de ideia. Antes eram duas manchas de luz que derivavam devagar
+ * mais um canvas de brasas — bonito, e errado para o que este app é: o conteúdo
+ * aqui são PRÉVIAS DE SITE, que já têm movimento próprio, e um fundo que se mexe
+ * disputa atenção com elas. Agora é uma grade fina que desbota nas bordas e um
+ * halo parado no alto. Bancada, não lareira.
  *
  * A `key` no <main> reinicia a animação de entrada a cada troca de rota, o que
  * dá ao app a sensação de transição em vez de troca seca de conteúdo.
@@ -19,9 +20,8 @@ export function Shell() {
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden">
-      <div className="ds-ambient ds-ambient-1" aria-hidden="true" />
-      <div className="ds-ambient ds-ambient-2" aria-hidden="true" />
-      <AmbientEmbers />
+      <div className="ds-halo" aria-hidden="true" />
+      <div className="ds-grid" aria-hidden="true" />
 
       <Sidebar />
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">

@@ -83,7 +83,7 @@ export function Combobox({
         className={cn(
           'flex w-full items-center gap-2 rounded-lg border px-3 py-2 transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--color-primary)]',
           invalido
-            ? 'border-[var(--color-crimson-6)]'
+            ? 'border-[var(--color-ion-6)]'
             : 'border-[var(--color-border)] hover:border-[var(--color-border-strong)]',
           desabilitado && 'cursor-not-allowed opacity-50',
         )}

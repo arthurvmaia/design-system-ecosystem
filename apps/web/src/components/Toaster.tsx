@@ -4,7 +4,7 @@ import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
 const ICONE = { ok: CheckCircle2, erro: AlertCircle, info: Info } as const;
 const COR = {
   ok: 'var(--color-primary)',
-  erro: 'var(--color-crimson-3)',
+  erro: 'var(--color-ion-3)',
   info: 'var(--color-fg-muted)',
 } as const;
 

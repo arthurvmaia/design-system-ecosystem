@@ -394,10 +394,10 @@ function DsSidebar({
               <button
                 type="button"
                 onClick={() => setConfirming(ds)}
-                className="mr-2 hidden rounded-full p-1.5 transition-all duration-300 hover:bg-[rgba(198,40,40,0.16)] group-hover:block"
+                className="mr-2 hidden rounded-full p-1.5 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:block"
                 title="Excluir extração"
               >
-                <Trash2 size={12} style={{ color: 'var(--color-crimson-3)' }} />
+                <Trash2 size={12} style={{ color: 'var(--color-ion-3)' }} />
               </button>
             </div>
           ))
@@ -630,7 +630,7 @@ function SegmentsView({
           {(dsInfo.data?.assetsFaltando.length ?? 0) > 0 && (
             <div
               className="mt-2 rounded-md px-3 py-2 text-[11px] leading-relaxed"
-              style={{ backgroundColor: 'rgba(107, 20, 20, 0.2)', color: 'var(--color-fg)' }}
+              style={{ backgroundColor: 'rgba(245,158,11,0.14)', color: 'var(--color-fg)' }}
             >
               Esta extração veio incompleta: parte das imagens e arquivos do site não foi baixada,
               então as prévias podem aparecer sem estilo. Extraia este site de novo para corrigir.
@@ -690,7 +690,7 @@ function SegmentsView({
             checked={isAllSelected(sel, visiveis)}
             onChange={() => setSel((s) => toggleAllVisible(s, visiveis))}
             aria-label={`Selecionar todos os ${visiveis.length} segmentos visíveis`}
-            className="h-4 w-4 accent-[var(--color-crimson-4)]"
+            className="h-4 w-4 accent-[var(--color-ion-4)]"
           />
           Todos
         </label>
@@ -749,7 +749,7 @@ function SegmentsView({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="buscar..."
-          className="ds-data ml-auto w-[200px] rounded-full border px-3.5 py-1.5 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)]"
+          className="ds-data ml-auto w-[200px] rounded-full border px-3.5 py-1.5 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]"
           style={{
             borderColor: 'var(--color-border)',
             backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -762,7 +762,7 @@ function SegmentsView({
         <section
           aria-label="Ações em massa"
           className="ds-backdrop flex flex-wrap items-center gap-3 border-b px-8 py-2.5"
-          style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(107, 20, 20, 0.16)' }}
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(14,165,233,0.14)' }}
         >
           <span className="ds-data text-[12px]" style={{ color: 'var(--color-fg)' }}>
             {selCount} selecionado{selCount === 1 ? '' : 's'}
@@ -808,7 +808,7 @@ function SegmentsView({
             }
             disabled={excluirLote.isPending}
             className="ds-tag flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] disabled:opacity-50"
-            style={{ borderColor: 'rgba(198,40,40,0.4)', color: 'var(--color-crimson-3)' }}
+            style={{ borderColor: 'rgba(239,68,68,0.45)', color: 'var(--color-ion-3)' }}
           >
             <Trash2 size={12} />
             Excluir selecionados
@@ -1038,7 +1038,7 @@ function SegmentCard({
             checked={selected}
             onChange={onToggle}
             aria-label={`Selecionar "${segment.name}"`}
-            className="h-4 w-4 accent-[var(--color-crimson-4)]"
+            className="h-4 w-4 accent-[var(--color-ion-4)]"
           />
         </label>
         <div className="ds-card-content flex h-full flex-col overflow-hidden rounded-xl">
@@ -1057,7 +1057,7 @@ function SegmentCard({
               {mostraRetrato && printDaDobra !== undefined ? (
                 <div
                   className="w-full"
-                  style={{ aspectRatio: '16 / 10', backgroundColor: 'var(--color-obsidian-0)' }}
+                  style={{ aspectRatio: '16 / 10', backgroundColor: 'var(--color-ink-0)' }}
                 >
                   <img
                     src={frameUrl(dsId, printDaDobra)}
@@ -1096,7 +1096,7 @@ function SegmentCard({
                   <span
                     className="rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.12em]"
                     style={{
-                      backgroundColor: 'var(--color-crimson-8)',
+                      backgroundColor: 'var(--color-ion-8)',
                       color: 'var(--color-bone-1)',
                     }}
                   >
@@ -1126,10 +1126,10 @@ function SegmentCard({
               <button
                 type="button"
                 onClick={() => setConfirmDel(true)}
-                className="flex h-8 w-8 items-center justify-center rounded-full opacity-0 transition-all duration-300 hover:bg-[rgba(198,40,40,0.16)] group-hover:opacity-100"
+                className="flex h-8 w-8 items-center justify-center rounded-full opacity-0 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:opacity-100"
                 title="Excluir da triagem"
               >
-                <Trash2 size={12} style={{ color: 'var(--color-crimson-3)' }} />
+                <Trash2 size={12} style={{ color: 'var(--color-ion-3)' }} />
               </button>
               <button
                 type="button"
@@ -1385,10 +1385,10 @@ function SegmentCardFilho({
           <button
             type="button"
             onClick={() => setConfirmDel(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-all duration-300 hover:bg-[rgba(198,40,40,0.16)] group-hover:opacity-100"
+            className="flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:opacity-100"
             title="Excluir da triagem"
           >
-            <Trash2 size={11} style={{ color: 'var(--color-crimson-3)' }} />
+            <Trash2 size={11} style={{ color: 'var(--color-ion-3)' }} />
           </button>
           <button
             type="button"
@@ -1500,7 +1500,7 @@ function SegmentDetail({
                 <span
                   className="rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.12em]"
                   style={{
-                    backgroundColor: 'var(--color-crimson-8)',
+                    backgroundColor: 'var(--color-ion-8)',
                     color: 'var(--color-bone-1)',
                   }}
                 >

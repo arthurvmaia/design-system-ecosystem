@@ -27,7 +27,7 @@ export function StepProjeto({
       </Campo>
       <div>
         <div className="mb-2 text-[10px] uppercase tracking-[0.2em]" style={rotulo}>
-          Kit base <span style={{ color: 'var(--color-crimson-3)' }}>*</span>
+          Kit base <span style={{ color: 'var(--color-ion-3)' }}>*</span>
         </div>
         {kits.length === 0 ? (
           <div className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
@@ -41,7 +41,7 @@ export function StepProjeto({
                 type="button"
                 onClick={() => onKit(k.id)}
                 className="ds-glass rounded-lg p-3 text-left"
-                style={kitId === k.id ? { borderColor: 'var(--color-crimson-5)' } : undefined}
+                style={kitId === k.id ? { borderColor: 'var(--color-ion-5)' } : undefined}
               >
                 <div className="text-[13px] font-medium" style={{ color: 'var(--color-fg)' }}>
                   {k.name}

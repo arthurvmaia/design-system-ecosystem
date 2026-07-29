@@ -10,12 +10,15 @@ import { persist } from 'zustand/middleware';
  *   global respeita como se fosse prefers-reduced-motion).
  * - `confirmarAntesDeExcluir`: com false, exclusões pedem só um clique.
  * - `introAoAbrir`: a cortina de abertura roda sempre ou só uma vez.
+ * - `somDaIntro`: a abertura toca uma trilha curta. Quem abre o app perto de
+ *   outras pessoas precisa poder desligar isso e não ser perguntado de novo.
  */
 export type Preferencias = {
   movimento: 'sistema' | 'reduzir';
   confirmarAntesDeExcluir: boolean;
   introAoAbrir: 'sempre' | 'primeira-vez';
   jaViuIntro: boolean;
+  somDaIntro: boolean;
 };
 
 type Store = Preferencias & {
@@ -29,6 +32,7 @@ export const usePreferencias = create<Store>()(
       confirmarAntesDeExcluir: true,
       introAoAbrir: 'sempre',
       jaViuIntro: false,
+      somDaIntro: true,
       definir: (patch) => set(patch),
     }),
     {
@@ -42,11 +46,18 @@ export const usePreferencias = create<Store>()(
        * escolha, então a migração troca o valor uma vez. Quem preferir sem
        * abertura desliga em Configurações, e a escolha fica valendo.
        */
-      version: 1,
+      version: 2,
       migrate: (estado, versao) => {
         const anterior = estado as Partial<Preferencias> | undefined;
-        if (versao >= 1 || anterior === undefined) return anterior as Preferencias;
-        return { ...anterior, introAoAbrir: 'sempre' } as Preferencias;
+        if (anterior === undefined) return anterior as unknown as Preferencias;
+        const saida = { ...anterior };
+        // v0 → v1: a abertura passou a rodar toda vez (ver acima).
+        if (versao < 1) saida.introAoAbrir = 'sempre';
+        // v1 → v2: o som ganhou controle. Quem já usava o app vinha ouvindo,
+        // então o padrão de quem migra é ligado — mudar isso na calada seria
+        // trocar a preferência de alguém sem ela ter pedido.
+        if (versao < 2) saida.somDaIntro = true;
+        return saida as Preferencias;
       },
     },
   ),

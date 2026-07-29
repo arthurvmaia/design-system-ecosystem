@@ -433,7 +433,7 @@ function StepBar({
             title={i > maxVisitado ? 'Avance pelas etapas para desbloquear' : `Ir para ${label}`}
             className="flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-[11px] transition-colors disabled:cursor-default"
             style={{
-              backgroundColor: active ? 'rgba(107,20,20,0.24)' : 'transparent',
+              backgroundColor: active ? 'rgba(14,165,233,0.2)' : 'transparent',
               color: active
                 ? 'var(--color-fg)'
                 : done

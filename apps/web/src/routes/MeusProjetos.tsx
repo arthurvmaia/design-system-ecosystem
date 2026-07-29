@@ -222,8 +222,8 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                 type="button"
                 onClick={() => setConfirmDel(true)}
                 title="Excluir"
-                className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(198,40,40,0.16)]"
-                style={{ color: 'var(--color-crimson-3)' }}
+                className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(239,68,68,0.16)]"
+                style={{ color: 'var(--color-ion-3)' }}
               >
                 <Trash2 size={13} />
               </button>

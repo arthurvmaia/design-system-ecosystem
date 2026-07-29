@@ -52,7 +52,7 @@ export function Campo({ label, children }: { label: string; children: React.Reac
 }
 
 export const INPUT =
-  'w-full rounded-md border px-3.5 py-2.5 text-[14px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(198,40,40,0.18)]';
+  'w-full rounded-md border px-3.5 py-2.5 text-[14px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]';
 
 export const inputStyle: React.CSSProperties = {
   borderColor: 'var(--color-border)',

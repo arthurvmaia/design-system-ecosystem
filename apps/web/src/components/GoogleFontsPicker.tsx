@@ -167,7 +167,7 @@ function FontOption({
       className="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors"
       style={{
         borderColor: selected ? 'var(--color-signal)' : 'var(--color-border)',
-        backgroundColor: selected ? 'rgba(198,40,40,0.10)' : 'rgba(255,255,255,0.02)',
+        backgroundColor: selected ? 'rgba(14,165,233,0.14)' : 'rgba(255,255,255,0.02)',
       }}
     >
       <span className="min-w-0 flex-1">

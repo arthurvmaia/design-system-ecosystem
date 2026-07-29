@@ -73,7 +73,7 @@ export function KitsPage() {
           <button
             type="button"
             onClick={() => setEditing('novo')}
-            className="ds-btn ds-gradient-crimson ds-glow flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium"
+            className="ds-btn ds-gradient-ion ds-glow flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium"
             style={{ color: 'var(--color-bone-1)' }}
           >
             <Plus size={14} />
@@ -133,7 +133,7 @@ function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
           ) : (
             <div
               className="flex items-center justify-center"
-              style={{ aspectRatio: '16 / 7', backgroundColor: 'var(--color-obsidian-2)' }}
+              style={{ aspectRatio: '16 / 7', backgroundColor: 'var(--color-ink-2)' }}
             >
               <Layers size={22} style={{ color: 'var(--color-fg-subtle)' }} />
             </div>
@@ -235,7 +235,7 @@ function IconBtn({
       title={title}
       disabled={busy}
       className="rounded-full p-1.5 transition-all duration-300 hover:scale-110 hover:bg-white/[0.06] disabled:opacity-50"
-      style={{ color: danger ? 'var(--color-crimson-3)' : 'var(--color-fg-muted)' }}
+      style={{ color: danger ? 'var(--color-ion-3)' : 'var(--color-fg-muted)' }}
     >
       {busy ? <Loader2 size={13} className="animate-spin" /> : children}
     </button>
@@ -399,10 +399,10 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                       <button
                         type="button"
                         onClick={() => setSelected(selected.filter((x) => x !== id))}
-                        className="rounded p-1 hover:bg-[rgba(198,40,40,0.16)]"
+                        className="rounded p-1 hover:bg-[rgba(239,68,68,0.16)]"
                         title="Remover"
                       >
-                        <X size={12} style={{ color: 'var(--color-crimson-3)' }} />
+                        <X size={12} style={{ color: 'var(--color-ion-3)' }} />
                       </button>
                     </div>
                   </div>

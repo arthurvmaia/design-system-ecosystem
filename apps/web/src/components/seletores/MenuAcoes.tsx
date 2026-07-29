@@ -138,7 +138,7 @@ export function MenuAcoes({
                   it.desabilitado && 'cursor-not-allowed opacity-40',
                 )}
                 style={{
-                  color: it.destrutivo ? 'var(--color-crimson-5)' : 'var(--color-fg)',
+                  color: it.destrutivo ? 'var(--color-ion-5)' : 'var(--color-fg)',
                 }}
               >
                 {Icone !== undefined && <Icone size={13} className="shrink-0 opacity-70" />}
