@@ -94,6 +94,24 @@ O payload é rico e é a fonte da verdade — não vá ler o banco por fora:
 7. **Responsividade é REQUISITO, não melhoria.** O site precisa de uma versão mobile pensada: meta viewport, nada de rolagem horizontal, colunas empilhadas, mídia proporcional, texto ≥16px, alvos de toque ≥44px, navegação adaptada. Escreva a camada em `assets/responsivo.css` carregada ENTRE `styles.css` e `marca.css` (use `cssResponsivoBase()` de `@ds/generator` como base e adapte o que o kit exigir, sem perder o estilo dele). Valide em ~1440px e ~390px antes de concluir.
 8. Escreva em `~/design-system-ecosystem/projects/<prj_id>/generated/<timestamp>/` com `index.html` + assets. É o que a tela **Meus sites** serve na prévia e empacota no `.zip`. O `fila:concluir` valida: assets referenciados existem, `marca.css` carrega depois do `styles.css`, toda seção tem `data-origem`, a meta viewport está declarada e existe CSS com `@media` de largura.
 
+## Avisando que está trabalhando
+
+Um job de extração ou de geração leva minutos. Nesse tempo, quem está com o app
+aberto não vê nada acontecer: a janela do PROCESSAR fica quieta e a tela da fila
+diz que nada está rodando, porque nada foi reportado. A pessoa acha que travou.
+
+Então **reporte o avanço**, pelo menos uma vez por etapa:
+
+```powershell
+pnpm fila:progresso <job_id> <0-100>
+```
+
+Para `generate`, os marcos que a tela já sabe nomear são: 25 (estrutura
+escolhida), 50 (marca aplicada), 70 (textos escritos), 95 (páginas montadas).
+Para `extract`, o `pnpm extrair` já reporta sozinho.
+
+Isso é aviso, não entrega: quem marca um job como feito é o `fila:concluir`.
+
 ## Finalizando um job
 
 Depois de produzir os arquivos, indexe e feche:

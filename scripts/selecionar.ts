@@ -13,7 +13,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
-import { clearLote, listPendingJobs, setLote } from '@ds/shared';
+import { clearLote, listPendingJobs, reportarProgresso, setLote } from '@ds/shared';
 
 type Escolha = { tipo: 'cancelar' } | { tipo: 'ok'; indices: number[] };
 
@@ -131,6 +131,11 @@ const main = async (): Promise<void> => {
   // Registra o lote antes de devolver os ids: é o denominador que a barra de
   // progresso da web usa para saber quanto falta desta rodada.
   setLote(ids);
+  // Marca o começo agora, aqui, e não lá no processamento: o primeiro marco de
+  // um job de geração pode demorar minutos, e até ele chegar a tela dizia que
+  // nada estava rodando — bem enquanto o trabalho corria. Um por cento é a
+  // diferença entre "escolhido" e "em andamento".
+  for (const id of ids) reportarProgresso(id, 1);
   writeFileSync(destino, ids.join(','), 'utf8');
 };
 

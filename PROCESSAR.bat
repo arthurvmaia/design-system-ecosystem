@@ -66,6 +66,10 @@ if not defined JOBS (
 
 echo   Processando. Nao feche esta janela.
 echo.
+echo   Um site ou uma extracao leva minutos. Esta janela pode ficar
+echo   quieta durante boa parte do tempo - isso e normal. Acompanhe o
+echo   avanco na tela do aplicativo, na barra da fila.
+echo.
 
 REM O Claude Code roda por dentro do PowerShell porque precisamos da saida em
 REM dois lugares ao mesmo tempo: na tela, para voce acompanhar, e numa variavel,
@@ -75,7 +79,7 @@ REM esse texto, acabar o limite fica identico a qualquer outro erro, e a janela
 REM some sem explicar nada.
 REM
 REM 90 = limite de uso atingido    91 = nao esta logado
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& claude -p 'Processe somente os jobs da fila com estes ids: %JOBS%. Ignore qualquer outro job pendente, inclusive os mais antigos: eles ficam na fila de proposito e nao devem ser tocados agora. Siga as instrucoes do CLAUDE.md. Para cada job selecionado: execute o trabalho descrito no payload e depois finalize rodando pnpm fila:concluir com o id do job. Nao peca confirmacao e nao pare no meio: va ate o ultimo job selecionado. Se um job falhar, registre o erro e siga para o proximo. Ao terminar, imprima um resumo com os jobs concluidos, os que falharam e o motivo.' --permission-mode bypassPermissions --verbose 2>&1 | Tee-Object -Variable saida; $t = $saida | Out-String; if ($t -match 'hit your .* limit') { exit 90 }; if ($t -match 'Not logged in' -or $t -match 'resolve authentication method') { exit 91 }; exit $LASTEXITCODE"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& claude -p 'Processe somente os jobs da fila com estes ids: %JOBS%. Ignore qualquer outro job pendente, inclusive os mais antigos: eles ficam na fila de proposito e nao devem ser tocados agora. Siga as instrucoes do CLAUDE.md. Para cada job selecionado: reporte o avanco com pnpm fila:progresso ao terminar cada etapa (a pessoa esta olhando a barra no aplicativo e sem isso acha que travou), execute o trabalho descrito no payload e depois finalize rodando pnpm fila:concluir com o id do job. Nao peca confirmacao e nao pare no meio: va ate o ultimo job selecionado. Se um job falhar, registre o erro e siga para o proximo. Ao terminar, imprima um resumo com os jobs concluidos, os que falharam e o motivo.' --permission-mode bypassPermissions --verbose 2>&1 | Tee-Object -Variable saida; $t = $saida | Out-String; if ($t -match 'hit your .* limit') { exit 90 }; if ($t -match 'Not logged in' -or $t -match 'resolve authentication method') { exit 91 }; exit $LASTEXITCODE"
 
 set "SAIDA=%errorlevel%"
 
