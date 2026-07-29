@@ -1,22 +1,16 @@
 import { Mascote } from '@/components/Mascote';
 import { type KitComponentRef, type MediaItem, api } from '@/lib/api';
 import { toast } from '@/lib/toast';
-import { type Produto, type SecaoDoSite, resolverSecoes } from '@ds/shared/schemas';
+import {
+  type ObjetivoDoSite,
+  type Produto,
+  type SecaoDoSite,
+  resolverSecoes,
+  sugerirMidiaDaSecao,
+} from '@ds/shared/schemas';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Image as ImageIcon, Plus, Trash2, Upload } from 'lucide-react';
 import { mediaUrl, rotulo } from '../partes';
-
-/** A finalidade humana da mídia em cada papel — a tela fala de propósito. */
-const FINALIDADE: Record<string, string> = {
-  hero: 'Imagem principal',
-  showcase: 'Demonstração',
-  gallery: 'Galeria',
-  catalog: 'Fotos de produto',
-  testimonials: 'Foto de quem depõe',
-  about: 'Foto de contexto',
-  team: 'Fotos da equipe',
-  features: 'Ilustrações de apoio',
-};
 
 /**
  * Mídia e produtos do projeto.
@@ -44,6 +38,7 @@ export function StepMidia({
   onMedia,
   produtos,
   onProdutos,
+  objetivo,
 }: {
   projectId: string | null;
   secoes: SecaoDoSite[];
@@ -53,6 +48,8 @@ export function StepMidia({
   onMedia: (m: MediaItem[]) => void;
   produtos: Produto[];
   onProdutos: (p: Produto[]) => void;
+  /** Decide qual sequência de marketing explica o pedido de imagem de cada seção. */
+  objetivo: ObjetivoDoSite | null;
 }) {
   const contratos = useQuery({
     queryKey: ['kit-contratos', kitId],
@@ -177,7 +174,11 @@ export function StepMidia({
           nImagens > 0 ? `${nImagens} de imagem` : null,
           nVideos > 0 ? `${nVideos} de vídeo` : null,
         ].filter((x): x is string => x !== null);
-        const finalidade = FINALIDADE[s.slug];
+        const sugestao = sugerirMidiaDaSecao(
+          secoes.find((x) => x.id === s.id) ?? { id: s.id, nome: s.nome, componentIds: [] },
+          contratos.data?.items ?? [],
+          objetivo,
+        );
         return (
           <div
             key={s.id}
@@ -188,7 +189,7 @@ export function StepMidia({
               <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
                 {s.nome.trim() || 'Seção sem nome'}
               </span>
-              {finalidade !== undefined && (
+              {sugestao.quantas > 0 && (
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
                   style={{
@@ -196,7 +197,7 @@ export function StepMidia({
                     color: 'var(--color-fg-muted)',
                   }}
                 >
-                  {finalidade}
+                  {sugestao.quantas} {sugestao.quantas === 1 ? 'imagem' : 'imagens'}
                 </span>
               )}
               <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
@@ -205,6 +206,17 @@ export function StepMidia({
                   : `${s.pecas.map((p) => p.name).join(' + ')}${
                       espacos.length > 0 ? ` · espaços: ${espacos.join(', ')}` : ''
                     }`}
+              </span>
+              {/* O PORQUÊ, na linha de baixo e por extenso.
+                  A tela pedia um número de imagens sem dizer para quê, e a
+                  única resposta possível era chutar. A razão vem da etapa de
+                  marketing daquela seção, somada aos espaços reais das peças —
+                  ver `sugerirMidiaDaSecao`. */}
+              <span
+                className="w-full text-[11px] leading-relaxed"
+                style={{ color: 'var(--color-fg-subtle)' }}
+              >
+                {sugestao.porque}
               </span>
               <label
                 className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-colors hover:border-[var(--color-signal)]"

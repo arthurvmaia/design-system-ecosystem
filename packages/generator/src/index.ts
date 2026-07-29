@@ -4,11 +4,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import { atributosDeProxy, envolverEmProxies, escoparCss, nomesGlobaisDe } from '@ds/composer';
 import {
   type GeneratePayload,
+  OBJETIVOS,
   type ProjectBranding,
   buildTypographyCss,
   derivarDiretrizes,
   derivarEscala,
   distribuirTokens,
+  explicarPapel,
   libraryComponentBundleDir,
   libraryComponentMetadata,
   projectGeneratedVersionDir,
@@ -200,20 +202,42 @@ const catalogoDoKit = (input: GenerateInput): LibraryCatalogItem[] =>
 const descreverEstrutura = (input: GenerateInput): string => {
   const { secoes } = resolverSecoes(input.layout.secoes, input.kit.components);
   if (secoes.length === 0) return 'O projeto não declarou nenhuma seção.';
-  return secoes
+  const objetivo = input.layout.objetivo ?? null;
+  // As seções originais, para achar o papel — `resolverSecoes` devolve o slug
+  // (que pode ter vindo por inferência da categoria da peça), e o papel
+  // declarado é o que casa com a sequência de marketing.
+  const porId = new Map(input.layout.secoes.map((s) => [s.id, s]));
+
+  const cabecalho =
+    objetivo === null
+      ? ''
+      : `O objetivo deste site é ${OBJETIVOS[objetivo].rotulo.toLowerCase()}. ${OBJETIVOS[objetivo].explica}\n\n`;
+
+  const corpo = secoes
     .map((s, i) => {
       const nome = s.nome.trim() === '' ? `Seção ${i + 1}` : s.nome.trim();
       const pecas =
         s.pecas.length === 0
           ? 'sem peça do kit: esta seção é criada no estilo do kit'
           : `peças, nesta ordem: ${s.pecas.map((p) => `"${p.id}" (${p.name})`).join(', ')}`;
+      // O PAPEL da seção na página, quando se sabe qual é.
+      //
+      // Sem isto, um texto de "Objeções" e um de "Abertura" chegavam com a
+      // mesma descrição — nome e peças — e saíam com o mesmo tom. A função da
+      // seção é o que decide se ali cabe uma promessa curta ou uma resposta
+      // que tira o medo de alguém.
+      const papel = porId.get(s.id)?.papel;
+      const etapa = papel === undefined ? undefined : explicarPapel(papel, objetivo);
+      const faz = etapa === undefined ? '' : `\n   função na página: ${etapa.faz}`;
       const diz =
         s.instrucao === undefined
           ? '   o usuário deixou o texto por sua conta: escreva no tom da marca, SEM inventar fatos'
           : `   o usuário pediu: ${s.instrucao}`;
-      return `${i + 1}. [${s.id}] "${nome}" — ${pecas}\n${diz}`;
+      return `${i + 1}. [${s.id}] "${nome}" — ${pecas}${faz}\n${diz}`;
     })
     .join('\n');
+
+  return `${cabecalho}${corpo}`;
 };
 
 const planSite = async (input: GenerateInput, opts: GenerateOptions): Promise<CompositionPlan> => {

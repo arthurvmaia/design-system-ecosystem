@@ -44,6 +44,24 @@ export const SectionRole = z.enum([
 ]);
 export type SectionRole = z.infer<typeof SectionRole>;
 
+/**
+ * O que este site precisa fazer.
+ *
+ * Mora aqui, e não em `estrutura-marketing.ts`, por uma razão de dependência:
+ * ele é campo de `ProjectLayout`, e a estrutura de marketing precisa dele para
+ * montar as sequências. Se ele morasse lá, os dois módulos se importariam
+ * mutuamente e o carregamento quebraria — foi o que aconteceu na primeira
+ * versão. Aqui a seta aponta num sentido só: marketing conhece layout, layout
+ * não conhece marketing.
+ */
+export const ObjetivoDoSite = z.enum([
+  'captar-contato',
+  'vender-produto',
+  'apresentar-servico',
+  'mostrar-trabalho',
+]);
+export type ObjetivoDoSite = z.infer<typeof ObjetivoDoSite>;
+
 /** Intensidade de movimento do site gerado. */
 export const MotionLevel = z.enum(['nenhuma', 'sutil', 'expressiva']);
 export type MotionLevel = z.infer<typeof MotionLevel>;
@@ -164,6 +182,16 @@ export const ProjectLayout = z.object({
    * propõe a estrutura a partir do kit.
    */
   secoes: z.array(SecaoDoSite).default([]),
+  /**
+   * O que este site precisa fazer. Decide a estrutura SUGERIDA e nada mais.
+   *
+   * Opcional de propósito, e nulo por padrão: quem não escolher cai na sequência
+   * de captar contato, que é a mais geral. Ele não restringe nada depois de
+   * escolhido — a estrutura continua totalmente editável, e trocar o objetivo
+   * não reescreve o que a pessoa já montou. É um ponto de partida com intenção,
+   * não um molde.
+   */
+  objetivo: ObjetivoDoSite.nullable().default(null),
   density: LayoutDensity.default('equilibrado'),
   motion: MotionLevel.default('sutil'),
   /**
@@ -179,6 +207,7 @@ export const DEFAULT_LAYOUT: ProjectLayout = {
   // Vazia de propósito: quem cria o projeto chama `sugerirSecoes` com o kit na
   // mão. Uma lista fixa aqui não saberia nada sobre as peças que a pessoa curou.
   secoes: [],
+  objetivo: null,
   density: 'equilibrado',
   motion: 'sutil',
   preferDesignSystemId: null,
@@ -189,75 +218,16 @@ export type ComponenteDoKitResumo = { id: string; name: string; category: string
 // ── Sugestão inicial de estrutura ───────────────────────────────────────────
 
 /**
- * As seções que quase todo site tem, na ordem em que costumam aparecer.
+ * O primeiro papel cujo vocabulário aceita esta categoria de componente.
  *
- * Existe para a tela não abrir vazia. Página em branco devolve ao usuário
- * exatamente o trabalho que ele queria evitar — e ele apaga o que não serve em
- * um clique, que é mais barato que montar seis seções do zero.
+ * Exportado porque duas coisas dependem dele:  (que resolve o
+ *  de uma seção sem papel declarado) e a sugestão de estrutura, que
+ * usa isto para dar destino a uma peça que sobrou do kit.
  */
-const ESPINHA_ABERTURA: SectionRole[] = ['nav', 'hero', 'logos', 'features'];
-const ESPINHA_FECHAMENTO: SectionRole[] = ['contact', 'footer'];
-
-/** O primeiro papel cujo vocabulário aceita esta categoria de componente. */
-const papelParaCategoria = (categoria: string): SectionRole | undefined =>
+export const papelParaCategoria = (categoria: string): SectionRole | undefined =>
   (Object.keys(ROLE_CATEGORIES) as SectionRole[]).find((papel) =>
     ROLE_CATEGORIES[papel].includes(categoria),
   );
-
-/**
- * Propõe a estrutura inicial a partir do kit.
- *
- * Duas passadas. Primeiro a espinha: cada papel comum vira uma seção e recebe a
- * primeira peça compatível ainda não usada — espalhar o kit pela página rende
- * mais que empilhar tudo numa seção só. Depois o resto do kit: peça que sobrou
- * puxa a seção do papel dela; se essa seção já existe, a peça entra NELA, o que
- * é justamente o caso que o modelo novo passou a permitir.
- *
- * Determinística: mesmo kit, mesma proposta. O `novoId` é injetável para o teste
- * não depender de ulid.
- */
-export const sugerirSecoes = (
-  componentes: readonly ComponenteDoKitResumo[],
-  novoId: () => string = newSectionId,
-): SecaoDoSite[] => {
-  const usados = new Set<string>();
-  const secaoDe = (papel: SectionRole): SecaoDoSite => {
-    const cats = ROLE_CATEGORIES[papel];
-    const peca = componentes.find((c) => cats.includes(c.category) && !usados.has(c.id));
-    if (peca !== undefined) usados.add(peca.id);
-    return {
-      id: novoId(),
-      nome: ROTULO_DE_PAPEL[papel],
-      papel,
-      componentIds: peca !== undefined ? [peca.id] : [],
-    };
-  };
-
-  // As duas pontas da espinha são materializadas ANTES das sobras. Se o
-  // fechamento viesse depois, um componente de formulário criaria uma seção
-  // "Contato" no laço de sobras e o fechamento criaria outra, vazia, logo
-  // abaixo — duas seções com o mesmo papel, uma delas sem motivo.
-  const abertura = ESPINHA_ABERTURA.map(secaoDe);
-  const fechamento = ESPINHA_FECHAMENTO.map(secaoDe);
-  const extras: SecaoDoSite[] = [];
-
-  for (const c of componentes) {
-    if (usados.has(c.id)) continue;
-    usados.add(c.id);
-    const papel = papelParaCategoria(c.category);
-    if (papel === undefined) {
-      // Categoria que nenhum papel reconhece. A peça não some por isso: vira uma
-      // seção com o nome dela, sem papel, para o usuário renomear.
-      extras.push({ id: novoId(), nome: c.name, componentIds: [c.id] });
-      continue;
-    }
-    const jaExiste = [...abertura, ...fechamento, ...extras].find((s) => s.papel === papel);
-    if (jaExiste !== undefined) jaExiste.componentIds.push(c.id);
-    else extras.push({ id: novoId(), nome: ROTULO_DE_PAPEL[papel], papel, componentIds: [c.id] });
-  }
-
-  return [...abertura, ...extras, ...fechamento];
-};
 
 // ── Resolução de uma seção ──────────────────────────────────────────────────
 

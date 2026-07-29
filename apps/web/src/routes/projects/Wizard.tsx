@@ -24,6 +24,7 @@ import { resumoDaVoz } from '@/lib/marca-rotulos';
 import { bloqueantes, validarProjeto } from '@/lib/revisao-core';
 import { toast } from '@/lib/toast';
 import {
+  type ObjetivoDoSite,
   type Produto,
   type SecaoDoSite,
   distribuirTokens,
@@ -70,6 +71,8 @@ export function ProjectWizard({
   const [kitId, setKitId] = useState<string | null>(existing?.kitId ?? null);
   const [branding, setBranding] = useState<WizardBranding>(parsedBranding);
   const [secoes, setSecoes] = useState<SecaoDoSite[]>(parsedLayout.secoes);
+  // O objetivo do site: decide a estrutura SUGERIDA e nada mais.
+  const [objetivo, setObjetivo] = useState<ObjetivoDoSite | null>(parsedLayout.objetivo);
   // Produtos vivem no conteúdo do projeto.
   const [produtos, setProdutos] = useState<Produto[]>(parsedContent.produtos ?? []);
   const [media, setMedia] = useState<MediaItem[]>(parseMedia(existing?.mediaManifestJson));
@@ -160,7 +163,7 @@ export function ProjectWizard({
       // Espalhar o layout lido preserva densidade, movimento e a preferência de
       // design system, que não têm tela: mandar só `secoes` faria o servidor
       // mesclar sobre o default e zerar os três a cada gravação.
-      layout: { ...parsedLayout, secoes },
+      layout: { ...parsedLayout, secoes, objetivo },
     });
     qc.invalidateQueries({ queryKey: ['projects'] });
     return id;
@@ -227,6 +230,16 @@ export function ProjectWizard({
 
   const componentesDoKit = kit.data?.item.components ?? [];
 
+  // Os espaços REAIS de imagem de cada peça. Alimenta a explicação da etapa
+  // Estrutura e a contagem da etapa Mídia: as duas precisam dizer o MESMO
+  // número, e duas buscas separadas acabariam discordando.
+  const contratos = useQuery({
+    queryKey: ['kit-contratos', kitId],
+    queryFn: () => api.getKitContratos(kitId as string),
+    enabled: kitId !== null,
+  });
+  const espacosDasPecas = contratos.data?.items ?? [];
+
   // Semente: a etapa Estrutura nunca abre em branco.
   //
   // Roda ao ENTRAR na etapa, não na montagem do wizard, e uma vez por kit. Se
@@ -239,8 +252,9 @@ export function ProjectWizard({
     if (semeado.current === kitId) return;
     if (kit.data === undefined) return;
     semeado.current = kitId;
-    if (secoes.length === 0) setSecoes(sugerirSecoes(kit.data.item.components));
-  }, [step, kitId, kit.data, secoes.length]);
+    if (secoes.length === 0)
+      setSecoes(sugerirSecoes(kit.data.item.components, undefined, objetivo));
+  }, [step, kitId, kit.data, secoes.length, objetivo]);
 
   const dadosDasEtapas: DadosDasEtapas = {
     nome: name,
@@ -292,13 +306,21 @@ export function ProjectWizard({
               kitId={kitId}
               onKit={setKitId}
               kits={kits.data?.items ?? []}
+              objetivo={objetivo}
+              onObjetivo={setObjetivo}
             />
           )}
           {step === ETAPA.marca && (
             <StepMarca branding={branding} setB={setB} projectId={projectId} />
           )}
           {step === ETAPA.estrutura && (
-            <StepEstrutura secoes={secoes} onSecoes={setSecoes} components={componentesDoKit} />
+            <StepEstrutura
+              secoes={secoes}
+              onSecoes={setSecoes}
+              components={componentesDoKit}
+              objetivo={objetivo}
+              espacos={espacosDasPecas}
+            />
           )}
           {step === ETAPA.midia && (
             <StepMidia
@@ -310,6 +332,7 @@ export function ProjectWizard({
               onMedia={setMedia}
               produtos={produtos}
               onProdutos={setProdutos}
+              objetivo={objetivo}
             />
           )}
           {step === ETAPA.revisao && (

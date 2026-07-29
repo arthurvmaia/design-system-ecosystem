@@ -1,14 +1,18 @@
 import { Select } from '@/components/seletores';
 import type { KitComponentRef } from '@/lib/api';
 import {
+  type EspacosDaPeca,
+  type ObjetivoDoSite,
   ROLE_CATEGORIES,
   ROTULO_DE_PAPEL,
   type SecaoDoSite,
   SectionRole,
   adicionarSecao,
+  explicarPapel,
   moverSecao,
   removerSecao,
   resolverSecoes,
+  sugerirMidiaDaSecao,
   sugerirSecoes,
 } from '@ds/shared/schemas';
 import { ChevronDown, ChevronUp, Plus, RotateCcw, Trash2, X } from 'lucide-react';
@@ -36,10 +40,16 @@ export function StepEstrutura({
   secoes,
   onSecoes,
   components,
+  objetivo,
+  espacos,
 }: {
   secoes: SecaoDoSite[];
   onSecoes: (s: SecaoDoSite[]) => void;
   components: KitComponentRef[];
+  /** Decide qual sequência de marketing explica cada seção. */
+  objetivo: ObjetivoDoSite | null;
+  /** Os espaços REAIS de imagem de cada peça, do contrato do kit. */
+  espacos: readonly EspacosDaPeca[];
 }) {
   const [aberta, setAberta] = useState<string | null>(null);
 
@@ -208,6 +218,42 @@ export function StepEstrutura({
                   className="space-y-3.5 border-t px-3.5 py-3.5"
                   style={{ borderColor: 'var(--color-border)' }}
                 >
+                  {/* O que esta seção faz na página, e o que ela pede de imagem.
+                      Antes a tela dizia só o nome do papel — "Prova social" —
+                      e a pessoa que não conhece o vocabulário ficava sem saber
+                      o que pôr ali. E a etapa de Mídia pedia um número sem
+                      dizer para quê, o que só dava para responder chutando. */}
+                  {(() => {
+                    const etapa =
+                      s.papel === undefined ? undefined : explicarPapel(s.papel, objetivo);
+                    const midia = sugerirMidiaDaSecao(s, espacos, objetivo);
+                    if (etapa === undefined && midia.fonte === 'nenhuma') return null;
+                    return (
+                      <div
+                        className="rounded-lg border px-3 py-2.5 text-[12px] leading-relaxed"
+                        style={{
+                          borderColor: 'var(--color-border)',
+                          color: 'var(--color-fg-muted)',
+                        }}
+                      >
+                        {etapa !== undefined && (
+                          <div>
+                            <span style={{ color: 'var(--color-fg)' }}>Esta seção </span>
+                            {etapa.faz}.
+                          </div>
+                        )}
+                        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
+                          <span className="ds-data" style={{ color: 'var(--color-ion-3)' }}>
+                            {midia.quantas === 0
+                              ? 'sem imagem'
+                              : `${midia.quantas} ${midia.quantas === 1 ? 'imagem' : 'imagens'}`}
+                          </span>
+                          <span style={{ color: 'var(--color-fg-subtle)' }}>{midia.porque}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <label className="block">
                     <span
                       className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]"
@@ -379,12 +425,12 @@ export function StepEstrutura({
         </button>
         <button
           type="button"
-          onClick={() => onSecoes(sugerirSecoes(components))}
+          onClick={() => onSecoes(sugerirSecoes(components, undefined, objetivo))}
           className="flex items-center gap-1.5 text-[12px] underline"
           style={{ color: 'var(--color-fg-muted)' }}
         >
           <RotateCcw size={11} />
-          Voltar para a sugestão do kit
+          Voltar para a sugestão do app
         </button>
       </div>
 

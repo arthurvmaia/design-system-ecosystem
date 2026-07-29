@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { sugerirSecoes } from './estrutura-marketing.js';
 import {
   type ComponenteDoKitResumo,
   ROTULO_DE_PAPEL,
@@ -11,7 +12,6 @@ import {
   removerSecao,
   resolverSecoes,
   slugDaSecao,
-  sugerirSecoes,
 } from './layout.js';
 import { espelharBriefsDasSecoes } from './project.js';
 
@@ -45,11 +45,15 @@ test('todo papel tem rótulo em português', () => {
   }
 });
 
-test('kit vazio ainda propõe a espinha, toda criada no estilo', () => {
+test('kit vazio ainda propõe a página inteira, toda criada no estilo', () => {
+  // A sequência mudou quando ela passou a nascer do objetivo do site: era uma
+  // espinha técnica (nav, hero, logos, features…), virou uma ordem de
+  // argumentação (promessa → problema → como funciona → prova → objeção →
+  // pedido). Ver `estrutura-marketing.ts`.
   const secoes = sugerirSecoes([], contador());
   assert.deepEqual(
     secoes.map((s) => s.papel),
-    ['nav', 'hero', 'logos', 'features', 'contact', 'footer'],
+    ['nav', 'hero', 'features', 'showcase', 'logos', 'faq', 'contact', 'footer'],
   );
   assert.ok(
     secoes.every((s) => s.componentIds.length === 0),
@@ -74,16 +78,36 @@ test('cada peça cai na seção do papel dela', () => {
 test('a segunda peça da mesma categoria entra NA MESMA seção', () => {
   // É o caso que o modelo anterior não sabia expressar: um papel aceitava uma
   // peça só, e a segunda era simplesmente descartada da sugestão.
+  //
+  // O teste usa `testimonial` porque só um papel a aceita. Com `card` o
+  // resultado seria outro e igualmente correto: a sequência tem várias seções
+  // que aceitam card (funcionalidades, demonstração, galeria), então duas peças
+  // de card se ESPALHAM em vez de empilhar — o que rende mais página.
+  const secoes = sugerirSecoes(
+    [cmp('cmp_a', 'Depoimento', 'testimonial'), cmp('cmp_b', 'Outro depoimento', 'testimonial')],
+    contador(),
+  );
+  const depoimentos = secoes.find((s) => s.papel === 'testimonials');
+  assert.deepEqual(depoimentos?.componentIds, ['cmp_a', 'cmp_b']);
+  assert.equal(
+    secoes.filter((s) => s.papel === 'testimonials').length,
+    1,
+    'duas peças iguais não podem virar duas seções repetidas',
+  );
+});
+
+test('duas peças de card se espalham pela página em vez de empilhar numa seção', () => {
+  // O outro lado da mesma regra, e é o comportamento que se quer: espalhar o
+  // kit rende mais página que empilhar tudo num lugar só.
   const secoes = sugerirSecoes(
     [cmp('cmp_a', 'Cards', 'card'), cmp('cmp_b', 'Mais cards', 'card')],
     contador(),
   );
-  const features = secoes.find((s) => s.papel === 'features');
-  assert.deepEqual(features?.componentIds, ['cmp_a', 'cmp_b']);
-  assert.equal(
-    secoes.filter((s) => s.papel === 'features').length,
-    1,
-    'duas peças iguais não podem virar duas seções repetidas',
+  const comPeca = secoes.filter((s) => s.componentIds.length > 0);
+  assert.equal(comPeca.length, 2);
+  assert.deepEqual(
+    comPeca.flatMap((s) => s.componentIds),
+    ['cmp_a', 'cmp_b'],
   );
 });
 
