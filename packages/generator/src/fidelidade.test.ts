@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import type { LinhaDeBase } from './fidelidade.js';
 import {
+  comparar,
   contarInstrumentacao,
   contarRegras,
   contarSeletoresMortos,
@@ -119,4 +121,54 @@ test('o resumo separa quem tem defeito de quem não tem', () => {
   assert.equal(r.resumo.comSeletorMorto, 1);
   assert.equal(r.resumo.comIconeVazio, 1);
   assert.equal(r.resumo.comInstrumentacao, 0);
+});
+
+test('o defeito é comparado em PROPORÇÃO: acervo maior não vira falso alarme', () => {
+  // Numa medição real, "bundles com seletor morto" subiu de 95 para 122 e
+  // parecia piora — o acervo tinha ido de 285 para 338. Contar cabeças mente
+  // quando o denominador muda, e um medidor que dá o susto errado faz perder
+  // tempo investigando uma piora que não existe.
+  const linha = (n: number, total: number): LinhaDeBase => ({
+    gravadoEm: 0,
+    bundles: [],
+    resumo: {
+      total,
+      retencaoMedia: 80,
+      retencaoMinima: 80,
+      retencaoMaxima: 80,
+      comSeletorMorto: n,
+      comInstrumentacao: 0,
+      comScriptAusente: 0,
+      comIconeVazio: 0,
+    },
+  });
+  // 50 de 100 (50%) para 60 de 200 (30%): mais cabeças, menos proporção.
+  const r = comparar(linha(50, 100), linha(60, 200));
+  const morto = r.find((x) => x.linha.startsWith('Bundles com seletor morto'));
+  assert.ok(morto !== undefined);
+  assert.equal(morto.melhorou, true, 'a fração caiu: isso é melhora');
+  assert.ok(morto.linha.includes('50%'));
+  assert.ok(morto.linha.includes('30%'));
+  assert.ok(morto.linha.includes('60 de 200'), 'a quantidade continua à vista, entre parênteses');
+});
+
+test('proporção que sobe continua sendo piora, mesmo com menos cabeças', () => {
+  const linha = (n: number, total: number): LinhaDeBase => ({
+    gravadoEm: 0,
+    bundles: [],
+    resumo: {
+      total,
+      retencaoMedia: null,
+      retencaoMinima: null,
+      retencaoMaxima: null,
+      comSeletorMorto: 0,
+      comInstrumentacao: 0,
+      comScriptAusente: 0,
+      comIconeVazio: n,
+    },
+  });
+  // 20 de 200 (10%) para 15 de 50 (30%).
+  const r = comparar(linha(20, 200), linha(15, 50));
+  const icone = r.find((x) => x.linha.startsWith('Bundles com ícone vazio'));
+  assert.equal(icone?.melhorou, false);
 });

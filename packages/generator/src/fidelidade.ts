@@ -346,7 +346,21 @@ export const bundlesEm = (raiz: string): string[] => {
   }
 };
 
-/** A comparação entre duas rodadas — é o que vai no corpo do commit. */
+/**
+ * A comparação entre duas rodadas — é o que vai no corpo do commit.
+ *
+ * Os defeitos são comparados em PROPORÇÃO, não em quantidade. Contar cabeças
+ * mente quando o acervo cresce: numa medição real, "bundles com seletor morto"
+ * subiu de 95 para 122 e parecia piora — o acervo tinha ido de 285 para 338
+ * bundles, e a fração havia caído de 33% para 36%… que também subiu, mas por
+ * três pontos, não por vinte e sete cabeças.
+ *
+ * Um medidor que produz o susto errado é pior que nenhum: ele faz perder tempo
+ * investigando uma piora que não existe, ou aceitar uma que existe.
+ *
+ * A quantidade continua aparecendo entre parênteses — ela é o que se conta na
+ * hora de ir consertar.
+ */
 export const comparar = (
   antes: LinhaDeBase,
   depois: LinhaDeBase,
@@ -357,8 +371,17 @@ export const comparar = (
     linha: `CSS retido (média): ${pct(antes.resumo.retencaoMedia)} → ${pct(depois.resumo.retencaoMedia)}`,
     melhorou: (depois.resumo.retencaoMedia ?? 0) > (antes.resumo.retencaoMedia ?? 0),
   });
+
+  const fracao = (n: number, total: number): number =>
+    total === 0 ? 0 : Math.round((n / total) * 1000) / 10;
+
   const par = (rotulo: string, a: number, d: number): void => {
-    linhas.push({ linha: `${rotulo}: ${a} → ${d}`, melhorou: d < a });
+    const fa = fracao(a, antes.resumo.total);
+    const fd = fracao(d, depois.resumo.total);
+    linhas.push({
+      linha: `${rotulo}: ${fa}% → ${fd}%  (${a} de ${antes.resumo.total} → ${d} de ${depois.resumo.total})`,
+      melhorou: fd < fa,
+    });
   };
   par('Bundles com seletor morto', antes.resumo.comSeletorMorto, depois.resumo.comSeletorMorto);
   par(

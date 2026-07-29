@@ -553,6 +553,21 @@ export const camadasQuePassamAtras = (opts: {
   return saida;
 };
 
+/**
+ * As limitações de um segmento, sem repetição e com teto.
+ *
+ * Elas vêm de várias fontes — a decisão de representação, cada fundo, cada
+ * mídia, cada runtime, cada comportamento observado — e várias delas dizem a
+ * MESMA frase quando o item tem mais de um alvo. Um parallax com dois alvos
+ * mostrava duas vezes "Parallax aproximado por keyframes de translateY
+ * vinculados ao progresso", uma embaixo da outra, na ficha que a pessoa lê.
+ *
+ * Repetir não acrescenta informação e tira credibilidade do resto da lista:
+ * quem vê a mesma frase duas vezes passa a ler as outras com menos atenção.
+ */
+export const limitacoesDe = (fontes: readonly string[]): string[] =>
+  [...new Set(fontes.map((l) => l.trim()).filter((l) => l.length > 0))].slice(0, 12);
+
 /** Conta sinais de conteúdo a partir do HTML do segmento. Barato e suficiente. */
 export const contarSinais = (html: string): SinaisDeConteudo => {
   const semTags = html
@@ -980,7 +995,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       support: seloDe(fidelity, representacao),
       interactions,
       camadasDeFundo,
-      limitations: [
+      limitations: limitacoesDe([
         ...representacao.limitations,
         ...backgrounds.flatMap((b) => b.limitations),
         ...midias.flatMap((m) => m.limitations),
@@ -988,7 +1003,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
         ...(nomeEhGenerico(nome)
           ? ['O nome saiu genérico: a seção não apresentou evidência suficiente.']
           : []),
-      ].slice(0, 12),
+      ]),
       framePath: entrada.framePorHash.get(secao.hash),
       filhos,
     });
@@ -1120,7 +1135,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       fidelity,
       support: seloDe(fidelity, representacao),
       interactions: [],
-      limitations: [
+      limitations: limitacoesDe([
         'Esta camada atravessa a página inteira: no site de origem ela fica por trás de todas as seções.',
         ...representacao.limitations,
         // Sem quadro gravado, uma camada de runtime não tem o que mostrar: o
@@ -1133,7 +1148,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
           : []),
         ...fundosDoFundo.flatMap((b) => b.limitations),
         ...midiasDoFundo.flatMap((m) => m.limitations),
-      ].slice(0, 12),
+      ]),
       framePath: frameDoFundo,
       filhos: [],
     });
@@ -1221,11 +1236,11 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       fidelity,
       support: seloDe(fidelity, representacao),
       interactions: ['scroll'],
-      limitations: [
+      limitations: limitacoesDe([
         comp.explicacao,
         'Aqui o comportamento é o componente: os elementos servem de amostra para você ver o movimento. Use o botão de rolar para reproduzir.',
         ...scrollDoComp.flatMap((s) => s.limitations),
-      ].slice(0, 12),
+      ]),
       filhos: [],
     });
     posicao++;

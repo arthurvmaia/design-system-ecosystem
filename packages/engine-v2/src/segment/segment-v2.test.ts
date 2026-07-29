@@ -17,6 +17,7 @@ import {
   contarSinais,
   escolherSecoes,
   inferirCategoria,
+  limitacoesDe,
   segmentarPorEvidencia,
   validarSegmentoV2,
 } from './segment-v2.js';
@@ -920,4 +921,31 @@ test('a falha declarada pelo motor conta como pendente, não some da conta', () 
 test('ícone que já tinha SVG na luz não é pendente', () => {
   const html = '<iconify-icon icon="x"><svg viewBox="0 0 24 24"></svg></iconify-icon>';
   assert.equal(contarIcones(html).pendentes, 0);
+});
+
+// ── A ficha não repete a mesma frase ─────────────────────────────────────────
+
+test('a mesma frase, vinda de dois alvos, aparece UMA vez', () => {
+  // Um parallax com dois alvos exibia "Parallax aproximado por keyframes de
+  // translateY vinculados ao progresso" duas vezes, uma embaixo da outra, na
+  // ficha que a pessoa lê. Repetir não acrescenta e tira credibilidade do
+  // resto da lista: quem vê a mesma frase duas vezes lê as outras com menos
+  // atenção.
+  const frase = 'Parallax aproximado por keyframes de translateY vinculados ao progresso.';
+  assert.deepEqual(limitacoesDe([frase, frase]), [frase]);
+});
+
+test('a ordem da primeira aparição é preservada', () => {
+  // A ordem carrega significado: a limitação da representação vem antes das de
+  // mídia porque ela é a que decide o resto.
+  assert.deepEqual(limitacoesDe(['a', 'b', 'a', 'c']), ['a', 'b', 'c']);
+});
+
+test('frase vazia ou só espaço não vira item da lista', () => {
+  assert.deepEqual(limitacoesDe(['', '   ', 'real']), ['real']);
+});
+
+test('o teto de 12 continua valendo: uma ficha não é um relatório', () => {
+  const muitas = Array.from({ length: 30 }, (_, i) => `limitação ${i}`);
+  assert.equal(limitacoesDe(muitas).length, 12);
 });
