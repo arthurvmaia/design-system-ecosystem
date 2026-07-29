@@ -154,9 +154,61 @@ const FRACAO_DA_FASE: Record<string, number> = {
   [FASE_V2.comparar]: 0.06,
 };
 
-const tetoDaFase = (nome: string, totalMs: number): number | undefined => {
+/**
+ * A ordem em que as fases com teto correm. Serve para saber, de uma fase, o que
+ * ainda está PROMETIDO às que vêm depois dela.
+ */
+const ORDEM_DAS_FASES: string[] = [
+  FASE_V2.percurso,
+  FASE_V2.candidatos,
+  FASE_V2.estados,
+  FASE_V2.segmentar,
+  FASE_V2.compilar,
+  FASE_V2.comparar,
+];
+
+/**
+ * Teto de uma fase: a fração dela, ou o que estiver de fato LIVRE — o que for
+ * maior.
+ *
+ * A fração sozinha produzia fome com comida na mesa. Medido nesta página: com
+ * 600s de orçamento, o percurso morreu no teto de 204s (34% de 600) enquanto a
+ * captura inteira usou 320s — **280 segundos sobraram sem dono** enquanto a
+ * única fase que precisava deles era cortada. Aumentar o total não resolvia,
+ * porque a fração subia junto e o desperdício subia junto também.
+ *
+ * A fração continua sendo o piso: ela é o que impede uma fase de comer o
+ * orçamento das outras. O que muda é que ela deixou de ser o TETO quando há
+ * tempo livre — e "livre" tem definição exata: o que resta menos o que ainda
+ * está prometido às fases seguintes. Nenhuma delas fica sem o quinhão dela.
+ */
+export const tetoDaFase = (
+  nome: string,
+  totalMs: number,
+  restanteMs?: number,
+): number | undefined => {
   const fracao = FRACAO_DA_FASE[nome];
-  return fracao === undefined ? undefined : Math.round(totalMs * fracao);
+  if (fracao === undefined) return undefined;
+  const daFracao = Math.round(totalMs * fracao);
+  if (restanteMs === undefined) return daFracao;
+
+  const i = ORDEM_DAS_FASES.indexOf(nome);
+  const prometidoAdiante =
+    i === -1 ? 0 : ORDEM_DAS_FASES.slice(i + 1).reduce((n, f) => n + (FRACAO_DA_FASE[f] ?? 0), 0);
+
+  // A margem que as frações deixam de propósito (elas somam menos que 1) é de
+  // carregar, estabilizar, drenar e fechar — e do GRÃO do corte: uma fase só é
+  // interrompida ENTRE passos, e um passo do percurso custa dezenas de
+  // segundos. Sem reservá-la, a captura passava do orçamento em vez de caber
+  // nele, e o teste da resposta pendurada pegou isso: 151s num teto de 150s.
+  //
+  // A reserva tem teto absoluto porque essas fases custam tempo quase
+  // constante: exigir 18% de um orçamento de dez minutos guardaria quase dois
+  // minutos para algo que leva dez segundos, e a redistribuição não faria nada
+  // justamente onde ela mais serve.
+  const margem = Math.min(totalMs * 0.18, 45_000);
+  const livre = Math.round(restanteMs - totalMs * prometidoAdiante - margem);
+  return Math.max(daFracao, livre);
 };
 
 export type LogV2 = (evento: string, dados?: Record<string, unknown>) => void;
@@ -339,7 +391,8 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
      * porque a temporal é barata e é o que responde "isto se move".
      */
     const paradasPrevistas = opts.maxParadas ?? 10;
-    const tetoPercurso = tetoDaFase(FASE_V2.percurso, limits.orcamentoTotalMs) ?? 60_000;
+    const tetoPercurso =
+      tetoDaFase(FASE_V2.percurso, limits.orcamentoTotalMs, tel.restanteTotal()) ?? 60_000;
     const cotaPorParada = Math.max(3_000, Math.floor(tetoPercurso / (paradasPrevistas + 1)));
 
     const passes: ScrollViewportPass[] = await tel.faseCooperativa(
@@ -439,7 +492,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             };
           },
         }),
-      tetoDaFase(FASE_V2.percurso, limits.orcamentoTotalMs),
+      tetoDaFase(FASE_V2.percurso, limits.orcamentoTotalMs, tel.restanteTotal()),
     );
 
     log('percurso', {
@@ -834,7 +887,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         }));
         return descobrirCandidatos(sinais, finalUrl, 120);
       },
-      tetoDaFase(FASE_V2.candidatos, limits.orcamentoTotalMs),
+      tetoDaFase(FASE_V2.candidatos, limits.orcamentoTotalMs, tel.restanteTotal()),
     );
     tel.inc('candidatos', candidatos.length);
     log('candidatos', { total: candidatos.length });
@@ -867,7 +920,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
                   }
                 },
               }),
-            tetoDaFase(FASE_V2.estados, limits.orcamentoTotalMs),
+            tetoDaFase(FASE_V2.estados, limits.orcamentoTotalMs, tel.restanteTotal()),
           );
     if (grafo !== null) {
       tel.inc('estados', grafo.grafo.nodes.length - 1);
@@ -1037,7 +1090,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           viewport,
           pageHeight: coletaFinal.pageHeight,
         }),
-      tetoDaFase(FASE_V2.segmentar, limits.orcamentoTotalMs),
+      tetoDaFase(FASE_V2.segmentar, limits.orcamentoTotalMs, tel.restanteTotal()),
     );
     tel.inc('segmentos', segmentos.length);
     log('segmentos', { total: segmentos.length, rejeitados: rejeitados.length });
@@ -1123,7 +1176,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             });
           }
         },
-        tetoDaFase(FASE_V2.compilar, limits.orcamentoTotalMs),
+        tetoDaFase(FASE_V2.compilar, limits.orcamentoTotalMs, tel.restanteTotal()),
       );
 
       // ── O bundle PARECE com o original? ─────────────────────────────────
@@ -1160,6 +1213,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       // número que não significa nada, e cobra caro por ele.
       const PISO_PARA_COMPARAR_MS = 3_000;
       const querVerificar = opts.verificarVisual !== false;
+      // A comparação é a ÚNICA fase que não recebe o tempo restante: ela fica
+      // na fração e ponto. As outras podem crescer com o que sobrou porque
+      // produzem o resultado; esta confere o resultado, e uma conferência que
+      // se expande para ocupar a sobra é conferência que virou fim em si.
       const tetoComparar = tetoDaFase(FASE_V2.comparar, limits.orcamentoTotalMs) ?? 0;
       if (!querVerificar) {
         // Silêncio aqui é correto: quem desligou sabe que desligou.

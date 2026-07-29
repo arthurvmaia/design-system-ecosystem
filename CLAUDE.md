@@ -46,6 +46,16 @@ O `pnpm extrair` abre a URL num navegador de verdade (Playwright), espera o cont
 
 **Não use WebFetch nem siga os 6 STEPs do `prompt.ts` à mão.** Aquele processo (reescrever/traduzir o HTML via LLM) só enxergava o HTML servido e perdia justamente os sites pesados. O `prompt.ts` continua existindo para o modo `api`, mas no modo `queue` a captura fiel vem do navegador, não de reconstrução manual.
 
+**Captura parcial não é defeito.** O orçamento padrão é 180 s (`DS_EXPLORER_ORCAMENTO_TOTAL_MS`), e num site pesado a fase de percurso — que rola a página e varre o ponteiro em cada parada — não termina nesse tempo. O que sai é bom: todos os segmentos com bundle, CSS completo, ícones desenhados. O que falta são comportamentos das dobras de baixo, e a Galeria diz isso por extenso.
+
+Medido numa página pesada: o percurso pediu **mais de 308 s** e ainda foi cortado; a captura inteira levou 420 s. Se você quiser essa página completa, suba o orçamento:
+
+```powershell
+$env:DS_EXPLORER_ORCAMENTO_TOTAL_MS = "900000"; pnpm extrair <job_id>
+```
+
+Não vale subir por padrão: a maioria dos sites termina bem dentro dos 180 s, e o custo cairia sobre todos eles.
+
 **Sem Playwright instalado**, o `pnpm extrair` cai para fetch estático e avisa — sites protegidos/SPA podem vir incompletos. Para a captura completa, instale uma vez:
 
 ```powershell

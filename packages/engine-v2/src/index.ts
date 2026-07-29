@@ -247,6 +247,7 @@ export {
   type OpcoesCaptura,
   type ResultadoCaptura,
   FASE_V2,
+  tetoDaFase,
   capturarComV2,
 } from './engine.js';
 
