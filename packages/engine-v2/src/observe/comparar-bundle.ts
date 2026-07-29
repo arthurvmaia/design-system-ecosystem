@@ -53,6 +53,14 @@ export const naturezaDoSegmento = (
 export type PaginaParaComparar = {
   goto: (url: string) => Promise<void>;
   esperar: (ms: number) => Promise<void>;
+  /**
+   * Espera as fontes assentarem, com teto.
+   *
+   * Uma pausa fixa era o custo dominante por item — e quase sempre maior que o
+   * necessario. Sem esperar, porem, o bundle e fotografado com a fonte de
+   * reserva e a diferenca medida vira a da fonte, nao a do bundle.
+   */
+  esperarFontes: (tetoMs: number) => Promise<void>;
   evaluate: <T>(expressao: string) => Promise<T>;
   screenshot: (opts?: {
     clip?: { x: number; y: number; w: number; h: number };
@@ -120,6 +128,15 @@ export type MotivoDePular =
   | 'print-ilegivel'
   | 'sem-regiao'
   | 'tamanho-diferente'
+  /**
+   * O orçamento acabou antes de a lista terminar.
+   *
+   * Era o único caminho de saída que não contava nada — um `break` calado. E
+   * era justamente o mais frequente: medido, ele explicava 3 dos 7 itens que
+   * "sumiam" entre a lista e o resultado. Corte por tempo é uma limitação como
+   * qualquer outra e precisa aparecer.
+   */
+  | 'orcamento'
   | 'erro';
 
 export type ResultadoComparacao = {
@@ -141,11 +158,17 @@ export const compararBundlesComOriginal = async (opts: {
     'print-ilegivel': 0,
     'sem-regiao': 0,
     'tamanho-diferente': 0,
+    orcamento: 0,
     erro: 0,
   };
 
-  for (const e of opts.entradas) {
-    if (opts.cancelado?.() === true) break;
+  for (let i = 0; i < opts.entradas.length; i++) {
+    const e = opts.entradas[i];
+    if (e === undefined) continue;
+    if (opts.cancelado?.() === true) {
+      pulados.orcamento += opts.entradas.length - i;
+      break;
+    }
 
     const indexPath = join(e.dirBundle, 'index.html');
     const framePath = join(opts.dirCaptura, e.framePath);
@@ -172,7 +195,7 @@ export const compararBundlesComOriginal = async (opts: {
       // Fonte web e imagem preguiçosa precisam de um instante. Sem isto o
       // bundle é fotografado com a fonte de fallback e a diferença medida é a
       // da fonte, não a do bundle.
-      await opts.pagina.esperar(900);
+      await opts.pagina.esperarFontes(900);
 
       const origem = await opts.pagina.evaluate<{
         x: number;

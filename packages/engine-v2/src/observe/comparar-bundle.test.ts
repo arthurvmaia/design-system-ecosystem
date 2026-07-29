@@ -126,6 +126,7 @@ const paginaFalsa = (opts: {
     if (opts.erra === true) throw new Error('não abriu');
   },
   esperar: async () => {},
+  esperarFontes: async () => {},
   evaluate: async <T>() =>
     (opts.origem === undefined ? { x: 0, y: 0, w: 10, h: 10 } : opts.origem) as T,
   screenshot: async () => opts.imagem ?? pngSolido(20, 20, 0, 0, 0),
@@ -267,6 +268,7 @@ test('o resumo conta o que foi olhado E o que ficou de fora', async () => {
       'print-ilegivel': 0,
       'sem-regiao': 0,
       'tamanho-diferente': 1,
+      orcamento: 0,
       erro: 0,
     },
   });
@@ -275,4 +277,22 @@ test('o resumo conta o que foi olhado E o que ficou de fora', async () => {
   assert.equal(r.piorDelta, 0.4);
   assert.equal(r.pulados, 3, 'cobertura parcial precisa aparecer no resumo');
   assert.ok(r.porMotivo.includes('sem-arquivo:2'));
+});
+
+test('o corte por orçamento CONTA quantos ficaram para trás, em vez de sumir', async () => {
+  // Era um `break` calado, e era o motivo mais frequente: medido numa página
+  // real, explicava 3 dos 7 itens que "sumiam" entre a lista e o resultado.
+  const img = pngSolido(20, 20, 0, 0, 0);
+  const { dir, dirCaptura } = montarEntrada(img);
+  const entrada = { segmento: seg(), dirBundle: dir, framePath: 'frame.png' };
+  let chamadas = 0;
+  const r = await compararBundlesComOriginal({
+    pagina: paginaFalsa({ imagem: img }),
+    entradas: [entrada, entrada, entrada, entrada],
+    dirCaptura,
+    // Deixa o primeiro passar e corta do segundo em diante.
+    cancelado: () => ++chamadas > 1,
+  });
+  assert.equal(r.comparacoes.length, 1);
+  assert.equal(r.pulados.orcamento, 3, 'os três que não rodaram precisam aparecer');
 });

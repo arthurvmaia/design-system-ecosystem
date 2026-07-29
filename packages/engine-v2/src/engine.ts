@@ -695,7 +695,15 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       const node = porRef.get(n.ref);
       return node !== undefined && PAPEIS_COM_HTML.has(node.role);
     });
-    for (const n of secoesParaPrint.slice(0, 24)) {
+    // Por que uma dobra ficou sem print. A comparação de pixel expôs o buraco:
+    // ela conseguiu conferir 3 de 12 segmentos, e a causa não era dela — era a
+    // falta de print, aqui em cima. Sem estes contadores, o motivo continuaria
+    // invisível, porque cada caminho de saída era um `continue` calado.
+    const semPrint = { semCentro: 0, erro: 0, foraDoTeto: 0 };
+    const TETO_DE_PRINTS = 40;
+    semPrint.foraDoTeto = Math.max(0, secoesParaPrint.length - TETO_DE_PRINTS);
+
+    for (const n of secoesParaPrint.slice(0, TETO_DE_PRINTS)) {
       const node = porRef.get(n.ref);
       if (node === undefined) continue;
       try {
@@ -708,7 +716,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         const rolou = await page.evaluate<boolean>(chamar(ROLAR_ATE_REF_FN, n.ref));
         if (rolou) await page.esperar(400);
         const centro = await page.evaluate<{ box: BoxPx } | null>(chamar(CENTRO_DO_REF_FN, n.ref));
-        if (centro === null) continue;
+        if (centro === null) {
+          semPrint.semCentro++;
+          continue;
+        }
         const clip: BoxPx = {
           x: Math.max(0, Math.min(vp.width - 2, centro.box.x)),
           y: Math.max(0, Math.min(vp.height - 2, centro.box.y)),
@@ -724,8 +735,14 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       } catch {
         // seção removida do DOM: fica sem frame e será reprovada com o motivo —
         // que é melhor que entregar um card vazio.
+        semPrint.erro++;
       }
     }
+    log('prints-de-secao', {
+      candidatas: secoesParaPrint.length,
+      gravados: framePorHash.size,
+      ...semPrint,
+    });
     // Devolve o scroll ao topo: as fases seguintes (candidatos, estados) medem
     // a página a partir do estado inicial.
     try {
@@ -1081,6 +1098,22 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
                   await aba.goto(u, { waitUntil: 'load', timeout: 8_000 });
                 },
                 esperar: (ms) => aba.waitForTimeout(ms),
+                esperarFontes: async (teto) => {
+                  // Corrida entre 'as fontes assentaram' e o teto. A pausa fixa
+                  // que havia aqui era o custo dominante por item, e o
+                  // orcamento da fase acabava antes da lista — 3 de 7 itens
+                  // ficavam de fora por tempo, caladamente.
+                  await aba.evaluate(
+                    `(() => new Promise(function (r) {
+                      var t = setTimeout(r, ${teto});
+                      try {
+                        if (document.fonts && document.fonts.ready) {
+                          document.fonts.ready.then(function () { clearTimeout(t); setTimeout(r, 60); });
+                        }
+                      } catch (e) {}
+                    }))()`,
+                  );
+                },
                 evaluate: <T>(expr: string) => aba.evaluate(expr) as Promise<T>,
                 screenshot: (o) =>
                   aba.screenshot({
