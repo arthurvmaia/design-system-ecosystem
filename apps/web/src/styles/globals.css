@@ -734,16 +734,23 @@
    guarda o centro, e um escurecimento uniforme por cima. Sem ele, um quadro
    claro do vídeo apaga o texto — e a informação, que é o que o log tem de
    melhor, viraria enfeite ilegível. */
+/* O véu que deixa o log legível por cima do vídeo.
+   Ele é um compromisso, e o ponto de equilíbrio depende do vídeo: véu demais
+   apaga a cena (e aí não valia a pena ter vídeo), véu de menos e o texto some
+   sobre um quadro claro. Esta calibragem é para uma cena escura, de laboratório
+   — o centro fica quase limpo, e o escurecimento se concentra nas bordas, onde
+   não há nada para ver. O texto tem sombra própria, que é o que garante o
+   contraste em qualquer quadro sem precisar apagar a imagem. */
 .intro-veu {
   position: absolute;
   inset: 0;
   z-index: 2;
   pointer-events: none;
   background: radial-gradient(
-      ellipse 70% 60% at 50% 50%,
-      rgb(0 0 0 / 0.35) 0%,
-      rgb(0 0 0 / 0.86) 100%
-    ), rgb(0 0 0 / 0.45);
+      ellipse 74% 64% at 50% 50%,
+      rgb(0 0 0 / 0.12) 0%,
+      rgb(0 0 0 / 0.78) 100%
+    ), rgb(0 0 0 / 0.22);
 }
 
 /* Grade e halo próprios da intro: mais densos que os do app, porque aqui a tela

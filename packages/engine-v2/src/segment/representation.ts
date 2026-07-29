@@ -58,6 +58,39 @@ const RUNTIMES_DE_PAGINA: ReadonlySet<RuntimeKind> = new Set<RuntimeKind>([
   'framer-motion',
 ]);
 
+/**
+ * Runtimes que **desenham o conteúdo**, não que o animam.
+ *
+ * Esta distinção custou uma medição para aparecer. Numa página do acervo,
+ * `classificarRepresentacao` marcou como `componente-portatil` uma seção com
+ * três cards de ícone. Ela não é portátil: a página tem **zero `<svg>` inline**
+ * e **23 `<iconify-icon>`**, e quem desenha os 23 é um script externo que busca
+ * o traçado numa API. Sem ele, o bundle abre com três caixas vazias.
+ *
+ * O erro não era o bundle sair errado — era o app dizer que estava certo. A
+ * pessoa escolhia a peça acreditando levá-la inteira.
+ *
+ * O mesmo vale para o Tailwind por CDN, que **compila** as classes no
+ * navegador (sem ele, `class="flex gap-4"` não tem CSS por trás), e para o
+ * script que pinta o fundo num canvas.
+ *
+ * Um runtime destes só deixa de pesar quando o motor conseguiu **materializar**
+ * o que ele desenhava: ícone trazido para inline, CSS compilado capturado do
+ * CSSOM. Por isso a evidência traz contadores, e não um booleano.
+ */
+const RUNTIMES_QUE_DESENHAM: ReadonlySet<RuntimeKind> = new Set<RuntimeKind>([
+  'iconify',
+  'tailwind-cdn',
+  'fundo-canvas',
+]);
+
+/** O que cada um desenha, em português, para a limitação dizer algo de útil. */
+const OQUE_DESENHA: Record<string, string> = {
+  iconify: 'os ícones',
+  'tailwind-cdn': 'o CSS das classes utilitárias',
+  'fundo-canvas': 'o fundo da página',
+};
+
 /** Mídia que é apenas um arquivo: se o arquivo estiver local, é portátil. */
 const MIDIA_DE_ARQUIVO: ReadonlySet<MediaKind> = new Set<MediaKind>([
   'video',
@@ -108,6 +141,24 @@ export type EvidenciaRepresentacao = {
   dependeDeJs: boolean;
   /** O bootstrap do runtime foi identificado (dá para reinicializar isolado). */
   bootstrapIdentificado: boolean;
+  /**
+   * Ícones de biblioteca que ficaram como casca — o SVG não pôde ser lido.
+   *
+   * Zero significa que o runtime de ícone já não é necessário: o desenho foi
+   * materializado e viaja no HTML. Maior que zero é o caso em que o item PRECISA
+   * do runtime para não sair com caixas vazias.
+   */
+  iconesNaoDesenhados?: number;
+  /** Ícones cujo SVG foi trazido para o HTML — não dependem mais de nada. */
+  iconesInline?: number;
+  /**
+   * O CSS que o runtime compilava foi capturado do CSSOM?
+   *
+   * O Tailwind por CDN injeta um `<style>` com o resultado, e o coletor lê
+   * `document.styleSheets` DEPOIS de a página rodar — então normalmente sim. Só
+   * quando essa captura falha é que a dependência do CDN é real.
+   */
+  cssCompiladoCapturado?: boolean;
 };
 
 const confiancaDe = (n: number): Confidence =>
@@ -140,11 +191,58 @@ export const classificarRepresentacao = (ev: EvidenciaRepresentacao): Representa
   const rejected: Array<{ type: RepresentationType; why: string }> = [];
   const limitations: string[] = [];
 
-  const runtimesDeCena = ev.runtimes.filter((r) => !RUNTIMES_DE_PAGINA.has(r));
+  const runtimesDeCena = ev.runtimes.filter(
+    (r) => !RUNTIMES_DE_PAGINA.has(r) && !RUNTIMES_QUE_DESENHAM.has(r),
+  );
   const runtimesDePagina = ev.runtimes.filter((r) => RUNTIMES_DE_PAGINA.has(r));
   for (const r of runtimesDePagina) {
     limitations.push(
       `Depende de "${r}", que controla a página inteira: não foi encapsulado (isolar exigiria levar o site todo).`,
+    );
+  }
+
+  // ── Runtimes que desenham: só pesam sobre o que não foi materializado ─────
+  //
+  // A ordem importa. Este teste vem ANTES de tudo porque ele muda a resposta de
+  // "portátil" para "cápsula" — e "portátil" era a resposta errada que o app
+  // vinha dando. Ele NÃO decide sozinho, porém: um item com iconify cujos
+  // ícones foram todos trazidos para inline volta a ser candidato a portátil,
+  // porque o runtime já não faz falta.
+  const desenhamPendentes: RuntimeKind[] = [];
+  for (const r of ev.runtimes) {
+    if (!RUNTIMES_QUE_DESENHAM.has(r)) continue;
+    if (r === 'iconify') {
+      const pendentes = ev.iconesNaoDesenhados ?? 0;
+      if (pendentes === 0) {
+        if ((ev.iconesInline ?? 0) > 0) {
+          reasons.push(
+            `${ev.iconesInline} ícone(s) trazidos para o HTML: a biblioteca de ícones deixou de ser necessária.`,
+          );
+        }
+        continue;
+      }
+      desenhamPendentes.push(r);
+      limitations.push(
+        `${pendentes} ícone(s) não puderam ser lidos e continuam dependendo do runtime "${r}" para aparecer.`,
+      );
+      continue;
+    }
+    if (r === 'tailwind-cdn') {
+      if (ev.cssCompiladoCapturado === true) {
+        reasons.push(
+          'O CSS que o Tailwind por CDN compila foi capturado do CSSOM: o bundle não depende mais do CDN.',
+        );
+        continue;
+      }
+      desenhamPendentes.push(r);
+      limitations.push(
+        'Depende de "tailwind-cdn", que compila as classes utilitárias no navegador, e o CSS resultante não foi capturado: as classes ficam sem estilo.',
+      );
+      continue;
+    }
+    desenhamPendentes.push(r);
+    limitations.push(
+      `Depende de "${r}", que desenha ${OQUE_DESENHA[r] ?? 'parte do conteúdo'}: sem o script, o HTML sai sem isso.`,
     );
   }
 
@@ -256,6 +354,46 @@ export const classificarRepresentacao = (ev: EvidenciaRepresentacao): Representa
       renderMode: modoDeRender(ev),
       editable: false,
       confidence: confiancaDe(0.7),
+      limitations,
+    };
+  }
+
+  // ── Depende de quem desenha? Então é cápsula, não portátil ───────────────
+  //
+  // Vem depois das barreiras (iframe, shadow fechado, runtime de cena), que são
+  // impedimentos maiores, e antes do teste de portátil — que é justamente o que
+  // este caso vinha respondendo errado.
+  //
+  // Cápsula e não referência visual: o HTML É o item, e ele reproduz assim que
+  // o runtime carrega. Os `<script src>` da página viajam no bundle desde a
+  // correção do documento, então o arquivo entregue funciona — com rede. É uma
+  // dependência real e é isso que a ficha passa a dizer.
+  if (desenhamPendentes.length > 0) {
+    // `unshift` e não `push`: o motivo DECISIVO vem primeiro. A ficha da
+    // Galeria mostra a primeira razão, e ela vinha exibindo uma frase positiva
+    // ("o CSS do Tailwind foi capturado") num item que acabara de ser
+    // rebaixado a cápsula. Verdade nas duas, mas na ordem errada — quem lê
+    // entende o contrário do que a decisão diz.
+    reasons.unshift(
+      `O conteúdo é desenhado em tempo de execução por ${desenhamPendentes.join(', ')}: o HTML sozinho não o reproduz.`,
+    );
+    rejected.push({
+      type: 'componente-portatil',
+      why: `parte do que se vê (${desenhamPendentes.map((r) => OQUE_DESENHA[r] ?? r).join(', ')}) não está no HTML: é desenhada por script`,
+    });
+    limitations.push(
+      'Precisa de rede na primeira carga: o runtime que desenha vem do endereço original.',
+    );
+    return {
+      type: 'capsula-runtime',
+      reasons,
+      rejected,
+      runtimes: [...ev.runtimes],
+      renderMode: modoDeRender(ev),
+      // O HTML existe e é legível, mas editá-lo não muda o que o runtime
+      // desenha — prometer edição aqui seria a mesma mentira noutro lugar.
+      editable: false,
+      confidence: confiancaDe(0.75),
       limitations,
     };
   }

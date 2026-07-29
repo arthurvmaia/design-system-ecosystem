@@ -80,6 +80,16 @@ export type EntradaBundle = {
    * head da página original por fora — o defeito só aparecia no site entregue.
    */
   scriptsExternos?: readonly string[];
+  /**
+   * O HTML das camadas de fundo que passam atrás desta região, na ordem.
+   *
+   * Entram no corpo ANTES do nó da região, como irmãs — que é onde elas estão
+   * no documento original. Reproduzir a posição importa: `position:fixed`,
+   * `z-index` e contexto de empilhamento dependem da ordem entre irmãos, e um
+   * fundo colocado depois do conteúdo cobriria o conteúdo em vez de ficar
+   * atrás dele.
+   */
+  camadasDeFundo?: readonly string[];
   /** Assets de que o segmento depende. */
   assets: readonly CapturedAsset[];
   stack: readonly StackEntry[];
@@ -369,6 +379,21 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
   avisos.push(...js.notas);
 
   // ── HTML ────────────────────────────────────────────────────────────────
+  //
+  // As camadas de fundo primeiro, o conteúdo depois — a ordem do documento
+  // original. Uma referência visual não recebe camada: ela é um frame, e
+  // sobrepor um fundo a uma imagem só produziria confusão.
+  const camadas = (entrada.camadasDeFundo ?? []).filter((c) => c.trim().length > 0);
+  const fundo =
+    camadas.length > 0
+      ? `<div data-ds-camadas-de-fundo="${camadas.length}">\n${camadas.join('\n')}\n</div>\n`
+      : '';
+  if (camadas.length > 0) {
+    avisos.push(
+      `${camadas.length} camada(s) de fundo da página recompostas atrás da região, na posição original.`,
+    );
+  }
+
   const corpo =
     segmento.representation.type === 'referencia-visual'
       ? [
@@ -378,7 +403,7 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
             ? `<img src="${entrada.frames[0]}" alt="${segmento.name.replace(/"/g, '&quot;')}" style="display:block;max-width:100%;height:auto">`
             : '<p style="font:14px system-ui;padding:16px">Sem frame de fallback disponível.</p>',
         ].join('\n')
-      : svg.html;
+      : `${fundo}${svg.html}`;
 
   // Os externos vêm ANTES dos inline organizados, como no documento original:
   // script inline quase sempre depende do runtime já ter carregado.

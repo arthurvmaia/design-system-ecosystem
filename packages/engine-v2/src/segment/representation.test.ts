@@ -194,3 +194,73 @@ test('toda decisão traz motivo — nada é escolhido por omissão', () => {
     assert.ok(d.reasons.length > 0, 'decisão sem motivo');
   }
 });
+
+// ── Runtimes que DESENHAM ────────────────────────────────────────────────────
+// O caso que originou esta família de testes: uma seção com três cards de ícone
+// era classificada como portátil, e abria com três caixas vazias. A página tem
+// zero <svg> inline e 23 <iconify-icon> — o desenho vinha todo de um script.
+
+test('ícone que ficou como casca torna o item cápsula, não portátil', () => {
+  const d = classificarRepresentacao(ev({ runtimes: ['iconify'], iconesNaoDesenhados: 23 }));
+  assert.equal(d.type, 'capsula-runtime');
+  assert.equal(d.editable, false);
+  assert.ok(
+    d.rejected.some((r) => r.type === 'componente-portatil'),
+    'a rejeição de portátil precisa estar registrada, não subentendida',
+  );
+  assert.ok(
+    d.limitations.some((l) => l.includes('23')),
+    'a limitação diz QUANTOS ícones ficaram pendentes',
+  );
+});
+
+test('ícone trazido para inline devolve o item a portátil: o runtime não faz mais falta', () => {
+  const d = classificarRepresentacao(
+    ev({ runtimes: ['iconify'], iconesNaoDesenhados: 0, iconesInline: 23 }),
+  );
+  assert.equal(d.type, 'componente-portatil');
+  assert.equal(d.editable, true);
+  assert.ok(d.reasons.some((r) => r.includes('23')));
+});
+
+test('Tailwind por CDN sem o CSS capturado é cápsula: as classes ficariam sem estilo', () => {
+  const d = classificarRepresentacao(
+    ev({ runtimes: ['tailwind-cdn'], cssCompiladoCapturado: false }),
+  );
+  assert.equal(d.type, 'capsula-runtime');
+  assert.ok(d.limitations.some((l) => l.includes('utilitárias')));
+});
+
+test('Tailwind por CDN com o CSS capturado do CSSOM não impede portátil', () => {
+  const d = classificarRepresentacao(
+    ev({ runtimes: ['tailwind-cdn'], cssCompiladoCapturado: true }),
+  );
+  assert.equal(d.type, 'componente-portatil');
+});
+
+test('fundo desenhado em canvas é dependência declarada, com o que ele desenha por extenso', () => {
+  const d = classificarRepresentacao(ev({ runtimes: ['fundo-canvas'] }));
+  assert.equal(d.type, 'capsula-runtime');
+  assert.ok(d.limitations.some((l) => l.includes('o fundo da página')));
+});
+
+test('a dependência de rede é dita: o runtime vem do endereço original', () => {
+  const d = classificarRepresentacao(ev({ runtimes: ['iconify'], iconesNaoDesenhados: 1 }));
+  assert.ok(d.limitations.some((l) => l.toLowerCase().includes('rede')));
+});
+
+test('barreira maior vence: iframe cross-origin continua sendo referência visual', () => {
+  const d = classificarRepresentacao(
+    ev({ runtimes: ['iconify'], iconesNaoDesenhados: 5, iframeCrossOrigin: true }),
+  );
+  assert.equal(d.type, 'referencia-visual');
+});
+
+test('runtime que desenha não é contado como runtime de cena', () => {
+  // Sem esta separação, `iconify` cairia no ramo de cena e seria testado contra
+  // ENCAPSULAVEIS/bootstrap — e sairia como referência visual, que é pior ainda:
+  // trocaria um componente legível por uma imagem.
+  const d = classificarRepresentacao(ev({ runtimes: ['iconify'], iconesNaoDesenhados: 2 }));
+  assert.equal(d.type, 'capsula-runtime');
+  assert.notEqual(d.type, 'referencia-visual');
+});

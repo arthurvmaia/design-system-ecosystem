@@ -12,6 +12,8 @@ import { montarFingerprint } from '../identity/fingerprint.js';
 import { classificarRepresentacao } from './representation.js';
 import {
   type EntradaSegmentacao,
+  camadasQuePassamAtras,
+  contarIcones,
   contarSinais,
   escolherSecoes,
   inferirCategoria,
@@ -795,4 +797,127 @@ test('bloco sem título usa o texto visível como nome — não fica "Bloco"', (
   assert.ok(s);
   assert.ok(!/^bloco/i.test(s.name), `nome: ${s.name}`);
   assert.ok(s.name.includes('um pouco de texto'), `nome: ${s.name}`);
+});
+
+// ── Camadas de fundo atrás da região ─────────────────────────────────────────
+//
+// O fundo de uma página (feixes de luz, blobs, grão) é IRMÃO do conteúdo, não
+// filho: mora no `<body>` com `position:fixed`, atrás de tudo. A segmentação o
+// emitia como item solto e nunca o recompunha atrás de ninguém — a seção que na
+// origem tinha feixes saía com fundo morto, e nada explicava por quê, porque o
+// CSS e o HTML dela estavam íntegros.
+
+/** Uma camada com hash conhecido, para as asserções falarem do que importa. */
+const camadaCom = (
+  hash: string,
+  over: { position?: string; pageBox?: { x: number; y: number; w: number; h: number } } = {},
+): VisualLayer => {
+  const base = camada({ fingerprint: fp({ tag: 'div' }) });
+  return {
+    ...base,
+    fingerprint: { ...base.fingerprint, hash },
+    stacking: { ...base.stacking, position: over.position ?? 'absolute' },
+    pageBox: over.pageBox,
+  };
+};
+
+const dobraEm = (y: number): StructuralNode =>
+  node({ fingerprint: fp({ tag: 'section' }), pageBox: { x: 0, y, w: 1440, h: 800 } });
+
+test('camada fixa passa atrás de QUALQUER dobra, mesmo a 3000px de distância', () => {
+  // O caso comum, e o que um filtro por caixa perderia: uma camada fixa tem
+  // pageBox no topo do documento, então toda dobra abaixo da primeira ficaria
+  // sem fundo — justamente as que mais precisam dele.
+  const atras = camadasQuePassamAtras({
+    no: dobraEm(3000),
+    camadas: { comRuntime: ['feixes'], soCss: [] },
+    visualLayers: [
+      camadaCom('feixes', { position: 'fixed', pageBox: { x: 0, y: 0, w: 1440, h: 900 } }),
+    ],
+    htmlPorHash: new Map([['feixes', '<canvas id="bg"></canvas>']]),
+  });
+  assert.deepEqual(atras, ['feixes']);
+});
+
+test('camada absoluta que não encosta na dobra fica de fora', () => {
+  const atras = camadasQuePassamAtras({
+    no: dobraEm(3000),
+    camadas: { comRuntime: [], soCss: ['blob'] },
+    visualLayers: [camadaCom('blob', { pageBox: { x: 0, y: 0, w: 1440, h: 900 } })],
+    htmlPorHash: new Map([['blob', '<div class="blob"></div>']]),
+  });
+  assert.deepEqual(atras, [], 'levar um blob que fica 2km acima seria ruído, não fidelidade');
+});
+
+test('camada absoluta que intersecta a dobra entra', () => {
+  const atras = camadasQuePassamAtras({
+    no: dobraEm(800),
+    camadas: { comRuntime: [], soCss: ['blob'] },
+    visualLayers: [camadaCom('blob', { pageBox: { x: 0, y: 400, w: 1440, h: 900 } })],
+    htmlPorHash: new Map([['blob', '<div class="blob"></div>']]),
+  });
+  assert.deepEqual(atras, ['blob']);
+});
+
+test('camada sem HTML capturado não entra: não há o que materializar', () => {
+  const atras = camadasQuePassamAtras({
+    no: dobraEm(0),
+    camadas: { comRuntime: ['sem-html'], soCss: [] },
+    visualLayers: [camadaCom('sem-html', { position: 'fixed' })],
+    htmlPorHash: new Map(),
+  });
+  assert.deepEqual(atras, []);
+});
+
+test('camada sem medida entra: ela já foi escolhida como fundo de página', () => {
+  // Na dúvida, incluir. `escolherCamadasDePagina` já decidiu que aquilo é fundo
+  // da página inteira; descartar por falta de caixa devolveria o defeito
+  // original em silêncio.
+  const atras = camadasQuePassamAtras({
+    no: dobraEm(0),
+    camadas: { comRuntime: [], soCss: ['grao'] },
+    visualLayers: [],
+    htmlPorHash: new Map([['grao', '<div class="grao"></div>']]),
+  });
+  assert.deepEqual(atras, ['grao']);
+});
+
+test('a ordem é estável: comRuntime antes de soCss', () => {
+  // Fundo que troca de ordem entre duas compilações é um fundo diferente: a
+  // ordem de irmãos decide quem pinta por cima de quem.
+  const atras = camadasQuePassamAtras({
+    no: dobraEm(0),
+    camadas: { comRuntime: ['canvas'], soCss: ['grao'] },
+    visualLayers: [
+      camadaCom('canvas', { position: 'fixed' }),
+      camadaCom('grao', { position: 'fixed' }),
+    ],
+    htmlPorHash: new Map([
+      ['canvas', '<canvas></canvas>'],
+      ['grao', '<div></div>'],
+    ]),
+  });
+  assert.deepEqual(atras, ['canvas', 'grao']);
+});
+
+// ── Contagem de ícone ────────────────────────────────────────────────────────
+
+test('ícone que virou span com SVG conta como desenhado', () => {
+  const html = '<div><span data-ds-icone="inline"><svg viewBox="0 0 24 24"></svg></span></div>';
+  assert.deepEqual(contarIcones(html), { inline: 1, pendentes: 0 });
+});
+
+test('casca de web component conta como pendente', () => {
+  const html = '<iconify-icon icon="solar:home"></iconify-icon>';
+  assert.deepEqual(contarIcones(html), { inline: 0, pendentes: 1 });
+});
+
+test('a falha declarada pelo motor conta como pendente, não some da conta', () => {
+  const html = '<span data-ds-icone="nao-desenhado" data-ds-icone-origem="mdi:x"></span>';
+  assert.equal(contarIcones(html).pendentes, 1);
+});
+
+test('ícone que já tinha SVG na luz não é pendente', () => {
+  const html = '<iconify-icon icon="x"><svg viewBox="0 0 24 24"></svg></iconify-icon>';
+  assert.equal(contarIcones(html).pendentes, 0);
 });

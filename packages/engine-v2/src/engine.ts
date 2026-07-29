@@ -49,6 +49,7 @@ import {
   COLETAR_JS_INLINE_FN,
   COLETAR_MAPA_FN,
   DESTACAR_FUNDO_FN,
+  ESPERAR_ICONES_FN,
   HTML_DO_REF_FN,
   INIT_SCRIPT,
   LIMPAR_DESTAQUE_FN,
@@ -610,6 +611,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       ...comportamentos.flatMap((c) => c.hashes),
     ]);
 
+    // Contadores de ícone da captura inteira: viram log e limitação no fim.
+    let iconesEsperados = 0;
+    let iconesPendentes = 0;
+
     for (const n of coletaFinal.nos) {
       const node = porRef.get(n.ref);
       if (node === undefined) continue;
@@ -626,6 +631,19 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         // componente abaixo da primeira dobra vinha sem ícone.
         const rolou = await page.evaluate<boolean>(chamar(ROLAR_ATE_REF_FN, n.ref));
         if (rolou) await page.esperar(120);
+        // Esperar o ícone estar DESENHADO antes de ler.
+        //
+        // Os 120ms acima eram um chute, e a medição mostrou o preço: 128 dos
+        // 356 ícones do acervo chegaram como casca vazia. Entre a tag existir e
+        // o SVG existir há o script carregar, o elemento ser promovido a custom
+        // element e o traçado voltar de uma API. Aqui a espera é pelo FATO — e
+        // com teto, porque um ícone que a API não devolve não pode segurar a
+        // captura inteira. O que não vier é declarado, não escondido.
+        const icones = await page.evaluate<{ total: number; pendentes: number }>(
+          chamar(ESPERAR_ICONES_FN, n.ref, 1500),
+        );
+        if (icones.pendentes > 0) iconesPendentes += icones.pendentes;
+        iconesEsperados += icones.total;
         const bruto = await page.evaluate<string>(chamar(HTML_DO_REF_FN, n.ref));
         if (bruto.length > 0)
           htmlPorHash.set(
@@ -641,6 +659,14 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       if (primeiro !== undefined) framePorHash.set(t.target, join('frames', primeiro));
     }
     log('html-secoes', { total: htmlPorHash.size, pecas: pecas.length });
+    if (iconesEsperados > 0) {
+      log('icones', { total: iconesEsperados, pendentes: iconesPendentes });
+      if (iconesPendentes > 0) {
+        limitacoes.push(
+          `${iconesPendentes} de ${iconesEsperados} ícone(s) não puderam ser lidos dentro do tempo: eles continuam dependendo do runtime da biblioteca para aparecer.`,
+        );
+      }
+    }
 
     // ── Print de cada dobra ───────────────────────────────────────────────
     // Duas necessidades, um mesmo screenshot.
@@ -808,10 +834,20 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     // onde estavam) e futuras fontes fora de sequência. As folhas individuais
     // seguem para o bundle: é o que permite o fallback de intercalação.
     const cssInlineOrdenado = folhas
-      .filter((f) => f.inline && f.content !== undefined)
+      .filter((f) => f.inline && f.content !== undefined && f.truncado !== true)
       .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
       .map((f) => ({ ordem: f.ordem ?? 0, conteudo: f.content ?? '' }));
     const cssInline = cssInlineOrdenado.map((f) => f.conteudo).join('\n');
+
+    // Corte de CSS por teto: a folha marcada não tem conteúdo, ela é o aviso.
+    // Sem isto, um site cujo estilo passa do teto sai com metade das regras e
+    // nada denuncia — o bundle carrega, valida e fica errado só na tela.
+    const corteDeCss = folhas.find((f) => f.truncado === true);
+    if (corteDeCss !== undefined) {
+      limitacoes.push(
+        `A coleta de CSS parou no teto de regras (${corteDeCss.regrasLidas ?? '?'} lidas): parte do estilo da página não entrou nos bundles.`,
+      );
+    }
 
     const absDaFolha = (href: string): string => urlDaFolha(href, finalUrl);
     const hrefsDeFolhas = hrefsDasFolhas(folhas, finalUrl);
@@ -967,6 +1003,13 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
               scriptsExternos:
                 seg.representation.type === 'referencia-visual' ? [] : scriptsExternosDaPagina,
               assets: assets.filter((a) => dosMeus.has(a.originalUrl)),
+              // O fundo da página volta para trás da região. Ele mora no
+              // `<body>` como irmão do conteúdo, e a segmentação o emitia como
+              // item solto: a seção que na origem tinha feixes de luz saía com
+              // fundo morto, com o CSS e o HTML dela íntegros.
+              camadasDeFundo: (seg.camadasDeFundo ?? [])
+                .map((h) => htmlPorHash.get(h) ?? '')
+                .filter((h) => h.length > 0),
               stack,
               frames: framesDoSegmento,
               runtimeScripts: runtimeDetections

@@ -329,25 +329,36 @@ const montarComponente = (seg: SegmentRow) => {
   let local: (t: string) => string;
   let bundleAssets: { index: Map<string, string>; assets: CapturedAsset[] };
 
-  if (bundleV2 !== null && representation !== 'componente-portatil') {
-    // Cápsula de runtime / referência visual: o bundle do COMPILADOR é o
-    // componente — copiá-lo inteiro preserva a decisão (runtime.html isolado,
-    // aviso + frame, css/js organizados, manifest com limitações). Servir o
-    // htmlSnippet estático aqui seria reintroduzir o card preto na Biblioteca.
+  if (bundleV2 !== null) {
+    // O BUNDLE DO COMPILADOR É O COMPONENTE — para toda representação, agora.
+    //
+    // Antes, só cápsula e referência visual vinham por aqui; o componente
+    // portátil (a maioria) passava pelo `isolateComponent`, que PODAVA o CSS:
+    // analisava o HTML, decidia quais regras ele usava e descartava o resto.
+    //
+    // A poda não tem conserto por afinação, e a medição mostrou por quê. Um
+    // seletor como `.grid > * + *`, um `:has()`, uma classe que só aparece
+    // quando o menu abre — qualquer análise estática erra, e erra para menos.
+    // Pior: o defeito era INVISÍVEL na Galeria, que montava a prévia com o CSS
+    // da página de origem por fora. O que se via não era o que ia no `.zip`.
+    //
+    // O CSS da origem passa a viajar inteiro. A colisão entre origens, que era
+    // o motivo original da poda, é resolvida na composição — por escopo de
+    // especificidade zero (`@ds/composer`), que isola sem inverter a cascata.
     cpSync(bundleV2.dir, bundleDir, { recursive: true });
     copiarFramesDoBundle(dsId, bundleDir);
     // `styles.css` para o gerador, que concatena index.html + styles.css.
     writeFileSync(join(bundleDir, 'styles.css'), concatenarCssDoBundle(bundleDir), 'utf8');
+    // O HTML CRU também: a prévia do componente mira as classes originais, e o
+    // index.html do bundle é um documento completo (com <html>/<head>).
+    writeFileSync(join(bundleDir, 'raw.html'), seg.htmlSnippet, 'utf8');
     bundleAssets = { index: new Map(), assets: [] };
     local = (t) => t;
   } else {
-    // Componente portátil (ou extração V1): isolamento clássico. No V2, o CSS
-    // organizado mora no próprio bundle do segmento (`assets/css/`) —
-    // `extracted/assets/css` é coisa do V1 e fica vazio numa extração V2.
-    const cssDir =
-      bundleV2 !== null
-        ? join(bundleV2.dir, 'assets', 'css')
-        : join(vaultExtractedDir(dsId), 'assets/css');
+    // Extração V1: não há bundle do compilador, então o isolamento clássico
+    // continua sendo o único caminho. O acervo antigo segue funcionando; o que
+    // muda é que nada NOVO nasce podado.
+    const cssDir = join(vaultExtractedDir(dsId), 'assets/css');
     isolation = isolateComponent({ html: seg.htmlSnippet, cssDir });
 
     // Head da extração (fontes, runtime, <link> de CSS externo). Incluído para

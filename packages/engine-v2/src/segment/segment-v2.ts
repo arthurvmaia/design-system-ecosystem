@@ -431,6 +431,25 @@ export type SegmentoV2 = {
   /** Print da dobra (relativo a `capture-v2/`), quando houve. */
   framePath?: string;
   /**
+   * As camadas de fundo que passam ATRÁS desta seção, no HTML delas.
+   *
+   * O problema que isto resolve: o fundo de uma página (feixes de luz, blobs,
+   * grão, canvas animado) é um irmão do conteúdo, não um filho — mora no
+   * `<body>`, com `position:fixed`, atrás de tudo. A segmentação o emitia como
+   * item próprio, e ele nunca era recomposto atrás de ninguém. O resultado é a
+   * seção que na origem tinha feixes de luz saindo com fundo morto, e nada
+   * explicando por quê: o CSS está lá, o HTML está lá, e a camada que os
+   * ligava ficou noutro item.
+   *
+   * O bundle materializa estas camadas **dentro do shell, antes do nó da
+   * região**, na posição original. `position:fixed` e `z-index` voltam a
+   * compor porque a ordem de irmãos e o contexto de empilhamento são os mesmos.
+   *
+   * A camada continua existindo como item próprio na Galeria — ela é curável
+   * por direito. O que muda é que deixa de ser SÓ isso.
+   */
+  camadasDeFundo?: string[];
+  /**
    * Subcomponentes extraídos de dentro da seção (botão, card, badge…). Só
    * seção aprovada tem filhos — ver `subdividirSecao`.
    */
@@ -448,6 +467,80 @@ export type RejeitadoV2 = {
 export type ResultadoSegmentacaoV2 = {
   segmentos: SegmentoV2[];
   rejeitados: RejeitadoV2[];
+};
+
+/**
+ * Ícones do segmento: quantos vieram desenhados e quantos ficaram como casca.
+ *
+ * `<iconify-icon icon="solar:home"></iconify-icon>` no HTML capturado é uma
+ * promessa, não um desenho — o traçado vem de uma API externa e mora num shadow
+ * root. Se a leitura pegou o SVG, ele viaja como `<span data-ds-icone="inline">`
+ * e a peça deixa de depender de qualquer runtime. Se não pegou, a caixa aparece
+ * vazia no site entregue, e o app precisa dizer isso em vez de prometer uma
+ * peça portátil.
+ */
+export const contarIcones = (html: string): { inline: number; pendentes: number } => {
+  const inline = (html.match(/data-ds-icone\s*=\s*"inline"/gi) ?? []).length;
+  let pendentes = 0;
+  for (const m of html.matchAll(
+    /<(iconify-icon|ion-icon|lord-icon)\b[^>]*>([\s\S]{0,120}?)<\/\1>/gi,
+  )) {
+    if (!/<svg\b/i.test(m[2] ?? '')) pendentes++;
+  }
+  pendentes += (html.match(/<(?:iconify-icon|ion-icon|lord-icon)\b[^>]*\/>/gi) ?? []).length;
+  pendentes += (html.match(/data-ds-icone\s*=\s*"nao-desenhado"/gi) ?? []).length;
+  return { inline, pendentes };
+};
+
+/**
+ * Quais camadas de fundo passam atrás de uma dobra.
+ *
+ * Interseção de caixa, e não contenção: uma camada `position:fixed` do tamanho
+ * da tela tem `pageBox` no topo do documento e a dobra pode estar a 3000px de
+ * distância — exigir contenção deixaria toda seção abaixo da primeira sem
+ * fundo. O que importa é se a camada COBRE aquele trecho quando ele está na
+ * tela, e camada fixa cobre sempre.
+ *
+ * Fica em ordem estável (a da lista de camadas) para o bundle empilhar sempre
+ * igual: fundo que troca de ordem entre duas compilações é um fundo diferente.
+ */
+export const camadasQuePassamAtras = (opts: {
+  no: StructuralNode;
+  camadas: CamadasDePagina | undefined;
+  visualLayers: readonly VisualLayer[];
+  htmlPorHash: ReadonlyMap<string, string>;
+}): string[] => {
+  const { no, camadas, visualLayers, htmlPorHash } = opts;
+  const todas = [...(camadas?.comRuntime ?? []), ...(camadas?.soCss ?? [])];
+  const caixaDaDobra = no.pageBox;
+  const porHashDeCamada = new Map(visualLayers.map((c) => [c.fingerprint.hash, c]));
+
+  const saida: string[] = [];
+  for (const h of todas) {
+    if (!htmlPorHash.has(h)) continue;
+    const camada = porHashDeCamada.get(h);
+    // Sem medida da camada, o caminho honesto é incluir: uma camada escolhida
+    // por `escolherCamadasDePagina` já é, por definição, fundo de página.
+    if (camada === undefined) {
+      saida.push(h);
+      continue;
+    }
+    // Camada fixa acompanha a rolagem: ela está atrás de tudo, por definição.
+    // O `pageBox` dela mede onde ela estava no instante da captura, não onde
+    // ela pinta — usá-lo como filtro descartaria justamente o caso comum.
+    const fixa = camada.stacking.position === 'fixed';
+    if (fixa) {
+      saida.push(h);
+      continue;
+    }
+    const caixaDaCamada = camada.pageBox;
+    if (caixaDaCamada === undefined || caixaDaDobra === undefined) {
+      saida.push(h);
+      continue;
+    }
+    if (intersecao(caixaDaCamada, caixaDaDobra) > 0) saida.push(h);
+  }
+  return saida;
 };
 
 /** Conta sinais de conteúdo a partir do HTML do segmento. Barato e suficiente. */
@@ -598,10 +691,40 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     const acoes = entrada.safeActions.filter(
       (a) => a.target !== null && hashesMembros.has(a.target),
     );
+    const html = entrada.htmlPorHash.get(secao.hash) ?? '';
+    // Ícones que ficaram como casca dentro DESTA seção, e os que já vieram
+    // desenhados. É o que decide se a biblioteca de ícones ainda faz falta —
+    // um item cujos ícones foram todos trazidos para o HTML não depende dela.
+    const icones = contarIcones(html);
+
+    // As camadas de fundo que passam ATRÁS desta dobra. Calculado aqui, antes
+    // dos runtimes, porque é o que decide se o script que pinta o fundo pesa
+    // sobre esta seção: uma dobra que não tem camada atrás não perde nada se o
+    // canvas não desenhar.
+    const camadasDeFundo = camadasQuePassamAtras({
+      no: node,
+      camadas: entrada.camadasDePagina,
+      visualLayers: entrada.visualLayers,
+      htmlPorHash: entrada.htmlPorHash,
+    });
+
     const runtimes = entrada.runtimeDetections.filter((r) => {
       // Runtime pertence à seção quando controla um alvo dela, OU quando a seção
       // tem canvas/lottie e o runtime é do tipo que os desenha.
       if (r.targets.some((t) => hashesMembros.has(t))) return true;
+      // Os que DESENHAM não têm alvo declarado: o Iconify não "controla" um nó,
+      // ele substitui o conteúdo de cada tag de ícone. A posse é pela presença
+      // da marca no HTML da seção — sem isso a seção que tem 23 ícones vazios
+      // ficava sem runtime nenhum atribuído, e nascia "portátil".
+      if (r.kind === 'iconify') return icones.pendentes > 0;
+      // O fundo em canvas pesa só sobre quem o tem atrás de si. Atribuí-lo a
+      // todas as seções faria uma página com um canvas de fundo transformar
+      // TODO segmento em cápsula, inclusive o rodapé de texto que nada perde.
+      if (r.kind === 'fundo-canvas') return camadasDeFundo.length > 0;
+      // O Tailwind por CDN é da página inteira: ele compila as classes de todo
+      // mundo. Quando o CSS resultante foi capturado, isso não impede nada — a
+      // classificação trata disso com a evidência, não com a posse.
+      if (r.kind === 'tailwind-cdn') return true;
       const temCena = midias.some(
         (m) =>
           m.kind === 'canvas-2d' ||
@@ -620,7 +743,6 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       return temCena && desenhaCena;
     });
 
-    const html = entrada.htmlPorHash.get(secao.hash) ?? '';
     const sinais = contarSinais(html);
     const temMovimento = temporais.some((t) => t.moving);
     const movimentoPorCss =
@@ -675,6 +797,13 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       regiaoReativaSemDom,
       dependeDeJs,
       bootstrapIdentificado: runtimes.some((r) => r.scripts.length > 0 && r.confidence !== 'baixa'),
+      iconesNaoDesenhados: icones.pendentes,
+      iconesInline: icones.inline,
+      // O Tailwind por CDN injeta um `<style>` com o resultado da compilação, e
+      // o coletor lê `document.styleSheets` DEPOIS de a página rodar — então na
+      // prática o CSS vem junto. Só quando a coleta inteira falhou é que a
+      // dependência do CDN é real.
+      cssCompiladoCapturado: !entrada.cssExternoFaltando,
     };
     const representacao = classificarRepresentacao(evidenciaRepr);
 
@@ -839,6 +968,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       fidelity,
       support: seloDe(fidelity, representacao),
       interactions,
+      camadasDeFundo,
       limitations: [
         ...representacao.limitations,
         ...backgrounds.flatMap((b) => b.limitations),

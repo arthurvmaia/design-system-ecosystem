@@ -7,11 +7,11 @@ import type {
   MediaKind,
   NodeRealm,
   RuntimeDetection,
-  RuntimeKind,
   StructuralNode,
   StructuralRole,
   VisualLayer,
 } from '@ds/shared';
+import { RuntimeKind } from '@ds/shared';
 import { montarFingerprint } from '../identity/fingerprint.js';
 import type { BoxPx, RawColeta, RawInstrumentacao, RawNode } from './raw.js';
 
@@ -675,30 +675,22 @@ export const construirMidias = (
 
 // ── Runtimes ────────────────────────────────────────────────────────────────
 
-const RUNTIMES_VALIDOS: ReadonlySet<string> = new Set<RuntimeKind>([
-  'three',
-  'pixi',
-  'webgl-cru',
-  'canvas-2d',
-  'lottie',
-  'gsap',
-  'scrolltrigger',
-  'framer-motion',
-  'lenis',
-  'locomotive',
-  'swiper',
-  'embla',
-  'splide',
-  'barba',
-  'matter',
-  'p5',
-  'anime',
-  'aos',
-  'shader-cru',
-  'web-animations',
-  'video-runtime',
-  'desconhecido',
-]);
+/**
+ * Os tipos de runtime aceitos — DERIVADOS do enum, não copiados dele.
+ *
+ * Isto era uma lista escrita à mão, gêmea do `RuntimeKind` de `@ds/shared`, e
+ * ela divergiu na primeira oportunidade: os três runtimes que desenham o
+ * conteúdo (`iconify`, `tailwind-cdn`, `fundo-canvas`) entraram no enum e não
+ * aqui, então chegavam ao mapeador e saíam como `desconhecido`.
+ *
+ * O efeito foi silencioso e caro. A detecção funcionava, o STACK mostrava os
+ * três pelo nome, e mesmo assim nenhum segmento era classificado como cápsula —
+ * porque o `kind` que a classificação lia já não era o `kind` que o coletor
+ * havia produzido. Nenhum erro, nenhum aviso: só uma resposta errada.
+ *
+ * Duas listas que precisam concordar acabam discordando. Uma só, não.
+ */
+const RUNTIMES_VALIDOS: ReadonlySet<string> = new Set<string>(RuntimeKind.options);
 
 /** Runtimes que sabemos rodar dentro de uma cápsula isolada. */
 const ENCAPSULAVEIS: ReadonlySet<RuntimeKind> = new Set<RuntimeKind>([

@@ -737,7 +737,10 @@ export const COLETAR_INSTRUMENTACAO_FN = `
     ['p5', /p5(\\.min)?\\.js/i],
     ['anime', /anime(\\.min)?\\.js/i],
     ['aos', /\\baos\\b/i],
-    ['framer-motion', /framer-motion/i]
+    ['framer-motion', /framer-motion/i],
+    // Os que DESENHAM o conteúdo — ver o comentário do enum RuntimeKind.
+    ['iconify', /iconify/i],
+    ['tailwind-cdn', /cdn\\.tailwindcss\\.com|tailwindcss@|tailwind\\.min\\.js/i]
   ];
   var scripts = [];
   try {
@@ -773,6 +776,38 @@ export const COLETAR_INSTRUMENTACAO_FN = `
   try {
     if (document.querySelector('lottie-player,dotlottie-player,[data-animation-path],[data-lottie]')) {
       registrar('lottie', 'Lottie', 'elemento <lottie-player>/atributo de animação');
+    }
+  } catch (e) {}
+
+  // Ícone de biblioteca: o ELEMENTO é a evidência mais forte que existe, mais
+  // que o nome do script. Uma página pode carregar o Iconify por um bundler com
+  // nome irreconhecível e ainda assim encher a tela de <iconify-icon>.
+  try {
+    var iconesWc = document.querySelectorAll('iconify-icon,ion-icon,lord-icon');
+    if (iconesWc.length > 0) {
+      registrar('iconify', 'ícones por web component', iconesWc.length + ' elemento(s) de ícone');
+    }
+  } catch (e) {}
+
+  // Fundo desenhado por script: canvas grande, sem DOM dentro, cobrindo a
+  // página. É o que produz feixes de luz, partículas e grão — e o que some sem
+  // deixar rastro no HTML, porque o HTML dele é uma tag <canvas> vazia.
+  try {
+    var canvases = document.querySelectorAll('canvas');
+    for (var ci = 0; ci < canvases.length && ci < 20; ci++) {
+      var cv = canvases[ci];
+      var cr = cv.getBoundingClientRect();
+      var ccs = getComputedStyle(cv);
+      var cobrePagina = cr.width >= window.innerWidth * 0.8 && cr.height >= window.innerHeight * 0.5;
+      var atras = ccs.position === 'fixed' || ccs.position === 'absolute';
+      if (cobrePagina && atras) {
+        registrar(
+          'fundo-canvas',
+          'fundo em canvas',
+          'canvas ' + Math.round(cr.width) + 'x' + Math.round(cr.height) + ' com position ' + ccs.position
+        );
+        break;
+      }
     }
   } catch (e) {}
 
@@ -1109,13 +1144,52 @@ export const HTML_DO_REF_FN = `
     var todosC = clone.querySelectorAll('*');
     for (var k = 0; k < todosO.length; k++) origens.push(todosO[k]);
     for (var k2 = 0; k2 < todosC.length; k2++) copias.push(todosC[k2]);
+    // Tags que SÃO ícone: quando uma delas não puder ser lida, a casca é
+    // marcada em vez de gravada como se estivesse inteira.
+    var ehTagDeIcone = function (t) {
+      return t === 'iconify-icon' || t === 'ion-icon' || t === 'lord-icon';
+    };
+
     var n = Math.min(origens.length, copias.length);
     for (var i = 0; i < n; i++) {
       var o = origens[i];
+      var tagO = o.tagName ? o.tagName.toLowerCase() : '';
       var raiz = o.shadowRoot; // fechado devolve null: nada a fazer
-      if (!raiz) continue;
-      var svg = raiz.querySelector('svg');
-      if (!svg) continue;
+      var svg = raiz ? raiz.querySelector('svg') : null;
+
+      if (!svg) {
+        // DECLARAR A FALHA em vez de gravar a casca calada.
+        //
+        // Sem isto, o bundle recebia a tag de icone vazia e nada no sistema
+        // sabia que ali faltava um desenho: a Galeria mostrava o componente
+        // como portatil, o .zip saia com um buraco, e a pessoa so
+        // descobria abrindo o site. Marcado, o segmentador conta, a
+        // classificação vira cápsula e a ficha diz de quê o item depende.
+        if (ehTagDeIcone(tagO)) {
+          var cf = copias[i];
+          if (cf && cf.setAttribute) {
+            cf.setAttribute('data-ds-icone', 'nao-desenhado');
+            var rot = o.getAttribute('icon') || o.getAttribute('name') || o.getAttribute('aria-label');
+            if (rot) cf.setAttribute('data-ds-icone-origem', rot);
+            // Guarda o espaço medido: sem o SVG o elemento colapsa para 0x0 e o
+            // layout ao redor se desfaz — uma falha de ícone viraria uma falha
+            // de layout, que é muito mais difícil de reconhecer.
+            try {
+              var cxf = o.getBoundingClientRect();
+              var lf = Math.round(cxf.width);
+              var af = Math.round(cxf.height);
+              if (lf > 0 && af > 0) {
+                cf.setAttribute(
+                  'style',
+                  (cf.getAttribute('style') || '') +
+                    ';display:inline-block;width:' + lf + 'px;height:' + af + 'px'
+                );
+              }
+            } catch (e) {}
+          }
+        }
+        continue;
+      }
       var c = copias[i];
       var cs = getComputedStyle(o);
       var g = svg.cloneNode(true);
@@ -1329,6 +1403,95 @@ export const ROLAR_ATE_REF_FN = `
   return true;
 }`;
 
+/**
+ * Espera os ícones de um ref estarem DESENHADOS antes de a leitura acontecer.
+ *
+ * O inline de ícone falhava calado e a medição mostrou o tamanho do buraco: de
+ * 356 ícones no acervo, **128 chegaram como casca vazia**. A causa não é o
+ * código de inline — é a corrida.
+ *
+ * `<iconify-icon>` é um custom element cujo traçado vem de `api.iconify.design`.
+ * Entre a tag existir no DOM e o SVG existir no shadow root há: o script da
+ * biblioteca carregar, o elemento ser promovido, a requisição do ícone ir e
+ * voltar. Ler nesse intervalo devolve uma casca — e devolve sem erro nenhum,
+ * porque a tag está lá, íntegra.
+ *
+ * O que esta função faz, em ordem:
+ *
+ * 1. Espera cada tag de ícone virar custom element (`customElements.whenDefined`).
+ *    Enquanto não for, `shadowRoot` é sempre null e olhar é perda de tempo.
+ * 2. Depois, pesquisa até cada um ter `<svg>` dentro, ou o teto de tempo estourar.
+ *
+ * O teto é a parte importante. Um ícone que a API não devolve não pode segurar
+ * a captura inteira — o motor lê o que deu, e o que não deu é DECLARADO pelo
+ * `HTML_DO_REF_FN`, que marca a casca com `data-ds-icone="nao-desenhado"`.
+ * Esperar sem teto trocaria um defeito visível por uma extração que não termina.
+ *
+ * Assinatura: `(ref, tetoMs) => { total, desenhados, pendentes }`.
+ */
+export const ESPERAR_ICONES_FN = `
+async (ref, tetoMs) => {
+  var TAGS = ['iconify-icon', 'ion-icon', 'lord-icon'];
+  var el = document.querySelector('[${ATTR_REF}="' + ref + '"]');
+  var escopo = el || document;
+  var seletor = TAGS.join(',');
+
+  var todos = function () {
+    try { return Array.prototype.slice.call(escopo.querySelectorAll(seletor)); } catch (e) { return []; }
+  };
+  var alvos = todos();
+  if (alvos.length === 0) return { total: 0, desenhados: 0, pendentes: 0 };
+
+  var teto = typeof tetoMs === 'number' && tetoMs > 0 ? tetoMs : 1500;
+  var inicio = Date.now();
+  var restante = function () { return teto - (Date.now() - inicio); };
+
+  // 1. O elemento precisa ser um custom element antes de ter shadow root.
+  var presentes = {};
+  for (var i = 0; i < alvos.length; i++) presentes[alvos[i].tagName.toLowerCase()] = 1;
+  var esperas = [];
+  for (var tag in presentes) {
+    try {
+      if (window.customElements && !window.customElements.get(tag)) {
+        esperas.push(window.customElements.whenDefined(tag));
+      }
+    } catch (e) {}
+  }
+  if (esperas.length > 0) {
+    try {
+      await Promise.race([
+        Promise.all(esperas),
+        new Promise(function (r) { setTimeout(r, Math.max(0, restante())); })
+      ]);
+    } catch (e) {}
+  }
+
+  // 2. Agora sim: pesquisa até o SVG aparecer dentro de cada um.
+  var desenhado = function (n) {
+    try {
+      var raiz = n.shadowRoot;
+      if (raiz && raiz.querySelector('svg')) return true;
+      return !!n.querySelector('svg');
+    } catch (e) { return false; }
+  };
+  var pendentes = function () {
+    var lista = todos();
+    var falta = 0;
+    for (var j = 0; j < lista.length; j++) if (!desenhado(lista[j])) falta++;
+    return falta;
+  };
+
+  while (restante() > 0 && pendentes() > 0) {
+    await new Promise(function (r) { setTimeout(r, 50); });
+  }
+
+  var lista = todos();
+  var ok = 0;
+  for (var k = 0; k < lista.length; k++) if (desenhado(lista[k])) ok++;
+  return { total: lista.length, desenhados: ok, pendentes: lista.length - ok };
+}
+`;
+
 export const ROLAR_PARA_FN = `
 (y) => {
   window.scrollTo({ top: y, left: 0, behavior: 'instant' });
@@ -1368,15 +1531,21 @@ export const COLETAR_CSS_FN = `
 () => {
   var out = [];
   var ordem = 0;
-  var TETO_REGRAS = 4000;
+  // 4000 regras era pouco e cortava calado. Uma página feita com utilitários
+  // (Tailwind, UnoCSS) passa fácil de 6000 — e o corte não dá erro nenhum: a
+  // folha sai menor, o bundle carrega, e metade do site fica sem estilo. Como
+  // regra serializada custa pouca memória, o teto sobe e o corte passa a ser
+  // DECLARADO: a marca "truncado" viaja com a folha e vira limitacao do bundle.
+  var TETO_REGRAS = 40000;
   var totalRegras = 0;
+  var truncou = false;
 
   /** Serializa cssRules respeitando o teto GLOBAL. Pode lançar (cross-origin). */
   var serializarRegras = function (folha) {
     var texto = '';
     var regras = folha.cssRules;
     for (var i = 0; i < regras.length; i++) {
-      if (totalRegras >= TETO_REGRAS) break;
+      if (totalRegras >= TETO_REGRAS) { truncou = true; break; }
       texto += regras[i].cssText + '\\n';
       totalRegras++;
     }
@@ -1467,6 +1636,19 @@ export const COLETAR_CSS_FN = `
       }
     }
   } catch (e) {}
+
+  // O corte viaja como folha marcada, para o motor transformar em limitação.
+  if (truncou) {
+    out.push({
+      ordem: ordem++,
+      origem: 'cssom',
+      href: null,
+      inline: true,
+      content: '',
+      truncado: true,
+      regrasLidas: totalRegras
+    });
+  }
 
   return out;
 }

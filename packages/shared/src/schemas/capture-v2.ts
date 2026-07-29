@@ -407,6 +407,21 @@ export const RuntimeKind = z.enum([
   'shader-cru',
   'web-animations',
   'video-runtime',
+  // ── Runtimes que DESENHAM o que o HTML só declara ──────────────────────────
+  // Estes três não animam nada: eles produzem o conteúdo. Sem eles, o HTML
+  // capturado é uma promessa não cumprida, e o pior é que ela parece cumprida —
+  // as tags estão todas lá.
+  //
+  // `iconify`: `<iconify-icon icon="solar:home">` é uma casca. O desenho vem de
+  // uma API externa e entra num shadow root. Sem o runtime, uma caixa vazia.
+  // `tailwind-cdn`: `cdn.tailwindcss.com` COMPILA as classes utilitárias no
+  // navegador. Sem ele, `class="flex gap-4 bg-black"` não tem CSS nenhum por
+  // trás — a folha que definiria essas classes nunca existiu em disco.
+  // `fundo-canvas`: script que pinta um fundo (feixes, partículas, grão) num
+  // canvas de página inteira. O que ele desenha não está em elemento nenhum.
+  'iconify',
+  'tailwind-cdn',
+  'fundo-canvas',
   'desconhecido',
 ]);
 export type RuntimeKind = z.infer<typeof RuntimeKind>;

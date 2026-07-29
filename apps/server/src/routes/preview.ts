@@ -767,6 +767,36 @@ previewRoute.get('/segment/:segId', (c) => {
     );
   }
 
+  // ── A prévia mostra O ARQUIVO QUE SERÁ ENTREGUE ───────────────────────────
+  //
+  // Este era o defeito mais traiçoeiro do conjunto. A prévia montava `head da
+  // página de origem + snippet`: o CSS inteiro do site entrava por fora, e o
+  // componente aparecia perfeito na Galeria mesmo quando o bundle estava com
+  // uma fração do estilo. A pessoa escolhia pelo que via, e recebia outra coisa
+  // no `.zip`. Nenhum erro em lugar nenhum.
+  //
+  // Agora o padrão é servir o `index.html` do bundle, com as refs relativas
+  // dele resolvendo dentro da própria rota. O que se vê é o que se leva.
+  //
+  // Os modos de demonstração continuam pelo caminho antigo, porque precisam
+  // injetar runtime no snippet: `?replay=1` (estados), `?scroll=1`
+  // (comportamentos), `?hover=1`. E `?contexto=1` é o modo explícito de ver a
+  // região dentro da página inteira — útil, desde que ninguém o confunda com o
+  // entregável.
+  const modoDeDemonstracao =
+    c.req.query('replay') === '1' ||
+    c.req.query('scroll') === '1' ||
+    c.req.query('hover') === '1' ||
+    c.req.query('contexto') === '1';
+
+  if (bundle !== null && !modoDeDemonstracao && existsSync(join(bundle.dir, 'index.html'))) {
+    const mini = c.req.query('mini') === '1' ? '?mini=1' : '';
+    return c.redirect(
+      `/api/preview/bundle/${seg.designSystemId}/${bundle.pasta}/index.html${mini}`,
+      302,
+    );
+  }
+
   const html = lerHtmlDoVault(seg.designSystemId);
   if (html === null) {
     return responderHtml(
@@ -817,12 +847,21 @@ previewRoute.get('/segment/:segId', (c) => {
       : null;
   const modo = scrollReplay ?? replay ?? hoverDemo;
 
+  // O rótulo do modo contexto. Ele carrega o CSS da página inteira por fora do
+  // bundle — mostra mais do que o bundle tem, de propósito, e por isso precisa
+  // dizer isso na cara. Sem o rótulo, ele é indistinguível do entregável, que
+  // foi exatamente o problema que a prévia tinha.
+  const selo =
+    c.req.query('contexto') === '1'
+      ? '<div style="position:sticky;top:0;z-index:2147483647;font:12px/1.4 system-ui;padding:6px 12px;background:#0c4a6e;color:#e0f2fe;border-bottom:1px solid #0369a1">Você está vendo esta região <strong>dentro da página de origem</strong>, com o estilo dela carregado por fora. Não é o arquivo que vai no site gerado.</div>'
+      : '';
+
   return responderHtml(
     compor({
       titulo: seg.name,
       head: `${cabecaOriginal}${modo ? modo.head : ''}`,
       bodyAttrs: extrairBodyAttrs(html),
-      corpo: modo ? modo.corpo : corpo,
+      corpo: `${selo}${modo ? modo.corpo : corpo}`,
       // Sem <base>: o design-system.html é absolutizado (refs absolutas), então a
       // base é inerte — e a CSP `base-uri 'none'` recusaria o elemento.
       base: null,

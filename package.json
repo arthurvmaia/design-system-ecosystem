@@ -17,6 +17,8 @@
     "extrair": "tsx scripts/extrair.ts",
     "explorar": "tsx scripts/explorar.ts",
     "segmentar": "tsx scripts/segmentar.ts",
+    "medir-fidelidade": "tsx scripts/medir-fidelidade.ts",
+    "regiao:recompilar": "tsx scripts/regiao-recompilar.ts",
     "projeto:restaurar": "tsx scripts/projeto-restaurar.ts",
     "mascote": "tsx scripts/mascote.ts",
     "test": "node --import tsx --test \"packages/**/src/**/*.test.ts\" \"apps/**/src/**/*.test.ts\"",

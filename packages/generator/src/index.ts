@@ -1,6 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
+import { atributosDeProxy, envolverEmProxies, escoparCss, nomesGlobaisDe } from '@ds/composer';
 import {
   type GeneratePayload,
   type ProjectBranding,
@@ -9,6 +10,7 @@ import {
   derivarEscala,
   distribuirTokens,
   libraryComponentBundleDir,
+  libraryComponentMetadata,
   projectGeneratedVersionDir,
   resolverSecoes,
 } from '@ds/shared';
@@ -19,13 +21,51 @@ import { cssResponsivoBase } from './responsivo.js';
 
 export { cssResponsivoBase } from './responsivo.js';
 export { lerCssDoBundle, type LeituraDeCss } from './cascata.js';
+export {
+  type LinhaDeBase,
+  type MedidaDeBundle,
+  bundlesEm,
+  comparar,
+  contarInstrumentacao,
+  contarRegras,
+  contarSeletoresMortos,
+  cssDaOrigem,
+  medirBundle,
+  medirIcones,
+  medirScripts,
+  resumir,
+} from './fidelidade.js';
 import {
+  atributosDoDocumentoDaPeca,
   envolverSecao,
   extrairCorpo,
   limparParaComposicao,
   reescreverRefsCss,
   reescreverRefsHtml,
 } from './montagem.js';
+
+/**
+ * A origem de uma peça: o design system de onde ela veio.
+ *
+ * É por origem que o escopo é feito, não por peça. Duas peças do mesmo site
+ * compartilham o CSS e precisam compartilhar a âncora — separá-las duplicaria a
+ * folha inteira e ainda quebraria seletores que atravessam as duas.
+ *
+ * Sem metadata legível, a peça vira a própria origem. Isola de qualquer jeito
+ * (só com mais CSS repetido), o que é melhor que arriscar colisão.
+ */
+const origemDaPeca = (cmpId: string): string => {
+  try {
+    const meta = JSON.parse(
+      readFileSync(libraryComponentMetadata(cmpId as `cmp_${string}`), 'utf8'),
+    ) as { origin?: { designSystemId?: unknown } };
+    const ds = meta.origin?.designSystemId;
+    if (typeof ds === 'string' && ds.length > 0) return ds;
+  } catch {
+    // metadata ausente ou ilegível: a peça responde por si
+  }
+  return cmpId;
+};
 
 /**
  * Gerador de site.
@@ -350,6 +390,17 @@ export const generateSite = async (
   // inteiro, não só os primeiros bytes do HTML.
   let bodyHtml = '';
   let concatCss = '';
+  // Nomes globais já declarados por alguma origem. A primeira a declarar
+  // `@keyframes girar` fica com o nome; as seguintes renomeiam. Assim o diff
+  // fica no lado novo, e o site que já existia não muda de comportamento.
+  const nomesGlobaisJaUsados = {
+    keyframes: new Set<string>(),
+    fontFace: new Set<string>(),
+    layer: new Set<string>(),
+  };
+  // Uma origem escopa o CSS UMA vez: duas peças do mesmo site têm CSS idêntico,
+  // e duplicá-lo dobraria o arquivo sem mudar um pixel.
+  const origensComCssIncluido = new Set<string>();
   const subsPorSecao = new Map(plan.sections.map((s) => [s.secaoId, s.substitutions]));
   const { secoes: resolvidas } = resolverSecoes(input.layout.secoes, input.kit.components);
 
@@ -386,8 +437,56 @@ export const generateSite = async (
         opts.onProgress?.(`Peça ${peca.id} entrou SEM estilo nenhum — o bundle não tem CSS`);
       }
 
-      let corpo = limparParaComposicao(extrairCorpo(readFileSync(htmlPath, 'utf8')));
+      const documentoDaPeca = readFileSync(htmlPath, 'utf8');
+      let corpo = limparParaComposicao(extrairCorpo(documentoDaPeca));
       corpo = applySubstitutions(corpo, substituicoes);
+
+      // ── Escopo por origem ─────────────────────────────────────────────
+      //
+      // O CSS de cada peça agora vem INTEIRO da página de origem — é o que faz
+      // a peça sair igual ao original, depois que a poda acabou. O preço é que
+      // dois sites feitos com utilitários definem `.flex` e `.p-6` cada um do
+      // seu jeito, e o segundo a carregar apagava o primeiro.
+      //
+      // A âncora entra dentro de `:where()`, que tem especificidade ZERO: a
+      // origem fica isolada, a ordem interna dela sobrevive, e o `marca.css`
+      // continua vencendo por ser o último — sem um `!important` sequer. Fosse
+      // fora do `:where()`, todo o CSS subiria um degrau e a identidade do
+      // usuário perderia a cascata em todo lugar de uma vez, sem erro nenhum.
+      const origem = origemDaPeca(peca.id);
+      const proxies = atributosDeProxy(origem);
+      // Uma origem entra com CSS uma vez só. Como o escopo é POR ORIGEM, a
+      // folha da primeira peça já veste todas as peças daquele site — repetir
+      // dobraria o arquivo sem mudar um pixel.
+      const jaTemOCssDestaOrigem = origensComCssIncluido.has(origem);
+      if (jaTemOCssDestaOrigem) {
+        css = '';
+      } else {
+        origensComCssIncluido.add(origem);
+        const escopo = escoparCss(css, {
+          raiz: `${proxies.raiz}="${origem}"`,
+          corpo: `${proxies.corpo}="${origem}"`,
+          sufixo: origem,
+          nomesUsados: nomesGlobaisJaUsados,
+        });
+        css = escopo.css;
+        for (const a of escopo.avisos) opts.onProgress?.(`Peça ${peca.id}: ${a}`);
+        for (const n of escopo.renomeados) {
+          opts.onProgress?.(`Peça ${peca.id}: @${n.tipo} "${n.de}" renomeado para "${n.para}"`);
+        }
+        const declarados = nomesGlobaisDe(css);
+        for (const n of declarados.keyframes) nomesGlobaisJaUsados.keyframes.add(n);
+        for (const n of declarados.fontFace) nomesGlobaisJaUsados.fontFace.add(n);
+        for (const n of declarados.layer) nomesGlobaisJaUsados.layer.add(n);
+      }
+
+      // Os proxies: sem eles, um seletor escopado não teria em que casar.
+      corpo = envolverEmProxies({
+        origem,
+        html: corpo,
+        css: '',
+        documentoAttrs: atributosDoDocumentoDaPeca(documentoDaPeca),
+      });
 
       // Arquivos do bundle (JS, imagens, fontes) vão para assets/<cmpId>/ e as
       // referências são reescritas — componentes não colidem entre si.
@@ -403,7 +502,9 @@ export const generateSite = async (
       }
 
       corpoDaSecao += `\n${corpo}\n`;
-      concatCss += `\n/* ${secao.slug} · ${peca.id} */\n${css}`;
+      if (css.trim().length > 0) {
+        concatCss += `\n/* origem ${origem} — primeira peça: ${peca.id} */\n${css}`;
+      }
       usados.push(peca.id);
     }
 

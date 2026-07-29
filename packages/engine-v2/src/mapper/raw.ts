@@ -218,6 +218,17 @@ export type RawCss = {
   inline: boolean;
   content?: string;
   viaCssom?: boolean;
+  /**
+   * A coleta bateu no teto de regras e parou no meio.
+   *
+   * Vem como uma folha vazia marcada, não como um campo do resultado inteiro,
+   * porque o coletor devolve uma lista e não tinha onde pendurar o aviso. Quem
+   * lê transforma isso em limitação: um bundle com metade do CSS precisa dizer
+   * que tem metade do CSS.
+   */
+  truncado?: boolean;
+  /** Quantas regras entraram antes do corte. */
+  regrasLidas?: number;
 };
 
 export type RawJsInline = {

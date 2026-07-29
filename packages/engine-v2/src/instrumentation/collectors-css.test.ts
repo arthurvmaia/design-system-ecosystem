@@ -177,16 +177,35 @@ test('shadow root aberto: <style> e adoptedStyleSheets saem demarcados, inclusiv
   assert.ok(sombras[2]?.content?.includes('.interno{color:green}'));
 });
 
-test('o teto GLOBAL de 4000 regras vale para a soma das serializações', () => {
+const linhas = (f: RawCss | undefined): number =>
+  (f?.content ?? '').split('\n').filter((l) => l.length > 0).length;
+
+test('uma página feita com utilitários cabe: 7000 regras não são mais cortadas', () => {
+  // O teto antigo era 4000 e cortava calado. Uma folha de Tailwind de build
+  // passa disso sozinha — o site carregava com metade do estilo e nada avisava.
   const muitas = regras(...Array.from({ length: 3_500 }, (_, i) => `.r${i}{top:${i}px}`));
   const out = coletar(
     docFake({
       adoptedStyleSheets: [{ cssRules: muitas }, { cssRules: muitas }],
     }),
   );
-  assert.equal(out.length, 2);
-  const linhas = (f: RawCss | undefined): number =>
-    (f?.content ?? '').split('\n').filter((l) => l.length > 0).length;
-  assert.equal(linhas(out[0]), 3_500, 'a primeira folha cabe inteira no teto');
-  assert.equal(linhas(out[1]), 500, 'a segunda só leva o que restou do teto');
+  assert.equal(out.length, 2, 'as duas folhas inteiras, e nenhuma marca de corte');
+  assert.equal(linhas(out[0]), 3_500);
+  assert.equal(linhas(out[1]), 3_500);
+});
+
+test('quando o teto é atingido, o corte é DECLARADO em vez de silencioso', () => {
+  // 41 mil regras passam do teto de 40 mil. O que importa aqui não é o número:
+  // é que a coleta avisa. Um bundle com metade do CSS precisa dizer que tem
+  // metade do CSS — senão ele valida, carrega e fica errado só na tela.
+  const muitas = regras(...Array.from({ length: 20_500 }, (_, i) => `.r${i}{top:${i}px}`));
+  const out = coletar(
+    docFake({
+      adoptedStyleSheets: [{ cssRules: muitas }, { cssRules: muitas }],
+    }),
+  );
+  const marca = out.find((f) => f.truncado === true);
+  assert.ok(marca !== undefined, 'a folha-aviso precisa existir');
+  assert.equal(marca?.content, '', 'ela não tem conteúdo: ela É o aviso');
+  assert.equal(marca?.regrasLidas, 40_000, 'e diz quantas regras entraram antes do corte');
 });

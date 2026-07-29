@@ -15,6 +15,29 @@ export const extrairCorpo = (html: string): string => {
 };
 
 /**
+ * Os atributos crus de `<html>` e `<body>` do documento do bundle.
+ *
+ * O corpo da peça sai do `<body>`, e os atributos ficam para trás — mas é neles
+ * que moram o tema (`class="dark"`), o fundo (`class="bg-[#03020A]"`) e a
+ * tipografia base de qualquer site feito com utilitários. Sem eles, `html.dark
+ * .card` e `body.bg-black .x` viram regras mortas: íntegras no arquivo, sem
+ * casar com nada na tela. Os proxies do compositor os vestem de volta.
+ */
+export const atributosDoDocumentoDaPeca = (html: string): { html?: string; body?: string } => {
+  const pegar = (tag: 'html' | 'body'): string | undefined => {
+    const m = new RegExp(`<${tag}\\b([^>]*)>`, 'i').exec(html);
+    const bruto = m?.[1]?.trim();
+    return bruto === undefined || bruto === '' ? undefined : bruto;
+  };
+  const saida: { html?: string; body?: string } = {};
+  const h = pegar('html');
+  const b = pegar('body');
+  if (h !== undefined) saida.html = h;
+  if (b !== undefined) saida.body = b;
+  return saida;
+};
+
+/**
  * Remove os avisos internos do bundle (`<aside data-ds-aviso>`) e os links de
  * stylesheet — o CSS entra concatenado, e o aviso é conversa da Galeria com o
  * usuário, não conteúdo do site gerado.
