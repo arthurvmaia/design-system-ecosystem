@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { lerCssDoBundle } from '@ds/generator';
 import { getDb, tables } from '@ds/indexer';
 import { isolateComponent } from '@ds/isolator';
 import {
@@ -292,26 +293,15 @@ const copiarFramesDoBundle = (dsId: `ds_${string}`, bundleDir: string): void => 
   }
 };
 
-/** `styles.css` de um bundle V2 copiado: os CSS na ordem dos `<link>` do index. */
-const concatenarCssDoBundle = (bundleDir: string): string => {
-  const indexPath = join(bundleDir, 'index.html');
-  if (!existsSync(indexPath)) return '';
-  try {
-    const html = readFileSync(indexPath, 'utf8');
-    const hrefs = [...html.matchAll(/<link[^>]+href="([^"]+\.css)"/gi)].map((m) => m[1] ?? '');
-    // A ordem dos <link> é a cascata que o compilador preservou — concatenar
-    // nessa ordem não muda resultado.
-    return hrefs
-      .filter((h) => h.length > 0 && !h.includes('..') && !/^[a-z]+:/i.test(h))
-      .map((h) => {
-        const p = join(bundleDir, h);
-        return existsSync(p) ? readFileSync(p, 'utf8') : '';
-      })
-      .join('\n');
-  } catch {
-    return '';
-  }
-};
+/**
+ * `styles.css` de um bundle V2 copiado: os CSS na ordem dos `<link>` do index.
+ *
+ * A implementação mudou de casa para `@ds/generator` (`lerCssDoBundle`), porque
+ * o gerador precisava exatamente disto e estava fazendo errado — ordenava a
+ * pasta por nome e desfazia a cascata. Duas cópias da mesma regra acabam
+ * discordando; uma só, não.
+ */
+const concatenarCssDoBundle = (bundleDir: string): string => lerCssDoBundle(bundleDir).css;
 
 const montarComponente = (seg: SegmentRow) => {
   const componentId = newComponentId();

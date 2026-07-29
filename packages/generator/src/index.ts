@@ -13,10 +13,12 @@ import {
   resolverSecoes,
 } from '@ds/shared';
 import { z } from 'zod';
+import { lerCssDoBundle } from './cascata.js';
 import { type ModeloDeCopy, executarPlano, montarPlanoEditorial } from './editorial.js';
 import { cssResponsivoBase } from './responsivo.js';
 
 export { cssResponsivoBase } from './responsivo.js';
+export { lerCssDoBundle, type LeituraDeCss } from './cascata.js';
 import {
   envolverSecao,
   extrairCorpo,
@@ -369,19 +371,20 @@ export const generateSite = async (
         continue;
       }
 
-      // CSS: V2 tem assets/css/*.css (dividido, em ordem); legado tem styles.css.
-      const cssDir = join(bundleDir, 'assets', 'css');
-      const cssFiles = existsSync(cssDir)
-        ? readdirSync(cssDir)
-            .filter((f) => f.endsWith('.css'))
-            .sort()
-        : [];
-      let css =
-        cssFiles.length > 0
-          ? cssFiles.map((f) => readFileSync(join(cssDir, f), 'utf8')).join('\n')
-          : existsSync(join(bundleDir, 'styles.css'))
-            ? readFileSync(join(bundleDir, 'styles.css'), 'utf8')
-            : '';
+      // A ordem dos `<link>` do bundle É a cascata. Ler a pasta e ordenar por
+      // nome punha `animations` antes de `tokens` e as folhas externas de nome
+      // hexadecimal no meio — todo o cuidado do compilador em não inverter a
+      // cascata era desfeito aqui, e o site saía errado sem nada faltar.
+      const leitura = lerCssDoBundle(bundleDir);
+      let css = leitura.css;
+      if (leitura.faltando.length > 0) {
+        opts.onProgress?.(
+          `Peça ${peca.id}: ${leitura.faltando.length} folha(s) de estilo declaradas e ausentes`,
+        );
+      }
+      if (css.trim() === '') {
+        opts.onProgress?.(`Peça ${peca.id} entrou SEM estilo nenhum — o bundle não tem CSS`);
+      }
 
       let corpo = limparParaComposicao(extrairCorpo(readFileSync(htmlPath, 'utf8')));
       corpo = applySubstitutions(corpo, substituicoes);

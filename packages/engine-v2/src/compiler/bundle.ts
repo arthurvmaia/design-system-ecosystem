@@ -64,6 +64,22 @@ export type EntradaBundle = {
   dirAssetsCaptura?: string;
   /** Scripts inline relevantes, na ordem original. */
   scripts: readonly RawJsInline[];
+  /**
+   * Atributos crus de `<html>` e `<body>` da página de origem.
+   *
+   * Sem eles o bundle perde todo seletor que dependia do documento — e são
+   * muitos, porque é onde moram tema (`class="dark"`), fundo e tipografia base
+   * em qualquer site feito com utilitários.
+   */
+  documentoAttrs?: { html?: string; body?: string };
+  /**
+   * `<script src>` externos da página, na ordem do documento.
+   *
+   * Sem isso o bundle nasce sem o runtime que desenha os ícones e compila as
+   * classes utilitárias. Ficava invisível porque a prévia da Galeria montava o
+   * head da página original por fora — o defeito só aparecia no site entregue.
+   */
+  scriptsExternos?: readonly string[];
   /** Assets de que o segmento depende. */
   assets: readonly CapturedAsset[];
   stack: readonly StackEntry[];
@@ -162,6 +178,16 @@ export const processarSvgs = (
 const CSP_CAPSULA =
   "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; object-src 'none'";
 
+/**
+ * O documento do bundle.
+ *
+ * `attrsHtml`/`attrsBody` são os atributos REAIS de `<html>` e `<body>` da
+ * página de origem, e a ausência deles era uma perda de fidelidade silenciosa:
+ * o `<body>` saía pelado, então `body.dark .card`, `html[data-theme] .hero` e o
+ * `class="bg-[#03020A] text-white"` que pintava o fundo simplesmente não
+ * casavam mais. As regras continuavam no CSS, íntegras, e não valiam nada —
+ * o pior tipo de falha, porque nada está faltando para quem lê o arquivo.
+ */
 const documento = (opts: {
   titulo: string;
   css: readonly string[];
@@ -169,10 +195,20 @@ const documento = (opts: {
   scripts: string;
   inline: readonly { type: string; content: string }[];
   csp?: string;
-}): string =>
-  [
+  attrsHtml?: string;
+  attrsBody?: string;
+}): string => {
+  const attrs = (a: string | undefined): string =>
+    a !== undefined && a.trim() !== '' ? ` ${a.trim()}` : '';
+  // `lang` só é imposto quando a origem não trouxe um: sobrescrever o idioma
+  // declarado pelo site muda como o leitor de tela pronuncia o conteúdo.
+  const html = /\blang\s*=/.test(opts.attrsHtml ?? '')
+    ? `<html${attrs(opts.attrsHtml)}>`
+    : `<html lang="pt-BR"${attrs(opts.attrsHtml)}>`;
+
+  return [
     '<!doctype html>',
-    '<html lang="pt-BR">',
+    html,
     '<head>',
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -184,7 +220,7 @@ const documento = (opts: {
     // Dados inline (JSON-LD/importmap) voltam ao head, onde funcionam.
     ...opts.inline.map((d) => `<script type="${d.type}">${d.content}</script>`),
     '</head>',
-    '<body>',
+    `<body${attrs(opts.attrsBody)}>`,
     opts.corpo,
     opts.scripts,
     '</body>',
@@ -192,6 +228,7 @@ const documento = (opts: {
   ]
     .filter((l) => l.length > 0)
     .join('\n');
+};
 
 /** O aviso que acompanha uma referência visual. Nunca escondido. */
 const avisoDeReferencia = (r: RepresentationDecision): string =>
@@ -343,6 +380,12 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
         ].join('\n')
       : svg.html;
 
+  // Os externos vêm ANTES dos inline organizados, como no documento original:
+  // script inline quase sempre depende do runtime já ter carregado.
+  const tagsExternas = (entrada.scriptsExternos ?? [])
+    .map((src) => `<script src="${src.replace(/"/g, '&quot;')}"></script>`)
+    .join('\n');
+
   arquivos.push(
     escrever(
       dir,
@@ -351,8 +394,10 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
         titulo: segmento.name,
         css: caminhosCss,
         corpo,
-        scripts: tagsDeScript(js.arquivos),
+        scripts: [tagsExternas, tagsDeScript(js.arquivos)].filter((s) => s.length > 0).join('\n'),
         inline: js.inline,
+        attrsHtml: entrada.documentoAttrs?.html,
+        attrsBody: entrada.documentoAttrs?.body,
       }),
     ),
   );

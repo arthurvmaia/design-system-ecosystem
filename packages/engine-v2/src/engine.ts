@@ -30,6 +30,7 @@ import {
 } from '@ds/shared';
 import { PlaywrightIndisponivel, type SessaoV2, abrirSessao } from './browser/page.js';
 import { type FolhaExternaBundle, escreverBundle } from './compiler/bundle.js';
+import { atributosDoDocumento, scriptsExternosDoDocumento } from './compiler/documento.js';
 import { detectarFerramentas, montarStack } from './compiler/stack.js';
 import { type Candidato, descobrirCandidatos } from './explore/candidates.js';
 import { TRAJETORIAS_COMPLEMENTARES, TRAJETORIA_COBERTURA } from './explore/pointer-paths.js';
@@ -451,6 +452,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     // carrega assets da origem e o `fila:concluir` valida refs relativas contra
     // o disco. `page.content()` devolve os atributos como estão no DOM.
     const html = absolutizeRefs(limparInstrumentacao(htmlBruto), finalUrl);
+    // O documento em que os segmentos viviam: atributos de `<html>`/`<body>` e o
+    // runtime que a página carregava. Sem isso o bundle sai sem tema, sem fundo
+    // e sem os scripts que desenham os ícones.
+    const scriptsExternosDaPagina = scriptsExternosDoDocumento(html);
 
     if (instrumentacao.shadowRoots.closed > 0) {
       limitacoes.push(
@@ -955,6 +960,12 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
               assetsDeCss,
               dirAssetsCaptura: join(opts.dirCaptura, 'assets'),
               scripts: seg.representation.type === 'referencia-visual' ? [] : scriptsInline,
+              // O documento de origem viaja com o segmento: sem os atributos de
+              // `<html>`/`<body>`, todo seletor que dependia deles vira regra
+              // morta dentro do bundle.
+              documentoAttrs: atributosDoDocumento(html),
+              scriptsExternos:
+                seg.representation.type === 'referencia-visual' ? [] : scriptsExternosDaPagina,
               assets: assets.filter((a) => dosMeus.has(a.originalUrl)),
               stack,
               frames: framesDoSegmento,

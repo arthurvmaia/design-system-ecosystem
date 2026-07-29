@@ -591,8 +591,21 @@ export const INIT_SCRIPT = `
  * listeners vivem num WeakMap em vez de num atributo por elemento. O HTML sai
  * mais próximo do original.
  */
+/**
+ * Tira do HTML TODA marcação que a captura pendurou nos elementos.
+ *
+ * Cobria só o `data-dsx2` desta engine. Faltava o `data-dsx-scroll`, que o
+ * amostrador de scroll do V1 escreve e nunca apaga — e como a leitura do HTML
+ * por seção acontece depois dele, a marcação viajava para dentro dos bundles e
+ * dali para o site entregue. Medido num acervo real: 113 ocorrências no
+ * manifesto de segmentos.
+ *
+ * O padrão cobre o namespace inteiro (`data-dsx`, `data-dsx2`, `data-dsx-*`) de
+ * propósito: instrumento novo com sufixo novo já nasce sendo limpo, em vez de
+ * vazar até alguém reparar.
+ */
 export const limparInstrumentacao = (html: string): string =>
-  html.replace(new RegExp(`\\s*${ATTR_REF}="[^"]*"`, 'gi'), '');
+  html.replace(/\s*data-dsx[\w-]*\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
 
 /** Monta uma chamada string-serializável, como no V1: `(FN)(argJson)`. */
 export const chamar = (fonte: string, ...args: unknown[]): string =>
