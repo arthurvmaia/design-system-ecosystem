@@ -417,42 +417,65 @@ function StepBar({
 }) {
   return (
     <div
-      className="flex items-center gap-1 overflow-x-auto border-b px-6 py-3"
+      className="flex items-center overflow-x-auto border-b px-6 py-3"
       style={{ borderColor: 'var(--color-border)' }}
     >
       {ETAPAS.map((label, i) => {
         const done = i < step;
         const active = i === step;
+        const travada = i > maxVisitado;
         return (
-          <button
-            key={label}
-            type="button"
-            onClick={() => onStep(i)}
-            disabled={i > maxVisitado}
-            aria-current={active ? 'step' : undefined}
-            title={i > maxVisitado ? 'Avance pelas etapas para desbloquear' : `Ir para ${label}`}
-            className="flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-[11px] transition-colors disabled:cursor-default"
-            style={{
-              backgroundColor: active ? 'rgba(14,165,233,0.2)' : 'transparent',
-              color: active
-                ? 'var(--color-fg)'
-                : done
-                  ? 'var(--color-fg-muted)'
-                  : 'var(--color-fg-subtle)',
-              fontFamily: 'var(--font-display)',
-            }}
-          >
-            <span
-              className="ds-data flex h-4 w-4 items-center justify-center rounded-full text-[9px]"
+          <div key={label} className="flex shrink-0 items-center">
+            {/* O traço entre as etapas: acende até onde a pessoa já chegou. É o
+                que transforma cinco botões numa trilha — sem ele, a barra é uma
+                fileira de opções e não um caminho com começo e fim. */}
+            {i > 0 && (
+              <span
+                aria-hidden
+                className="mx-1 h-px w-5"
+                style={{
+                  backgroundColor: done || active ? 'var(--color-ion-6)' : 'var(--color-border)',
+                }}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => onStep(i)}
+              disabled={travada}
+              aria-current={active ? 'step' : undefined}
+              title={travada ? 'Avance pelas etapas para desbloquear' : `Ir para ${label}`}
+              className="flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors disabled:cursor-default"
               style={{
-                backgroundColor: active || done ? 'var(--color-primary)' : 'rgba(255,255,255,0.06)',
-                color: active || done ? 'var(--color-bone-1)' : 'var(--color-fg-subtle)',
+                backgroundColor: active ? 'rgba(56,189,248,0.12)' : 'transparent',
+                color: active
+                  ? 'var(--color-ion-3)'
+                  : done
+                    ? 'var(--color-fg-muted)'
+                    : 'var(--color-fg-subtle)',
+                fontFamily: 'var(--font-mono)',
               }}
             >
-              {done ? <Check size={9} /> : i + 1}
-            </span>
-            {label}
-          </button>
+              <span
+                className="ds-data flex h-[15px] w-[15px] items-center justify-center rounded-full text-[9px]"
+                style={{
+                  backgroundColor: done
+                    ? 'var(--color-ion-7)'
+                    : active
+                      ? 'transparent'
+                      : 'rgba(255,255,255,0.06)',
+                  border: active ? '1px solid var(--color-ion-4)' : '1px solid transparent',
+                  color: done
+                    ? 'var(--color-bone-1)'
+                    : active
+                      ? 'var(--color-ion-3)'
+                      : 'var(--color-fg-subtle)',
+                }}
+              >
+                {done ? <Check size={9} /> : String(i + 1).padStart(2, '0')}
+              </span>
+              {label}
+            </button>
+          </div>
         );
       })}
     </div>
