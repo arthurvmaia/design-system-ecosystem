@@ -1,7 +1,7 @@
-import type { Blueprint, MediaItem } from '@/lib/api';
+import type { MediaItem } from '@/lib/api';
 import { type Problema, bloqueantes } from '@/lib/revisao-core';
 import { familyName } from '@ds/shared/fonts';
-import { ARQUETIPOS, TONS_DE_VOZ } from '@ds/shared/schemas';
+import { ARQUETIPOS, type SecaoDoSite, TONS_DE_VOZ } from '@ds/shared/schemas';
 import { AlertTriangle, ArrowRight, OctagonX, Sparkles } from 'lucide-react';
 import type { WizardBranding } from '../partes';
 
@@ -15,9 +15,7 @@ export function StepRevisao({
   name,
   kit,
   branding,
-  activeSlots,
-  mode,
-  sections,
+  secoes,
   media,
   problemas,
   onIr,
@@ -25,9 +23,7 @@ export function StepRevisao({
   name: string;
   kit: { name: string; components: unknown[] } | null;
   branding: WizardBranding;
-  activeSlots: Blueprint['slots'];
-  mode: 'blueprint' | 'criativo';
-  sections: Record<string, string>;
+  secoes: SecaoDoSite[];
   media: MediaItem[];
   problemas: Problema[];
   onIr: (etapa: number) => void;
@@ -37,7 +33,8 @@ export function StepRevisao({
     (a) => a.id === branding.identidadeVerbal.arquetipos[0],
   )?.nome;
   const voz = [tomPrincipal, arquetipoPrincipal].filter(Boolean).join(' · ');
-  const briefsPreenchidos = Object.values(sections).filter((v) => v.trim() !== '').length;
+  const comTexto = secoes.filter((s) => (s.instrucao ?? '').trim() !== '').length;
+  const noAutomatico = secoes.length - comTexto;
   const nBloq = bloqueantes(problemas).length;
   const avisos = problemas.filter((p) => p.nivel === 'aviso');
 
@@ -115,13 +112,15 @@ export function StepRevisao({
         />
         <Linha
           rotulo="Estrutura"
-          valor={
-            mode === 'blueprint' ? `${activeSlots.length} seções` : 'inteligente (o gerador decide)'
-          }
+          valor={`${secoes.length} ${secoes.length === 1 ? 'seção' : 'seções'}, na sua ordem`}
         />
         <Linha
-          rotulo="Conteúdo"
-          valor={`${briefsPreenchidos} ${briefsPreenchidos === 1 ? 'seção preenchida' : 'seções preenchidas'}`}
+          rotulo="Textos"
+          valor={
+            comTexto === 0
+              ? 'todos por minha conta'
+              : `${comTexto} com texto seu · ${noAutomatico} por minha conta`
+          }
         />
         <Linha
           rotulo="Logos e mídias"

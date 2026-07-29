@@ -10,7 +10,7 @@ import { contarRedes } from './social';
  */
 export type SecaoStatus = 'nao-iniciado' | 'configurado' | 'opcional';
 
-export type MarcaSubId = 'marca' | 'voz' | 'paleta' | 'tipografia' | 'redes';
+export type MarcaSubId = 'marca' | 'voz' | 'paleta' | 'tipografia' | 'contato' | 'redes';
 
 export type SecaoInfo = { status: SecaoStatus; resumo: string };
 
@@ -32,6 +32,9 @@ export type BrandStatusInput = {
   };
   paleta?: { cores: readonly unknown[] };
   sociais?: readonly { url: string; visivel: boolean }[];
+  // ── Contato e chamada, que vieram da etapa Conteúdo ──
+  contact?: { email: string; phone: string; whatsapp: string; address: string };
+  mainCta?: { label: string; href: string };
 };
 
 export const STATUS_LABEL: Record<SecaoStatus, string> = {
@@ -90,6 +93,23 @@ export const marcaSectionStatus = (b: BrandStatusInput): Record<MarcaSubId, Seca
             resumo: `${familyName(b.fontDisplay ?? '')} + ${familyName(b.fontBody ?? '')}`,
           }
         : { status: 'nao-iniciado', resumo: 'Escolha as fontes' },
+    contato: (() => {
+      const cta = b.mainCta?.label.trim() ?? '';
+      const canais = [
+        b.contact?.email,
+        b.contact?.phone,
+        b.contact?.whatsapp,
+        b.contact?.address,
+      ].filter((c) => (c ?? '').trim() !== '').length;
+      if (cta !== '') return { status: 'configurado' as const, resumo: cta };
+      if (canais > 0) {
+        return {
+          status: 'configurado' as const,
+          resumo: `${canais} ${canais === 1 ? 'canal' : 'canais'}`,
+        };
+      }
+      return { status: 'nao-iniciado' as const, resumo: 'Como falar com você' };
+    })(),
     redes:
       nRedes > 0
         ? { status: 'configurado', resumo: `${nRedes} ${nRedes === 1 ? 'canal' : 'canais'}` }

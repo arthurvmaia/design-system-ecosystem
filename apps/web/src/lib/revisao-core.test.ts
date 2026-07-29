@@ -18,10 +18,8 @@ const BASE: DadosDeRevisao = {
     atribuicoes: {},
   },
   ctaPrincipal: 'Comece agora',
-  briefs: { hero: { mensagem: 'promessa', pontos: [], provas: [], iaDecide: false } },
-  placements: [],
+  secoes: [{ nome: 'Abertura', componentIds: ['cmp_a'], instrucao: 'a promessa da marca' }],
   nMidias: 2,
-  modo: 'blueprint',
 };
 
 test('projeto completo passa sem problema nenhum', () => {
@@ -33,29 +31,36 @@ test('sem nome e sem kit são BLOQUEANTES apontando para a etapa Projeto', () =>
   const b = bloqueantes(problemas);
   assert.equal(b.length, 2);
   for (const p of b) assert.equal(p.etapa, ETAPA.projeto);
-  // kit vazio também bloqueia
   assert.equal(bloqueantes(validarProjeto({ ...BASE, kitComponentes: [] })).length, 1);
 });
 
-test('faltas de marca, voz, conteúdo e mídia são AVISOS com etapa exata', () => {
+test('faltas de marca, texto e mídia são AVISOS com etapa exata', () => {
   const problemas = validarProjeto({
     ...BASE,
     brandName: '',
     nLogos: 0,
     tons: [],
     arquetipos: [],
-    briefs: {},
+    secoes: [{ nome: 'Abertura', componentIds: ['cmp_a'] }],
     ctaPrincipal: '',
     nMidias: 0,
   });
-  assert.equal(bloqueantes(problemas).length, 0, 'nada disso bloqueia');
+  assert.equal(bloqueantes(problemas).length, 0, 'nada disso bloqueia a geração');
   const etapas = problemas.map((p) => p.etapa);
   assert.ok(etapas.includes(ETAPA.marca));
-  assert.ok(etapas.includes(ETAPA.conteudo));
+  assert.ok(etapas.includes(ETAPA.estrutura), 'nenhuma seção com texto avisa na Estrutura');
   assert.ok(etapas.includes(ETAPA.midia));
 });
 
-test('contraste baixo na paleta vira aviso; placement órfão idem', () => {
+test('a chamada principal agora se corrige na Marca, não numa etapa de conteúdo', () => {
+  // Contato e chamada mudaram de casa quando a etapa Conteúdo deixou de existir.
+  // O botão "Corrigir" navega pelo índice: apontar para a etapa velha levaria a
+  // pessoa para a tela errada.
+  const problemas = validarProjeto({ ...BASE, ctaPrincipal: '  ' });
+  assert.ok(problemas.some((p) => p.etapa === ETAPA.marca && /chamada/i.test(p.mensagem)));
+});
+
+test('contraste baixo na paleta vira aviso; peça órfã na seção também', () => {
   const problemas = validarProjeto({
     ...BASE,
     paleta: {
@@ -66,8 +71,18 @@ test('contraste baixo na paleta vira aviso; placement órfão idem', () => {
       ],
       atribuicoes: {},
     },
-    placements: [{ role: 'hero', escolha: 'componente', componentId: 'cmp_sumiu' }],
+    secoes: [{ nome: 'Planos', componentIds: ['cmp_sumiu'] }],
   });
   assert.ok(problemas.some((p) => p.nivel === 'aviso' && p.etapa === ETAPA.marca));
-  assert.ok(problemas.some((p) => p.nivel === 'aviso' && p.etapa === ETAPA.estrutura));
+  const orfa = problemas.find((p) => p.etapa === ETAPA.estrutura && /saiu do kit/.test(p.mensagem));
+  assert.ok(orfa !== undefined, 'a peça que sumiu do kit precisa aparecer na revisão');
+  assert.match(orfa.mensagem, /Planos/, 'e precisa dizer QUAL seção');
+});
+
+test('enquanto o kit carrega, nenhuma seção é acusada de peça órfã', () => {
+  // O wizard usa um marcador enquanto a consulta do kit não respondeu. Sem esta
+  // guarda, abrir a Revisão acusaria todas as seções de apontar para peças que
+  // "não existem" — e some sozinho um segundo depois, o que é pior que não ter.
+  const problemas = validarProjeto({ ...BASE, kitComponentes: [{ id: '__carregando__' }] });
+  assert.ok(!problemas.some((p) => /saiu do kit/.test(p.mensagem)));
 });

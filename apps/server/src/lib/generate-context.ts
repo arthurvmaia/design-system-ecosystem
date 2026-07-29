@@ -1,14 +1,13 @@
 import {
-  BUILTIN_BLUEPRINTS,
   GeneratePayload,
   type KitComponenteDeGeracao,
-  type LayoutBlueprint,
   MediaManifest,
-  getBlueprint,
   libraryComponentBundleDir,
   normalizarProjectBranding,
   normalizarProjectContent,
   normalizarProjectLayout,
+  resolverSecoes,
+  slugDaSecao,
 } from '@ds/shared';
 
 /**
@@ -53,7 +52,6 @@ export type DadosParaContexto = {
 
 export type ContextoDeGeracao = {
   payload: GeneratePayload;
-  blueprint: LayoutBlueprint;
   /** Avisos NÃO bloqueantes (ex.: componente do kit removido da Biblioteca). */
   avisos: string[];
 };
@@ -69,9 +67,6 @@ export const montarContextoDeGeracao = (dados: DadosParaContexto): ContextoDeGer
   const content = normalizarProjectContent(dados.projeto.contentJson);
   const branding = normalizarProjectBranding(dados.projeto.brandingJson);
   const layout = normalizarProjectLayout(dados.projeto.layoutJson);
-  if (layout.mode === 'criativo') {
-    layout.creativeSeed = (dados.sortearSeed ?? (() => Math.floor(Math.random() * 1_000_000)))();
-  }
 
   let media: GeneratePayload['media'] = [];
   if (dados.projeto.mediaManifestJson) {
@@ -84,8 +79,6 @@ export const montarContextoDeGeracao = (dados: DadosParaContexto): ContextoDeGer
     }
   }
 
-  const blueprint = getBlueprint(layout.blueprintId) ?? (BUILTIN_BLUEPRINTS[0] as LayoutBlueprint);
-
   const components: KitComponenteDeGeracao[] = dados.componentes.map((cmp) => ({
     id: cmp.id as `cmp_${string}`,
     name: cmp.name,
@@ -95,19 +88,25 @@ export const montarContextoDeGeracao = (dados: DadosParaContexto): ContextoDeGer
     designSystemId: cmp.designSystemId,
   }));
 
-  // Escolha fixada apontando para componente que saiu do kit: degrada para a
-  // sugestão automática (o resolver já faz isso) — mas a pessoa fica sabendo.
-  for (const p of layout.placements) {
-    if (
-      p.escolha === 'componente' &&
-      p.componentId !== null &&
-      !components.some((c) => c.id === p.componentId)
-    ) {
-      avisos.push(
-        `A seção "${p.role}" fixava um componente que não está mais no kit — a escolha voltou para o automático.`,
-      );
+  // Peça que saiu do kit: a seção degrada para "criada no estilo" (o resolver já
+  // faz isso) — mas a pessoa fica sabendo, em vez de estranhar o site depois.
+  avisos.push(...resolverSecoes(layout.secoes, components).avisos);
+
+  // O `slotRole` de cada mídia é DERIVADO aqui, não gravado no upload.
+  //
+  // É o espelho legado do papel da seção, e derivar na hora de montar o payload
+  // é o que faz ele se curar sozinho: renomear a seção, trocar a peça ou mudar o
+  // tipo atualiza o espelho na próxima geração. Mídia apontando para uma seção
+  // que a pessoa apagou perde o espelho em vez de mentir sobre onde vai.
+  const secaoPorId = new Map(layout.secoes.map((s) => [s.id, s]));
+  const midiaComEspelho = media.map((m) => {
+    const secao = m.secaoId !== undefined ? secaoPorId.get(m.secaoId) : undefined;
+    if (secao === undefined) {
+      const { slotRole: _fora, ...resto } = m;
+      return resto;
     }
-  }
+    return { ...m, slotRole: slugDaSecao(secao, components) };
+  });
 
   const payload = GeneratePayload.parse({
     projectId: dados.projeto.id,
@@ -115,11 +114,10 @@ export const montarContextoDeGeracao = (dados: DadosParaContexto): ContextoDeGer
     kitId: dados.kit.id,
     kit: { id: dados.kit.id, name: dados.kit.name, components },
     layout,
-    blueprintId: blueprint.id,
     branding,
     content,
-    media,
+    media: midiaComEspelho,
   });
 
-  return { payload, blueprint, avisos };
+  return { payload, avisos };
 };

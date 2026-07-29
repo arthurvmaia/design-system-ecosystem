@@ -1,11 +1,5 @@
-import {
-  type BriefDaSecao,
-  type PaletaDoProjeto,
-  type PlacementDoSlot,
-  briefVazio,
-  contrasteRatio,
-  distribuirTokens,
-} from '@ds/shared/schemas';
+import { type PaletaDoProjeto, contrasteRatio, distribuirTokens } from '@ds/shared/schemas';
+import { ETAPA } from './etapas-core.js';
 
 /**
  * Validação PURA da revisão final do wizard: separa o que IMPEDE a geração
@@ -22,15 +16,10 @@ export type Problema = {
   mensagem: string;
 };
 
-/** Índices das etapas do wizard — mantidos aqui para o teste travar o mapa. */
-export const ETAPA = {
-  projeto: 0,
-  marca: 1,
-  estrutura: 2,
-  conteudo: 3,
-  midia: 4,
-  revisao: 5,
-} as const;
+// Os índices das etapas vêm de `etapas-core`: eram duplicados aqui, e o botão
+// "Corrigir" navega pelo número, então uma divergência levava para a etapa
+// errada em silêncio.
+export { ETAPA } from './etapas-core.js';
 
 export type DadosDeRevisao = {
   nome: string;
@@ -41,10 +30,8 @@ export type DadosDeRevisao = {
   arquetipos: string[];
   paleta: PaletaDoProjeto;
   ctaPrincipal: string;
-  briefs: Record<string, BriefDaSecao>;
-  placements: PlacementDoSlot[];
+  secoes: readonly { nome: string; componentIds: string[]; instrucao?: string }[];
   nMidias: number;
-  modo: 'blueprint' | 'criativo';
 };
 
 export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
@@ -86,24 +73,24 @@ export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
     aviso(ETAPA.marca, 'O texto e o fundo da paleta têm pouco contraste. Fica difícil de ler.');
   }
 
-  if (d.kitComponentes !== null) {
+  if (d.kitComponentes !== null && !d.kitComponentes.some((c) => c.id === '__carregando__')) {
     const ids = new Set(d.kitComponentes.map((c) => c.id));
-    for (const p of d.placements) {
-      if (p.escolha === 'componente' && p.componentId !== null && !ids.has(p.componentId)) {
-        aviso(
-          ETAPA.estrutura,
-          'Uma seção fixava um componente que saiu do kit. Ela voltou para o automático.',
-        );
-      }
+    const orfas = d.secoes.filter((s) => s.componentIds.some((id) => !ids.has(id)));
+    for (const s of orfas) {
+      const nome = s.nome.trim() === '' ? 'Uma seção' : `A seção "${s.nome.trim()}"`;
+      aviso(ETAPA.estrutura, `${nome} usa uma peça que saiu do kit. Ela sai criada no estilo.`);
     }
   }
 
-  const briefsPreenchidos = Object.values(d.briefs).filter((b) => !briefVazio(b)).length;
-  if (briefsPreenchidos === 0) {
-    aviso(ETAPA.conteudo, 'Nenhuma seção tem conteúdo seu. O texto inteiro sai inventado no tom.');
+  const comTexto = d.secoes.filter((s) => (s.instrucao ?? '').trim() !== '').length;
+  if (d.secoes.length > 0 && comTexto === 0) {
+    aviso(
+      ETAPA.estrutura,
+      'Nenhuma seção tem texto seu. Escrevo tudo no tom da marca, sem citar fato nenhum.',
+    );
   }
   if (d.ctaPrincipal.trim() === '') {
-    aviso(ETAPA.conteudo, 'Você não definiu o CTA principal. Os botões saem com um texto padrão.');
+    aviso(ETAPA.marca, 'Você não definiu a chamada principal. Os botões saem com um texto padrão.');
   }
   if (d.nMidias === 0) {
     aviso(ETAPA.midia, 'Você não enviou nenhuma mídia. As seções visuais saem só com o estilo.');

@@ -6,6 +6,7 @@ import {
 } from '@/lib/generator-sections';
 import { useState } from 'react';
 import type { WizardBranding } from '../partes';
+import { PainelContato } from './marca/PainelContato';
 import { PainelMarca } from './marca/PainelMarca';
 import { PainelPaleta } from './marca/PainelPaleta';
 import { PainelRedes } from './marca/PainelRedes';
@@ -18,6 +19,7 @@ const MARCA_SECOES: MarcaSecaoDef[] = [
   { id: 'voz', label: 'Voz da marca', peso: 'recomendado' },
   { id: 'paleta', label: 'Paleta', peso: 'recomendado' },
   { id: 'tipografia', label: 'Tipografia', peso: 'recomendado' },
+  { id: 'contato', label: 'Contato e chamada', peso: 'recomendado' },
   { id: 'redes', label: 'Redes sociais', peso: 'opcional' },
 ];
 
@@ -80,6 +82,7 @@ export function StepMarca({
         {sub === 'voz' && <PainelVoz branding={branding} setB={setB} />}
         {sub === 'paleta' && <PainelPaleta branding={branding} setB={setB} />}
         {sub === 'tipografia' && <PainelTipografia branding={branding} setB={setB} />}
+        {sub === 'contato' && <PainelContato branding={branding} setB={setB} />}
         {sub === 'redes' && <PainelRedes branding={branding} setB={setB} />}
       </div>
     </div>

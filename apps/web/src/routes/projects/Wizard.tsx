@@ -1,4 +1,3 @@
-import type { LayoutChoice } from '@/components/LayoutPicker';
 import { Modal } from '@/components/Modal';
 import {
   type MediaItem,
@@ -13,38 +12,36 @@ import {
   ROTULO_AUTOSAVE,
   reduzirAutosave,
 } from '@/lib/autosave-core';
+import {
+  type DadosDasEtapas,
+  ETAPA,
+  ETAPAS,
+  maiorEtapaLiberada,
+  pendenciasDaEtapa,
+} from '@/lib/etapas-core';
 import { resumoDaVoz } from '@/lib/marca-rotulos';
 import { bloqueantes, validarProjeto } from '@/lib/revisao-core';
 import { toast } from '@/lib/toast';
 import {
-  type BriefDaSecao,
   type Produto,
+  type SecaoDoSite,
   distribuirTokens,
+  espelharBriefsDasSecoes,
   espelhoDoBrief,
   normalizarProjectBranding,
   normalizarProjectContent,
+  normalizarProjectLayout,
+  sugerirSecoes,
 } from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Check, CloudOff, Loader2, Rocket } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { StepConteudo } from './etapas/EtapaConteudo';
 import { StepEstrutura } from './etapas/EtapaEstrutura';
 import { StepMarca } from './etapas/EtapaMarca';
 import { StepMidia } from './etapas/EtapaMidia';
 import { StepProjeto } from './etapas/EtapaProjeto';
 import { StepRevisao } from './etapas/EtapaRevisao';
 import type { WizardBranding } from './partes';
-
-// ── Wizard ───────────────────────────────────────────────────────────────────
-
-const ETAPAS = [
-  'Projeto',
-  'Marca',
-  'Estrutura',
-  'Conteúdo',
-  'Mídia e produtos',
-  'Revisão',
-] as const;
 
 export function ProjectWizard({
   existing,
@@ -57,12 +54,11 @@ export function ProjectWizard({
 }) {
   const qc = useQueryClient();
   const kits = useQuery({ queryKey: ['kits'], queryFn: api.listKits });
-  const blueprints = useQuery({ queryKey: ['blueprints'], queryFn: api.getBlueprints });
 
   const parsedBranding = parseBranding(existing?.brandingJson);
   // Caminho único de migração: sections legado entra e sai como briefs.
   const parsedContent = normalizarProjectContent(existing?.contentJson ?? null);
-  const parsedLayout = safeParse<LayoutChoice & Record<string, unknown>>(existing?.layoutJson);
+  const parsedLayout = normalizarProjectLayout(existing?.layoutJson ?? null);
 
   const [step, setStep] = useState(0);
   // Até onde a pessoa JÁ chegou: a StepBar deixa voltar E avançar para
@@ -72,21 +68,18 @@ export function ProjectWizard({
   const [name, setName] = useState(existing?.name ?? '');
   const [kitId, setKitId] = useState<string | null>(existing?.kitId ?? null);
   const [branding, setBranding] = useState<WizardBranding>(parsedBranding);
-  const [layout, setLayout] = useState<LayoutChoice>({
-    mode: parsedLayout?.mode === 'criativo' ? 'criativo' : 'blueprint',
-    blueprintId: parsedLayout?.blueprintId ?? 'saas-landing',
-    disabledRoles: parsedLayout?.disabledRoles ?? [],
-    placements: Array.isArray(parsedLayout?.placements) ? parsedLayout.placements : [],
-  });
-  const [briefs, setBriefs] = useState<Record<string, BriefDaSecao>>(parsedContent.briefs ?? {});
-  // Produtos vivem no conteúdo do projeto, ao lado dos briefs.
+  const [secoes, setSecoes] = useState<SecaoDoSite[]>(parsedLayout.secoes);
+  // Produtos vivem no conteúdo do projeto.
   const [produtos, setProdutos] = useState<Produto[]>(parsedContent.produtos ?? []);
   const [media, setMedia] = useState<MediaItem[]>(parseMedia(existing?.mediaManifestJson));
 
-  // Espelho legado: quem ainda lê texto plano por seção continua atendido.
+  // Espelhos legados. A fonte do texto passou a ser `secao.instrucao`; `briefs` e
+  // `sections` continuam sendo gravados porque o pipeline editorial e o contrato
+  // do gerador leem de lá.
+  const briefs = espelharBriefsDasSecoes(secoes);
   const sectionsEspelho = Object.fromEntries(
     Object.entries(briefs)
-      .map(([role, b]) => [role, espelhoDoBrief(b)] as const)
+      .map(([id, b]) => [id, espelhoDoBrief(b)] as const)
       .filter(([, texto]) => texto !== ''),
   );
 
@@ -163,7 +156,10 @@ export function ProjectWizard({
       kitId,
       content: { sections: sectionsEspelho, briefs, produtos },
       branding: toBranding(),
-      layout,
+      // Espalhar o layout lido preserva densidade, movimento e a preferência de
+      // design system, que não têm tela: mandar só `secoes` faria o servidor
+      // mesclar sobre o default e zerar os três a cada gravação.
+      layout: { ...parsedLayout, secoes },
     });
     qc.invalidateQueries({ queryKey: ['projects'] });
     return id;
@@ -188,7 +184,7 @@ export function ProjectWizard({
   // primeira letra do nome não pode criar um projeto). A máquina de estados e
   // as decisões vivem em lib/autosave-core, testadas sem navegador.
   const [autosave, setAutosave] = useState<EstadoAutosave>('ocioso');
-  const assinatura = JSON.stringify({ name, kitId, branding, layout, briefs, produtos });
+  const assinatura = JSON.stringify({ name, kitId, branding, secoes, produtos });
   const ultimaSalva = useRef(existing !== null ? assinatura : '');
   const emVoo = useRef(false);
 
@@ -228,13 +224,33 @@ export function ProjectWizard({
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao gerar o site.'),
   });
 
-  const bp = blueprints.data?.items.find((b) => b.id === layout.blueprintId);
-  const activeSlots =
-    layout.mode === 'blueprint'
-      ? (bp?.slots.filter((s) => s.required || !layout.disabledRoles.includes(s.role)) ?? [])
-      : [];
+  const componentesDoKit = kit.data?.item.components ?? [];
 
-  const podeAvancar = step === 0 ? name.trim() !== '' && kitId !== null : true;
+  // Semente: a etapa Estrutura nunca abre em branco.
+  //
+  // Roda ao ENTRAR na etapa, não na montagem do wizard, e uma vez por kit. Se
+  // dependesse só de "não tem seção", apagar a última seção re-semearia por
+  // baixo do usuário; e se rodasse na montagem, só ABRIR um projeto antigo
+  // reescreveria o layout dele pelo autosave, sem ninguém ter pedido.
+  const semeado = useRef<string | null>(null);
+  useEffect(() => {
+    if (step !== ETAPA.estrutura || kitId === null) return;
+    if (semeado.current === kitId) return;
+    if (kit.data === undefined) return;
+    semeado.current = kitId;
+    if (secoes.length === 0) setSecoes(sugerirSecoes(kit.data.item.components));
+  }, [step, kitId, kit.data, secoes.length]);
+
+  const dadosDasEtapas: DadosDasEtapas = {
+    nome: name,
+    kitId,
+    brandName: branding.brandName,
+    secoes,
+    produtos,
+  };
+  const pendencias = pendenciasDaEtapa(step, dadosDasEtapas);
+  const podeAvancar = pendencias.length === 0;
+  const tetoLiberado = Math.min(maxVisitado, maiorEtapaLiberada(dadosDasEtapas));
   const ultima = step === ETAPAS.length - 1;
 
   // Validação da revisão: bloqueante impede gerar; aviso só aponta. Enquanto o
@@ -253,10 +269,8 @@ export function ProjectWizard({
     arquetipos: branding.identidadeVerbal.arquetipos,
     paleta: branding.paleta,
     ctaPrincipal: branding.mainCta.label,
-    briefs,
-    placements: layout.placements,
+    secoes,
     nMidias: media.filter((m) => m.kind !== 'logo').length,
-    modo: layout.mode,
   });
   const travadoPorBloqueante = bloqueantes(problemas).length > 0;
 
@@ -265,12 +279,12 @@ export function ProjectWizard({
       <div className="flex max-h-[88vh] flex-col">
         <StepBar
           step={step}
-          maxVisitado={maxVisitado}
-          onStep={(s) => s <= maxVisitado && setStep(s)}
+          maxVisitado={tetoLiberado}
+          onStep={(s) => s <= tetoLiberado && setStep(s)}
         />
 
         <div className="min-h-[300px] flex-1 overflow-y-auto px-6 py-5">
-          {step === 0 && (
+          {step === ETAPA.projeto && (
             <StepProjeto
               name={name}
               onName={setName}
@@ -279,31 +293,17 @@ export function ProjectWizard({
               kits={kits.data?.items ?? []}
             />
           )}
-          {step === 1 && <StepMarca branding={branding} setB={setB} projectId={projectId} />}
-          {step === 2 && (
-            <StepEstrutura
-              layout={layout}
-              onLayout={setLayout}
-              todosSlots={bp?.slots ?? []}
-              components={kit.data?.item.components ?? []}
-            />
+          {step === ETAPA.marca && (
+            <StepMarca branding={branding} setB={setB} projectId={projectId} />
           )}
-          {step === 3 && (
-            <StepConteudo
-              slots={activeSlots}
-              mode={layout.mode}
-              briefs={briefs}
-              onBrief={(role, b) => setBriefs((s) => ({ ...s, [role]: b }))}
-              branding={branding}
-              setB={setB}
-            />
+          {step === ETAPA.estrutura && (
+            <StepEstrutura secoes={secoes} onSecoes={setSecoes} components={componentesDoKit} />
           )}
-          {step === 4 && (
+          {step === ETAPA.midia && (
             <StepMidia
               projectId={projectId}
-              slots={activeSlots}
-              layout={layout}
-              components={kit.data?.item.components ?? []}
+              secoes={secoes}
+              components={componentesDoKit}
               kitId={kitId}
               media={media}
               onMedia={setMedia}
@@ -311,14 +311,12 @@ export function ProjectWizard({
               onProdutos={setProdutos}
             />
           )}
-          {step === 5 && (
+          {step === ETAPA.revisao && (
             <StepRevisao
               name={name}
               kit={kit.data?.item ?? null}
               branding={branding}
-              activeSlots={activeSlots}
-              mode={layout.mode}
-              sections={sectionsEspelho}
+              secoes={secoes}
               media={media}
               problemas={problemas}
               onIr={setStep}
@@ -374,20 +372,33 @@ export function ProjectWizard({
               Gerar site
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => avancar.mutate()}
-              disabled={!podeAvancar || avancar.isPending}
-              className="ds-btn ds-glow flex items-center gap-2 rounded-full px-6 py-2.5 text-[13px] font-medium disabled:opacity-40"
-              style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
-            >
-              {avancar.isPending ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <ArrowRight size={13} />
+            <div className="flex items-center gap-3">
+              {pendencias.length > 0 && (
+                <output
+                  className="max-w-[46ch] text-right text-[12px] leading-snug"
+                  style={{ color: 'var(--color-fg-muted)' }}
+                >
+                  {pendencias[0]?.mensagem}
+                </output>
               )}
-              Próximo
-            </button>
+              <button
+                type="button"
+                onClick={() => avancar.mutate()}
+                disabled={!podeAvancar || avancar.isPending}
+                // Botão travado que não diz por quê vira adivinhação. A pendência
+                // aparece ao lado, e o title repete para quem navega por teclado.
+                title={pendencias[0]?.mensagem}
+                className="ds-btn ds-glow flex items-center gap-2 rounded-full px-6 py-2.5 text-[13px] font-medium disabled:opacity-40"
+                style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
+              >
+                {avancar.isPending ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <ArrowRight size={13} />
+                )}
+                Próximo
+              </button>
+            </div>
           )}
         </div>
       </div>

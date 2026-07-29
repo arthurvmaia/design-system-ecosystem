@@ -3,8 +3,6 @@ import { extname, join } from 'node:path';
 import { generateSite } from '@ds/generator';
 import { getDb, tables } from '@ds/indexer';
 import {
-  BUILTIN_BLUEPRINTS,
-  CREATIVE_DIRECTIONS,
   DEFAULT_LAYOUT,
   DEFAULT_PROJECT_BRANDING,
   DEFAULT_PROJECT_CONTENT,
@@ -75,10 +73,9 @@ const gravarConfig = (
 const lerContent = (raw: string | null): ProjectContent => normalizarProjectContent(raw);
 const lerBranding = (raw: string | null): ProjectBranding => normalizarProjectBranding(raw);
 
-/** Catálogo de estruturas e direções criativas, para o wizard montar a tela de escolha. */
-projectsRoute.get('/blueprints', (c) =>
-  c.json({ items: BUILTIN_BLUEPRINTS, directions: CREATIVE_DIRECTIONS }),
-);
+// O catálogo de estruturas prontas (`GET /blueprints`) saiu com os blueprints:
+// a estrutura passou a ser montada pelo usuário, seção a seção, e não há mais
+// uma lista de moldes para o wizard escolher.
 
 projectsRoute.get('/', (c) => {
   const db = getDb();
@@ -252,7 +249,10 @@ projectsRoute.post('/:id/media', async (c) => {
     kind: kindParsed.data,
     originalName: original,
     ...(typeof body.alt === 'string' && body.alt ? { alt: body.alt } : {}),
-    ...(typeof body.slotRole === 'string' && body.slotRole ? { slotRole: body.slotRole } : {}),
+    // A âncora é o id da seção. O `slotRole` NÃO é gravado aqui: ele é o espelho
+    // do papel daquela seção e é derivado na hora de montar o payload, senão
+    // ficaria desatualizado assim que a pessoa trocasse a peça da seção.
+    ...(typeof body.secaoId === 'string' && body.secaoId ? { secaoId: body.secaoId } : {}),
   };
 
   const media = [...lerManifest(row.mediaManifestJson), item];
@@ -267,18 +267,18 @@ projectsRoute.post('/:id/media', async (c) => {
 /**
  * Move uma mídia de seção sem reenviar o arquivo.
  *
- * `slotRole: null` devolve a mídia para "o gerador decide": ela perde a âncora
+ * `secaoId: null` devolve a mídia para "o gerador decide": ela perde a âncora
  * e passa a ser posicionada por quem monta o site.
  */
 const PatchMediaInput = z.object({
   path: z.string().min(1),
-  slotRole: z.string().min(1).nullable(),
+  secaoId: z.string().min(1).nullable(),
 });
 
 projectsRoute.patch('/:id/media', zValidator('json', PatchMediaInput), (c) => {
   const id = c.req.param('id');
   if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
-  const { path, slotRole } = c.req.valid('json');
+  const { path, secaoId } = c.req.valid('json');
 
   const db = getDb();
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
@@ -288,7 +288,7 @@ projectsRoute.patch('/:id/media', zValidator('json', PatchMediaInput), (c) => {
   if (!atual.some((m) => m.path === path)) return c.json({ error: 'media_not_found' }, 404);
 
   const media = atual.map((m) =>
-    m.path === path ? { ...m, ...(slotRole === null ? { slotRole: undefined } : { slotRole }) } : m,
+    m.path === path ? { ...m, ...(secaoId === null ? { secaoId: undefined } : { secaoId }) } : m,
   );
   db.update(tables.projects)
     .set({ mediaManifestJson: JSON.stringify(media), updatedAt: Date.now() })

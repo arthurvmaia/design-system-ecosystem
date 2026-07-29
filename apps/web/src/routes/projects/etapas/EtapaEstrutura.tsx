@@ -1,312 +1,412 @@
-import { type LayoutChoice, LayoutPicker } from '@/components/LayoutPicker';
 import { Select } from '@/components/seletores';
-import type { Blueprint, KitComponentRef } from '@/lib/api';
-import { cn } from '@/lib/cn';
+import type { KitComponentRef } from '@/lib/api';
 import {
-  type PlacementDoSlot,
   ROLE_CATEGORIES,
-  type SectionRole,
-  resolverPlacements,
+  ROTULO_DE_PAPEL,
+  type SecaoDoSite,
+  SectionRole,
+  adicionarSecao,
+  moverSecao,
+  removerSecao,
+  resolverSecoes,
+  sugerirSecoes,
 } from '@ds/shared/schemas';
-import { ChevronDown, Power } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import { rotulo } from '../partes';
+import { INPUT, inputStyle, rotulo } from '../partes';
 
-const CRIAR = '__criar__';
+const AUTOMATICO = '__automatico__';
 
 /**
- * Estrutura com UMA decisão por vez:
- * 1. como compor (guiada × inteligente);
- * 2. qual modelo de página;
- * 3. um RESUMO simples das seções — cada linha diz o que a ocupa;
- * 4. ajustar uma seção SÓ quando a pessoa quiser (acordeão), inclusive
- *    ligar/desligar as opcionais.
+ * "Monte a sua estrutura."
  *
- * Nada de expor todos os controles de todas as seções de uma vez, e nenhum
- * termo interno: aqui existem "seções", "do seu kit" e "criada no estilo".
+ * A tela anterior fazia escolher entre cinco estruturas prontas e depois trocar
+ * a peça de cada posição fixa. O dono da arquitetura da página era o molde.
+ *
+ * Aqui a lista é do usuário: ele decide quantas seções existem, em que ordem,
+ * quais peças compõem cada uma (mais de uma, se quiser) e o que cada seção deve
+ * ou não comunicar. O kit continua sendo o DNA visual; o esqueleto passou a ser
+ * dele.
+ *
+ * Nada aqui é obrigatório além do nome. Seção sem peça quer dizer "crie no
+ * estilo do kit" e seção sem texto quer dizer "escreva você" — as duas são
+ * decisões, não campos esquecidos.
  */
 export function StepEstrutura({
-  layout,
-  onLayout,
-  todosSlots,
+  secoes,
+  onSecoes,
   components,
 }: {
-  layout: LayoutChoice;
-  onLayout: (l: LayoutChoice) => void;
-  todosSlots: Blueprint['slots'];
+  secoes: SecaoDoSite[];
+  onSecoes: (s: SecaoDoSite[]) => void;
   components: KitComponentRef[];
 }) {
   const [aberta, setAberta] = useState<string | null>(null);
 
-  const ativos = todosSlots
-    .filter((s) => s.required || !layout.disabledRoles.includes(s.role))
-    .map((s) => ({ ...s, role: s.role as SectionRole }));
-  const resolvidos = new Map(
-    resolverPlacements(ativos, layout.placements, components).map((r) => [r.role as string, r]),
-  );
+  const { secoes: resolvidas, avisos } = resolverSecoes(secoes, components);
+  const porId = new Map(resolvidas.map((r) => [r.id, r]));
+  const doKit = resolvidas.filter((r) => r.pecas.length > 0).length;
+  const criadas = resolvidas.length - doKit;
 
-  const doKit = [...resolvidos.values()].filter((r) => r.componente !== null).length;
-  const criadas = resolvidos.size - doKit;
-  const emUso = new Set(
-    [...resolvidos.values()]
-      .map((r) => r.componente?.id)
-      .filter((id): id is string => id !== undefined),
-  );
+  const emUso = new Set(secoes.flatMap((s) => s.componentIds));
   const sobrando = components.filter((c) => !emUso.has(c.id));
 
-  const mudarPlacement = (role: SectionRole, patch: Partial<PlacementDoSlot>): void => {
-    const existente = layout.placements.find((p) => p.role === role);
-    const base: PlacementDoSlot = existente ?? { role, escolha: 'automatica', componentId: null };
-    const novo = { ...base, ...patch };
-    const semObs = novo.observacao === undefined || novo.observacao.trim() === '';
-    const placements =
-      novo.escolha === 'automatica' && semObs
-        ? layout.placements.filter((p) => p.role !== role)
-        : [...layout.placements.filter((p) => p.role !== role), novo];
-    onLayout({ ...layout, placements });
+  const mudar = (id: string, patch: Partial<SecaoDoSite>): void => {
+    onSecoes(secoes.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   };
 
-  const alternarSecao = (role: string, desligada: boolean): void => {
-    onLayout({
-      ...layout,
-      disabledRoles: desligada
-        ? layout.disabledRoles.filter((r) => r !== role)
-        : [...layout.disabledRoles, role],
-      placements: desligada ? layout.placements : layout.placements.filter((p) => p.role !== role),
-    });
+  const adicionarPeca = (id: string, componentId: string): void => {
+    const s = secoes.find((x) => x.id === id);
+    if (s === undefined) return;
+    mudar(id, { componentIds: [...s.componentIds, componentId] });
+  };
+
+  const tirarPeca = (id: string, indice: number): void => {
+    const s = secoes.find((x) => x.id === id);
+    if (s === undefined) return;
+    mudar(id, { componentIds: s.componentIds.filter((_, i) => i !== indice) });
+  };
+
+  const moverPeca = (id: string, indice: number, passo: -1 | 1): void => {
+    const s = secoes.find((x) => x.id === id);
+    if (s === undefined) return;
+    const destino = indice + passo;
+    if (destino < 0 || destino >= s.componentIds.length) return;
+    const lista = [...s.componentIds];
+    const [peca] = lista.splice(indice, 1);
+    if (peca !== undefined) lista.splice(destino, 0, peca);
+    mudar(id, { componentIds: lista });
+  };
+
+  const novaSecao = (): void => {
+    const lista = adicionarSecao(secoes);
+    onSecoes(lista);
+    setAberta(lista[lista.length - 1]?.id ?? null);
   };
 
   return (
-    <div className="space-y-6">
-      <LayoutPicker value={layout} onChange={onLayout} />
-
-      {layout.mode === 'blueprint' && todosSlots.length > 0 && (
-        <div>
-          <div className="mb-1 flex items-baseline justify-between gap-3">
-            <div className="text-[11px] uppercase tracking-[0.2em]" style={rotulo}>
-              As seções do seu site
-            </div>
-            <output className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              {resolvidos.size} seções · {doKit} do seu kit · {criadas}{' '}
-              {criadas === 1 ? 'criada' : 'criadas'} no estilo
-            </output>
+    <div className="space-y-5">
+      <div>
+        <div className="mb-1 flex items-baseline justify-between gap-3">
+          <div className="text-[11px] uppercase tracking-[0.2em]" style={rotulo}>
+            As seções do seu site
           </div>
-          <p
-            className="mb-3 text-[13px] leading-relaxed"
-            style={{ color: 'var(--color-fg-muted)' }}
-          >
-            Cada seção já tem uma sugestão. Toque em uma para trocar a peça, dar uma instrução ou
-            desligá-la. O seu kit pode ter menos peças que seções: uma peça pode se repetir, e o que
-            faltar é criado no estilo do kit.
-          </p>
+          <output className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            {secoes.length} {secoes.length === 1 ? 'seção' : 'seções'} · {doKit} do seu kit ·{' '}
+            {criadas} {criadas === 1 ? 'criada' : 'criadas'} no estilo
+          </output>
+        </div>
+        <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
+          Você monta a página: adiciona seções, muda a ordem e escolhe quais peças entram em cada
+          uma. Seção sem peça nenhuma é criada no estilo do kit, e o texto é opcional. Onde você não
+          escrever, eu escrevo no tom da sua marca.
+        </p>
+      </div>
 
-          <div className="space-y-1.5">
-            {todosSlots.map((s) => {
-              const desligada = !s.required && layout.disabledRoles.includes(s.role);
-              const r = resolvidos.get(s.role);
-              const placement = layout.placements.find((p) => p.role === s.role);
-              const expandida = aberta === s.role && !desligada;
-              const cats = ROLE_CATEGORIES[s.role as SectionRole] ?? [];
+      {avisos.length > 0 && (
+        <div
+          className="rounded-lg border px-3.5 py-3 text-[13px]"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+        >
+          {avisos.map((a) => (
+            <div key={a}>{a}</div>
+          ))}
+        </div>
+      )}
 
-              if (desligada) {
-                return (
-                  <div
-                    key={s.role}
-                    className="flex items-center justify-between rounded-md border border-dashed px-3.5 py-2.5"
-                    style={{ borderColor: 'var(--color-border)', opacity: 0.6 }}
-                  >
-                    <span className="text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                      {s.label} está desligada
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => alternarSecao(s.role, true)}
-                      className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] transition-colors hover:border-[var(--color-signal)]"
-                      style={{
-                        borderColor: 'var(--color-border-strong)',
-                        color: 'var(--color-fg-muted)',
-                      }}
-                    >
-                      <Power size={11} />
-                      Ligar
-                    </button>
-                  </div>
-                );
-              }
+      <div className="space-y-1.5">
+        {secoes.map((s, i) => {
+          const r = porId.get(s.id);
+          const expandida = aberta === s.id;
+          const cats = s.papel !== undefined ? ROLE_CATEGORIES[s.papel] : [];
+          const resumo =
+            r === undefined || r.pecas.length === 0
+              ? 'criada no estilo do kit'
+              : r.pecas.map((p) => p.name).join(' + ');
 
-              const resumo =
-                r?.componente != null
-                  ? r.origem === 'escolhido'
-                    ? `${r.componente.name}, escolhida por você`
-                    : r.componente.name
-                  : 'criada no estilo do kit';
-
-              return (
-                <div
-                  key={s.role}
-                  className="overflow-hidden rounded-md border"
-                  style={{
-                    borderColor: expandida ? 'var(--color-border-strong)' : 'var(--color-border)',
-                  }}
-                >
+          return (
+            <div
+              key={s.id}
+              className="rounded-lg border"
+              style={{
+                borderColor: expandida ? 'var(--color-signal)' : 'var(--color-border)',
+                backgroundColor: 'rgba(255,255,255,0.02)',
+              }}
+            >
+              <div className="flex items-center gap-1 px-2 py-2">
+                <div className="flex flex-col">
                   <button
                     type="button"
-                    onClick={() => setAberta(expandida ? null : s.role)}
-                    aria-expanded={expandida}
-                    className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-white/[0.03]"
+                    onClick={() => onSecoes(moverSecao(secoes, s.id, 'cima'))}
+                    disabled={i === 0}
+                    aria-label={`Mover ${s.nome || 'esta seção'} para cima`}
+                    className="rounded p-0.5 transition-colors hover:bg-white/[0.06] disabled:opacity-20"
+                    style={{ color: 'var(--color-fg-muted)' }}
                   >
-                    <span
-                      className="w-[130px] shrink-0 text-[14px]"
-                      style={{ color: 'var(--color-fg)' }}
-                    >
-                      {s.label}
-                      {s.required && (
-                        <span
-                          className="ml-1"
-                          style={{ color: 'var(--color-fg-subtle)' }}
-                          title="Esta seção faz parte do modelo escolhido"
-                        >
-                          *
-                        </span>
-                      )}
-                    </span>
-                    <span
-                      className="min-w-0 flex-1 truncate text-[13px]"
-                      style={{
-                        color:
-                          r?.componente != null
-                            ? 'var(--color-fg-muted)'
-                            : 'var(--color-fg-subtle)',
-                      }}
-                    >
-                      {resumo}
-                    </span>
-                    <span
-                      className="ds-tag shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
-                      style={{
-                        backgroundColor:
-                          r?.componente != null ? 'rgba(107,20,20,0.24)' : 'rgba(255,255,255,0.05)',
-                        color: r?.componente != null ? 'var(--color-fg)' : 'var(--color-fg-subtle)',
-                      }}
-                    >
-                      {r?.componente != null ? 'do seu kit' : 'no estilo'}
-                    </span>
-                    <ChevronDown
-                      size={14}
-                      className={cn('shrink-0 transition-transform', expandida && 'rotate-180')}
-                      style={{ color: 'var(--color-fg-subtle)' }}
-                    />
+                    <ChevronUp size={13} />
                   </button>
-
-                  {expandida && (
-                    <div
-                      className="space-y-3 border-t px-3.5 py-3.5"
-                      style={{ borderColor: 'var(--color-border)' }}
-                    >
-                      <div>
-                        <span
-                          className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]"
-                          style={rotulo}
-                        >
-                          O que ocupa esta seção
-                        </span>
-                        <Select
-                          opcoes={[
-                            {
-                              valor: '',
-                              rotulo:
-                                r?.origem !== 'escolhido' && r?.componente != null
-                                  ? `Automático: ${r.componente.name}`
-                                  : 'Automático: criada no estilo do kit',
-                              descricao: 'A sugestão pode mudar se o kit mudar.',
-                            },
-                            ...components.map((c) => ({
-                              valor: c.id,
-                              rotulo: c.name,
-                              grupo: cats.includes(c.category)
-                                ? 'Encaixa neste papel'
-                                : 'Outras peças do kit',
-                            })),
-                            {
-                              valor: CRIAR,
-                              rotulo: 'Criar no estilo do kit',
-                              descricao: 'Uma seção nova com as cores, fontes e o clima do kit.',
-                            },
-                          ]}
-                          valor={
-                            placement?.escolha === 'componente' && placement.componentId !== null
-                              ? placement.componentId
-                              : placement?.escolha === 'criar'
-                                ? CRIAR
-                                : ''
-                          }
-                          rotulo={`O que ocupa a seção ${s.label}`}
-                          aoMudar={(v) =>
-                            mudarPlacement(
-                              s.role as SectionRole,
-                              v === ''
-                                ? { escolha: 'automatica', componentId: null }
-                                : v === CRIAR
-                                  ? { escolha: 'criar', componentId: null }
-                                  : { escolha: 'componente', componentId: v },
-                            )
-                          }
-                        />
-                      </div>
-                      <label className="block">
-                        <span
-                          className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]"
-                          style={rotulo}
-                        >
-                          Alguma instrução? (opcional)
-                        </span>
-                        <input
-                          type="text"
-                          value={placement?.observacao ?? ''}
-                          onChange={(e) =>
-                            mudarPlacement(s.role as SectionRole, { observacao: e.target.value })
-                          }
-                          placeholder="ex.: 3 colunas, fundo escuro, sem foto"
-                          className="w-full rounded-md border bg-transparent px-3 py-2 text-[13px] outline-none focus:border-[var(--color-signal)]"
-                          style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
-                        />
-                      </label>
-                      {!s.required && (
-                        <button
-                          type="button"
-                          onClick={() => alternarSecao(s.role, false)}
-                          className="flex items-center gap-1.5 text-[12px] underline"
-                          style={{ color: 'var(--color-fg-muted)' }}
-                        >
-                          <Power size={11} />
-                          Desligar esta seção
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {sobrando.length > 0 && (
-            <div className="mt-4">
-              <div className="mb-1.5 text-[11px] uppercase tracking-[0.2em]" style={rotulo}>
-                Peças do kit ainda sem seção
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {sobrando.map((c) => (
-                  <span
-                    key={c.id}
-                    className="ds-tag rounded-full border px-2.5 py-1 text-[12px]"
-                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+                  <button
+                    type="button"
+                    onClick={() => onSecoes(moverSecao(secoes, s.id, 'baixo'))}
+                    disabled={i === secoes.length - 1}
+                    aria-label={`Mover ${s.nome || 'esta seção'} para baixo`}
+                    className="rounded p-0.5 transition-colors hover:bg-white/[0.06] disabled:opacity-20"
+                    style={{ color: 'var(--color-fg-muted)' }}
                   >
-                    {c.name}
+                    <ChevronDown size={13} />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setAberta(expandida ? null : s.id)}
+                  aria-expanded={expandida}
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded px-1.5 py-1 text-left transition-colors hover:bg-white/[0.03]"
+                >
+                  <span
+                    className="shrink-0 text-[14px] font-medium"
+                    style={{
+                      color: s.nome.trim() === '' ? 'var(--color-crimson-3)' : 'var(--color-fg)',
+                    }}
+                  >
+                    {s.nome.trim() === '' ? 'sem nome' : s.nome}
                   </span>
-                ))}
+                  <span
+                    className="ds-data min-w-0 flex-1 truncate text-[11px]"
+                    style={{ color: 'var(--color-fg-subtle)' }}
+                  >
+                    {resumo}
+                  </span>
+                  <span
+                    className="shrink-0 text-[10px] uppercase tracking-[0.08em]"
+                    style={{
+                      color:
+                        r !== undefined && r.pecas.length > 0
+                          ? 'var(--color-fg-muted)'
+                          : 'var(--color-fg-subtle)',
+                    }}
+                  >
+                    {r !== undefined && r.pecas.length > 0
+                      ? `${r.pecas.length} ${r.pecas.length === 1 ? 'peça' : 'peças'}`
+                      : 'no estilo'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onSecoes(removerSecao(secoes, s.id))}
+                  aria-label={`Remover a seção ${s.nome || 'sem nome'}`}
+                  className="rounded p-1.5 transition-all hover:scale-110 hover:bg-[rgba(198,40,40,0.16)]"
+                  style={{ color: 'var(--color-crimson-3)' }}
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
+
+              {expandida && (
+                <div
+                  className="space-y-3.5 border-t px-3.5 py-3.5"
+                  style={{ borderColor: 'var(--color-border)' }}
+                >
+                  <label className="block">
+                    <span
+                      className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]"
+                      style={rotulo}
+                    >
+                      Nome da seção
+                    </span>
+                    <input
+                      type="text"
+                      value={s.nome}
+                      onChange={(e) => mudar(s.id, { nome: e.target.value })}
+                      placeholder="ex.: Abertura, Nossos planos, O que dizem de nós"
+                      className={INPUT}
+                      style={inputStyle}
+                    />
+                  </label>
+
+                  <div>
+                    <span
+                      className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]"
+                      style={rotulo}
+                    >
+                      Peças desta seção
+                    </span>
+                    {r !== undefined && r.pecas.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        {r.pecas.map((p, j) => (
+                          <span
+                            key={`${p.id}-${j}`}
+                            className="flex items-center gap-1 rounded-full border py-1 pl-2.5 pr-1 text-[12px]"
+                            style={{
+                              borderColor: 'var(--color-border)',
+                              color: 'var(--color-fg)',
+                            }}
+                          >
+                            {p.name}
+                            {r.pecas.length > 1 && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => moverPeca(s.id, j, -1)}
+                                  disabled={j === 0}
+                                  aria-label={`Mover ${p.name} para antes`}
+                                  className="rounded p-0.5 hover:bg-white/[0.08] disabled:opacity-20"
+                                  style={{ color: 'var(--color-fg-subtle)' }}
+                                >
+                                  <ChevronUp size={11} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moverPeca(s.id, j, 1)}
+                                  disabled={j === r.pecas.length - 1}
+                                  aria-label={`Mover ${p.name} para depois`}
+                                  className="rounded p-0.5 hover:bg-white/[0.08] disabled:opacity-20"
+                                  style={{ color: 'var(--color-fg-subtle)' }}
+                                >
+                                  <ChevronDown size={11} />
+                                </button>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => tirarPeca(s.id, j)}
+                              aria-label={`Tirar ${p.name} desta seção`}
+                              className="rounded-full p-0.5 hover:bg-[rgba(198,40,40,0.2)]"
+                              style={{ color: 'var(--color-fg-muted)' }}
+                            >
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <Select
+                      opcoes={components.map((c) => ({
+                        valor: c.id,
+                        rotulo: c.name,
+                        grupo: cats.includes(c.category)
+                          ? 'Encaixa nesta seção'
+                          : 'Outras peças do kit',
+                      }))}
+                      valor=""
+                      rotulo={`Adicionar peça em ${s.nome || 'esta seção'}`}
+                      placeholder={
+                        r !== undefined && r.pecas.length > 0
+                          ? 'Adicionar outra peça'
+                          : 'Adicionar uma peça do kit'
+                      }
+                      aoMudar={(v) => {
+                        if (v !== '') adicionarPeca(s.id, v);
+                      }}
+                    />
+                    <p className="mt-1.5 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                      Sem nenhuma peça, esta seção é criada do zero no estilo do kit.
+                    </p>
+                  </div>
+
+                  <label className="block">
+                    <span
+                      className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]"
+                      style={rotulo}
+                    >
+                      O que esta seção deve dizer? (opcional)
+                    </span>
+                    <textarea
+                      value={s.instrucao ?? ''}
+                      onChange={(e) => mudar(s.id, { instrucao: e.target.value })}
+                      rows={3}
+                      placeholder="ex.: fale do atendimento pelo WhatsApp e não mencione preço"
+                      className={`${INPUT} resize-y leading-relaxed`}
+                      style={inputStyle}
+                    />
+                    <span
+                      className="mt-1.5 block text-[12px]"
+                      style={{ color: 'var(--color-fg-subtle)' }}
+                    >
+                      Deixe vazio e eu escrevo no tom da sua marca, sem inventar fato, número ou
+                      cliente.
+                    </span>
+                  </label>
+
+                  <div>
+                    <span
+                      className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]"
+                      style={rotulo}
+                    >
+                      Tipo de seção (opcional)
+                    </span>
+                    <Select
+                      opcoes={[
+                        {
+                          valor: AUTOMATICO,
+                          rotulo: 'Automático, pela peça escolhida',
+                        },
+                        ...SectionRole.options.map((papel) => ({
+                          valor: papel,
+                          rotulo: ROTULO_DE_PAPEL[papel],
+                        })),
+                      ]}
+                      valor={s.papel ?? AUTOMATICO}
+                      rotulo={`Tipo da seção ${s.nome || 'sem nome'}`}
+                      aoMudar={(v) =>
+                        mudar(s.id, {
+                          papel: v === AUTOMATICO ? undefined : SectionRole.parse(v),
+                        })
+                      }
+                    />
+                    <p className="mt-1.5 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                      Só muda quais peças aparecem sugeridas aqui e como a seção se comporta no
+                      celular.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={novaSecao}
+          className="ds-btn ds-glow-border ds-backdrop flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px]"
+          style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-fg)' }}
+        >
+          <Plus size={12} />
+          Adicionar seção
+        </button>
+        <button
+          type="button"
+          onClick={() => onSecoes(sugerirSecoes(components))}
+          className="flex items-center gap-1.5 text-[12px] underline"
+          style={{ color: 'var(--color-fg-muted)' }}
+        >
+          <RotateCcw size={11} />
+          Voltar para a sugestão do kit
+        </button>
+      </div>
+
+      {sobrando.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-[11px] uppercase tracking-[0.2em]" style={rotulo}>
+            Peças do kit ainda sem seção
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {sobrando.map((c) => (
+              <span
+                key={c.id}
+                className="rounded-full border px-2.5 py-1 text-[12px]"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+              >
+                {c.name}
+              </span>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            Nenhuma delas vai aparecer no site. Adicione onde fizer sentido, ou deixe de fora.
+          </p>
         </div>
       )}
     </div>

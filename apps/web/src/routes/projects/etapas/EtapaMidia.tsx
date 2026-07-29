@@ -1,7 +1,6 @@
-import type { LayoutChoice } from '@/components/LayoutPicker';
-import { type Blueprint, type KitComponentRef, type MediaItem, api } from '@/lib/api';
+import { type KitComponentRef, type MediaItem, api } from '@/lib/api';
 import { toast } from '@/lib/toast';
-import { type Produto, type SectionRole, resolverPlacements } from '@ds/shared/schemas';
+import { type Produto, type SecaoDoSite, resolverSecoes } from '@ds/shared/schemas';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Image as ImageIcon, Loader2, Plus, Trash2, Upload } from 'lucide-react';
 import { mediaUrl, rotulo } from '../partes';
@@ -12,7 +11,7 @@ const FINALIDADE: Record<string, string> = {
   showcase: 'Demonstração',
   gallery: 'Galeria',
   catalog: 'Fotos de produto',
-  testimonial: 'Foto de quem depõe',
+  testimonials: 'Foto de quem depõe',
   about: 'Foto de contexto',
   team: 'Fotos da equipe',
   features: 'Ilustrações de apoio',
@@ -37,8 +36,7 @@ const FINALIDADE: Record<string, string> = {
  */
 export function StepMidia({
   projectId,
-  slots,
-  layout,
+  secoes,
   components,
   kitId,
   media,
@@ -47,8 +45,7 @@ export function StepMidia({
   onProdutos,
 }: {
   projectId: string | null;
-  slots: Blueprint['slots'];
-  layout: LayoutChoice;
+  secoes: SecaoDoSite[];
   components: KitComponentRef[];
   kitId: string | null;
   media: MediaItem[];
@@ -64,36 +61,16 @@ export function StepMidia({
     },
     enabled: kitId !== null,
   });
-  const contratoDe = (cmpId: string | undefined) =>
-    contratos.data?.items.find((x) => x.id === cmpId);
 
-  // No modo criativo não há slots de blueprint — cai numa lista genérica de
-  // seções para a mídia ainda ter onde ser ancorada.
-  const guiada = slots.length > 0;
-  const secoes = guiada
-    ? slots.map((s) => ({ role: s.role, label: s.label }))
-    : [
-        { role: 'hero', label: 'Destaque' },
-        { role: 'showcase', label: 'Demonstração' },
-        { role: 'gallery', label: 'Galeria' },
-        { role: 'about', label: 'Sobre' },
-      ];
-
-  const resolvidos = guiada
-    ? new Map(
-        resolverPlacements(
-          slots.map((s) => ({ ...s, role: s.role as SectionRole })),
-          layout.placements,
-          components,
-        ).map((r) => [r.role as string, r]),
-      )
-    : new Map();
+  // A lista é a estrutura que a pessoa montou, na ordem dela. Antes vinha dos
+  // slots do blueprint, então esta tela mostrava seções que o site não teria.
+  const resolvidas = resolverSecoes(secoes, components).secoes;
 
   const upload = useMutation({
-    mutationFn: ({ file, slotRole }: { file: File; slotRole: string }) => {
+    mutationFn: ({ file, secaoId }: { file: File; secaoId: string }) => {
       if (!projectId) throw new Error('rascunho ainda não criado');
       const kind: MediaItem['kind'] = file.type.startsWith('video/') ? 'video' : 'image';
-      return api.uploadMedia(projectId, file, { kind, slotRole });
+      return api.uploadMedia(projectId, file, { kind, secaoId });
     },
     onSuccess: (res) => {
       onMedia(res.media);
@@ -113,14 +90,16 @@ export function StepMidia({
 
   // Logo aparece na etapa de marca; aqui listamos só as mídias de conteúdo.
   const conteudo = media.filter((m) => m.kind !== 'logo');
+  // Solta também é a mídia de uma seção que a pessoa apagou depois: ela volta
+  // para o balaio em vez de desaparecer junto com a seção.
   const soltas = conteudo.filter(
-    (m) => m.slotRole === undefined || !secoes.some((s) => s.role === m.slotRole),
+    (m) => m.secaoId === undefined || !secoes.some((s) => s.id === m.secaoId),
   );
 
   const mover = useMutation({
-    mutationFn: ({ path, slotRole }: { path: string; slotRole: string | null }) => {
+    mutationFn: ({ path, secaoId }: { path: string; secaoId: string | null }) => {
       if (!projectId) throw new Error('sem projeto');
-      return api.updateMedia(projectId, path, { slotRole });
+      return api.updateMedia(projectId, path, { secaoId });
     },
     onSuccess: (res) => onMedia(res.media),
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao mover a mídia.'),
@@ -128,7 +107,7 @@ export function StepMidia({
 
   const opcoesDeSecao = [
     { valor: '', rotulo: 'Deixe o gerador decidir' },
-    ...secoes.map((s) => ({ valor: s.role, rotulo: s.label })),
+    ...resolvidas.map((s) => ({ valor: s.id, rotulo: s.nome.trim() || 'Seção sem nome' })),
   ];
 
   return (
@@ -169,7 +148,7 @@ export function StepMidia({
             disabled={!projectId || upload.isPending}
             onChange={(e) => {
               for (const f of Array.from(e.target.files ?? [])) {
-                upload.mutate({ file: f, slotRole: '' });
+                upload.mutate({ file: f, secaoId: '' });
               }
               e.target.value = '';
             }}
@@ -177,30 +156,38 @@ export function StepMidia({
         </label>
       </div>
 
-      {secoes.map((s) => {
-        const r = resolvidos.get(s.role);
-        const contrato = contratoDe(r?.componente?.id);
-        const daSecao = conteudo.filter((m) => m.slotRole === s.role);
-        const nImagens = contrato?.midias.filter((m) => m.tipo !== 'video').length ?? 0;
-        const nVideos = contrato?.midias.filter((m) => m.tipo === 'video').length ?? 0;
-        const espacos =
-          contrato?.disponivel === true
-            ? [
-                nImagens > 0 ? `${nImagens} de imagem` : null,
-                nVideos > 0 ? `${nVideos} de vídeo` : null,
-              ].filter((x): x is string => x !== null)
-            : [];
+      {resolvidas.map((s) => {
+        const daSecao = conteudo.filter((m) => m.secaoId === s.id);
+        // Os espaços somam TODAS as peças da seção: com duas peças de cards, a
+        // seção aceita o dobro de imagens, e dizer o número de uma só mentiria.
+        const contratosDaSecao = s.pecas
+          .map((p) => contratos.data?.items.find((x) => x.id === p.id))
+          .filter((c) => c !== undefined);
+        const declarados = contratosDaSecao.filter((c) => c.disponivel);
+        const nImagens = declarados.reduce(
+          (n, c) => n + c.midias.filter((m) => m.tipo !== 'video').length,
+          0,
+        );
+        const nVideos = declarados.reduce(
+          (n, c) => n + c.midias.filter((m) => m.tipo === 'video').length,
+          0,
+        );
+        const espacos = [
+          nImagens > 0 ? `${nImagens} de imagem` : null,
+          nVideos > 0 ? `${nVideos} de vídeo` : null,
+        ].filter((x): x is string => x !== null);
+        const finalidade = FINALIDADE[s.slug];
         return (
           <div
-            key={s.role}
+            key={s.id}
             className="rounded-lg border p-3"
             style={{ borderColor: 'var(--color-border)' }}
           >
             <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
-                {s.label}
+                {s.nome.trim() || 'Seção sem nome'}
               </span>
-              {FINALIDADE[s.role] && (
+              {finalidade !== undefined && (
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
                   style={{
@@ -208,21 +195,15 @@ export function StepMidia({
                     color: 'var(--color-fg-muted)',
                   }}
                 >
-                  {FINALIDADE[s.role]}
+                  {finalidade}
                 </span>
               )}
               <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                {r?.componente !== null && r !== undefined
-                  ? `${r.componente.name}${
-                      espacos.length > 0
-                        ? ` · espaços: ${espacos.join(', ')}`
-                        : contrato?.disponivel === false
-                          ? ''
-                          : ' · sem espaço de mídia no componente'
-                    }`
-                  : guiada
-                    ? 'criada no estilo do kit: a mídia enviada vira o visual da seção'
-                    : ''}
+                {s.pecas.length === 0
+                  ? 'criada no estilo do kit: a mídia enviada vira o visual da seção'
+                  : `${s.pecas.map((p) => p.name).join(' + ')}${
+                      espacos.length > 0 ? ` · espaços: ${espacos.join(', ')}` : ''
+                    }`}
               </span>
               <label
                 className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-colors hover:border-[var(--color-signal)]"
@@ -244,7 +225,7 @@ export function StepMidia({
                   disabled={!projectId || upload.isPending}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) upload.mutate({ file: f, slotRole: s.role });
+                    if (f) upload.mutate({ file: f, secaoId: s.id });
                     e.target.value = '';
                   }}
                 />
@@ -258,7 +239,7 @@ export function StepMidia({
                     item={m}
                     projectId={projectId}
                     opcoes={opcoesDeSecao}
-                    onMover={(v) => mover.mutate({ path: m.path, slotRole: v === '' ? null : v })}
+                    onMover={(v) => mover.mutate({ path: m.path, secaoId: v === '' ? null : v })}
                     onRemover={() => remover.mutate(m.path)}
                   />
                 ))}
@@ -285,7 +266,7 @@ export function StepMidia({
                 item={m}
                 projectId={projectId}
                 opcoes={opcoesDeSecao}
-                onMover={(v) => mover.mutate({ path: m.path, slotRole: v === '' ? null : v })}
+                onMover={(v) => mover.mutate({ path: m.path, secaoId: v === '' ? null : v })}
                 onRemover={() => remover.mutate(m.path)}
               />
             ))}

@@ -3,9 +3,12 @@ import type {
   LocalDeLogo,
   LogoVariante,
   PaletaDoProjeto,
+  ProjectLayout,
   RedeSocial,
   TipografiaDoProjeto,
 } from '@ds/shared/schemas';
+
+export type { ProjectLayout };
 
 export type HealthResponse = {
   status: 'ok';
@@ -244,27 +247,11 @@ export type RejeitadosGrupo = {
   itens: RejectedSegment[];
 };
 
-// ── Layout / blueprints ──────────────────────────────────────────────────────
-
-export type LayoutSlot = { role: string; label: string; hint: string; required: boolean };
-export type Blueprint = {
-  id: string;
-  name: string;
-  description: string;
-  bestFor: string;
-  slots: LayoutSlot[];
-};
-export type CreativeDirection = { id: string; name: string; guidance: string };
-
-export type ProjectLayout = {
-  mode: 'blueprint' | 'criativo';
-  blueprintId: string;
-  disabledRoles: string[];
-  density?: 'compacto' | 'equilibrado' | 'espacoso';
-  motion?: 'nenhuma' | 'sutil' | 'expressiva';
-  preferDesignSystemId?: string | null;
-  creativeSeed?: number;
-};
+// O layout que trafega no PATCH é o do `@ds/shared` (importado no topo), não uma
+// cópia à mão. Havia uma redeclaração local aqui, e ela ficou defasada em
+// silêncio: o modelo mudou no shared e este tipo continuou descrevendo
+// blueprints, então o cliente compilava e mandava um corpo que o servidor já não
+// reconhecia.
 
 // ── Projetos ─────────────────────────────────────────────────────────────────
 
@@ -307,6 +294,9 @@ export type MediaItem = {
   kind: 'image' | 'video' | 'logo' | 'icon' | '3d' | 'lottie' | 'mockup';
   originalName: string;
   alt?: string;
+  /** A seção onde esta mídia entra. Ausente = o gerador escolhe onde encaixa. */
+  secaoId?: string;
+  /** Espelho legado do papel da seção. Derivado no servidor, nunca digitado. */
   slotRole?: string;
 };
 
@@ -525,8 +515,6 @@ export const api = {
     jsonFetch<{ item: KitRecord }>(`/api/kits/${id}/duplicate`, { method: 'POST' }),
 
   // ── Projetos ────────────────────────────────────────────────────────────
-  getBlueprints: () =>
-    jsonFetch<{ items: Blueprint[]; directions: CreativeDirection[] }>('/api/projects/blueprints'),
   listProjects: () => jsonFetch<{ items: ProjectRecord[] }>('/api/projects'),
   getProject: (id: string) => jsonFetch<{ item: ProjectRecord }>(`/api/projects/${id}`),
   /** Cria um rascunho. NÃO gera nada — só nome + kit. */
@@ -553,19 +541,19 @@ export const api = {
   uploadMedia: async (
     id: string,
     file: File,
-    meta: { kind: MediaItem['kind']; slotRole?: string; alt?: string },
+    meta: { kind: MediaItem['kind']; secaoId?: string; alt?: string },
   ): Promise<{ item: MediaItem; media: MediaItem[] }> => {
     const form = new FormData();
     form.append('file', file);
     form.append('kind', meta.kind);
-    if (meta.slotRole) form.append('slotRole', meta.slotRole);
+    if (meta.secaoId) form.append('secaoId', meta.secaoId);
     if (meta.alt) form.append('alt', meta.alt);
     const res = await fetch(`/api/projects/${id}/media`, { method: 'POST', body: form });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
     return res.json();
   },
-  /** Move a mídia de seção. `slotRole: null` devolve para "o gerador decide". */
-  updateMedia: (id: string, path: string, patch: { slotRole: string | null }) =>
+  /** Move a mídia de seção. `secaoId: null` devolve para "o gerador decide". */
+  updateMedia: (id: string, path: string, patch: { secaoId: string | null }) =>
     jsonFetch<{ media: MediaItem[] }>(`/api/projects/${id}/media`, {
       method: 'PATCH',
       body: JSON.stringify({ path, ...patch }),
