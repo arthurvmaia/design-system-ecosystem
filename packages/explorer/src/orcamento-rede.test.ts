@@ -98,7 +98,6 @@ test('fetcher seguro: um travado NÃO bloqueia outro que responde (regra 7)', as
   const pR = (rapido.address() as Any).port;
   process.env.DS_ASSET_ALLOW_LOCAL = '1';
   try {
-    const fetcher = createSecureHttpFetcher({ ...DEFAULT_LIMITS, assetTimeoutMs: 150 });
     // O que importa aqui é o ISOLAMENTO: um download travado devolve null por
     // timeout e o outro devolve os bytes normalmente, sem um contaminar o outro.
     //
@@ -106,6 +105,13 @@ test('fetcher seguro: um travado NÃO bloqueia outro que responde (regra 7)', as
     // paralelismo. Não provava: com `Promise.all` e timeout de 150ms, a versão
     // em série levaria ~155ms e passaria igual. Só rendia falha intermitente
     // quando a máquina estava ocupada rodando o resto da suíte.
+    //
+    // O timeout subiu de 150ms para 1,5s pelo MESMO motivo, uma volta depois:
+    // com a suíte cheia disputando a máquina, até um `localhost` passa de
+    // 150ms, e aí o servidor RÁPIDO também estourava — o teste falhava dizendo
+    // que o rápido não devolveu bytes, quando o que faltou foi CPU. O número
+    // não é o que está sendo afirmado aqui; a separação entre os dois é.
+    const fetcher = createSecureHttpFetcher({ ...DEFAULT_LIMITS, assetTimeoutMs: 1_500 });
     const [rT, rR] = await Promise.all([
       fetcher(`http://localhost:${pT}/a.png`),
       fetcher(`http://localhost:${pR}/b.png`),

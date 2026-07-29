@@ -57,6 +57,19 @@ const segmentoFixture = (over: Partial<SegmentoV2> = {}): SegmentoV2 => ({
   ...over,
 });
 
+/** A entrada mínima do bundle — só o que `escreverBundle` exige. */
+const entradaMinima = () => ({
+  segmento: segmentoFixture(),
+  css: '.hero{color:red}',
+  scripts: [],
+  assets: [],
+  stack: [],
+  frames: [],
+  runtimeScripts: [],
+  sourceUrl: 'https://origem.example',
+  capturadoEm: 0,
+});
+
 test('escreverBundle grava contract válido e ADITIVO no manifest.json', () => {
   const dir = mkdtempSync(join(tmpdir(), 'bundle-contrato-'));
   try {
@@ -325,4 +338,91 @@ test('referência visual: contrato deriva do corpo com aviso+frame, sem JS', () 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ── Os assets apontam para DENTRO do bundle ──────────────────────────────────
+
+test('imagem baixada passa a ser referenciada por caminho local, e o arquivo vem junto', (t) => {
+  // O bundle saía com `<img src="https://origem…">` mesmo tendo o arquivo em
+  // disco. Um .zip aberto sem internet mostrava caixas cinzas, e a dependência
+  // sumia de vez no dia em que o site de origem trocasse de endereço.
+  const captura = mkdtempSync(join(tmpdir(), 'cap-'));
+  mkdirSync(join(captura, 'image'), { recursive: true });
+  writeFileSync(join(captura, 'image', 'abc.jpg'), 'bytes-da-imagem', 'utf8');
+
+  const dir = mkdtempSync(join(tmpdir(), 'bun-'));
+  escreverBundle(dir, {
+    ...entradaMinima(),
+    segmento: {
+      ...entradaMinima().segmento,
+      htmlSnippet: '<section><img src="https://origem.com/foto.jpg"></section>',
+    },
+    dirAssetsCaptura: captura,
+    assetsLocais: new Map([['https://origem.com/foto.jpg', 'image/abc.jpg']]),
+  });
+
+  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  assert.ok(html.includes('assets/image/abc.jpg'), `saiu: ${html.slice(0, 300)}`);
+  assert.ok(!html.includes('https://origem.com/foto.jpg'), 'a URL remota não pode sobrar');
+  assert.ok(
+    existsSync(join(dir, 'assets', 'image', 'abc.jpg')),
+    'apontar para um caminho local que não existe é pior que apontar para o remoto',
+  );
+  t.diagnostic(dir);
+});
+
+test('asset que NÃO foi baixado continua remoto, e o bundle declara isso', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bun-'));
+  const r = escreverBundle(dir, {
+    ...entradaMinima(),
+    segmento: {
+      ...entradaMinima().segmento,
+      htmlSnippet: '<section><img src="https://origem.com/nao-baixada.jpg"></section>',
+    },
+    assetsLocais: new Map([['https://origem.com/outra.jpg', 'image/x.jpg']]),
+  });
+  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  assert.ok(html.includes('https://origem.com/nao-baixada.jpg'));
+  assert.ok(r.avisos.some((a) => a.includes('apontando para a origem')));
+});
+
+test('script decidido como "levar" vira caminho local no index', () => {
+  const captura = mkdtempSync(join(tmpdir(), 'cap-'));
+  mkdirSync(join(captura, 'js'), { recursive: true });
+  writeFileSync(join(captura, 'js', 'bg.js'), '// fundo', 'utf8');
+
+  const dir = mkdtempSync(join(tmpdir(), 'bun-'));
+  escreverBundle(dir, {
+    ...entradaMinima(),
+    dirAssetsCaptura: captura,
+    scriptsExternos: [
+      {
+        url: 'https://cdn.exemplo/webgl-background.js',
+        localPath: 'js/bg.js',
+        decisao: 'levar',
+        motivo: 'x',
+      },
+    ],
+  });
+  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  assert.ok(html.includes('<script src="assets/js/bg.js">'));
+  assert.ok(!html.includes('cdn.exemplo'));
+  assert.ok(existsSync(join(dir, 'assets', 'js', 'bg.js')));
+});
+
+test('script dispensado não vira tag nenhuma, e o motivo fica nos avisos', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bun-'));
+  const r = escreverBundle(dir, {
+    ...entradaMinima(),
+    scriptsExternos: [
+      {
+        url: 'https://cdn.tailwindcss.com',
+        decisao: 'dispensar',
+        motivo: 'CSS já capturado do CSSOM',
+      },
+    ],
+  });
+  const html = readFileSync(join(dir, 'index.html'), 'utf8');
+  assert.ok(!html.includes('tailwindcss'));
+  assert.ok(r.avisos.some((a) => a.includes('CSSOM')));
 });

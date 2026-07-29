@@ -159,6 +159,16 @@ export type EvidenciaRepresentacao = {
    * quando essa captura falha é que a dependência do CDN é real.
    */
   cssCompiladoCapturado?: boolean;
+  /**
+   * Runtimes cujo script viaja dentro do bundle.
+   *
+   * Um runtime que desenha e cujo código está no .zip continua sendo uma
+   * dependência — o HTML sozinho não reproduz o que ele faz — mas deixa de ser
+   * uma dependência de REDE. A diferença importa para quem entrega o site: um
+   * .zip que precisa de internet na primeira carga é frágil de um jeito, e um
+   * que só precisa de JavaScript é frágil de outro.
+   */
+  runtimesLocais?: readonly RuntimeKind[];
 };
 
 const confiancaDe = (n: number): Confidence =>
@@ -241,8 +251,13 @@ export const classificarRepresentacao = (ev: EvidenciaRepresentacao): Representa
       continue;
     }
     desenhamPendentes.push(r);
+    // A dependência continua existindo — mas de QUÊ mudou, e isso decide o que
+    // acontece quando alguém abre o `.zip` sem internet.
+    const viaja = (ev.runtimesLocais ?? []).includes(r);
     limitations.push(
-      `Depende de "${r}", que desenha ${OQUE_DESENHA[r] ?? 'parte do conteúdo'}: sem o script, o HTML sai sem isso.`,
+      viaja
+        ? `Depende de "${r}", que desenha ${OQUE_DESENHA[r] ?? 'parte do conteúdo'}. O script viaja dentro do bundle: funciona offline, mas precisa de JavaScript ligado.`
+        : `Depende de "${r}", que desenha ${OQUE_DESENHA[r] ?? 'parte do conteúdo'}: sem o script, o HTML sai sem isso.`,
     );
   }
 
@@ -381,8 +396,13 @@ export const classificarRepresentacao = (ev: EvidenciaRepresentacao): Representa
       type: 'componente-portatil',
       why: `parte do que se vê (${desenhamPendentes.map((r) => OQUE_DESENHA[r] ?? r).join(', ')}) não está no HTML: é desenhada por script`,
     });
+    // Rede ou só JavaScript? A distinção é o que a pessoa precisa saber antes
+    // de entregar o `.zip` a um cliente.
+    const todosViajam = desenhamPendentes.every((r) => (ev.runtimesLocais ?? []).includes(r));
     limitations.push(
-      'Precisa de rede na primeira carga: o runtime que desenha vem do endereço original.',
+      todosViajam
+        ? 'Roda offline: os scripts que desenham viajam dentro do bundle. Precisa de JavaScript ligado.'
+        : 'Precisa de rede na primeira carga: o runtime que desenha vem do endereço original.',
     );
     return {
       type: 'capsula-runtime',

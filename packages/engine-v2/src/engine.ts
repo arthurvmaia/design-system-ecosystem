@@ -32,6 +32,7 @@ import {
 import { PlaywrightIndisponivel, type SessaoV2, abrirSessao } from './browser/page.js';
 import { type FolhaExternaBundle, escreverBundle } from './compiler/bundle.js';
 import { atributosDoDocumento, scriptsExternosDoDocumento } from './compiler/documento.js';
+import { decidirScripts, runtimesQueViajam } from './compiler/runtime-local.js';
 import { detectarFerramentas, montarStack } from './compiler/stack.js';
 import { type Candidato, descobrirCandidatos } from './explore/candidates.js';
 import { TRAJETORIAS_COMPLEMENTARES, TRAJETORIA_COBERTURA } from './explore/pointer-paths.js';
@@ -179,6 +180,18 @@ export type OpcoesCaptura = {
   semPonteiro?: boolean;
   /** Desliga o grafo de estados. */
   semEstados?: boolean;
+  /**
+   * Conferir cada bundle contra o print da dobra, por comparação de pixel.
+   *
+   * Ligado por padrão: é a verificação que responde "o bundle PARECE com o
+   * original?", e a resposta importa mais que qualquer contagem de regras.
+   *
+   * Desligável porque ela é uma fase separada com custo próprio — uma aba, uma
+   * navegação e uma espera de fonte por bundle. Quem extrai vinte sites em
+   * sequência, ou quem só quer os arquivos, não precisa pagar por isso a cada
+   * vez. A escolha é de quem chama, não do motor.
+   */
+  verificarVisual?: boolean;
   signal?: AbortSignal;
 };
 
@@ -937,6 +950,46 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     }
     log('css-externo', { localizadas: cssExternos.length, semCopia: externasSemCopia.length });
 
+    // ── As bibliotecas que o site usa VIAJAM com o bundle ─────────────────
+    //
+    // Os arquivos `.js` já eram baixados para `capture-v2/assets/js/` — e o
+    // bundle continuava emitindo `<script src="https://cdn…">`. A biblioteca
+    // ficava no disco e o arquivo entregue a ignorava: o site só funcionava com
+    // internet, e só enquanto aquele endereço existisse.
+    //
+    // A decisão não é "baixe tudo": o Tailwind por CDN é dispensado quando o
+    // CSS compilado já foi capturado, e a biblioteca de ícones é dispensada
+    // quando os SVGs já vieram para o HTML. Ver `runtime-local.ts`.
+    const localPorUrl = new Map<string, string>();
+    for (const a of assets) {
+      if (a.status !== undefined && a.status !== 'local') continue;
+      localPorUrl.set(a.originalUrl, a.localPath);
+      if (a.resolvedUrl !== undefined) localPorUrl.set(a.resolvedUrl, a.localPath);
+      for (const alias of a.aliases ?? []) localPorUrl.set(alias, a.localPath);
+    }
+    const scriptsDecididos = decidirScripts(
+      scriptsExternosDaPagina.map((url) => {
+        const local = localPorUrl.get(url);
+        return local === undefined ? { url } : { url, localPath: local };
+      }),
+      {
+        cssCompiladoCapturado: externasSemCopia.length === 0,
+        iconesPendentes: iconesPendentes,
+      },
+    );
+    log('scripts-de-runtime', {
+      total: scriptsDecididos.length,
+      levar: scriptsDecididos.filter((d) => d.decisao === 'levar').length,
+      dispensar: scriptsDecididos.filter((d) => d.decisao === 'dispensar').length,
+      remoto: scriptsDecididos.filter((d) => d.decisao === 'remoto').length,
+    });
+    const remotos = scriptsDecididos.filter((d) => d.decisao === 'remoto');
+    if (remotos.length > 0) {
+      limitacoes.push(
+        `${remotos.length} script(s) de runtime não puderam ser baixados e continuam apontando para a origem: o site gerado precisa de internet para reproduzir o que eles fazem.`,
+      );
+    }
+
     // ── Segmentação ───────────────────────────────────────────────────────
     const scriptsNaoLocalizados = instrumentacao.scripts.filter((u) => !assetsLocais.has(u)).length;
 
@@ -963,6 +1016,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           assetsLocais,
           scriptsNaoLocalizados,
           cssExternoFaltando: externasSemCopia.length > 0,
+          // Os runtimes cujo script passou a viajar no bundle. A classificação
+          // usa isto para deixar de chamar de dependência de rede o que já não
+          // é: um fundo em canvas cujo script está no .zip desenha offline.
+          runtimesQueViajam: runtimesQueViajam(scriptsDecididos),
           animacoesCssQueRodaram: animacoesCss,
           shadowFechados: instrumentacao.shadowRoots.closed,
           viewport,
@@ -1029,8 +1086,13 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
               // morta dentro do bundle.
               documentoAttrs: atributosDoDocumento(html),
               scriptsExternos:
-                seg.representation.type === 'referencia-visual' ? [] : scriptsExternosDaPagina,
+                seg.representation.type === 'referencia-visual' ? [] : scriptsDecididos,
               assets: assets.filter((a) => dosMeus.has(a.originalUrl)),
+              // O mapa INTEIRO, e não o filtrado acima: `assetKeys` cobre os
+              // assets de fundo e de mídia DETECTADOS, mas uma `<img>` comum no
+              // meio do HTML não está lá — e era justamente ela que continuava
+              // apontando para a origem.
+              assetsLocais: localPorUrl,
               // O fundo da página volta para trás da região. Ele mora no
               // `<body>` como irmão do conteúdo, e a segmentação o emitia como
               // item solto: a seção que na origem tinha feixes de luz saía com
@@ -1067,95 +1129,115 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       // Aba nova, e não a página instrumentada: navegar a página da captura
       // destruiria o contexto que as fases anteriores construíram. O custo é
       // uma aba; o risco de reusar seria perder tudo se algo desse errado.
-      await tel.faseCooperativa(
-        FASE_V2.comparar,
-        async (signal) => {
-          const entradas = segmentos.flatMap((seg) => {
-            const framePath = framePorHash.get(seg.hash);
-            if (framePath === undefined) return [];
-            return [
-              { segmento: seg, dirBundle: join(dirBundles, `seg_${seg.position}`), framePath },
-            ];
-          });
-          // Sem print da dobra não há contra o que comparar, e isso é a maior
-          // fonte de cobertura perdida — bem antes da comparação em si. Dizer
-          // "3 de 3 passaram" quando só 3 de 12 foram olhados seria verdade
-          // literal e conclusão falsa.
-          const semPrint = segmentos.length - entradas.length;
-          if (semPrint > 0) {
-            limitacoes.push(
-              `${semPrint} de ${segmentos.length} segmento(s) ficaram sem print da dobra, então não puderam ser conferidos por comparação de pixel.`,
-            );
-          }
-          if (entradas.length === 0) return;
-
-          const aba = await s.contexto.newPage();
-          try {
-            await aba.setViewportSize(viewport);
-            const resultado = await compararBundlesComOriginal({
-              pagina: {
-                goto: async (u) => {
-                  await aba.goto(u, { waitUntil: 'load', timeout: 8_000 });
-                },
-                esperar: (ms) => aba.waitForTimeout(ms),
-                esperarFontes: async (teto) => {
-                  // Corrida entre 'as fontes assentaram' e o teto. A pausa fixa
-                  // que havia aqui era o custo dominante por item, e o
-                  // orcamento da fase acabava antes da lista — 3 de 7 itens
-                  // ficavam de fora por tempo, caladamente.
-                  await aba.evaluate(
-                    `(() => new Promise(function (r) {
-                      var t = setTimeout(r, ${teto});
-                      try {
-                        if (document.fonts && document.fonts.ready) {
-                          document.fonts.ready.then(function () { clearTimeout(t); setTimeout(r, 60); });
-                        }
-                      } catch (e) {}
-                    }))()`,
-                  );
-                },
-                evaluate: <T>(expr: string) => aba.evaluate(expr) as Promise<T>,
-                screenshot: (o) =>
-                  aba.screenshot({
-                    type: 'png',
-                    timeout: 6_000,
-                    ...(o?.clip !== undefined
-                      ? {
-                          clip: { x: o.clip.x, y: o.clip.y, width: o.clip.w, height: o.clip.h },
-                        }
-                      : {}),
-                  }),
-                fechar: async () => {
-                  await aba.close();
-                },
-              },
-              entradas,
-              dirCaptura: opts.dirCaptura,
-              cancelado: () => signal.aborted,
+      // Verificação não come o orçamento do que ela verifica.
+      //
+      // Com um teto apertado, a comparação abre uma aba, navega, espera fonte e
+      // não termina nem o primeiro item — gasta tempo da captura para produzir
+      // uma cobertura de zero. Pior: a aba extra e as navegações competem com
+      // as fases de medição, e foi assim que a suíte começou a oscilar (811
+      // verdes viraram 814 com uma falha diferente a cada rodada).
+      //
+      // Abaixo do piso, ela nem começa — e diz isso, como qualquer outra
+      // limitação.
+      const PISO_PARA_COMPARAR_MS = 3_000;
+      const querVerificar = opts.verificarVisual !== false;
+      const tetoComparar = tetoDaFase(FASE_V2.comparar, limits.orcamentoTotalMs) ?? 0;
+      if (!querVerificar) {
+        // Silêncio aqui é correto: quem desligou sabe que desligou.
+      } else if (tetoComparar < PISO_PARA_COMPARAR_MS) {
+        limitacoes.push(
+          `A comparação de pixel não rodou: o orçamento reservado para ela (${tetoComparar} ms) não daria nem para conferir um bundle.`,
+        );
+      } else
+        await tel.faseCooperativa(
+          FASE_V2.comparar,
+          async (signal) => {
+            const entradas = segmentos.flatMap((seg) => {
+              const framePath = framePorHash.get(seg.hash);
+              if (framePath === undefined) return [];
+              return [
+                { segmento: seg, dirBundle: join(dirBundles, `seg_${seg.position}`), framePath },
+              ];
             });
-            comparacoes = resultado.comparacoes;
+            // Sem print da dobra não há contra o que comparar, e isso é a maior
+            // fonte de cobertura perdida — bem antes da comparação em si. Dizer
+            // "3 de 3 passaram" quando só 3 de 12 foram olhados seria verdade
+            // literal e conclusão falsa.
+            const semPrint = segmentos.length - entradas.length;
+            if (semPrint > 0) {
+              limitacoes.push(
+                `${semPrint} de ${segmentos.length} segmento(s) ficaram sem print da dobra, então não puderam ser conferidos por comparação de pixel.`,
+              );
+            }
+            if (entradas.length === 0) return;
 
-            const r = resumirComparacoes(resultado);
-            log('comparacao-visual', r);
-            if (r.total > 0 && r.ok < r.total) {
-              limitacoes.push(
-                `${r.total - r.ok} de ${r.total} bundle(s) não bateram com o print da dobra na comparação de pixel (maior diferença: ${Math.round(r.piorDelta * 100)}%).`,
-              );
+            const aba = await s.contexto.newPage();
+            try {
+              await aba.setViewportSize(viewport);
+              const resultado = await compararBundlesComOriginal({
+                pagina: {
+                  goto: async (u) => {
+                    await aba.goto(u, { waitUntil: 'load', timeout: 8_000 });
+                  },
+                  esperar: (ms) => aba.waitForTimeout(ms),
+                  esperarFontes: async (teto) => {
+                    // Corrida entre 'as fontes assentaram' e o teto. A pausa fixa
+                    // que havia aqui era o custo dominante por item, e o
+                    // orcamento da fase acabava antes da lista — 3 de 7 itens
+                    // ficavam de fora por tempo, caladamente.
+                    await aba.evaluate(
+                      `(() => new Promise(function (r) {
+                        var t = setTimeout(r, ${teto});
+                        try {
+                          if (document.fonts && document.fonts.ready) {
+                            document.fonts.ready.then(function () { clearTimeout(t); setTimeout(r, 60); });
+                          }
+                        } catch (e) {}
+                      }))()`,
+                    );
+                  },
+                  evaluate: <T>(expr: string) => aba.evaluate(expr) as Promise<T>,
+                  screenshot: (o) =>
+                    aba.screenshot({
+                      type: 'png',
+                      timeout: 6_000,
+                      ...(o?.clip !== undefined
+                        ? {
+                            clip: { x: o.clip.x, y: o.clip.y, width: o.clip.w, height: o.clip.h },
+                          }
+                        : {}),
+                    }),
+                  fechar: async () => {
+                    await aba.close();
+                  },
+                },
+                entradas,
+                dirCaptura: opts.dirCaptura,
+                cancelado: () => signal.aborted,
+              });
+              comparacoes = resultado.comparacoes;
+
+              const r = resumirComparacoes(resultado);
+              log('comparacao-visual', r);
+              if (r.total > 0 && r.ok < r.total) {
+                limitacoes.push(
+                  `${r.total - r.ok} de ${r.total} bundle(s) não bateram com o print da dobra na comparação de pixel (maior diferença: ${Math.round(r.piorDelta * 100)}%).`,
+                );
+              }
+              // Cobertura parcial, e DITA. Uma verificação que roda em 3 de 13
+              // itens sem avisar é pior que nenhuma: dá a impressão de que o
+              // resto foi conferido.
+              if (r.pulados > 0) {
+                limitacoes.push(
+                  `A comparação de pixel cobriu ${r.total} de ${r.total + r.pulados} bundle(s); o resto ficou de fora (${r.porMotivo}).`,
+                );
+              }
+            } finally {
+              await aba.close().catch(() => {});
             }
-            // Cobertura parcial, e DITA. Uma verificação que roda em 3 de 13
-            // itens sem avisar é pior que nenhuma: dá a impressão de que o
-            // resto foi conferido.
-            if (r.pulados > 0) {
-              limitacoes.push(
-                `A comparação de pixel cobriu ${r.total} de ${r.total + r.pulados} bundle(s); o resto ficou de fora (${r.porMotivo}).`,
-              );
-            }
-          } finally {
-            await aba.close().catch(() => {});
-          }
-        },
-        tetoDaFase(FASE_V2.comparar, limits.orcamentoTotalMs),
-      );
+          },
+          tetoDaFase(FASE_V2.comparar, limits.orcamentoTotalMs),
+        );
     }
 
     // ── Manifesto ─────────────────────────────────────────────────────────

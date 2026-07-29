@@ -5,11 +5,13 @@ import {
   type RepresentationDecision,
   type StackEntry,
   derivarContrato,
+  reescreverParaLocal,
 } from '@ds/shared';
 import type { RawJsInline } from '../mapper/raw.js';
 import type { SegmentoV2 } from '../segment/segment-v2.js';
 import { type ResultadoCss, organizarCss } from './css-organize.js';
 import { type ResultadoJs, organizarJs, tagsDeScript } from './js-organize.js';
+import { type ScriptDecidido, refDoScript } from './runtime-local.js';
 import { renderizarStackMd } from './stack.js';
 import { classificarSvg, isolarIdsSvg } from './svg-classify.js';
 
@@ -73,13 +75,18 @@ export type EntradaBundle = {
    */
   documentoAttrs?: { html?: string; body?: string };
   /**
-   * `<script src>` externos da página, na ordem do documento.
+   * Os `<script src>` da página, JÁ DECIDIDOS — ver `runtime-local.ts`.
    *
-   * Sem isso o bundle nasce sem o runtime que desenha os ícones e compila as
-   * classes utilitárias. Ficava invisível porque a prévia da Galeria montava o
-   * head da página original por fora — o defeito só aparecia no site entregue.
+   * Antes isto era uma lista de URLs e o bundle as emitia como estavam,
+   * apontando para o CDN. Os arquivos já eram baixados para a captura e o
+   * arquivo entregue os ignorava: o site só funcionava com internet, e só
+   * enquanto aquele endereço existisse.
+   *
+   * Agora cada script vem com destino: levar (copiado para o bundle),
+   * dispensar (a saída dele já foi materializada) ou remoto (não deu para
+   * baixar, e isso é declarado).
    */
-  scriptsExternos?: readonly string[];
+  scriptsExternos?: readonly ScriptDecidido[];
   /**
    * O HTML das camadas de fundo que passam atrás desta região, na ordem.
    *
@@ -90,6 +97,15 @@ export type EntradaBundle = {
    * atrás dele.
    */
   camadasDeFundo?: readonly string[];
+  /**
+   * URL original → caminho local dentro de `assets/`, para TODO asset baixado.
+   *
+   * Sem isto, o bundle saía com `<img src="https://origem…">` mesmo tendo o
+   * arquivo em disco — o mesmo defeito dos scripts, e mais visível: as imagens
+   * são o conteúdo. Um `.zip` aberto sem internet mostrava caixas cinzas, e a
+   * dependência sumia no dia em que o site de origem trocasse de endereço.
+   */
+  assetsLocais?: ReadonlyMap<string, string>;
   /** Assets de que o segmento depende. */
   assets: readonly CapturedAsset[];
   stack: readonly StackEntry[];
@@ -264,6 +280,43 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
   for (const a of svg.assets) arquivos.push(escrever(dir, a.caminho, a.conteudo));
   avisos.push(...svg.notas);
 
+  // ── As referências de asset apontam para DENTRO do bundle ───────────────
+  //
+  // O HTML do segmento vem com URLs absolutas da origem (`absolutizeRefs`
+  // durante a captura, para a prévia carregar). Os arquivos já foram baixados —
+  // e o bundle continuava referenciando o endereço remoto. Um `.zip` aberto sem
+  // internet mostrava caixas cinzas no lugar das imagens, e a dependência
+  // desapareceria de vez no dia em que o site de origem mudasse de lugar.
+  const jaCopiadosAssets = new Set<string>();
+  const mapaDeAssets = new Map(entrada.assetsLocais ?? []);
+  const reescrita =
+    mapaDeAssets.size > 0
+      ? reescreverParaLocal(svg.html, mapaDeAssets, 'assets/')
+      : { text: svg.html, locais: 0, externos: 0, externosUrls: [] as string[] };
+  const corpoLocalizado = reescrita.text;
+  if (reescrita.externos > 0) {
+    avisos.push(
+      `${reescrita.externos} asset(s) continuam apontando para a origem (ex.: ${reescrita.externosUrls[0]}): não foram baixados na captura.`,
+    );
+  }
+
+  // Os arquivos que a reescrita passou a apontar precisam ESTAR aqui: apontar
+  // para um caminho local que nao existe troca uma imagem remota por uma imagem
+  // quebrada, o que e pior.
+  if (mapaDeAssets.size > 0 && entrada.dirAssetsCaptura !== undefined) {
+    for (const [, localPath] of mapaDeAssets) {
+      if (!corpoLocalizado.includes(localPath)) continue;
+      if (jaCopiadosAssets.has(localPath)) continue;
+      try {
+        const bytes = readFileSync(join(entrada.dirAssetsCaptura, localPath));
+        arquivos.push(escrever(dir, `assets/${localPath}`, bytes));
+        jaCopiadosAssets.add(localPath);
+      } catch {
+        avisos.push(`Asset referenciado e ausente da captura: ${localPath}.`);
+      }
+    }
+  }
+
   // ── CSS externo ─────────────────────────────────────────────────────────
   // Os arquivos entram no bundle com o MESMO nome hashed da captura — renomear
   // quebraria os `@import` reescritos (vizinhos por `<hash>.css`) e o layout
@@ -403,11 +456,52 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
             ? `<img src="${entrada.frames[0]}" alt="${segmento.name.replace(/"/g, '&quot;')}" style="display:block;max-width:100%;height:auto">`
             : '<p style="font:14px system-ui;padding:16px">Sem frame de fallback disponível.</p>',
         ].join('\n')
-      : `${fundo}${svg.html}`;
+      : `${fundo}${corpoLocalizado}`;
 
+  // ── Os scripts da página, com o destino decidido ────────────────────────
+  //
   // Os externos vêm ANTES dos inline organizados, como no documento original:
   // script inline quase sempre depende do runtime já ter carregado.
-  const tagsExternas = (entrada.scriptsExternos ?? [])
+  //
+  // O que foi marcado para LEVAR é copiado para dentro do bundle e passa a ser
+  // referenciado por caminho relativo. É o que faz o `.zip` entregue ao cliente
+  // continuar funcionando offline, e daqui a um ano, quando o CDN de origem já
+  // não responder pelo mesmo endereço.
+  const scriptsDecididos = entrada.scriptsExternos ?? [];
+  const refsDeScript: string[] = [];
+  for (const d of scriptsDecididos) {
+    const ref = refDoScript(d);
+    if (ref === null) {
+      avisos.push(d.motivo);
+      continue;
+    }
+    if (d.decisao === 'levar' && d.localPath !== undefined) {
+      if (!jaCopiados.has(d.localPath) && entrada.dirAssetsCaptura !== undefined) {
+        try {
+          const bytes = readFileSync(join(entrada.dirAssetsCaptura, d.localPath));
+          arquivos.push(escrever(dir, `assets/${d.localPath}`, bytes));
+          jaCopiados.add(d.localPath);
+        } catch {
+          // O arquivo sumiu entre a captura e a compilação: cai para remoto em
+          // vez de emitir um caminho que não existe.
+          avisos.push(
+            `Script marcado para viajar não estava mais na captura (${d.localPath}); o bundle voltou a apontar para a origem.`,
+          );
+          refsDeScript.push(d.url);
+          continue;
+        }
+      }
+    }
+    if (d.decisao === 'remoto') avisos.push(d.motivo);
+    refsDeScript.push(ref);
+  }
+  const levados = scriptsDecididos.filter((d) => d.decisao === 'levar').length;
+  if (levados > 0) {
+    avisos.push(
+      `${levados} script(s) de runtime viajam dentro do bundle: ele não depende mais do endereço de origem para isso.`,
+    );
+  }
+  const tagsExternas = refsDeScript
     .map((src) => `<script src="${src.replace(/"/g, '&quot;')}"></script>`)
     .join('\n');
 
@@ -441,7 +535,7 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
           css: caminhosCss,
           // A cápsula leva SÓ a menor unidade funcional: o HTML do segmento, não
           // a página. Levar a página inteira é o que o pedido proíbe.
-          corpo: svg.html,
+          corpo: corpoLocalizado,
           scripts: [scriptsDoRuntime, tagsDeScript(js.arquivos)]
             .filter((s) => s.length > 0)
             .join('\n'),

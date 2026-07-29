@@ -51,6 +51,12 @@ before(
         // percurso saía com 2 paradas. O que se mede aqui é a captura, não a
         // velocidade da máquina de quem roda — o corte por tempo continua
         // coberto pelo teste de parcialidade.
+        // A verificação de pixel é medida em `comparar-bundle.test.ts`, sem
+        // navegador. Aqui ela só somaria uma aba e uma navegação por captura,
+        // competindo com as fases que ESTES testes medem — e foi assim que a
+        // suíte começou a oscilar, com um teste de tempo diferente falhando a
+        // cada rodada.
+        verificarVisual: false,
         limits: {
           orcamentoTotalMs: 150_000,
           faseInteracoesMs: 40_000,

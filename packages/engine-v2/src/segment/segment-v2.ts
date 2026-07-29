@@ -404,6 +404,16 @@ export type EntradaSegmentacao = {
    * sai sem parte dos estilos — o CSS de nenhum segmento pode se dizer portátil.
    */
   cssExternoFaltando: boolean;
+  /**
+   * Runtimes cujo script passou a VIAJAR dentro do bundle.
+   *
+   * Muda a resposta da classificação: um fundo em canvas cujo script está no
+   * .zip desenha offline, e chamá-lo de dependência de rede seria tão errado
+   * quanto o silêncio anterior. O Iconify NÃO entra aqui de propósito — ver
+   * : a biblioteca viaja, o traçado de cada ícone continua
+   * vindo de uma API.
+   */
+  runtimesQueViajam?: readonly RuntimeKind[];
   /** Animações CSS que de fato rodaram (nome → contagem). */
   animacoesCssQueRodaram: readonly string[];
   /** Shadow roots fechados encontrados. */
@@ -804,6 +814,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       // prática o CSS vem junto. Só quando a coleta inteira falhou é que a
       // dependência do CDN é real.
       cssCompiladoCapturado: !entrada.cssExternoFaltando,
+      runtimesLocais: entrada.runtimesQueViajam ?? [],
     };
     const representacao = classificarRepresentacao(evidenciaRepr);
 
