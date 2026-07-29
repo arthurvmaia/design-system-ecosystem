@@ -67,6 +67,32 @@ export const espelhoDoBrief = (b: BriefDaSecao): string => {
 export const briefVazio = (b: BriefDaSecao): boolean => !b.iaDecide && espelhoDoBrief(b) === '';
 
 /**
+ * Traduz o texto livre das seções para o formato de brief.
+ *
+ * A fonte passou a ser `layout.secoes[].instrucao`; `content.briefs` continua
+ * existindo porque o pipeline editorial e o contrato do gerador leem de lá. A
+ * chave é o ID da seção, nunca o papel: duas seções podem ter o mesmo papel
+ * agora, e um registro por papel perderia uma delas em silêncio.
+ *
+ * Instrução vazia vira `iaDecide: true` porque é exatamente o que ela significa
+ * — a pessoa delegou o texto daquela seção, e delegar é uma decisão, não uma
+ * lacuna.
+ */
+export const espelharBriefsDasSecoes = (
+  secoes: readonly { id: string; instrucao?: string }[],
+): Record<string, BriefDaSecao> => {
+  const out: Record<string, BriefDaSecao> = {};
+  for (const s of secoes) {
+    const texto = s.instrucao?.trim() ?? '';
+    out[s.id] =
+      texto === ''
+        ? { pontos: [], provas: [], iaDecide: true }
+        : { mensagem: texto, pontos: [], provas: [], iaDecide: false };
+  }
+  return out;
+};
+
+/**
  * Um produto do usuário.
  *
  * Existe separado de `services` porque produto é outra coisa: tem preço, tem
@@ -180,9 +206,17 @@ export const MediaItem = z.object({
   originalName: z.string(),
   alt: z.string().optional(),
   /**
-   * Onde esta mídia entra no site: o `SectionRole` do slot ("hero",
-   * "showcase", ...). É o que responde "esta imagem aparece onde?" sem
-   * depender de o gerador adivinhar.
+   * Onde esta mídia entra: o id da seção que o usuário montou. É a FONTE.
+   *
+   * Aponta para o id, e não para o nome nem para a posição, porque os dois são
+   * dele: ele renomeia a seção e a arrasta para outro lugar da página, e a
+   * imagem tem de continuar onde ele a pôs. Ausente = ele deixou a critério do
+   * gerador, de propósito.
+   */
+  secaoId: z.string().optional(),
+  /**
+   * Espelho legado: o papel daquela seção ("hero", "showcase", ...). Derivado de
+   * `secaoId` na hora de montar o payload — não é escrito à mão.
    */
   slotRole: z.string().optional(),
 });
@@ -259,13 +293,53 @@ const migrarContentLegado = (c: ProjectContent): ProjectContent => {
   return Object.keys(briefs).length > 0 ? { ...c, briefs } : c;
 };
 
+/**
+ * Lê o conteúdo perdendo só o que está quebrado.
+ *
+ * Antes era um `safeParse` do objeto inteiro com fallback no default, e isso
+ * custava caro: `Produto.nome` exige texto, mas o botão de adicionar produto
+ * cria um item em branco e o autosave grava. Na leitura seguinte, aquele único
+ * produto sem nome derrubava a validação do objeto todo, e o `about`, o
+ * `slogan`, os briefs e os OUTROS produtos iam junto — apagados em silêncio,
+ * por causa de um campo que a pessoa ainda ia digitar.
+ *
+ * Agora a degradação é campo a campo, e dentro das listas é item a item: o que
+ * está válido fica. Perder um produto pela metade é aceitável; perder o projeto
+ * inteiro não é.
+ */
+const parseTolerante = (bruto: Record<string, unknown>): ProjectContent => {
+  const inteiro = ProjectContent.safeParse(bruto);
+  if (inteiro.success) return inteiro.data;
+
+  const limpo: Record<string, unknown> = {};
+  for (const [chave, schema] of Object.entries(ProjectContent.shape)) {
+    const valor = bruto[chave];
+    if (valor === undefined) continue;
+    if (schema.safeParse(valor).success) {
+      limpo[chave] = valor;
+      continue;
+    }
+    // Lista com item ruim não some inteira: sai só o item que não passa.
+    if (Array.isArray(valor)) {
+      const sobreviventes = valor.filter(
+        (item) => schema.safeParse([item]).success || schema.safeParse(item).success,
+      );
+      if (sobreviventes.length > 0 && schema.safeParse(sobreviventes).success) {
+        limpo[chave] = sobreviventes;
+      }
+    }
+  }
+
+  const segundo = ProjectContent.safeParse(limpo);
+  return segundo.success ? segundo.data : DEFAULT_PROJECT_CONTENT;
+};
+
 export const normalizarProjectContent = (raw: string | null): ProjectContent => {
   const bruto = jsonSeguro(raw);
   if (bruto === null || typeof bruto !== 'object') {
     return { ...DEFAULT_PROJECT_CONTENT, schemaVersion: PROJECT_DATA_VERSION };
   }
-  const tentado = ProjectContent.safeParse(bruto);
-  const base = tentado.success ? tentado.data : DEFAULT_PROJECT_CONTENT;
+  const base = parseTolerante(bruto as Record<string, unknown>);
   return migrarContentLegado({ ...base, schemaVersion: PROJECT_DATA_VERSION });
 };
 

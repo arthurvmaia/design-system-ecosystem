@@ -50,3 +50,31 @@ test('JSON corrompido não derruba: cai no default sem produtos', () => {
   assert.equal(c.produtos, undefined);
   assert.ok(ProjectContent.safeParse(c).success);
 });
+
+test('um produto sem nome NÃO leva o resto do conteúdo junto', () => {
+  // O caso real: "adicionar produto" cria a linha em branco, o autosave grava, e
+  // a leitura seguinte validava o objeto inteiro de uma vez. Um campo que a
+  // pessoa ainda ia digitar apagava about, slogan, briefs e os outros produtos.
+  const c = normalizarProjectContent(
+    JSON.stringify({
+      about: 'Uma joalheria pequena',
+      slogan: 'Peças que duram',
+      produtos: [
+        { id: 'p1', nome: 'Anel', preco: 'R$ 300' },
+        { id: 'p2', nome: '' },
+      ],
+    }),
+  );
+  assert.equal(c.about, 'Uma joalheria pequena', 'o texto do projeto tem de sobreviver');
+  assert.equal(c.slogan, 'Peças que duram');
+  assert.equal(c.produtos?.length, 1, 'só o produto inválido sai');
+  assert.equal(c.produtos?.[0]?.nome, 'Anel');
+});
+
+test('campo quebrado isolado não apaga os vizinhos', () => {
+  const c = normalizarProjectContent(
+    JSON.stringify({ about: 'texto bom', faq: 'isto deveria ser uma lista' }),
+  );
+  assert.equal(c.about, 'texto bom');
+  assert.equal(c.faq, undefined, 'o campo inválido é o único que se perde');
+});
