@@ -77,7 +77,7 @@ Depois, no app:
 
 1. Extraia **um** site pequeno e confira o resultado
 2. Classifique os segmentos
-3. Gere um site nos dois modos (blueprint e criativo)
+3. Gere um site com uma estrutura montada à mão (inclusive uma seção com duas peças e outra sem peça nenhuma)
 4. Confira o consumo em https://console.anthropic.com/settings/usage
 
 ---
@@ -127,5 +127,5 @@ O custo de manter é uma variável de ambiente e um `if`.
 - [ ] Ciente do custo do Fable 5 (2× o Opus) — ou modelos trocados no `.env` para baratear
 - [ ] `pnpm typecheck` e `pnpm lint` limpos
 - [ ] Uma extração real validada
-- [ ] Uma geração em cada modo (blueprint e criativo)
+- [ ] Uma geração com seção de várias peças e outra criada no estilo do kit
 - [ ] Consumo conferido no console

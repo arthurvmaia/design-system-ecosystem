@@ -37,7 +37,7 @@ Validado nesta máquina: **`pnpm typecheck` (10/10 pacotes) ✓ · `pnpm lint` (
 - `routes/projects.ts` **reescrito** para o novo fluxo:
   - `POST /` cria **rascunho** `{name, kitId?}` (não enfileira nada).
   - `PATCH /:id` atualiza name/kitId/content/branding/layout (regrava content.json/branding.json).
-  - `POST /:id/media` (multipart, `c.req.parseBody()`) salva em `projects/<id>/media/` + anexa ao manifest com `slotRole`; `DELETE /:id/media?path=` remove; `GET /:id/media/:name` serve o arquivo (prévia no wizard).
+  - `POST /:id/media` (multipart, `c.req.parseBody()`) salva em `projects/<id>/media/` + anexa ao manifest com `secaoId`; `DELETE /:id/media?path=` remove; `GET /:id/media/:name` serve o arquivo (prévia no wizard).
   - `POST /:id/generate` valida kit (com componentes), monta payload **kit-scoped** e enfileira `generate` (modo fila) ou roda a task filtrando o catálogo pelo kit (modo api).
   - `POST /:id/duplicate` copia config+mídia como novo rascunho; `DELETE /:id` apaga registro+pasta.
 
@@ -62,7 +62,7 @@ Validado nesta máquina: **`pnpm typecheck` (10/10 pacotes) ✓ · `pnpm lint` (
 - **Kit como entidade própria** (N:N com posição): usuário pediu "vários Design Systems finais"; projects referenciam kit (`set null` ao excluir kit — site gerado sobrevive).
 - **Geração kit-scoped**: o site usa só o kit do projeto, não a Biblioteca inteira — evita Frankenstein de origens que não conversam. Slots sem peça no kit são criados no estilo do kit.
 - **Wizard salva por PATCH a cada etapa**: rascunho não se perde se fechar no meio; mídia sobe na hora (endpoint próprio). Reabrir (editar) reidrata do content/branding/layout/media salvos.
-- **Mídia por `slotRole`** no manifest: responde "esta imagem vai onde" sem heurística; `path` é o nome relativo em `media/`.
+- **Mídia por `secaoId`** no manifest: responde "esta imagem vai onde" sem heurística, e ancora no id da seção para sobreviver a renomear e reordenar. O `slotRole` continua no payload como espelho, derivado do papel da seção na hora de gerar. `path` é o nome relativo em `media/`.
 
 ## Como rodar / validar
 
@@ -83,7 +83,7 @@ pnpm db:migrate               # migrations (0002 já aplicada)
 - `DELETE /api/design-systems/:id` ainda não apaga `vault/<id>/` do disco (TODO herdado; impacto é exibido antes).
 - Preview de componente cuja extração foi apagada perde fontes/runtime (best effort; styles.css do bundle segura o grosso).
 - Segmentos "sistema" em sites Tailwind-CDN dependem do CDN compilar dentro do iframe (funciona online; offline cai no ESTILO_BASE legível).
-- Wizard no modo `criativo`: as etapas Estrutura/Mídia mostram poucos slots (o gerador decide a estrutura) — comportamento intencional; a etapa de Mídia cai numa lista genérica de seções (Destaque/Demonstração/Galeria/Sobre).
+- Estrutura e Mídia seguem a MESMA lista: `layout.secoes`. A etapa de Mídia é dinâmica em cima do que a pessoa montou na Estrutura, e mídia de uma seção apagada volta para "deixe o gerador decidir" em vez de sumir.
 
 ## Adendo 2026-07-21 (mesma sessão)
 

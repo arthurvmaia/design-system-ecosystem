@@ -141,7 +141,7 @@ packages/
 ├── classifier/      Classificação de segmentos via LLM
 ├── isolator/        Bundle mínimo por componente (PostCSS)
 ├── tokens/          Extração de design tokens
-└── generator/       Composição de sites a partir do kit (blueprint/criativo)
+└── generator/       Composição de sites a partir do kit, na estrutura do usuário
 
 scripts/             Fila, extração, empacotamento e o iniciar.ps1 dos .bat
 docs/                Manual, arquitetura e guias

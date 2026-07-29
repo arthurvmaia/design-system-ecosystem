@@ -32,13 +32,40 @@ test('reescreverRefs: assets ganham o namespace do componente', () => {
   );
 });
 
-test('envolverSecao: proveniência explícita — biblioteca × gerado', () => {
+/**
+ * Cada atributo é conferido SOZINHO, de propósito.
+ *
+ * A versão anterior casava a tag inteira com um regex terminado em `>`, então
+ * qualquer atributo novo a invalidava mesmo estando correta — foi o que
+ * aconteceu quando entrou o `data-secao-id`. Asserção por atributo sobrevive ao
+ * próximo campo.
+ */
+test('envolverSecao: uma peça do kit declara procedência e id da seção', () => {
+  const html = envolverSecao('<div/>', {
+    role: 'hero',
+    secaoId: 'sec_1',
+    componentIds: ['cmp_a'],
+  });
+  assert.match(html, /data-secao="hero"/);
+  assert.match(html, /data-secao-id="sec_1"/);
+  assert.match(html, /data-origem="biblioteca"/);
+  assert.match(html, /data-componente="cmp_a"/);
+});
+
+test('envolverSecao: várias peças cabem na MESMA seção', () => {
+  const html = envolverSecao('<div/>', {
+    role: 'features',
+    secaoId: 'sec_2',
+    componentIds: ['cmp_a', 'cmp_b'],
+  });
+  assert.match(html, /data-componente="cmp_a cmp_b"/, 'os ids saem na ordem, separados por espaço');
+  assert.equal((html.match(/<section/g) ?? []).length, 1, 'é uma seção só, não duas');
+});
+
+test('envolverSecao: seção sem peça é "gerado"; seção pela metade é "misto"', () => {
+  assert.match(envolverSecao('<div/>', { role: 'cta', componentIds: [] }), /data-origem="gerado"/);
   assert.match(
-    envolverSecao('<div/>', { role: 'hero', componentId: 'cmp_a' }),
-    /<section data-secao="hero" data-origem="biblioteca" data-componente="cmp_a">/,
-  );
-  assert.match(
-    envolverSecao('<div/>', { role: 'cta', componentId: null }),
-    /<section data-secao="cta" data-origem="gerado">/,
+    envolverSecao('<div/>', { role: 'cta', componentIds: ['cmp_a'], criouAlgo: true }),
+    /data-origem="misto"/,
   );
 });

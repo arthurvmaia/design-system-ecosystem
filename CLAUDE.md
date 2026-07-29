@@ -73,25 +73,26 @@ O payload é rico e é a fonte da verdade — não vá ler o banco por fora:
 ```
 { projectId, projectName,
   kitId, kit: { id, name, components: [{ id, name, category, kind, bundlePath }] },
-  layout,     // ProjectLayout: mode, blueprintId, disabledRoles, placements[{role, escolha, componentId, observacao}], density, motion
-  blueprintId,
+  layout,     // ProjectLayout: secoes[{ id, nome, papel?, componentIds[], instrucao? }], density, motion, preferDesignSystemId
   branding,   // ProjectBranding: brandName, tone, palette, typography, logoPath, contact, social, mainCta
               // + modelo novo (preferir quando presente): identidadeVerbal{tons, arquetipos, eixos, vocabulário},
               //   logos[{tipo, path}], logosLocais, paleta{cores, atribuicoes}, tipografia{presets, ajustes}, sociais[]
-  content,    // ProjectContent: briefs{ role→{mensagem, pontos, provas, cta} } (fonte) + sections{ role→texto } (espelho legado)
-              // + produtos[{ id, nome, descricao, preco, imagemPath, link, destaque }]
-  media }     // MediaItem[]: { path, kind, slotRole, originalName, ... } (path relativo a projects/<id>/media/)
+  content,    // ProjectContent: produtos[{ id, nome, descricao, preco, imagemPath, link, destaque }]
+              // briefs{ secaoId→{mensagem, iaDecide} } e sections{ secaoId→texto } são ESPELHOS
+              // do texto da seção; a fonte é layout.secoes[].instrucao
+  media }     // MediaItem[]: { path, kind, secaoId, slotRole (espelho derivado), originalName, ... }
+              // (path relativo a projects/<id>/media/)
 ```
 
 1. **Use SOMENTE os componentes do kit** (`payload.kit.components`), nunca a Biblioteca inteira. Cada componente tem `bundlePath` — leve o **bundle completo**: o corpo do `index.html` (bundles V2 são documentos completos; extraia o `<body>` e remova `<aside data-ds-aviso>`), TODO o CSS (`assets/css/*.css` em ordem, ou `styles.css` no legado), o JS de `assets/js/` e os arquivos de `assets/`. Copie os arquivos para `assets/<cmp_id>/` no site gerado e reescreva as referências — componentes não colidem entre si. O kit é o Design System final; sair dele traz peças de origens que não conversam.
-2. Leia `payload.layout.mode`:
-   - `blueprint` — a estrutura está fixada. Use `getBlueprint(payload.blueprintId)` e `resolveSlots()` de `@ds/shared`. Um slot por posição, na ordem. **Respeite `layout.placements`**: `resolverPlacements()` de `@ds/shared` resolve — escolha fixada é ordem, sugestão é preferência, `observacao` é instrução daquela seção.
-   - `criativo` — você decide a estrutura. Use `pickCreativeDirection(layout.creativeSeed)` e comprometa-se com a direção sorteada.
-3. **Preencha cada slot.** Se o kit tem um componente da categoria do slot (`ROLE_CATEGORIES` de `@ds/shared`), use-o e envolva em `<section data-secao="role" data-origem="biblioteca" data-componente="cmp_...">`. Se não tem, **crie** o HTML/CSS/JS daquele slot no estilo do kit (mesmas cores, tipografia, espaçamento, densidade) com `data-origem="gerado"`. Nenhum slot fica vazio.
-4. **A IDV do usuário entra POR CIMA do esqueleto, nunca dentro dele**: o CSS dos componentes fica em `assets/styles.css` e a marca em `assets/marca.css`, carregada DEPOIS — os tokens vencem a cascata sem `!important`. Com `branding.paleta`, use `distribuirTokens()` (17 tokens semânticos); com `branding.tipografia`, use `derivarEscala()` (H1–H6, peso, respiro). Texto vem de `content.briefs[role]` (mensagem, pontos, provas, cta — fonte estruturada; `sections` é só o espelho legado). Brief com `iaDecide: true` = a pessoa delegou o texto daquela seção: escreva no tom da marca SEM inventar fatos, números, clientes ou prêmios — sem informação concreta, texto seguro e genérico, fácil de editar. Logos: `distribuirLogos(branding.logos)` decide a variação por local (`logosLocais` sobrepõe). Mídias de `media` entram no slot indicado por `slotRole`. Respeite a voz (`identidadeVerbal` → `derivarDiretrizes()`), `density` e `motion`.
-5. **Mídia e produtos.** Mídia com `slotRole` entra naquela seção; mídia **sem** `slotRole` foi deixada de propósito para você posicionar onde funcionar melhor. `content.produtos` é a vitrine: monte-a com as peças do kit (card/pricing/gallery), usando `imagemPath` como foto e respeitando o que está vazio — produto sem preço não ganha preço inventado. Lista vazia significa que o site **não tem** seção de produto.
+2. **A estrutura é `layout.secoes`, na ordem.** Uma `<section>` por item da lista, na sequência em que aparecem. Você **não acrescenta, não remove e não reordena** seção nenhuma: essa lista é a arquitetura que a pessoa desenhou, seção a seção, na tela de Estrutura. Não existe mais blueprint nem modo criativo.
+3. **Cada seção leva as peças de `componentIds`, todas, na ordem, DENTRO da mesma `<section>`.** `componentIds` vazio é uma decisão legítima e comum: crie aquela seção inteira no estilo do kit (mesmas cores, tipografia, espaçamento, densidade). Envolva assim:
+   `<section data-secao="<papel ou 'secao'>" data-secao-id="<sec_...>" data-origem="biblioteca|gerado|misto" data-componente="cmp_a cmp_b">`.
+   `slugDaSecao()` e `resolverSecoes()` de `@ds/shared` resolvem o papel e as peças (inclusive peça que saiu do kit). `data-origem` é `misto` quando parte da seção veio do kit e parte você criou — dizer "biblioteca" numa seção meio inventada esconde a procedência. Nenhuma seção fica vazia.
+4. **A IDV do usuário entra POR CIMA do esqueleto, nunca dentro dele**: o CSS dos componentes fica em `assets/styles.css` e a marca em `assets/marca.css`, carregada DEPOIS — os tokens vencem a cascata sem `!important`. Com `branding.paleta`, use `distribuirTokens()` (17 tokens semânticos); com `branding.tipografia`, use `derivarEscala()` (H1–H6, peso, respiro). O texto de cada seção vem de `secao.instrucao`: é o que aquela seção **deve ou não deve comunicar**. **Instrução vazia significa que a pessoa delegou o texto a você**: escreva no tom da marca SEM inventar fatos, números, clientes ou prêmios — sem informação concreta, texto seguro e fácil de editar. Logos: `distribuirLogos(branding.logos)` decide a variação por local (`logosLocais` sobrepõe). Respeite a voz (`identidadeVerbal` → `derivarDiretrizes()`), `density` e `motion`.
+5. **Mídia e produtos.** Mídia com `secaoId` entra naquela seção; mídia **sem** `secaoId` foi deixada de propósito para você posicionar onde funcionar melhor. `content.produtos` é a vitrine: monte-a com as peças do kit (card/pricing/gallery), usando `imagemPath` como foto e respeitando o que está vazio — produto sem preço não ganha preço inventado. Lista vazia significa que o site **não tem** seção de produto.
 6. **NUNCA copie texto, nome ou marca do site de origem.** O kit empresta só o jeito visual; a identidade é a do usuário.
-7. **Responsividade é REQUISITO, não melhoria.** O site precisa de uma versão mobile pensada: meta viewport, nada de rolagem horizontal, colunas empilhadas, mídia proporcional, texto ≥16px, alvos de toque ≥44px, navegação adaptada. Escreva a camada em `assets/responsivo.css` carregada ENTRE `styles.css` e `marca.css` (use `cssResponsivoBase()` de `@ds/generator` como base e adapte o que o kit exigir, sem perder o estilo dele). Valide em ~1440px e ~390px antes de concluir.
+7. **Responsividade é REQUISITO, não melhoria.** O site precisa de uma versão mobile pensada: meta viewport, nada de rolagem horizontal, colunas empilhadas, mídia proporcional, texto ≥16px, alvos de toque ≥44px, navegação adaptada. Escreva a camada em `assets/responsivo.css` carregada ENTRE `styles.css` e `marca.css` (use `cssResponsivoBase()` de `@ds/generator` como base e adapte o que o kit exigir, sem perder o estilo dele). O seletor `[data-secao="nav"]` do `cssResponsivoBase()` só alcança a barra de navegação: confirme que ela saiu com esse `data-secao`, senão o comportamento dela no celular some sem erro nenhum. Valide em ~1440px e ~390px antes de concluir, e faça isso com o navegador **em modo headless** — abrir janela na cara de quem está usando o computador não é validação, é interrupção.
 8. Escreva em `~/design-system-ecosystem/projects/<prj_id>/generated/<timestamp>/` com `index.html` + assets. É o que a tela **Meus sites** serve na prévia e empacota no `.zip`. O `fila:concluir` valida: assets referenciados existem, `marca.css` carrega depois do `styles.css`, toda seção tem `data-origem`, a meta viewport está declarada e existe CSS com `@media` de largura.
 
 ## Avisando que está trabalhando
@@ -154,7 +155,7 @@ pnpm acervo:importar  # importa acervo de outra máquina reescrevendo caminhos (
 - `packages/explorer` — motor de captura por navegador (Playwright opcional). `renderPage` faz a extração fiel de qualquer URL (usada pelo `pnpm extrair`); `explorePage` faz a captura profunda de estados/assets; `assessFidelity` dá o nível de suporte/avisos de cada componente. Degrada para estático sem o navegador. Ver `docs/CAPTURE.md`.
 - `packages/extractor` — loop agêntico com tools de arquivo (modo `api`). `prompt.ts` é o ativo.
 - `packages/classifier` — categoriza segmentos em lote.
-- `packages/generator` — compõe sites a partir da biblioteca; dois modos (blueprint/criativo).
+- `packages/generator` — compõe sites a partir da estrutura que o usuário declarou (`layout.secoes`).
 - `packages/shared` — schemas Zod, paths, fila. Fonte da verdade dos contratos.
 - `packages/indexer` — SQLite via Drizzle.
 

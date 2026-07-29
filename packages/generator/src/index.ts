@@ -2,20 +2,15 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  BUILTIN_BLUEPRINTS,
   type GeneratePayload,
-  type LayoutBlueprint,
   type ProjectBranding,
   buildTypographyCss,
   derivarDiretrizes,
   derivarEscala,
   distribuirTokens,
-  getBlueprint,
   libraryComponentBundleDir,
-  pickCreativeDirection,
   projectGeneratedVersionDir,
-  resolveSlots,
-  resolverPlacements,
+  resolverSecoes,
 } from '@ds/shared';
 import { z } from 'zod';
 import { type ModeloDeCopy, executarPlano, montarPlanoEditorial } from './editorial.js';
@@ -48,11 +43,18 @@ import {
  * de linguagens visuais que não conversam.
  */
 
+/**
+ * O que o modelo ainda decide.
+ *
+ * Antes ele escolhia as seções E os componentes. Agora as duas coisas vêm do
+ * usuário em `layout.secoes`, então sobrou uma tarefa só: trocar os textos
+ * genéricos que vieram do site de origem pelo conteúdo de quem está gerando.
+ * Estrutura não se pede a quem já a recebeu pronta.
+ */
 const CompositionPlan = z.object({
   sections: z.array(
     z.object({
-      componentId: z.string().startsWith('cmp_'),
-      role: z.string(),
+      secaoId: z.string(),
       substitutions: z.record(z.string(), z.string()).optional(),
     }),
   ),
@@ -132,11 +134,6 @@ const REGRAS_COMUNS = `- Só use componentes da biblioteca, por ID. Nunca invent
   mapa de substituições. Nunca invente fatos que não estejam no conteúdo.
 - Retorne SÓ JSON, sem markdown.`;
 
-/** Blueprint efetivo do payload: id declarado > id do layout > primeiro builtin. */
-const blueprintDe = (input: GenerateInput): LayoutBlueprint =>
-  getBlueprint(input.blueprintId ?? input.layout.blueprintId) ??
-  (BUILTIN_BLUEPRINTS[0] as LayoutBlueprint);
-
 /** Catálogo para o planejador, nascido do KIT com bundle em disco. */
 const catalogoDoKit = (input: GenerateInput): LibraryCatalogItem[] =>
   input.kit.components.map((cmp) => {
@@ -151,95 +148,55 @@ const catalogoDoKit = (input: GenerateInput): LibraryCatalogItem[] =>
     };
   });
 
-/** Modo blueprint: a estrutura vem pronta, o modelo só preenche. */
-const promptBlueprint = (
-  input: GenerateInput,
-  blueprint: LayoutBlueprint,
-): { system: string; user: string } => {
-  const slots = resolveSlots(blueprint, input.layout);
-  // Decisões por slot fixadas no wizard: escolha manual vira ordem, sugestão
-  // vira preferência, e a instrução livre do usuário acompanha o slot.
-  const resolvidos = new Map(
-    resolverPlacements(slots, input.layout.placements, input.kit.components).map((r) => [
-      r.role,
-      r,
-    ]),
-  );
-  const slotList = slots
+/**
+ * A estrutura é do usuário: aqui ela é DESCRITA ao modelo, não pedida a ele.
+ *
+ * O que sobra para o modelo é o texto. Cada seção traz as peças que a compõem e,
+ * quando o usuário escreveu, a instrução dele sobre o que aquela seção deve ou
+ * não comunicar. Seção sem instrução é delegação explícita.
+ */
+const descreverEstrutura = (input: GenerateInput): string => {
+  const { secoes } = resolverSecoes(input.layout.secoes, input.kit.components);
+  if (secoes.length === 0) return 'O projeto não declarou nenhuma seção.';
+  return secoes
     .map((s, i) => {
-      const r = resolvidos.get(s.role);
-      const notas: string[] = [];
-      if (r?.origem === 'escolhido' && r.componente !== null) {
-        notas.push(`ESCOLHA FIXADA pelo usuário: use exatamente o componente "${r.componente.id}"`);
-      } else if (r?.origem === 'sugerido' && r.componente !== null) {
-        notas.push(`preferência: componente "${r.componente.id}" (${r.componente.name})`);
-      } else if (r?.origem === 'criado') {
-        notas.push('sem componente do kit para este papel: crie no estilo do kit');
-      }
-      if (r?.observacao !== undefined) notas.push(`instrução do usuário: ${r.observacao}`);
-      const sufixo = notas.length > 0 ? `\n   ${notas.join('\n   ')}` : '';
-      return `${i + 1}. role "${s.role}" — ${s.label}: ${s.hint}${sufixo}`;
+      const nome = s.nome.trim() === '' ? `Seção ${i + 1}` : s.nome.trim();
+      const pecas =
+        s.pecas.length === 0
+          ? 'sem peça do kit: esta seção é criada no estilo do kit'
+          : `peças, nesta ordem: ${s.pecas.map((p) => `"${p.id}" (${p.name})`).join(', ')}`;
+      const diz =
+        s.instrucao === undefined
+          ? '   o usuário deixou o texto por sua conta: escreva no tom da marca, SEM inventar fatos'
+          : `   o usuário pediu: ${s.instrucao}`;
+      return `${i + 1}. [${s.id}] "${nome}" — ${pecas}\n${diz}`;
     })
     .join('\n');
-
-  return {
-    system: `Você compõe sites a partir de uma biblioteca de componentes pré-existentes.
-
-A ESTRUTURA DA PÁGINA JÁ ESTÁ DECIDIDA. Você não escolhe quais seções existem
-nem em que ordem aparecem — isso vem do blueprint. Sua tarefa é escolher, para
-cada slot, o componente da biblioteca que melhor cumpre aquele papel.
-
-Regras:
-- Retorne exatamente um item por slot, na mesma ordem em que os slots aparecem.
-- Use o valor de "role" exatamente como fornecido no slot.
-- Slot com ESCOLHA FIXADA não é sugestão: use o componente indicado.
-${REGRAS_COMUNS}
-
-${FORMATO}`,
-    user: `ESTRUTURA ESCOLHIDA: ${blueprint.name} — ${blueprint.description}
-
-SLOTS A PREENCHER (nesta ordem, um componente para cada):
-${slotList}`,
-  };
-};
-
-/** Modo criativo: o modelo decide a estrutura, mas só com o material curado. */
-const promptCriativo = (input: GenerateInput): { system: string; user: string } => {
-  const direcao = pickCreativeDirection(input.layout.creativeSeed);
-
-  return {
-    system: `Você compõe sites a partir de uma biblioteca de componentes pré-existentes.
-
-A ESTRUTURA DA PÁGINA É SUA DECISÃO. Não existe fórmula obrigatória, e você não
-deve cair no padrão automático "hero → features → preço → depoimentos → rodapé"
-a menos que ele seja genuinamente o melhor para este conteúdo.
-
-O que NÃO é negociável: você só pode usar os componentes da biblioteca abaixo.
-Eles foram escolhidos a dedo pelo usuário. Trabalhe com esse material — a
-liberdade é de arranjo, não de invenção.
-
-Regras:
-- Escolha quantas seções fizerem sentido para este conteúdo. Nem toda página
-  precisa de todas as seções possíveis; uma página curta e certa vence uma
-  página longa e genérica.
-- Defina o "role" de cada seção você mesmo, descrevendo a função dela na página.
-- Ordene as seções de forma que a página tenha começo, meio e fim coerentes.
-${REGRAS_COMUNS}
-
-${FORMATO}`,
-    user: `DIREÇÃO CRIATIVA DESTA GERAÇÃO: ${direcao.name}
-${direcao.guidance}
-
-Comprometa-se com essa direção. Uma execução clara de uma ideia vence uma
-mistura morna de várias.`,
-  };
 };
 
 const planSite = async (input: GenerateInput, opts: GenerateOptions): Promise<CompositionPlan> => {
   const client = new Anthropic({ apiKey: opts.apiKey });
-  const blueprint = blueprintDe(input);
-  const { system, user: modoUser } =
-    input.layout.mode === 'criativo' ? promptCriativo(input) : promptBlueprint(input, blueprint);
+
+  const system = `Você escreve o texto de um site já estruturado.
+
+A ESTRUTURA E AS PEÇAS JÁ ESTÃO DECIDIDAS pelo usuário. Você não escolhe quais
+seções existem, nem em que ordem aparecem, nem quais componentes as compõem.
+Não acrescente, não remova e não reordene nada.
+
+Sua tarefa é uma só: para cada seção, devolver o mapa de substituições que troca
+os textos genéricos herdados do site de origem pelo conteúdo deste usuário.
+
+Regras:
+- Um item por seção, usando o "secaoId" exatamente como fornecido.
+- NUNCA copie texto, nome ou marca do site de origem: o kit empresta o jeito
+  visual, a identidade é do usuário.
+- Nunca invente fato, número, cliente ou prêmio que não esteja no conteúdo.
+${REGRAS_COMUNS}
+
+${FORMATO}`;
+
+  const modoUser = `ESTRUTURA DO SITE (é isto, na ordem):
+${descreverEstrutura(input)}`;
 
   const midias =
     input.media.length === 0
@@ -391,47 +348,76 @@ export const generateSite = async (
   // inteiro, não só os primeiros bytes do HTML.
   let bodyHtml = '';
   let concatCss = '';
-  for (const section of plan.sections) {
-    const bundleDir = libraryComponentBundleDir(section.componentId as `cmp_${string}`);
-    const htmlPath = join(bundleDir, 'index.html');
-    if (!existsSync(htmlPath)) {
-      opts.onProgress?.(`Componente ${section.componentId} não achado, pulando`);
-      continue;
-    }
+  const subsPorSecao = new Map(plan.sections.map((s) => [s.secaoId, s.substitutions]));
+  const { secoes: resolvidas } = resolverSecoes(input.layout.secoes, input.kit.components);
 
-    // CSS: V2 tem assets/css/*.css (dividido, em ordem); legado tem styles.css.
-    const cssDir = join(bundleDir, 'assets', 'css');
-    const cssFiles = existsSync(cssDir)
-      ? readdirSync(cssDir)
-          .filter((f) => f.endsWith('.css'))
-          .sort()
-      : [];
-    let css =
-      cssFiles.length > 0
-        ? cssFiles.map((f) => readFileSync(join(cssDir, f), 'utf8')).join('\n')
-        : existsSync(join(bundleDir, 'styles.css'))
-          ? readFileSync(join(bundleDir, 'styles.css'), 'utf8')
-          : '';
+  // O laço externo é a ESTRUTURA DO USUÁRIO, na ordem dele. O interno são as
+  // peças daquela seção — todas dentro da mesma <section>, que é o que "N peças
+  // por seção" quer dizer no HTML final.
+  for (const secao of resolvidas) {
+    const substituicoes = subsPorSecao.get(secao.id);
+    let corpoDaSecao = '';
+    const usados: string[] = [];
+    let faltou = false;
 
-    let corpo = limparParaComposicao(extrairCorpo(readFileSync(htmlPath, 'utf8')));
-    corpo = applySubstitutions(corpo, section.substitutions);
-
-    // Arquivos do bundle (JS, imagens, fontes) vão para assets/<cmpId>/ e as
-    // referências são reescritas — componentes não colidem entre si.
-    const assetsDir = join(bundleDir, 'assets');
-    if (existsSync(assetsDir)) {
-      const destino = join(outputDir, 'assets', section.componentId);
-      for (const entry of readdirSync(assetsDir)) {
-        if (entry === 'css') continue;
-        cpSync(join(assetsDir, entry), join(destino, entry), { recursive: true });
+    for (const peca of secao.pecas) {
+      const bundleDir = libraryComponentBundleDir(peca.id as `cmp_${string}`);
+      const htmlPath = join(bundleDir, 'index.html');
+      if (!existsSync(htmlPath)) {
+        opts.onProgress?.(`Peça ${peca.id} sem bundle em disco, seguindo sem ela`);
+        faltou = true;
+        continue;
       }
-      corpo = reescreverRefsHtml(corpo, section.componentId);
-      css = reescreverRefsCss(css, section.componentId);
+
+      // CSS: V2 tem assets/css/*.css (dividido, em ordem); legado tem styles.css.
+      const cssDir = join(bundleDir, 'assets', 'css');
+      const cssFiles = existsSync(cssDir)
+        ? readdirSync(cssDir)
+            .filter((f) => f.endsWith('.css'))
+            .sort()
+        : [];
+      let css =
+        cssFiles.length > 0
+          ? cssFiles.map((f) => readFileSync(join(cssDir, f), 'utf8')).join('\n')
+          : existsSync(join(bundleDir, 'styles.css'))
+            ? readFileSync(join(bundleDir, 'styles.css'), 'utf8')
+            : '';
+
+      let corpo = limparParaComposicao(extrairCorpo(readFileSync(htmlPath, 'utf8')));
+      corpo = applySubstitutions(corpo, substituicoes);
+
+      // Arquivos do bundle (JS, imagens, fontes) vão para assets/<cmpId>/ e as
+      // referências são reescritas — componentes não colidem entre si.
+      const assetsDir = join(bundleDir, 'assets');
+      if (existsSync(assetsDir)) {
+        const destino = join(outputDir, 'assets', peca.id);
+        for (const entry of readdirSync(assetsDir)) {
+          if (entry === 'css') continue;
+          cpSync(join(assetsDir, entry), join(destino, entry), { recursive: true });
+        }
+        corpo = reescreverRefsHtml(corpo, peca.id);
+        css = reescreverRefsCss(css, peca.id);
+      }
+
+      corpoDaSecao += `\n${corpo}\n`;
+      concatCss += `\n/* ${secao.slug} · ${peca.id} */\n${css}`;
+      usados.push(peca.id);
     }
 
-    bodyHtml += `\n${envolverSecao(corpo, { role: section.role, componentId: section.componentId })}\n`;
-    concatCss += `\n/* ${section.role} · ${section.componentId} */\n${css}`;
-    opts.onProgress?.(`Adicionado: ${section.role} (${section.componentId})`);
+    // Seção que o usuário pediu sem peça do kit: no modo API não há como criar
+    // o visual, então ela sai declarada e vazia em vez de sumir da página. O
+    // modo fila, que é quem gera de verdade, cria a seção no estilo do kit.
+    if (usados.length === 0) {
+      corpoDaSecao = `\n<!-- seção "${secao.nome}" pedida sem peça do kit: criar no estilo -->\n`;
+    }
+
+    bodyHtml += `\n${envolverSecao(corpoDaSecao, {
+      role: secao.slug,
+      secaoId: secao.id,
+      componentIds: usados,
+      criouAlgo: faltou,
+    })}\n`;
+    opts.onProgress?.(`Adicionado: ${secao.nome} (${usados.length} peça(s))`);
   }
 
   // Ordem da cascata: ESQUELETO (CSS dos componentes) → RESPONSIVO (vence as

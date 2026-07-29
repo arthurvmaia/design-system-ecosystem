@@ -28,6 +28,8 @@ const payloadLegado = {
       },
     ],
   },
+  // Shape do modelo ANTIGO de propósito: um job desses pode estar parado na
+  // fila em disco desde antes da mudança, e tem de entrar sem explodir.
   layout: {
     mode: 'blueprint',
     blueprintId: 'saas-landing',
@@ -98,10 +100,49 @@ test('normalizarProjectBranding: legado parcial preserva o que existe e completa
   assert.equal(parcial.schemaVersion, PROJECT_DATA_VERSION);
 });
 
-test('normalizarProjectLayout: corrompido cai no default; legado mescla sobre o default', () => {
+test('normalizarProjectLayout: corrompido cai no default; legado entra sem estrutura', () => {
   const corrompido = normalizarProjectLayout('###');
-  assert.equal(corrompido.mode, 'blueprint');
-  const legado = normalizarProjectLayout(JSON.stringify({ mode: 'criativo' }));
-  assert.equal(legado.mode, 'criativo');
-  assert.equal(legado.density, 'equilibrado');
+  assert.deepEqual(corrompido.secoes, []);
+  // Chaves do modelo antigo são descartadas pelo schema (que não é `strict`) e o
+  // que ainda vale sobrevive. É o que faz um job velho da fila continuar
+  // entrando sem uma linha de migração.
+  const legado = normalizarProjectLayout(
+    JSON.stringify({ mode: 'criativo', blueprintId: 'portfolio', density: 'espacoso' }),
+  );
+  assert.deepEqual(legado.secoes, []);
+  assert.equal(legado.density, 'espacoso');
+});
+
+test('a estrutura do usuário faz a ida e volta pelo contrato sem perder ordem', () => {
+  const parsed = GeneratePayload.parse({
+    ...payloadLegado,
+    layout: {
+      secoes: [
+        { id: 'sec_1', nome: 'Abertura', papel: 'hero', componentIds: ['cmp_a', 'cmp_b'] },
+        { id: 'sec_2', nome: 'Planos', componentIds: [], instrucao: 'não citar preço' },
+      ],
+    },
+  });
+  assert.deepEqual(
+    parsed.layout.secoes.map((s) => s.id),
+    ['sec_1', 'sec_2'],
+  );
+  assert.deepEqual(parsed.layout.secoes[0]?.componentIds, ['cmp_a', 'cmp_b'], 'a ordem das peças');
+  assert.equal(parsed.layout.secoes[1]?.instrucao, 'não citar preço');
+});
+
+test('media com secaoId é preservada', () => {
+  const parsed = GeneratePayload.parse({
+    ...payloadLegado,
+    media: [
+      {
+        path: 'media/banner.png',
+        mimeType: 'image/png',
+        kind: 'image',
+        originalName: 'banner.png',
+        secaoId: 'sec_1',
+      },
+    ],
+  });
+  assert.equal(parsed.media[0]?.secaoId, 'sec_1');
 });

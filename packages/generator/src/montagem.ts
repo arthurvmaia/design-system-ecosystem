@@ -45,12 +45,27 @@ export const reescreverRefsCss = (css: string, cmpId: string): string =>
     .replace(/url\(\s*(["']?)assets\//gi, `url($1assets/${cmpId}/`)
     .replace(/url\(\s*(["']?)\.\.\//gi, `url($1assets/${cmpId}/`);
 
-/** Envelopa a seção com a proveniência explícita que o produto exige. */
+/**
+ * Envelopa a seção com a proveniência explícita que o produto exige.
+ *
+ * Uma seção pode levar VÁRIAS peças agora, então `data-componente` lista os ids
+ * separados por espaço e `data-origem` ganhou um terceiro valor: `misto`, para o
+ * caso em que parte da seção veio do kit e parte foi criada no estilo. Dizer
+ * "biblioteca" numa seção meio inventada seria mentir sobre a procedência, que é
+ * justamente o que estes atributos existem para registrar.
+ *
+ * `data-secao-id` carrega o id da seção do usuário. Sem ele, duas seções do
+ * mesmo papel produziriam dois `data-secao="hero"` indistinguíveis, e âncoras e
+ * `querySelector` pegariam sempre a primeira.
+ */
 export const envolverSecao = (
   corpo: string,
-  dados: { role: string; componentId: string | null },
+  dados: { role: string; secaoId?: string; componentIds: readonly string[]; criouAlgo?: boolean },
 ): string => {
-  const origem = dados.componentId !== null ? 'biblioteca' : 'gerado';
-  const cmp = dados.componentId !== null ? ` data-componente="${dados.componentId}"` : '';
-  return `<section data-secao="${dados.role}" data-origem="${origem}"${cmp}>\n${corpo}\n</section>`;
+  const origem =
+    dados.componentIds.length === 0 ? 'gerado' : dados.criouAlgo === true ? 'misto' : 'biblioteca';
+  const cmp =
+    dados.componentIds.length > 0 ? ` data-componente="${dados.componentIds.join(' ')}"` : '';
+  const sid = dados.secaoId !== undefined ? ` data-secao-id="${dados.secaoId}"` : '';
+  return `<section data-secao="${dados.role}"${sid} data-origem="${origem}"${cmp}>\n${corpo}\n</section>`;
 };
