@@ -93,6 +93,11 @@ type PwPage = {
   keyboard: { press: (tecla: string) => Promise<void> };
   waitForTimeout: (ms: number) => Promise<void>;
   viewportSize: () => { width: number; height: number } | null;
+  // A aba de comparação visual abre e fecha por conta própria, com a viewport
+  // da captura — sem isso ela nasceria no tamanho padrão do Playwright e o
+  // recorte não bateria com o print da dobra.
+  setViewportSize: (t: { width: number; height: number }) => Promise<void>;
+  close: () => Promise<void>;
   on: {
     (evento: 'response', h: (r: PwResponse) => void): void;
     (evento: 'console', h: (m: { type: () => string; text: () => string }) => void): void;

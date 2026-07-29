@@ -27,6 +27,7 @@ import {
   type ScrollViewportPass,
   type StackEntry,
   type TemporalObservation,
+  type VisualComparison,
 } from '@ds/shared';
 import { PlaywrightIndisponivel, type SessaoV2, abrirSessao } from './browser/page.js';
 import { type FolhaExternaBundle, escreverBundle } from './compiler/bundle.js';
@@ -77,6 +78,7 @@ import type {
   RawJsInline,
   RawNode,
 } from './mapper/raw.js';
+import { compararBundlesComOriginal, resumirComparacoes } from './observe/comparar-bundle.js';
 import { hashBytes } from './observe/pixel.js';
 import { atribuirMovimento, observarTemporal } from './observe/temporal.js';
 import { escolherCamadasDePagina } from './segment/camadas-de-pagina.js';
@@ -123,6 +125,7 @@ export const FASE_V2 = {
   drenar: FASE.drenarRede,
   segmentar: FASE.segmentar,
   compilar: 'v2-compilar',
+  comparar: 'v2-comparar',
   fechar: FASE.fechar,
 } as const;
 
@@ -144,6 +147,10 @@ const FRACAO_DA_FASE: Record<string, number> = {
   [FASE_V2.candidatos]: 0.04,
   [FASE_V2.segmentar]: 0.06,
   [FASE_V2.compilar]: 0.1,
+  // A comparação é barata em CPU e cara em espera (carregar cada bundle e
+  // esperar a fonte assentar). Teto pequeno: ela é verificação, e verificação
+  // nunca pode comer o orçamento do que está sendo verificado.
+  [FASE_V2.comparar]: 0.06,
 };
 
 const tetoDaFase = (nome: string, totalMs: number): number | undefined => {
@@ -611,6 +618,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       ...comportamentos.flatMap((c) => c.hashes),
     ]);
 
+    // A comparação visual de cada bundle com o print da dobra. Vazia quando
+    // não há bundles ou quando o orçamento cortou a fase.
+    let comparacoes: VisualComparison[] = [];
+
     // Contadores de ícone da captura inteira: viram log e limitação no fim.
     let iconesEsperados = 0;
     let iconesPendentes = 0;
@@ -1023,6 +1034,95 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         },
         tetoDaFase(FASE_V2.compilar, limits.orcamentoTotalMs),
       );
+
+      // ── O bundle PARECE com o original? ─────────────────────────────────
+      //
+      // Contar regras de CSS diz que o estilo viajou; não diz que a peça se
+      // parece com o que estava na página. Um bundle pode levar 100% do CSS e
+      // sair errado por um ancestral ausente, uma fonte que não carregou, um
+      // fundo que ficou noutro item — falhas invisíveis para quem conta regras.
+      //
+      // Aqui cada bundle é aberto NUMA ABA NOVA e o que ele desenha é comparado
+      // com o print daquela mesma dobra. É a verificação que fecha o laço, e é
+      // por isso que `visualComparisons` existe no manifesto desde o começo —
+      // só era gravado vazio.
+      //
+      // Aba nova, e não a página instrumentada: navegar a página da captura
+      // destruiria o contexto que as fases anteriores construíram. O custo é
+      // uma aba; o risco de reusar seria perder tudo se algo desse errado.
+      await tel.faseCooperativa(
+        FASE_V2.comparar,
+        async (signal) => {
+          const entradas = segmentos.flatMap((seg) => {
+            const framePath = framePorHash.get(seg.hash);
+            if (framePath === undefined) return [];
+            return [
+              { segmento: seg, dirBundle: join(dirBundles, `seg_${seg.position}`), framePath },
+            ];
+          });
+          // Sem print da dobra não há contra o que comparar, e isso é a maior
+          // fonte de cobertura perdida — bem antes da comparação em si. Dizer
+          // "3 de 3 passaram" quando só 3 de 12 foram olhados seria verdade
+          // literal e conclusão falsa.
+          const semPrint = segmentos.length - entradas.length;
+          if (semPrint > 0) {
+            limitacoes.push(
+              `${semPrint} de ${segmentos.length} segmento(s) ficaram sem print da dobra, então não puderam ser conferidos por comparação de pixel.`,
+            );
+          }
+          if (entradas.length === 0) return;
+
+          const aba = await s.contexto.newPage();
+          try {
+            await aba.setViewportSize(viewport);
+            const resultado = await compararBundlesComOriginal({
+              pagina: {
+                goto: async (u) => {
+                  await aba.goto(u, { waitUntil: 'load', timeout: 8_000 });
+                },
+                esperar: (ms) => aba.waitForTimeout(ms),
+                evaluate: <T>(expr: string) => aba.evaluate(expr) as Promise<T>,
+                screenshot: (o) =>
+                  aba.screenshot({
+                    type: 'png',
+                    timeout: 6_000,
+                    ...(o?.clip !== undefined
+                      ? {
+                          clip: { x: o.clip.x, y: o.clip.y, width: o.clip.w, height: o.clip.h },
+                        }
+                      : {}),
+                  }),
+                fechar: async () => {
+                  await aba.close();
+                },
+              },
+              entradas,
+              dirCaptura: opts.dirCaptura,
+              cancelado: () => signal.aborted,
+            });
+            comparacoes = resultado.comparacoes;
+
+            const r = resumirComparacoes(resultado);
+            log('comparacao-visual', r);
+            if (r.total > 0 && r.ok < r.total) {
+              limitacoes.push(
+                `${r.total - r.ok} de ${r.total} bundle(s) não bateram com o print da dobra na comparação de pixel (maior diferença: ${Math.round(r.piorDelta * 100)}%).`,
+              );
+            }
+            // Cobertura parcial, e DITA. Uma verificação que roda em 3 de 13
+            // itens sem avisar é pior que nenhuma: dá a impressão de que o
+            // resto foi conferido.
+            if (r.pulados > 0) {
+              limitacoes.push(
+                `A comparação de pixel cobriu ${r.total} de ${r.total + r.pulados} bundle(s); o resto ficou de fora (${r.porMotivo}).`,
+              );
+            }
+          } finally {
+            await aba.close().catch(() => {});
+          }
+        },
+        tetoDaFase(FASE_V2.comparar, limits.orcamentoTotalMs),
+      );
     }
 
     // ── Manifesto ─────────────────────────────────────────────────────────
@@ -1099,7 +1199,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       support: Object.fromEntries(segmentos.map((seg) => [seg.hash, seg.support])),
       interactions: Object.fromEntries(segmentos.map((seg) => [seg.hash, seg.interactions])),
       validation: {},
-      visualComparisons: [],
+      visualComparisons: comparacoes,
       telemetry: tel.relatorio(),
       confidence: viewportReativa || houveMovimento ? 'alta' : 'media',
       limitations: [
