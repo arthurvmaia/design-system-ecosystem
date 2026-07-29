@@ -13,6 +13,7 @@ import {
   previewSegmentScrollUrl,
   previewSegmentUrl,
 } from '@/lib/api';
+import { oQueFaltou } from '@/lib/captura-parcial';
 import { cn } from '@/lib/cn';
 import { usePreferencias } from '@/lib/preferencias';
 import {
@@ -633,8 +634,9 @@ function SegmentsView({
                 style={{ color: 'var(--color-warn)' }}
               />
               <span>
-                Esta captura <strong>não terminou dentro do tempo</strong>. O que deu para capturar
-                foi guardado, mas pode faltar conteúdo. Extraia o site de novo para completar.
+                Esta captura <strong>não terminou dentro do tempo</strong>.{' '}
+                {oQueFaltou(segments.data.capturaParcial.fase)} Extraia o site de novo para
+                completar.
               </span>
             </div>
           )}
