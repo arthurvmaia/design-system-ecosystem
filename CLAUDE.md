@@ -86,7 +86,25 @@ O payload é rico e é a fonte da verdade — não vá ler o banco por fora:
               // (path relativo a projects/<id>/media/)
 ```
 
-1. **Use SOMENTE os componentes do kit** (`payload.kit.components`), nunca a Biblioteca inteira. Cada componente tem `bundlePath` — leve o **bundle completo**: o corpo do `index.html` (bundles V2 são documentos completos; extraia o `<body>` e remova `<aside data-ds-aviso>`), TODO o CSS (`assets/css/*.css` em ordem, ou `styles.css` no legado), o JS de `assets/js/` e os arquivos de `assets/`. Copie os arquivos para `assets/<cmp_id>/` no site gerado e reescreva as referências — componentes não colidem entre si. O kit é o Design System final; sair dele traz peças de origens que não conversam.
+1. **Use SOMENTE os componentes do kit** (`payload.kit.components`), nunca a Biblioteca inteira. O kit é o Design System final; sair dele traz peças de origens que não conversam.
+
+   Cada componente tem `bundlePath`, e o bundle vai **inteiro**: o corpo do `index.html` (bundles V2 são documentos completos), TODO o CSS na ordem dos `<link>`, o JS e os arquivos de `assets/`. Copie os arquivos para `assets/<cmp_id>/` no site gerado e reescreva as referências.
+
+   **O CSS de duas origens COLIDE — não monte à mão.** Cada bundle carrega o CSS inteiro da página de origem (é o que faz a peça sair igual ao original). Dois sites feitos com utilitários definem `.flex`, `.container`, `.p-6` e os tokens de `:root` cada um do seu jeito, e quem carregar por último apaga o outro: o site sai com metade das peças erradas, sem erro nenhum aparecer. Use:
+
+   ```ts
+   import { comporPecasDoKit } from '@ds/generator';
+
+   const { css, pecas, scripts, faltando } = comporPecasDoKit(
+     payload.kit.components.map((c) => ({
+       id: c.id,
+       bundlePath: c.bundlePath,
+       designSystemId: c.designSystemId, // o escopo é por ORIGEM, não por peça
+     })),
+   );
+   ```
+
+   `css` vai para `assets/styles.css` já escopado por origem — com a âncora dentro de `:where()`, que tem especificidade ZERO, então o `marca.css` continua vencendo a cascata sem `!important`. `pecas[i]` é o HTML daquela peça já vestido nos dois proxies (`data-ds-raiz`/`data-ds-corpo`, com as classes do `<html>` e do `<body>` de origem), que é o que faz `html.dark body .card` casar. `scripts` são os `<script src>` remotos deduplicados. Peça sem bundle em disco entra em `faltando` em vez de derrubar a geração.
 2. **A estrutura é `layout.secoes`, na ordem.** Uma `<section>` por item da lista, na sequência em que aparecem. Você **não acrescenta, não remove e não reordena** seção nenhuma: essa lista é a arquitetura que a pessoa desenhou, seção a seção, na tela de Estrutura. Não existe mais blueprint nem modo criativo.
 3. **Cada seção leva as peças de `componentIds`, todas, na ordem, DENTRO da mesma `<section>`.** `componentIds` vazio é uma decisão legítima e comum: crie aquela seção inteira no estilo do kit (mesmas cores, tipografia, espaçamento, densidade). Envolva assim:
    `<section data-secao="<papel ou 'secao'>" data-secao-id="<sec_...>" data-origem="biblioteca|gerado|misto" data-componente="cmp_a cmp_b">`.

@@ -23,6 +23,7 @@ import { cssResponsivoBase } from './responsivo.js';
 
 export { cssResponsivoBase } from './responsivo.js';
 export { lerCssDoBundle, type LeituraDeCss } from './cascata.js';
+export { type PecaDoKit, comporPecasDoKit, lerPecaDoBundle } from './pecas.js';
 export {
   type LinhaDeBase,
   type MedidaDeBundle,
