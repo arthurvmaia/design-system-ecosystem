@@ -172,3 +172,29 @@ test('proporção que sobe continua sendo piora, mesmo com menos cabeças', () =
   const icone = r.find((x) => x.linha.startsWith('Bundles com ícone vazio'));
   assert.equal(icone?.melhorou, false);
 });
+
+test('seletor que JÁ estava morto na origem não conta como perda nossa', () => {
+  // Medido no acervo: os 8 bundles com "seletor morto" tinham todos a mesma
+  // âncora, `body.flex.justify-center`, e o <body> do site de origem nunca teve
+  // essas duas classes juntas. Era CSS que o próprio site carregava sem usar, e
+  // nós levávamos a culpa por ele.
+  const css = 'body.flex.justify-center .x{color:red}';
+  const doBundle = '<html><body class="bg-preto"><div class="x"></div></body></html>';
+  const daOrigem = '<html><body class="bg-preto"><div class="x"></div></body></html>';
+  assert.equal(contarSeletoresMortos(css, doBundle), 1, 'sem a origem, conta');
+  assert.equal(contarSeletoresMortos(css, doBundle, daOrigem), 0, 'com a origem, não conta');
+});
+
+test('o que estava VIVO na origem e morreu no bundle continua contando', () => {
+  // Este é o defeito de verdade: o documento não viajou com o segmento.
+  const css = 'html.dark .card{color:#fff}';
+  const doBundle = '<html><body><div class="card"></div></body></html>';
+  const daOrigem = '<html class="dark"><body><div class="card"></div></body></html>';
+  assert.equal(contarSeletoresMortos(css, doBundle, daOrigem), 1);
+});
+
+test('vivo nos dois não conta em lugar nenhum', () => {
+  const css = 'html.dark .card{color:#fff}';
+  const doc = '<html class="dark"><body><div class="card"></div></body></html>';
+  assert.equal(contarSeletoresMortos(css, doc, doc), 0);
+});

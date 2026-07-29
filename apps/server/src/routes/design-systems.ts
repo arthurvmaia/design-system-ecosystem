@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
 import { runExtraction } from '@ds/extractor';
 import { getDb, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
@@ -11,6 +11,8 @@ import {
   aplicarValidacoes,
   listarAssetsFaltando,
   resumirPipeline,
+  vaultDir,
+  vaultDsDir,
   vaultExtractedDir,
   vaultSegmentValidation,
   vaultSegmentsManifest,
@@ -191,12 +193,44 @@ designSystemsRoute.get('/:id/impacto', (c) => {
   });
 });
 
+/**
+ * Apagar um design system apaga os ARQUIVOS dele também.
+ *
+ * Havia um `TODO` aqui esperando um coletor de lixo que nunca veio, e o efeito
+ * foi medido: o vault tinha 851 MB e **30 das 32 pastas eram órfãs** — cada
+ * exclusão feita na tela deixava a captura inteira para trás, invisível e para
+ * sempre. Uma pasta que o app não mostra e não sabe abrir não é backup: é
+ * espaço ocupado sem dono.
+ *
+ * Os componentes que a pessoa promoveu para a Biblioteca NÃO são afetados: eles
+ * são cópias autônomas em `library/<cmp>/`, e é exatamente por isso que a
+ * promoção copia em vez de referenciar.
+ *
+ * A remoção é guardada por caminho: só apaga o que está DENTRO do vault e cujo
+ * nome é um id de design system. Um `id` vindo da URL nunca escolhe sozinho
+ * qual diretório some do disco.
+ */
 designSystemsRoute.delete('/:id', (c) => {
   const db = getDb();
   const id = c.req.param('id');
+  if (!/^ds_[A-Za-z0-9]+$/.test(id)) return c.json({ error: 'id_invalido' }, 400);
+
   db.delete(tables.designSystems).where(eq(tables.designSystems.id, id)).run();
-  // TODO: apagar vault/{id}/ também. Fica para a Fase 4 quando tiver GC.
-  return c.json({ deleted: true });
+
+  let arquivosRemovidos = false;
+  const dir = resolve(vaultDsDir(id as `ds_${string}`));
+  const raiz = resolve(vaultDir());
+  if (dir.startsWith(raiz + sep) && existsSync(dir)) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      arquivosRemovidos = true;
+    } catch {
+      // Arquivo preso por outro processo (a prévia aberta numa aba, por
+      // exemplo): a linha já saiu do banco, então o app não mostra mais nada.
+      // O `pnpm acervo:limpar-orfas` recolhe o que ficou.
+    }
+  }
+  return c.json({ deleted: true, arquivosRemovidos });
 });
 
 /**

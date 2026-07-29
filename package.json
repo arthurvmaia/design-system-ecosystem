@@ -29,7 +29,8 @@
     "fila:limpar": "tsx scripts/fila-limpar.ts",
     "clean": "turbo run clean",
     "comparar": "tsx scripts/comparar-motores.ts",
-    "reextrair": "tsx scripts/reextrair.ts"
+    "reextrair": "tsx scripts/reextrair.ts",
+    "acervo:limpar-orfas": "tsx scripts/acervo-limpar-orfas.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

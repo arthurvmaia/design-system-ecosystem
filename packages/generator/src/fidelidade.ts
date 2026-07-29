@@ -130,19 +130,55 @@ export const contarRegras = (css: string): number => {
  * elemento comum não entra: um seletor pode mirar coisa que só existe num
  * estado, e isso não é defeito.
  */
-export const contarSeletoresMortos = (css: string, html: string): number => {
-  const attrsHtml = /<html\b([^>]*)>/i.exec(html)?.[1] ?? '';
-  const attrsBody = /<body\b([^>]*)>/i.exec(html)?.[1] ?? '';
-  const classesDe = (attrs: string): Set<string> =>
-    new Set(
-      (/class\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs)?.[2] ?? '')
-        .split(/\s+/)
-        .filter((c) => c.length > 0),
-    );
-  const classesHtml = classesDe(attrsHtml);
-  const classesBody = classesDe(attrsBody);
+export const contarSeletoresMortos = (
+  css: string,
+  html: string,
+  /**
+   * O HTML da PÁGINA de origem. Quando vem, um seletor que já estava morto lá
+   * não conta como perda nossa.
+   *
+   * Sem isso a medida acusava defeito alheio. Medido no acervo: os 8 bundles
+   * com "seletor morto" tinham todos a mesma âncora, `body.flex.justify-center`
+   * — e o `<body>` do site de origem nunca teve essas duas classes juntas. Era
+   * CSS que o próprio site carregava sem usar, e nós levávamos a culpa por ele.
+   */
+  htmlDaOrigem?: string,
+): number => {
+  const ancorasDe = (doc: string) => {
+    const attrsHtml = /<html\b([^>]*)>/i.exec(doc)?.[1] ?? '';
+    const attrsBody = /<body\b([^>]*)>/i.exec(doc)?.[1] ?? '';
+    const classesDe = (attrs: string): Set<string> =>
+      new Set(
+        (/class\s*=\s*("([^"]*)"|'([^']*)')/i.exec(attrs)?.[2] ?? '')
+          .split(/\s+/)
+          .filter((c) => c.length > 0),
+      );
+    return {
+      attrsHtml,
+      attrsBody,
+      classesHtml: classesDe(attrsHtml),
+      classesBody: classesDe(attrsBody),
+    };
+  };
+
   const temAtributo = (attrs: string, nome: string): boolean =>
     new RegExp(`\\b${nome.replace(/[^\w-]/g, '')}\\s*[=\\]]`, 'i').test(`${attrs}]`);
+
+  const noBundle = ancorasDe(html);
+  const naOrigem = htmlDaOrigem === undefined ? null : ancorasDe(htmlDaOrigem);
+
+  /** A âncora casaria neste documento? */
+  const casa = (doc: ReturnType<typeof ancorasDe>, alvo: string, quals: string): boolean => {
+    const classes = alvo === 'html' ? doc.classesHtml : doc.classesBody;
+    const attrs = alvo === 'html' ? doc.attrsHtml : doc.attrsBody;
+    for (const q of quals.matchAll(/[.#]([\w-]+)|\[([\w-]+)/g)) {
+      const classe = q[1];
+      const attr = q[2];
+      if (classe !== undefined && !classes.has(classe)) return false;
+      if (attr !== undefined && !temAtributo(attrs, attr)) return false;
+    }
+    return true;
+  };
 
   let mortos = 0;
   // Cada seletor que começa ancorado em html/body com qualificador.
@@ -155,16 +191,11 @@ export const contarSeletoresMortos = (css: string, html: string): number => {
       if (ancora === null) continue;
       const alvo = (ancora[1] ?? '').toLowerCase();
       const quals = ancora[2] ?? '';
-      const classes = alvo === 'html' ? classesHtml : classesBody;
-      const attrs = alvo === 'html' ? attrsHtml : attrsBody;
-      let vivo = true;
-      for (const q of quals.matchAll(/[.#]([\w-]+)|\[([\w-]+)/g)) {
-        const classe = q[1];
-        const attr = q[2];
-        if (classe !== undefined && !classes.has(classe)) vivo = false;
-        if (attr !== undefined && !temAtributo(attrs, attr)) vivo = false;
-      }
-      if (!vivo) mortos++;
+      if (casa(noBundle, alvo, quals)) continue;
+      // Morta no bundle. Ela também já estava morta na origem? Então o defeito
+      // não é nosso, e contá-lo esconderia o que é.
+      if (naOrigem !== null && !casa(naOrigem, alvo, quals)) continue;
+      mortos++;
     }
   }
   return mortos;
@@ -286,7 +317,13 @@ export const medirBundle = (
     regrasNaOrigem: naOrigem !== null && naOrigem > 0 ? naOrigem : null,
     retencao:
       naOrigem !== null && naOrigem > 0 ? Math.round((regras / naOrigem) * 1000) / 10 : null,
-    seletoresMortos: contarSeletoresMortos(css, html),
+    seletoresMortos: contarSeletoresMortos(
+      css,
+      html,
+      opts.htmlDaPagina !== undefined && existsSync(opts.htmlDaPagina)
+        ? readFileSync(opts.htmlDaPagina, 'utf8')
+        : undefined,
+    ),
     instrumentacaoVazada: contarInstrumentacao(html),
     scriptsDeclarados: scripts.declarados,
     scriptsAusentes: scripts.ausentes,

@@ -167,6 +167,7 @@ pnpm medir-fidelidade # mede o acervo e compara com a linha de base (--gravar ad
 pnpm reextrair        # re-captura um ds_id (ou --todos) no MESMO id, trocando só no fim
 pnpm regiao:recompilar # limpa/recompila bundles do acervo sem reabrir navegador (--todos, --seco)
 pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
+pnpm acervo:limpar-orfas # lista (e com --apagar remove) pastas do vault sem design system no app
 pnpm acervo:exportar  # zip portátil do acervo (EXPORTAR-ACERVO.bat)
 pnpm acervo:importar  # importa acervo de outra máquina reescrevendo caminhos (IMPORTAR-ACERVO.bat)
 ```
