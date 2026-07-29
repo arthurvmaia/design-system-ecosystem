@@ -18,7 +18,13 @@ type Job = {
   createdAt: number;
 };
 
-type Progresso = { total: number; concluidos: number; percentual: number };
+type Progresso = {
+  total: number;
+  concluidos: number;
+  percentual: number;
+  /** Alguém está de fato trabalhando, ou o lote só está aberto esperando? */
+  emAndamento?: boolean;
+};
 
 type QueueState = {
   mode: string;
@@ -91,7 +97,10 @@ export function QueuePanel() {
     <div className="ds-glass-static ds-slide-up rounded-lg p-4">
       <Cabecalho estado={estado} quantidade={pendentes.length} />
 
-      {data.progresso !== null && (
+      {/* Progresso animado SÓ quando há trabalho de verdade. Um lote aberto e
+          parado desenhava "Planejando o site… 0%" com animação, e a pessoa
+          esperava minutos por algo que nunca tinha começado. */}
+      {data.progresso !== null && data.progresso.emAndamento !== false && (
         <FluxoProgresso
           percentual={data.progresso.percentual}
           total={data.progresso.total}
@@ -146,9 +155,20 @@ export function QueuePanel() {
           >
             <MousePointerClick size={12} className="mt-0.5 shrink-0" />
             <span>
-              Para processar, dê dois cliques em{' '}
-              <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do
-              aplicativo. Ele mostra a fila e você escolhe o que quer rodar.
+              {data.progresso !== null && data.progresso.emAndamento === false ? (
+                <>
+                  <strong style={{ color: 'var(--color-fg)' }}>Nada está rodando agora.</strong> O
+                  pedido está guardado e não se perde. Para começar, dê dois cliques em{' '}
+                  <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do
+                  aplicativo e escolha o que quer rodar.
+                </>
+              ) : (
+                <>
+                  Para processar, dê dois cliques em{' '}
+                  <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do
+                  aplicativo. Ele mostra a fila e você escolhe o que quer rodar.
+                </>
+              )}
             </span>
           </div>
         </>

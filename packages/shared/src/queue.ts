@@ -156,6 +156,17 @@ export const getProgresso = (): {
   total: number;
   concluidos: number;
   percentual: number;
+  /**
+   * Alguém está de fato trabalhando nesta rodada?
+   *
+   * Um lote no disco NÃO prova trabalho: ele é escrito quando a pessoa escolhe
+   * os jobs no PROCESSAR, e continua lá se a janela for fechada antes de rodar
+   * qualquer coisa. Sem este campo a tela desenhava "Planejando o site… 0%" com
+   * animação para um job parado, e a pessoa esperava minutos por nada.
+   *
+   * A prova é uma só: algum job reportou etapa ou saiu de `pendente/`.
+   */
+  emAndamento: boolean;
 } | null => {
   const lote = getLote();
   if (lote === null || lote.ids.length === 0) return null;
@@ -165,20 +176,25 @@ export const getProgresso = (): {
 
   let concluidos = 0;
   let acumulado = 0;
+  let reportou = false;
 
   for (const id of lote.ids) {
     if (!pendentes.has(id)) {
       concluidos++;
       acumulado += 100;
+      reportou = true;
       continue;
     }
-    acumulado += Math.min(99, etapas[id] ?? 0);
+    const etapa = etapas[id] ?? 0;
+    if (etapa > 0) reportou = true;
+    acumulado += Math.min(99, etapa);
   }
 
   return {
     total: lote.ids.length,
     concluidos,
     percentual: Math.round(acumulado / lote.ids.length),
+    emAndamento: reportou,
   };
 };
 
