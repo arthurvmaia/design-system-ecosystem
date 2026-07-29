@@ -579,47 +579,58 @@ function SegmentsView({
         className="flex items-center justify-between border-b px-8 py-5"
         style={{ borderColor: 'var(--color-border)' }}
       >
-        <div>
-          <div
-            className="text-[10px] uppercase tracking-[0.24em]"
-            style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
-          >
-            Galeria
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            <span className="ds-label" style={{ color: 'var(--color-ion-4)' }}>
+              galeria · 02
+            </span>
+            {dsInfo.data?.item.sourceUrl && (
+              <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                {hostDe(dsInfo.data.item.sourceUrl)}
+              </span>
+            )}
           </div>
           <h1
-            className="ds-interactive-text ds-text-glow mt-1 text-[24px] font-medium"
+            className="ds-interactive-text ds-text-glow mt-1.5 truncate text-[24px] font-medium"
             style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
           >
             {dsInfo.data?.item.name ?? '...'}
           </h1>
-          <div
-            className="mt-1 flex items-center gap-2 text-[12px]"
-            style={{ color: 'var(--color-fg-muted)' }}
-          >
-            <span>
-              {filtered.length} de {segments.data?.items.length ?? 0}{' '}
-              {(segments.data?.items.length ?? 0) === 1 ? 'componente' : 'componentes'}
-              {totalFilhos > 0 &&
-                ` · ${totalFilhos} ${totalFilhos === 1 ? 'subcomponente' : 'subcomponentes'}`}
+          {/* Leitura de instrumento: os números em mono, com o denominador à
+              vista. "12 de 35" diz muito mais que "12 componentes" quando um
+              filtro está ligado. */}
+          <div className="mt-1.5 flex items-center gap-4">
+            <span className="flex items-baseline gap-1.5">
+              <span className="ds-data text-[13px]" style={{ color: 'var(--color-ion-3)' }}>
+                {filtered.length}
+              </span>
+              <span className="ds-data text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                /{segments.data?.items.length ?? 0}
+              </span>
+              <span className="ds-label">
+                {(segments.data?.items.length ?? 0) === 1 ? 'componente' : 'componentes'}
+              </span>
             </span>
-            {dsInfo.data?.item.sourceUrl && (
-              <span style={{ color: 'var(--color-fg-subtle)' }}>
-                · extraído de{' '}
-                <strong style={{ color: 'var(--color-fg-muted)' }}>
-                  {hostDe(dsInfo.data.item.sourceUrl)}
-                </strong>
+            {totalFilhos > 0 && (
+              <span className="flex items-baseline gap-1.5">
+                <span className="ds-data text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>
+                  {totalFilhos}
+                </span>
+                <span className="ds-label">
+                  {totalFilhos === 1 ? 'subcomponente' : 'subcomponentes'}
+                </span>
               </span>
             )}
           </div>
           {segments.data?.capturaParcial && (
             <div
               className="mt-2 flex items-start gap-2 rounded-md px-3 py-2 text-[11px] leading-relaxed"
-              style={{ backgroundColor: 'rgba(120, 90, 20, 0.22)', color: 'var(--color-fg)' }}
+              style={{ backgroundColor: 'rgba(245,158,11,0.14)', color: 'var(--color-fg)' }}
             >
               <AlertTriangle
                 size={13}
                 className="mt-0.5 shrink-0"
-                style={{ color: 'var(--color-signal)' }}
+                style={{ color: 'var(--color-warn)' }}
               />
               <span>
                 Esta captura <strong>não terminou dentro do tempo</strong>. O que deu para capturar

@@ -16,12 +16,15 @@ function tamanhoLegivel(bytes: number): string {
 }
 
 /**
- * Tela de entrada do fluxo.
+ * Tela de entrada do fluxo: a bancada onde o material chega.
  *
- * Os painéis daqui são vidro estático, sem a inclinação 3D do `ds-card`: isto é
- * um formulário, e um campo que se move enquanto a pessoa mira o cursor nele
- * atrapalha. A inclinação fica para as telas de coleção, onde o card é o objeto
- * e não o continente.
+ * O painel de envio é o único elemento com moldura acesa da tela, porque é o
+ * único que espera ação. Todo o resto — fila, acompanhamento, log — é leitura,
+ * e leitura não pisca.
+ *
+ * O acompanhamento virou log de instrumento: carimbo de tempo à esquerda,
+ * mensagem à direita, nível pela cor. Uma extração é uma sequência de eventos no
+ * tempo; sem a hora, viram frases soltas e não dá para saber onde travou.
  */
 export function ExtractPage() {
   const health = useQuery({ queryKey: ['health'], queryFn: api.health });
@@ -102,15 +105,15 @@ export function ExtractPage() {
   const failed = activeTask.data?.status === 'failed';
 
   return (
-    <div className="mx-auto max-w-[880px] px-8 py-16">
-      <div
-        className="ds-slide-up text-[11px] uppercase tracking-[0.32em]"
-        style={{ color: 'var(--color-signal)', fontFamily: 'var(--font-display)' }}
-      >
-        Traga uma referência
+    <div className="mx-auto max-w-[880px] px-8 py-14">
+      <div className="ds-slide-up flex items-center gap-3">
+        <span className="ds-label" style={{ color: 'var(--color-ion-4)' }}>
+          entrada · 01
+        </span>
+        <span className="ds-hairline flex-1" aria-hidden />
       </div>
       <h1
-        className="ds-slide-up ds-d1 ds-text-glow mt-3 text-[42px] font-medium leading-[1.05] tracking-tight"
+        className="ds-slide-up ds-d1 ds-text-glow mt-4 text-[42px] font-medium leading-[1.05] tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
         Trazer um site novo para o ecossistema.
@@ -149,8 +152,13 @@ export function ExtractPage() {
         </div>
       )}
 
-      {/* Toggle URL / File */}
-      <div className="ds-slide-up ds-d3 mt-12 flex gap-2">
+      {/* Toggle URL / File — vira um seletor segmentado dentro de uma moldura
+          única, em vez de dois botões soltos: assim lê como chave de dois
+          estados, que é o que é, e não como duas ações diferentes. */}
+      <div
+        className="ds-slide-up ds-d3 mt-10 inline-flex gap-1 rounded-full border p-1"
+        style={{ borderColor: 'var(--color-border)' }}
+      >
         <ModeButton active={mode === 'url'} onClick={() => setMode('url')} icon={LinkIcon}>
           URL
         </ModeButton>
@@ -159,7 +167,7 @@ export function ExtractPage() {
         </ModeButton>
       </div>
 
-      <div className="ds-glass-static ds-slide-up ds-d4 mt-4 rounded-xl p-6">
+      <div className="ds-glass-static ds-glow-border ds-slide-up ds-d4 mt-4 rounded-xl p-6">
         {mode === 'url' ? (
           <div className="space-y-4">
             <TextInput
@@ -268,15 +276,19 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        'ds-tag flex items-center gap-2 rounded-full border px-4 py-1.5 text-[12px] font-medium',
+        'flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] uppercase tracking-[0.14em] transition-colors',
         active
-          ? 'ds-glass-static text-[var(--color-fg)]'
-          : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
+          ? 'text-[var(--color-ion-3)]'
+          : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]',
       )}
-      style={{ fontFamily: 'var(--font-body)' }}
+      style={{
+        fontFamily: 'var(--font-mono)',
+        backgroundColor: active ? 'rgba(56,189,248,0.12)' : 'transparent',
+      }}
     >
-      <Icon size={13} />
+      <Icon size={12} />
       {children}
     </button>
   );
@@ -353,6 +365,16 @@ function FileDropzone({
   );
 }
 
+/**
+ * Hora do evento, curta. Timestamp que não vem como número vira `--:--:--` em
+ * vez de `Invalid Date`: a coluna continua alinhada e ninguém precisa decifrar
+ * um erro de formatação no meio de um log de extração.
+ */
+function horaCurta(ts: unknown): string {
+  const d = new Date(typeof ts === 'number' || typeof ts === 'string' ? ts : Number.NaN);
+  return Number.isNaN(d.getTime()) ? '--:--:--' : d.toLocaleTimeString('pt-BR', { hour12: false });
+}
+
 function TaskProgress({
   task,
   onOpenGallery,
@@ -384,7 +406,7 @@ function TaskProgress({
       {running && <div className="ds-progress mt-5 rounded-full" />}
 
       {failed && (
-        <div className="mt-4 text-[13px] leading-relaxed" style={{ color: 'var(--color-ion-3)' }}>
+        <div className="mt-4 text-[13px] leading-relaxed" style={{ color: 'var(--color-danger)' }}>
           Não deu para concluir esta extração. Tente de novo. Se acontecer outra vez, pode ser que o
           site esteja bloqueando a captura.
           {task.errorMessage && (
@@ -410,32 +432,44 @@ function TaskProgress({
       )}
 
       {events.length > 0 && (
-        <div
-          className="mt-6 text-[10px] uppercase tracking-[0.24em]"
-          style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
-        >
-          Passo a passo
-        </div>
-      )}
-      <div className="mt-2 max-h-[300px] overflow-y-auto">
-        {events.map((ev, i) => (
-          <div
-            key={`${ev.timestamp}-${i}`}
-            className="ds-data border-t py-1.5 text-[11px]"
-            style={{
-              borderColor: 'var(--color-border)',
-              color:
-                ev.level === 'error'
-                  ? 'var(--color-ion-3)'
-                  : ev.level === 'warn'
-                    ? 'var(--color-fg-muted)'
-                    : 'var(--color-fg)',
-            }}
-          >
-            {ev.message}
+        <>
+          <div className="mt-6 flex items-center gap-3">
+            <span className="ds-label">passo a passo</span>
+            <span className="ds-hairline flex-1" aria-hidden />
+            <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+              {events.length}
+            </span>
           </div>
-        ))}
-      </div>
+          {/* Log de instrumento: carimbo de tempo à esquerda, mensagem à direita,
+              nível pela cor. Ler uma corrida de extração é ler uma sequência de
+              eventos no tempo — sem a hora, viram frases soltas. */}
+          <div
+            className="mt-2 max-h-[300px] overflow-y-auto rounded-md border"
+            style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0,0,0,0.45)' }}
+          >
+            {events.map((ev, i) => (
+              <div
+                key={`${ev.timestamp}-${i}`}
+                className="ds-data flex gap-3 px-3 py-1.5 text-[11px] leading-relaxed"
+                style={{
+                  borderTop: i === 0 ? undefined : '1px solid var(--color-border)',
+                  color:
+                    ev.level === 'error'
+                      ? 'var(--color-danger)'
+                      : ev.level === 'warn'
+                        ? 'var(--color-warn)'
+                        : 'var(--color-fg-muted)',
+                }}
+              >
+                <span className="shrink-0" style={{ color: 'var(--color-fg-subtle)' }}>
+                  {horaCurta(ev.timestamp)}
+                </span>
+                <span className="min-w-0 flex-1">{ev.message}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
