@@ -171,6 +171,44 @@ test('lazy-load que aumenta a página é acompanhado, sob o teto de paradas', as
   assert.ok((passes[5]?.scrollY ?? 0) > 3000 - 900);
 });
 
+test('página que cresce muito ainda é observada até perto do fim', async () => {
+  // O bug: o passo era calculado UMA VEZ, contra a altura do primeiro instante.
+  // Aqui a página triplica durante o percurso — com o passo velho, as 6 paradas
+  // terminavam onde a página acabava no começo, e a varredura morria em ~45%.
+  const { page } = paginaComScroll({ pageHeight: 3000, crescePorParada: 900 });
+  const passes = await percorrerComScroll(page, {
+    trabalho: trabalhoVazio,
+    ascendente: false,
+    maxParadas: 6,
+  });
+  const descendo = passes.filter((p) => p.direction === 'descendo');
+  const ultimo = descendo[descendo.length - 1];
+  assert.ok(
+    (ultimo?.progress ?? 0) > 0.8,
+    `a última parada ficou em ${((ultimo?.progress ?? 0) * 100) | 0}% — o fim não foi alcançado`,
+  );
+});
+
+test('a cobertura degrada num sentido só: depois da lacuna, nunca mais sobreposição', async () => {
+  const { page } = paginaComScroll({ pageHeight: 3000, crescePorParada: 900 });
+  const passes = await percorrerComScroll(page, {
+    trabalho: trabalhoVazio,
+    ascendente: false,
+    maxParadas: 6,
+  });
+  // A primeira parada nunca sobrepõe nada (não há anterior), então ela fica fora.
+  const overlaps = passes
+    .filter((p) => p.direction === 'descendo')
+    .slice(1)
+    .map((p) => p.overlap);
+  const lacuna = overlaps.indexOf(0);
+  assert.ok(lacuna !== -1, 'esta página exige amostragem em algum ponto');
+  assert.ok(
+    overlaps.slice(lacuna).every((o) => o === 0),
+    `voltou a prometer sobreposição depois de uma lacuna: ${overlaps.join(', ')}`,
+  );
+});
+
 test('AbortSignal encerra o percurso e preserva o que já foi registrado', async () => {
   const { page } = paginaComScroll({ pageHeight: 20_000 });
   const ac = new AbortController();

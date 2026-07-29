@@ -73,6 +73,22 @@ const readJobs = (dir: string): QueueJob[] => {
 export const listPendingJobs = (): QueueJob[] => readJobs(queuePendingDir());
 export const listDoneJobs = (): QueueJob[] => readJobs(queueDoneDir());
 
+/**
+ * Jobs da fila que ainda vão mexer neste projeto.
+ *
+ * Estar em `pendente/` é a definição: um job só sai de lá quando termina, então
+ * a pasta cobre tanto o que espera a vez quanto o que está sendo processado
+ * agora.
+ *
+ * Existe por um estrago real. Um projeto foi excluído no aplicativo enquanto a
+ * geração dele rodava: o `DELETE` levou a linha do banco e a pasta inteira, e
+ * quem estava gerando seguiu escrevendo, sem saber de nada. O site nasceu órfão
+ * — completo em disco, invisível em Meus sites, porque a tela lista a partir do
+ * banco. Nada avisou a ninguém.
+ */
+export const jobsAbertosDoProjeto = (projectId: string): QueueJob[] =>
+  listPendingJobs().filter((job) => job.payload?.projectId === projectId);
+
 // ── Lote em processamento ──────────────────────────────────────────────────
 
 /**

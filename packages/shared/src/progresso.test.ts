@@ -11,8 +11,13 @@ import { test } from 'node:test';
  * começou. `emAndamento` é o que separa "trabalhando" de "esperando você".
  */
 
+// `DS_ECOSYSTEM_ROOT` é a variável que o `getRoot()` lê — e tem de ser definida
+// ANTES do import de `queue.js`, por isso o import abaixo é dinâmico. Já esteve
+// escrito `DS_DATA_DIR` aqui, que ninguém lê: o teste rodava contra a fila real
+// da máquina, enfileirando jobs de mentira e chamando `clearLote()` por cima de
+// uma rodada de verdade.
 const raiz = mkdtempSync(join(tmpdir(), 'ds-fila-'));
-process.env.DS_DATA_DIR = raiz;
+process.env.DS_ECOSYSTEM_ROOT = raiz;
 
 const { clearLote, enqueueJob, getProgresso, reportarProgresso, setLote, finishJob } = await import(
   './queue.js'

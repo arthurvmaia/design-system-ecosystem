@@ -183,6 +183,25 @@ function ProjectCard({
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir.'),
   });
 
+  // Mesma queryKey do painel de fila lá em cima: uma consulta só, cache
+  // compartilhado. Serve para uma pergunta específica — este projeto tem
+  // trabalho esperando para acontecer?
+  const fila = useQuery({
+    queryKey: ['queue'],
+    queryFn: async () => {
+      const res = await fetch('/api/queue');
+      if (!res.ok) throw new Error('falha ao ler a fila');
+      return (await res.json()) as {
+        pending: { id: string; label: string; payload?: { projectId?: string } }[];
+      };
+    },
+  });
+  // Quem gera o site é um processo de fora, que lê o pedido do disco. Apagar o
+  // projeto no meio não interrompe ele: o site fica pronto numa pasta que já não
+  // pertence a ninguém. O servidor recusa esse caminho; aqui o botão só deixa de
+  // convidar para ele.
+  const jobNaFila = fila.data?.pending.find((j) => j.payload?.projectId === project.id) ?? null;
+
   const gerado = project.status === 'generated';
 
   return (
@@ -250,8 +269,13 @@ function ProjectCard({
             <button
               type="button"
               onClick={() => setConfirmDel(true)}
-              title="Excluir"
-              className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(198,40,40,0.16)]"
+              disabled={jobNaFila !== null}
+              title={
+                jobNaFila === null
+                  ? 'Excluir'
+                  : 'Tem um pedido na fila para este projeto. Cancele ele antes de apagar.'
+              }
+              className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(198,40,40,0.16)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100 disabled:hover:bg-transparent"
               style={{ color: 'var(--color-crimson-3)' }}
             >
               <Trash2 size={13} />

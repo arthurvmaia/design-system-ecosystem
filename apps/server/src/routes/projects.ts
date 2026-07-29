@@ -14,6 +14,7 @@ import {
   type ProjectContent,
   ProjectLayout,
   enqueueJob,
+  jobsAbertosDoProjeto,
   newProjectId,
   normalizarProjectBranding,
   normalizarProjectContent,
@@ -490,6 +491,13 @@ projectsRoute.post('/:id/duplicate', (c) => {
  * Leva junto os sites já gerados, então some também de Meus sites. É definitivo
  * — não existe lixeira. A confirmação fica na interface, que é onde a pessoa
  * consegue ler o nome do que está apagando.
+ *
+ * Recusa enquanto houver job na fila para este projeto. Quem gera o site é um
+ * processo de fora, que lê o pedido do disco e escreve o resultado na pasta:
+ * apagar por baixo dele não interrompe nada, só garante que o trabalho termine
+ * num lugar que ninguém mais alcança. Já aconteceu — um projeto sumiu da tela
+ * enquanto o site dele continuava sendo escrito. Cancelar o job primeiro é uma
+ * decisão da pessoa, não algo para o servidor fazer por conta.
  */
 projectsRoute.delete('/:id', (c) => {
   const id = c.req.param('id');
@@ -498,6 +506,21 @@ projectsRoute.delete('/:id', (c) => {
   const db = getDb();
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
   if (!row) return c.json({ error: 'not_found' }, 404);
+
+  const abertos = jobsAbertosDoProjeto(id);
+  if (abertos.length > 0) {
+    return c.json(
+      {
+        error: 'job_em_aberto',
+        message:
+          abertos.length === 1
+            ? `"${abertos[0]?.label}" ainda está na fila para este projeto. Cancele o pedido antes de apagar.`
+            : `${abertos.length} pedidos deste projeto ainda estão na fila. Cancele antes de apagar.`,
+        jobs: abertos.map((j) => ({ id: j.id, label: j.label, type: j.type })),
+      },
+      409,
+    );
+  }
 
   const dir = projectDir(id as `prj_${string}`);
   if (existsSync(dir)) {

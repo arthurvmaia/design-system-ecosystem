@@ -107,10 +107,36 @@ export const percorrerComScroll = async (
    * (o consumidor sabe que não foi contígua).
    */
   const passoContiguo = Math.max(80, Math.round(pos.viewportHeight * (1 - sobreposicao)));
-  const rolavel = Math.max(0, pos.pageHeight - pos.viewportHeight);
-  const passoAmostrado = maxParadas > 1 ? Math.ceil(rolavel / (maxParadas - 1)) : passoContiguo;
-  const passo = Math.max(passoContiguo, passoAmostrado);
-  const amostrado = passo > passoContiguo;
+
+  /**
+   * O passo é recalculado a cada parada, contra a altura ATUAL e as paradas que
+   * ainda restam.
+   *
+   * Calculá-lo uma vez só era um bug de fundo: as paradas eram dimensionadas
+   * para a página do primeiro instante, e lazy-load faz o documento crescer
+   * durante o próprio percurso. O passo antigo levava a varredura até onde a
+   * página terminava ANTES — e o fim, que só passou a existir depois do
+   * carregamento, nunca era observado. Numa página que dobra de altura, o
+   * percurso morria na metade.
+   */
+  const proximoPasso = (p: PosicaoScroll, feitas: number): number => {
+    const restantes = maxParadas - feitas - 1;
+    if (restantes <= 0) return passoContiguo;
+    const faltante = Math.max(0, p.pageHeight - p.viewportHeight - p.scrollY);
+    return Math.max(passoContiguo, Math.ceil(faltante / restantes));
+  };
+
+  /**
+   * Uma vez amostrada, sempre amostrada.
+   *
+   * Sem a trava, uma página que cresce e depois para de crescer voltaria a
+   * prometer sobreposição no fim, e a cobertura ficaria "contígua, com um buraco
+   * no meio" — a leitura mais enganosa possível. Degradar em um sentido só
+   * mantém `overlap` legível: a partir da primeira lacuna, ninguém promete mais
+   * continuidade.
+   */
+  let amostrado = proximoPasso(pos, 0) > passoContiguo;
+  let passo = amostrado ? proximoPasso(pos, 0) : passoContiguo;
 
   while (indice < maxParadas) {
     if (abortado()) break;
@@ -155,6 +181,11 @@ export const percorrerComScroll = async (
     if (fim) break;
     if (pos.scrollY === ultimoY) break;
     ultimoY = pos.scrollY;
+
+    // Antes de rolar, redimensiona o passo para a página como ela está AGORA.
+    const necessario = proximoPasso(pos, indice);
+    if (necessario > passoContiguo) amostrado = true;
+    passo = amostrado ? necessario : passoContiguo;
 
     pos = await rolarPara(pos.scrollY + passo);
     indice++;
