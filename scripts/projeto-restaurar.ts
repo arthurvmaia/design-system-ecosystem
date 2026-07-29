@@ -76,6 +76,6 @@ if (geradas.length > 0) {
   console.log(`  ${geradas.length} versão(ões) do site reencontrada(s), em Meus sites:`);
   for (const g of geradas) console.log(`    ${g}`);
 } else {
-  console.log('  Nenhum site gerado na pasta — o projeto voltou como rascunho.');
+  console.log('  Nenhum site gerado na pasta, então o projeto voltou como rascunho.');
 }
 console.log('\n  Nome, kit e marca originais não voltam: foram apagados com a linha.\n');
