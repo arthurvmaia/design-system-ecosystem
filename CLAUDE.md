@@ -164,6 +164,7 @@ pnpm fila:progresso   # reporta 0-100 de um job em andamento
 pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
 pnpm segmentar        # segmenta um ds_id à mão (conserto; o fila:concluir já faz sozinho)
 pnpm medir-fidelidade # mede o acervo e compara com a linha de base (--gravar adota o resultado)
+pnpm reextrair        # re-captura um ds_id (ou --todos) no MESMO id, trocando só no fim
 pnpm regiao:recompilar # limpa/recompila bundles do acervo sem reabrir navegador (--todos, --seco)
 pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
 pnpm acervo:exportar  # zip portátil do acervo (EXPORTAR-ACERVO.bat)

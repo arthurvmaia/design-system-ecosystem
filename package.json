@@ -28,7 +28,8 @@
     "fila:concluir": "tsx scripts/fila-concluir.ts",
     "fila:limpar": "tsx scripts/fila-limpar.ts",
     "clean": "turbo run clean",
-    "comparar": "tsx scripts/comparar-motores.ts"
+    "comparar": "tsx scripts/comparar-motores.ts",
+    "reextrair": "tsx scripts/reextrair.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
