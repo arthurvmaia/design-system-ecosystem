@@ -145,6 +145,8 @@ pnpm fila:escolher    # lista numerado e devolve os ids escolhidos (usado pelo P
 pnpm fila:progresso   # reporta 0-100 de um job em andamento
 pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
 pnpm segmentar        # segmenta um ds_id à mão (conserto; o fila:concluir já faz sozinho)
+pnpm medir-fidelidade # mede o acervo e compara com a linha de base (--gravar adota o resultado)
+pnpm regiao:recompilar # limpa/recompila bundles do acervo sem reabrir navegador (--todos, --seco)
 pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
 pnpm acervo:exportar  # zip portátil do acervo (EXPORTAR-ACERVO.bat)
 pnpm acervo:importar  # importa acervo de outra máquina reescrevendo caminhos (IMPORTAR-ACERVO.bat)
@@ -157,8 +159,9 @@ pnpm acervo:importar  # importa acervo de outra máquina reescrevendo caminhos (
 - `packages/explorer` — motor de captura por navegador (Playwright opcional). `renderPage` faz a extração fiel de qualquer URL (usada pelo `pnpm extrair`); `explorePage` faz a captura profunda de estados/assets; `assessFidelity` dá o nível de suporte/avisos de cada componente. Degrada para estático sem o navegador. Ver `docs/CAPTURE.md`.
 - `packages/extractor` — loop agêntico com tools de arquivo (modo `api`). `prompt.ts` é o ativo.
 - `packages/classifier` — categoriza segmentos em lote.
-- `packages/generator` — compõe sites a partir da estrutura que o usuário declarou (`layout.secoes`).
-- `packages/shared` — schemas Zod, paths, fila. Fonte da verdade dos contratos.
+- `packages/generator` — compõe sites a partir da estrutura que o usuário declarou (`layout.secoes`). Também mede a fidelidade dos bundles (`fidelidade.ts`, `pnpm medir-fidelidade`).
+- `packages/composer` — junta peças de origens diferentes sem que elas se estraguem: escopo do CSS por origem com `:where()` (especificidade ZERO, para o `marca.css` continuar vencendo a cascata) e os dois proxies de documento que fazem `html.dark body .card` casar. Substitui a poda do `@ds/isolator`, que descartava CSS por análise estática e errava sempre para menos.
+- `packages/shared` — schemas Zod, paths, fila. Fonte da verdade dos contratos. `estrutura-marketing.ts` traz as quatro sequências de página por objetivo e o que cada seção faz.
 - `packages/indexer` — SQLite via Drizzle.
 
 Dados ficam em `~/design-system-ecosystem/`, fora do repo.
