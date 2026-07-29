@@ -145,6 +145,20 @@ export const reextrair = async (dsId: DesignSystemId, seco: boolean): Promise<Re
   if (url === null) {
     return { ...base, erro: 'sem URL de origem (HTML colado ou manifesto ilegível)' };
   }
+  // Sem linha no banco não há o que atualizar: o insert dos segmentos exige a
+  // chave estrangeira, e falharia DEPOIS da captura — gastando minutos para
+  // terminar em erro. Melhor recusar antes de abrir o navegador.
+  const noBanco = getDb()
+    .select()
+    .from(tables.designSystems)
+    .where(eq(tables.designSystems.id, dsId))
+    .get();
+  if (noBanco === undefined) {
+    return {
+      ...base,
+      erro: 'este design system não está no app (a pasta no vault é resíduo de uma extração apagada)',
+    };
+  }
   if (seco) return { ...base, ok: true, modo: 'ensaio' };
 
   // A captura escreve FORA do lugar definitivo. Só entra quando termina.
@@ -211,13 +225,37 @@ const principal = async (): Promise<void> => {
 
   runMigrations();
 
+  // O acervo é o BANCO, não a pasta.
+  //
+  // A primeira versão listava `vault/ds_*` e saiu refazendo 30 extrações que o
+  // app não mostra: apagar um design system remove a linha do banco e deixa os
+  // arquivos para trás. O resultado era gastar minutos por site em pastas
+  // órfãs e falhar no fim com `FOREIGN KEY constraint failed`, porque o insert
+  // dos segmentos exige a linha que já não existia.
+  //
+  // Medido no acervo: 32 pastas, 2 linhas. A pasta é resíduo; a linha é o que
+  // a pessoa vê.
+  const idsDoBanco = getDb()
+    .select()
+    .from(tables.designSystems)
+    .all()
+    .map((l) => l.id as DesignSystemId);
+
   const ids: DesignSystemId[] = todos
-    ? readdirSync(vaultDir())
-        .filter((n) => n.startsWith('ds_'))
-        .map((n) => n as DesignSystemId)
+    ? idsDoBanco
     : alvo?.startsWith('ds_')
       ? [alvo as DesignSystemId]
       : [];
+
+  if (todos) {
+    const pastas = readdirSync(vaultDir()).filter((n) => n.startsWith('ds_'));
+    const orfas = pastas.length - idsDoBanco.length;
+    if (orfas > 0) {
+      console.log(
+        `\n  ${orfas} pasta(s) no vault sem design system no app: são resíduo de extrações apagadas e ficaram de fora.`,
+      );
+    }
+  }
 
   if (ids.length === 0) {
     console.error('\n  Uso: pnpm reextrair <ds_id>   (ou --todos)');
