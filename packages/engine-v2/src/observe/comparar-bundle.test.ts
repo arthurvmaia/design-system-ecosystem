@@ -118,9 +118,10 @@ test('vídeo tem natureza própria, mesmo com runtime junto', () => {
 // ── A comparação ────────────────────────────────────────────────────────────
 
 const paginaFalsa = (opts: {
-  origem?: { x: number; y: number; w: number; h: number } | null;
+  origem?: { x: number; y: number; w: number; h: number; vw?: number; vh?: number } | null;
   imagem?: Uint8Array;
   erra?: boolean;
+  registrarClip?: (c: { x: number; y: number; w: number; h: number }) => void;
 }): PaginaParaComparar => ({
   goto: async () => {
     if (opts.erra === true) throw new Error('não abriu');
@@ -128,8 +129,15 @@ const paginaFalsa = (opts: {
   esperar: async () => {},
   esperarFontes: async () => {},
   evaluate: async <T>() =>
-    (opts.origem === undefined ? { x: 0, y: 0, w: 10, h: 10 } : opts.origem) as T,
-  screenshot: async () => opts.imagem ?? pngSolido(20, 20, 0, 0, 0),
+    (opts.origem === undefined
+      ? { x: 0, y: 0, w: 10, h: 10, vw: 1440, vh: 900 }
+      : opts.origem === null
+        ? null
+        : { vw: 1440, vh: 900, ...opts.origem }) as T,
+  screenshot: async (o) => {
+    if (opts.registrarClip !== undefined && o?.clip !== undefined) opts.registrarClip(o.clip);
+    return opts.imagem ?? pngSolido(20, 20, 0, 0, 0);
+  },
   fechar: async () => {},
 });
 
@@ -295,4 +303,112 @@ test('o corte por orçamento CONTA quantos ficaram para trás, em vez de sumir',
   });
   assert.equal(r.comparacoes.length, 1);
   assert.equal(r.pulados.orcamento, 3, 'os três que não rodaram precisam aparecer');
+});
+
+test('a fase nao COMECA um item que nao cabe no tempo restante', async () => {
+  // `cancelado` só vira true DEPOIS que o teto já estourou, e cada item custa
+  // ~1,5 s — foi assim que a fase passou 46% do próprio limite (14 s num teto
+  // de 9,6 s). Com o tempo restante em mãos, ela para antes de começar.
+  const img = pngSolido(20, 20, 0, 0, 0);
+  const { dir, dirCaptura } = montarEntrada(img);
+  const entrada = { segmento: seg(), dirBundle: dir, framePath: 'frame.png' };
+  const r = await compararBundlesComOriginal({
+    pagina: paginaFalsa({ imagem: img }),
+    entradas: [entrada, entrada, entrada],
+    dirCaptura,
+    restanteMs: () => 100,
+    custoInicialMs: 1_800,
+  });
+  assert.equal(r.comparacoes.length, 0, 'nenhum item cabia em 100ms');
+  assert.equal(r.pulados.orcamento, 3);
+});
+
+test('com folga, a estimativa nao atrapalha: todos os itens rodam', async () => {
+  const img = pngSolido(20, 20, 0, 0, 0);
+  const { dir, dirCaptura } = montarEntrada(img);
+  const entrada = { segmento: seg(), dirBundle: dir, framePath: 'frame.png' };
+  const r = await compararBundlesComOriginal({
+    pagina: paginaFalsa({ imagem: img }),
+    entradas: [entrada, entrada],
+    dirCaptura,
+    restanteMs: () => 60_000,
+  });
+  assert.equal(r.comparacoes.length, 2);
+  assert.equal(r.pulados.orcamento, 0);
+});
+
+test('sem restanteMs, o comportamento antigo continua valendo', async () => {
+  // A opcao e aditiva: quem nao passa o relogio nao muda de comportamento.
+  const img = pngSolido(20, 20, 0, 0, 0);
+  const { dir, dirCaptura } = montarEntrada(img);
+  const r = await compararBundlesComOriginal({
+    pagina: paginaFalsa({ imagem: img }),
+    entradas: [{ segmento: seg(), dirBundle: dir, framePath: 'frame.png' }],
+    dirCaptura,
+  });
+  assert.equal(r.comparacoes.length, 1);
+});
+
+// ── O recorte preso à viewport ───────────────────────────────────────────────
+
+test('região que começa baixo na página tem o recorte RECUADO, não encolhido', async () => {
+  // Pedir um recorte que passa da borda devolve uma imagem menor, e o item caía
+  // em `tamanho-diferente` — enquadramento virando veredito de fidelidade.
+  const img = pngSolido(20, 20, 0, 0, 0);
+  const { dir, dirCaptura } = montarEntrada(img);
+  let clip: { x: number; y: number; w: number; h: number } | null = null;
+  await compararBundlesComOriginal({
+    pagina: paginaFalsa({
+      imagem: img,
+      // A região começa a 895px numa viewport de 900: o recorte de 20px de
+      // altura passaria 15px da borda.
+      origem: { x: 0, y: 895, w: 20, h: 20, vw: 1440, vh: 900 },
+      registrarClip: (c) => {
+        clip = c;
+      },
+    }),
+    entradas: [{ segmento: seg(), dirBundle: dir, framePath: 'frame.png' }],
+    dirCaptura,
+  });
+  assert.ok(clip !== null);
+  const c = clip as unknown as { x: number; y: number; w: number; h: number };
+  assert.equal(c.h, 20, 'o tamanho do recorte não pode mudar: é ele que casa com o print');
+  assert.equal(c.y, 880, 'a origem recua para o recorte caber inteiro');
+});
+
+test('print maior que a viewport do bundle continua incomparável', async () => {
+  // Aqui nem recuando cabe, e isso é incomparável de verdade — não um erro de
+  // enquadramento que dê para corrigir.
+  const grande = pngSolido(64, 64, 0, 0, 0);
+  const { dir, dirCaptura } = montarEntrada(grande);
+  const r = await compararBundlesComOriginal({
+    pagina: paginaFalsa({
+      imagem: grande,
+      origem: { x: 0, y: 0, w: 10, h: 10, vw: 40, vh: 40 },
+    }),
+    entradas: [{ segmento: seg(), dirBundle: dir, framePath: 'frame.png' }],
+    dirCaptura,
+  });
+  assert.equal(r.comparacoes.length, 0);
+  assert.equal(r.pulados['tamanho-diferente'], 1);
+});
+
+test('região que cabe folgada não é mexida', async () => {
+  const img = pngSolido(20, 20, 0, 0, 0);
+  const { dir, dirCaptura } = montarEntrada(img);
+  let clip: { x: number; y: number; w: number; h: number } | null = null;
+  await compararBundlesComOriginal({
+    pagina: paginaFalsa({
+      imagem: img,
+      origem: { x: 40, y: 60, w: 20, h: 20, vw: 1440, vh: 900 },
+      registrarClip: (c) => {
+        clip = c;
+      },
+    }),
+    entradas: [{ segmento: seg(), dirBundle: dir, framePath: 'frame.png' }],
+    dirCaptura,
+  });
+  const c = clip as unknown as { x: number; y: number; w: number; h: number };
+  assert.equal(c.x, 40);
+  assert.equal(c.y, 60);
 });

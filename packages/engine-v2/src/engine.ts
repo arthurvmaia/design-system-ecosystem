@@ -704,9 +704,21 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     // em jogo. Por isso deixou de sair só das seções com cena e passa a sair de
     // TODAS: uma dobra de texto sem print é uma dobra que ninguém consegue
     // conferir sem abrir o site de origem.
+    // A lista de quem ganha print é a MESMA de quem ganha HTML.
+    //
+    // Eram duas listas diferentes, e a de print era mais curda: só os papéis de
+    // seção. Mas peças, camadas de fundo e comportamentos também viram segmento
+    // — e chegavam à Galeria sem imagem e à comparação de pixel sem nada contra
+    // o que conferir. Medido: 6 de 13 segmentos ficavam de fora por isso, e era
+    // a maior fonte de cobertura perdida de todo o pipeline.
+    //
+    // `hashesDePeca` já reúne peças, camadas e comportamentos, e já é o critério
+    // do laço de HTML logo acima. Usar o mesmo aqui elimina a divergência pela
+    // raiz, em vez de tentar mantê-las sincronizadas.
     const secoesParaPrint = coletaFinal.nos.filter((n) => {
       const node = porRef.get(n.ref);
-      return node !== undefined && PAPEIS_COM_HTML.has(node.role);
+      if (node === undefined) return false;
+      return PAPEIS_COM_HTML.has(node.role) || hashesDePeca.has(node.fingerprint.hash);
     });
     // Por que uma dobra ficou sem print. A comparação de pixel expôs o buraco:
     // ela conseguiu conferir 3 de 12 segmentos, e a causa não era dela — era a
@@ -1139,11 +1151,22 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       //
       // Abaixo do piso, ela nem começa — e diz isso, como qualquer outra
       // limitação.
+      //
+      // E não se verifica captura que JÁ SAIU PELA METADE. Medido numa captura
+      // real: 160s no total, cortada em `v2-percurso` (62s), com a comparação
+      // levando 14s. Foram 14 segundos gastos conferindo um resultado que o
+      // próprio motor sabia estar incompleto — tempo que faltou justamente à
+      // fase que foi interrompida. Conferir o que se sabe incompleto produz um
+      // número que não significa nada, e cobra caro por ele.
       const PISO_PARA_COMPARAR_MS = 3_000;
       const querVerificar = opts.verificarVisual !== false;
       const tetoComparar = tetoDaFase(FASE_V2.comparar, limits.orcamentoTotalMs) ?? 0;
       if (!querVerificar) {
         // Silêncio aqui é correto: quem desligou sabe que desligou.
+      } else if (tel.parcial) {
+        limitacoes.push(
+          'A comparação de pixel não rodou: a captura já tinha sido cortada por tempo, e verificar um resultado incompleto gastaria o orçamento que faltou para completá-lo.',
+        );
       } else if (tetoComparar < PISO_PARA_COMPARAR_MS) {
         limitacoes.push(
           `A comparação de pixel não rodou: o orçamento reservado para ela (${tetoComparar} ms) não daria nem para conferir um bundle.`,
@@ -1171,6 +1194,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             }
             if (entradas.length === 0) return;
 
+            const iniciouComparacao = Date.now();
             const aba = await s.contexto.newPage();
             try {
               await aba.setViewportSize(viewport);
@@ -1214,6 +1238,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
                 entradas,
                 dirCaptura: opts.dirCaptura,
                 cancelado: () => signal.aborted,
+                // O relógio da FASE, não o do processo: era o teto DELA que
+                // estourava — 14s gastos num teto de 9,6s, porque o cancelamento
+                // só acusa depois que o último item já começou.
+                restanteMs: () => Math.max(0, tetoComparar - (Date.now() - iniciouComparacao)),
               });
               comparacoes = resultado.comparacoes;
 

@@ -426,3 +426,87 @@ test('script dispensado não vira tag nenhuma, e o motivo fica nos avisos', () =
   assert.ok(!html.includes('tailwindcss'));
   assert.ok(r.avisos.some((a) => a.includes('CSSOM')));
 });
+
+// ── A cápsula não pode ficar para trás do índice ─────────────────────────────
+//
+// O `runtime.html` era montado com uma lista própria de argumentos, e a cada
+// melhoria do `index.html` ficava um passo atrás — em silêncio. O sintoma final
+// foi a Galeria mostrar os cards de um site ESCURO com fundo BRANCO: o índice
+// recebia os atributos de `<html>`/`<body>` da origem e a cápsula não.
+//
+// Estes testes comparam os DOIS arquivos do MESMO bundle. É o formato que
+// impede a regressão de voltar, porque foi exatamente assim que ela nasceu.
+
+const bundleDeCapsula = (over: Partial<Parameters<typeof escreverBundle>[1]> = {}) => {
+  const dir = mkdtempSync(join(tmpdir(), 'capsula-'));
+  escreverBundle(dir, {
+    ...entradaMinima(),
+    segmento: segmentoFixture({
+      representation: {
+        ...segmentoFixture().representation,
+        type: 'capsula-runtime',
+        editable: false,
+      },
+    }),
+    documentoAttrs: { html: 'class="dark"', body: 'class="bg-[#03020A] text-white"' },
+    ...over,
+  });
+  return {
+    index: readFileSync(join(dir, 'index.html'), 'utf8'),
+    capsula: readFileSync(join(dir, 'runtime.html'), 'utf8'),
+    dir,
+  };
+};
+
+test('a cápsula recebe os MESMOS atributos de <html> e <body> que o índice', () => {
+  // A causa exata da tela branca: sem `class="bg-[#03020A] text-white"` no
+  // body, um site escuro renderiza branco com texto preto.
+  const { index, capsula } = bundleDeCapsula();
+  const body = (h: string) => /<body\b([^>]*)>/i.exec(h)?.[1]?.trim() ?? '';
+  const html = (h: string) => /<html\b([^>]*)>/i.exec(h)?.[1]?.trim() ?? '';
+  assert.equal(body(capsula), body(index), 'o <body> dos dois tem de ser igual');
+  assert.equal(html(capsula), html(index), 'o <html> dos dois tem de ser igual');
+  assert.ok(body(capsula).includes('bg-[#03020A]'));
+});
+
+test('a cápsula recebe as MESMAS camadas de fundo que o índice', () => {
+  const { index, capsula } = bundleDeCapsula({
+    camadasDeFundo: ['<canvas id="feixes"></canvas>'],
+  });
+  assert.ok(index.includes('data-ds-camadas-de-fundo'));
+  assert.ok(capsula.includes('data-ds-camadas-de-fundo'), 'a cápsula perdeu o fundo');
+  assert.ok(capsula.includes('<canvas id="feixes">'));
+});
+
+test('a cápsula leva os scripts LOCAIS; os remotos ficam de fora, e isso é dito', () => {
+  // A CSP da cápsula é `script-src self`: script remoto ali é bloqueado pelo
+  // navegador em silêncio. Emitir a tag mesmo assim seria fingir que executa.
+  const captura = mkdtempSync(join(tmpdir(), 'cap-'));
+  mkdirSync(join(captura, 'js'), { recursive: true });
+  writeFileSync(join(captura, 'js', 'bg.js'), '// fundo', 'utf8');
+  const dir = mkdtempSync(join(tmpdir(), 'capsula-'));
+  const r = escreverBundle(dir, {
+    ...entradaMinima(),
+    segmento: segmentoFixture({
+      representation: { ...segmentoFixture().representation, type: 'capsula-runtime' },
+    }),
+    dirAssetsCaptura: captura,
+    scriptsExternos: [
+      { url: 'https://cdn/bg.js', localPath: 'js/bg.js', decisao: 'levar', motivo: 'x' },
+      { url: 'https://cdn/remoto.js', decisao: 'remoto', motivo: 'y' },
+    ],
+  });
+  const capsula = readFileSync(join(dir, 'runtime.html'), 'utf8');
+  const index = readFileSync(join(dir, 'index.html'), 'utf8');
+  assert.ok(capsula.includes('assets/js/bg.js'), 'o script local tem de entrar');
+  assert.ok(!capsula.includes('cdn/remoto.js'), 'o remoto seria bloqueado pela CSP');
+  assert.ok(index.includes('cdn/remoto.js'), 'no índice ele continua');
+  assert.ok(r.avisos.some((a) => a.includes('fora da cápsula')));
+});
+
+test('a cápsula continua tendo o que a distingue: a CSP', () => {
+  // Igualar os dois não pode apagar a razão de a cápsula existir.
+  const { index, capsula } = bundleDeCapsula();
+  assert.ok(capsula.includes('Content-Security-Policy'));
+  assert.ok(!index.includes('Content-Security-Policy'));
+});

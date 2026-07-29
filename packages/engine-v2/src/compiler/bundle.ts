@@ -501,22 +501,55 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
       `${levados} script(s) de runtime viajam dentro do bundle: ele não depende mais do endereço de origem para isso.`,
     );
   }
-  const tagsExternas = refsDeScript
-    .map((src) => `<script src="${src.replace(/"/g, '&quot;')}"></script>`)
-    .join('\n');
+  const tagDeScript = (src: string): string =>
+    `<script src="${src.replace(/"/g, '&quot;')}"></script>`;
+  const tagsExternas = refsDeScript.map(tagDeScript).join('\n');
+
+  // A cápsula roda sob `script-src 'self'` (ver CSP_CAPSULA): script remoto ali
+  // é bloqueado pelo navegador, em silêncio. Então ela leva só os que estão
+  // dentro do bundle — e o que ficou de fora é dito, em vez de virar uma tag
+  // que não executa.
+  const refsLocais = refsDeScript.filter((r) => !/^(https?:)?\/\//i.test(r));
+  const tagsExternasLocais = refsLocais.map(tagDeScript).join('\n');
+  const remotosForaDaCapsula = refsDeScript.length - refsLocais.length;
+
+  // ── As partes comuns aos DOIS documentos ────────────────────────────────
+  //
+  // Isto existe por causa de um defeito que custou caro para achar. O
+  // `runtime.html` era montado com uma lista própria de argumentos, e a cada
+  // melhoria do `index.html` ele ficava um passo atrás — em silêncio.
+  //
+  // O sintoma final: a Galeria mostrava os cards de um site ESCURO com fundo
+  // BRANCO. Causa: o `index.html` recebia os atributos de `<html>`/`<body>` da
+  // origem (é onde mora `class="bg-[#03020A] text-white"`), e a cápsula não.
+  // O mesmo `<body>`, nos dois arquivos do mesmo bundle:
+  //
+  //   index.html    class="bg-[#03020A] text-white …"   →  rgb(3, 2, 10)
+  //   runtime.html  (sem atributo nenhum)               →  branco
+  //
+  // A cápsula tinha perdido também as camadas de fundo e os scripts
+  // localizados, pelo mesmo motivo.
+  //
+  // Agora as partes comuns são UMA variável cada. A diferença entre os dois
+  // documentos passa a ser só o que de fato os distingue: a CSP e os scripts
+  // de runtime. Duas listas de argumentos que precisam concordar acabam
+  // discordando; uma só, não.
+  const comum = {
+    css: caminhosCss,
+    inline: js.inline,
+    attrsHtml: entrada.documentoAttrs?.html,
+    attrsBody: entrada.documentoAttrs?.body,
+  };
 
   arquivos.push(
     escrever(
       dir,
       'index.html',
       documento({
+        ...comum,
         titulo: segmento.name,
-        css: caminhosCss,
         corpo,
         scripts: [tagsExternas, tagsDeScript(js.arquivos)].filter((s) => s.length > 0).join('\n'),
-        inline: js.inline,
-        attrsHtml: entrada.documentoAttrs?.html,
-        attrsBody: entrada.documentoAttrs?.body,
       }),
     ),
   );
@@ -531,19 +564,28 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
         dir,
         'runtime.html',
         documento({
+          ...comum,
           titulo: `${segmento.name} — cápsula`,
-          css: caminhosCss,
-          // A cápsula leva SÓ a menor unidade funcional: o HTML do segmento, não
-          // a página. Levar a página inteira é o que o pedido proíbe.
-          corpo: corpoLocalizado,
-          scripts: [scriptsDoRuntime, tagsDeScript(js.arquivos)]
+          // A cápsula leva SÓ a menor unidade funcional: o HTML do segmento com
+          // o fundo que passa atrás dele, não a página. Levar a página inteira
+          // é o que o pedido proíbe.
+          corpo,
+          // Os scripts de runtime ENTRAM ALÉM dos que o documento já levava:
+          // a cápsula existe para o runtime inicializar isolado, mas o que faz
+          // a região desenhar (o script do fundo, a biblioteca de ícones) é o
+          // mesmo do índice, e já está localizado.
+          scripts: [tagsExternasLocais, scriptsDoRuntime, tagsDeScript(js.arquivos)]
             .filter((s) => s.length > 0)
             .join('\n'),
-          inline: js.inline,
           csp: CSP_CAPSULA,
         }),
       ),
     );
+    if (remotosForaDaCapsula > 0) {
+      avisos.push(
+        `${remotosForaDaCapsula} script(s) remotos ficaram fora da cápsula: a política de segurança dela só executa o que está dentro do bundle. Eles seguem no index.html.`,
+      );
+    }
     if (entrada.runtimeScripts.length === 0) {
       avisos.push(
         'Cápsula sem script de runtime em disco: a cena pode não inicializar. Verifique as dependências declaradas.',

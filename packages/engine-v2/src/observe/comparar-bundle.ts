@@ -102,7 +102,18 @@ const ORIGEM_DA_REGIAO_FN = `
   if (!alvo) return null;
   try { window.scrollTo(0, 0); } catch (e) {}
   var r = alvo.getBoundingClientRect();
-  return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+  return {
+    x: Math.round(r.x),
+    y: Math.round(r.y),
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+    // A viewport vem junto para o recorte poder ser preso a ela: pedir um
+    // recorte que passa da borda devolve uma imagem menor, e a comparação
+    // descartava o item por "tamanho diferente" — enquadramento virando
+    // veredito de fidelidade.
+    vw: window.innerWidth,
+    vh: window.innerHeight
+  };
 }
 `;
 
@@ -151,6 +162,18 @@ export const compararBundlesComOriginal = async (opts: {
   dirCaptura: string;
   /** Corta a lista quando o orçamento acaba. */
   cancelado?: () => boolean;
+  /**
+   * Quanto tempo ainda resta para esta fase, em ms.
+   *
+   * `cancelado` sozinho não bastava. Ele só vira `true` DEPOIS que o teto já
+   * estourou, e cada item custa ~1,5 s — então a fase passava do próprio limite
+   * pelo custo do último item que ela começou. Medido: teto de 9,6 s, gasto de
+   * 14 s, 46% além. Com o tempo restante em mãos, ela não COMEÇA um item que
+   * não cabe.
+   */
+  restanteMs?: () => number;
+  /** Custo estimado de um item. Sobe sozinho conforme os itens reais medem. */
+  custoInicialMs?: number;
 }): Promise<ResultadoComparacao> => {
   const saida: VisualComparison[] = [];
   const pulados: Record<MotivoDePular, number> = {
@@ -162,6 +185,13 @@ export const compararBundlesComOriginal = async (opts: {
     erro: 0,
   };
 
+  // O custo de um item, aprendido com os itens já feitos. Começa numa
+  // estimativa e é corrigido pela medição — um bundle pesado numa máquina lenta
+  // custa muito mais que um leve, e um número fixo erraria nos dois sentidos.
+  let custoPorItem = opts.custoInicialMs ?? 1_800;
+  let feitos = 0;
+  let gasto = 0;
+
   for (let i = 0; i < opts.entradas.length; i++) {
     const e = opts.entradas[i];
     if (e === undefined) continue;
@@ -169,6 +199,13 @@ export const compararBundlesComOriginal = async (opts: {
       pulados.orcamento += opts.entradas.length - i;
       break;
     }
+    // Não começar o que não cabe. `cancelado` só acusa depois do estouro.
+    const restante = opts.restanteMs?.();
+    if (restante !== undefined && restante < custoPorItem) {
+      pulados.orcamento += opts.entradas.length - i;
+      break;
+    }
+    const inicioDoItem = Date.now();
 
     const indexPath = join(e.dirBundle, 'index.html');
     const framePath = join(opts.dirCaptura, e.framePath);
@@ -202,6 +239,8 @@ export const compararBundlesComOriginal = async (opts: {
         y: number;
         w: number;
         h: number;
+        vw: number;
+        vh: number;
       } | null>(`(${ORIGEM_DA_REGIAO_FN})()`);
       if (origem === null) {
         pulados['sem-regiao']++;
@@ -211,8 +250,22 @@ export const compararBundlesComOriginal = async (opts: {
       // O recorte tem as dimensões do PRINT, a partir de onde a região começa
       // no bundle. Assim as duas imagens têm o mesmo tamanho e a comparação
       // fala do conteúdo, não do enquadramento.
+      //
+      // E ele é PRESO À VIEWPORT antes de sair. Quando a região começava baixo
+      // na página, o recorte pedido passava da borda e o navegador devolvia uma
+      // imagem menor — que caía em `tamanho-diferente` e sumia da cobertura por
+      // um motivo de enquadramento, não de fidelidade. Ajustar a origem para
+      // trás preserva o tamanho do recorte, que é o que a comparação exige.
+      const x = Math.max(0, Math.min(origem.x, origem.vw - dim.w));
+      const y = Math.max(0, Math.min(origem.y, origem.vh - dim.h));
+      if (dim.w > origem.vw || dim.h > origem.vh) {
+        // O print é maior que a viewport do bundle: nem recuando cabe. Isso é
+        // incomparável de verdade, e não um erro de enquadramento.
+        pulados['tamanho-diferente']++;
+        continue;
+      }
       const doBundle = await opts.pagina.screenshot({
-        clip: { x: origem.x, y: origem.y, w: dim.w, h: dim.h },
+        clip: { x, y, w: dim.w, h: dim.h },
       });
 
       const natureza = naturezaDoSegmento(e.segmento);
@@ -236,6 +289,12 @@ export const compararBundlesComOriginal = async (opts: {
       // Bundle que não abre, recorte fora da viewport, decode que falhou: a
       // comparação daquele item não existe. Melhor que um número inventado.
       pulados.erro++;
+    } finally {
+      // A estimativa aprende com o que aconteceu, inclusive com os itens que
+      // falharam: eles também consomem tempo.
+      feitos++;
+      gasto += Date.now() - inicioDoItem;
+      custoPorItem = Math.max(250, Math.round(gasto / feitos));
     }
   }
 

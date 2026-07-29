@@ -123,6 +123,11 @@ const capturarV2 = async (jobId: string, url: string): Promise<CapturaV2 | null>
     const captura = await capturarComV2(url, {
       dirCaptura,
       dirBundles,
+      // A conferência de pixel de cada bundle contra o print da dobra. É aqui
+      // que ela vale — uma extração por vez, com alguém olhando o resultado.
+      // `DS_SEM_VERIFICACAO=1` desliga, para quem vai processar uma fila longa
+      // de sites e prefere gastar o orçamento capturando.
+      verificarVisual: process.env.DS_SEM_VERIFICACAO !== '1',
       log: (evento, dados) => console.log(`  [v2:${evento}] ${dados ? JSON.stringify(dados) : ''}`),
     });
     return { captura, dirCaptura, dirBundles, tmpBase };
