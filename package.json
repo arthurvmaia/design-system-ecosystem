@@ -18,6 +18,7 @@
     "explorar": "tsx scripts/explorar.ts",
     "segmentar": "tsx scripts/segmentar.ts",
     "projeto:restaurar": "tsx scripts/projeto-restaurar.ts",
+    "mascote": "tsx scripts/mascote.ts",
     "test": "node --import tsx --test \"packages/**/src/**/*.test.ts\" \"apps/**/src/**/*.test.ts\"",
     "testar:segmentacao": "tsx scripts/testar-segmentacao.ts",
     "fila:escolher": "tsx scripts/selecionar.ts",

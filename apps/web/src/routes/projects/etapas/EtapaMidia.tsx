@@ -1,8 +1,9 @@
+import { Mascote } from '@/components/Mascote';
 import { type KitComponentRef, type MediaItem, api } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import { type Produto, type SecaoDoSite, resolverSecoes } from '@ds/shared/schemas';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Image as ImageIcon, Loader2, Plus, Trash2, Upload } from 'lucide-react';
+import { Image as ImageIcon, Plus, Trash2, Upload } from 'lucide-react';
 import { mediaUrl, rotulo } from '../partes';
 
 /** A finalidade humana da mídia em cada papel — a tela fala de propósito. */
@@ -138,7 +139,7 @@ export function StepMidia({
           className="flex cursor-pointer items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-medium"
           style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
         >
-          {upload.isPending ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+          {upload.isPending ? <Mascote tamanho={12} girando /> : <Upload size={12} />}
           escolher arquivo
           <input
             type="file"
@@ -212,11 +213,7 @@ export function StepMidia({
                   color: 'var(--color-fg-muted)',
                 }}
               >
-                {upload.isPending ? (
-                  <Loader2 size={11} className="animate-spin" />
-                ) : (
-                  <Upload size={11} />
-                )}
+                {upload.isPending ? <Mascote tamanho={11} girando /> : <Upload size={11} />}
                 enviar
                 <input
                   type="file"
@@ -431,11 +428,7 @@ function BlocoProdutos({
                       color: 'var(--color-fg-muted)',
                     }}
                   >
-                    {enviarFoto.isPending ? (
-                      <Loader2 size={11} className="animate-spin" />
-                    ) : (
-                      <Upload size={11} />
-                    )}
+                    {enviarFoto.isPending ? <Mascote tamanho={11} girando /> : <Upload size={11} />}
                     enviar foto
                     <input
                       type="file"

@@ -1,4 +1,5 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
+import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type KitRecord, type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
@@ -6,18 +7,7 @@ import { cn } from '@/lib/cn';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ArrowDown,
-  ArrowUp,
-  Copy,
-  Layers,
-  Loader2,
-  Package,
-  Pencil,
-  Plus,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, Layers, Package, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 const CAT_LABEL: Record<string, string> = {
@@ -237,7 +227,7 @@ function IconBtn({
       className="rounded-full p-1.5 transition-all duration-300 hover:scale-110 hover:bg-white/[0.06] disabled:opacity-50"
       style={{ color: danger ? 'var(--color-ion-3)' : 'var(--color-fg-muted)' }}
     >
-      {busy ? <Loader2 size={13} className="animate-spin" /> : children}
+      {busy ? <Mascote tamanho={13} girando /> : children}
     </button>
   );
 }
@@ -481,7 +471,7 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
             className="ds-btn ds-glow flex items-center gap-2 rounded-full px-5 py-2 text-[13px] font-medium disabled:opacity-40"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
-            {save.isPending && <Loader2 size={12} className="animate-spin" />}
+            {save.isPending && <Mascote tamanho={12} girando />}
             {kit ? 'Salvar kit' : 'Criar kit'}
           </button>
         </div>
@@ -493,8 +483,14 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
 function VazioState({ carregando, onNovo }: { carregando: boolean; onNovo: () => void }) {
   return (
     <div className="ds-glass-static ds-slide-up ds-d3 mt-10 rounded-xl p-10 text-center">
-      <Layers size={22} className="mx-auto" style={{ color: 'var(--color-fg-subtle)' }} />
-      <div className="mt-4 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>
+      <Mascote
+        tamanho={96}
+        esmaecido
+        pulsando={carregando}
+        alt={carregando ? 'Carregando os kits' : 'O núcleo do sistema, apagado: nenhum kit ainda'}
+        className="mx-auto"
+      />
+      <div className="mt-5 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>
         {carregando ? 'Carregando...' : 'Nenhum kit ainda.'}
       </div>
       {!carregando && (

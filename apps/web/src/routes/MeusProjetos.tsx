@@ -1,19 +1,11 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
+import { Mascote } from '@/components/Mascote';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type MeusProjetosItem, api, downloadUrl, siteUrl } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Copy,
-  Download,
-  ExternalLink,
-  FolderOpen,
-  Loader2,
-  Package,
-  Pencil,
-  Trash2,
-} from 'lucide-react';
+import { Copy, Download, ExternalLink, FolderOpen, Package, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -212,11 +204,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                 className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-white/[0.06]"
                 style={{ color: 'var(--color-fg-muted)' }}
               >
-                {duplicar.isPending ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : (
-                  <Copy size={13} />
-                )}
+                {duplicar.isPending ? <Mascote tamanho={13} girando /> : <Copy size={13} />}
               </button>
               <button
                 type="button"
@@ -288,8 +276,18 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
 function VazioState({ carregando }: { carregando: boolean }) {
   return (
     <div className="ds-glass-static ds-slide-up ds-d3 mt-10 rounded-xl p-10 text-center">
-      <Package size={22} className="mx-auto" style={{ color: 'var(--color-fg-subtle)' }} />
-      <div className="mt-4 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>
+      <Mascote
+        tamanho={96}
+        esmaecido
+        pulsando={carregando}
+        alt={
+          carregando
+            ? 'Carregando os sites'
+            : 'O núcleo do sistema, apagado: nenhum site gerado ainda'
+        }
+        className="mx-auto"
+      />
+      <div className="mt-5 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>
         {carregando ? 'Carregando...' : 'Nenhum site gerado ainda.'}
       </div>
       {!carregando && (

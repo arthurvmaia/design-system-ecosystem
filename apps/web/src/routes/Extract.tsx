@@ -1,8 +1,9 @@
+import { Mascote } from '@/components/Mascote';
 import { QueuePanel } from '@/components/QueuePanel';
 import { type QueueJobRef, type TaskRecord, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Link as LinkIcon, Loader2, MousePointerClick, UploadCloud } from 'lucide-react';
+import { FileText, Link as LinkIcon, MousePointerClick, UploadCloud } from 'lucide-react';
 import { type ChangeEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -204,7 +205,7 @@ export function ExtractPage() {
           }}
         >
           {start.isPending || activeTask.data?.status === 'running' ? (
-            <Loader2 size={14} className="animate-spin" />
+            <Mascote tamanho={14} girando />
           ) : (
             <UploadCloud size={14} />
           )}

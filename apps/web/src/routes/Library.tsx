@@ -1,4 +1,5 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
+import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { Select } from '@/components/seletores';
@@ -8,7 +9,7 @@ import { usePreferencias } from '@/lib/preferencias';
 import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HeartOff, Loader2, Sun, Tag, Trash2, X } from 'lucide-react';
+import { HeartOff, Sun, Tag, Trash2, X } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 
 const CATEGORIES = [
@@ -274,11 +275,7 @@ export function LibraryPage() {
             className="ds-btn flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium disabled:opacity-40"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
-            {excluir.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Trash2 size={12} />
-            )}
+            {excluir.isPending ? <Mascote tamanho={12} girando /> : <Trash2 size={12} />}
             Excluir
           </button>
         </div>
@@ -594,7 +591,7 @@ function LibraryDetail({
               className="ds-btn ds-glow flex items-center gap-2 rounded-full px-5 py-2 text-[13px] font-medium disabled:opacity-40"
               style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
             >
-              {save.isPending && <Loader2 size={12} className="animate-spin" />}
+              {save.isPending && <Mascote tamanho={12} girando />}
               Salvar
             </button>
           </div>

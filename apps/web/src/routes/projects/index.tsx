@@ -1,10 +1,11 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
+import { Mascote } from '@/components/Mascote';
 import { QueuePanel } from '@/components/QueuePanel';
 import { type ProjectRecord, type StartWorkResponse, type TaskRecord, api } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Loader2, Pencil, Rocket, Trash2, Wand2 } from 'lucide-react';
+import { Copy, Pencil, Trash2, Wand2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ProjectWizard } from './Wizard';
@@ -81,7 +82,7 @@ export function ProjectsPage() {
             className="ds-btn ds-gradient-ion ds-glow flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40"
             style={{ color: 'var(--color-bone-1)' }}
           >
-            <Rocket size={13} />
+            <Mascote tamanho={15} />
             Novo projeto
           </button>
         </div>
@@ -238,7 +239,7 @@ function ProjectCard({
             className="ds-btn ds-glow flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
-            {gerar.isPending ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+            {gerar.isPending ? <Mascote tamanho={12} girando /> : <Wand2 size={12} />}
             {gerado ? 'Gerar de novo' : 'Gerar site'}
           </button>
           {gerado && (
@@ -260,11 +261,7 @@ function ProjectCard({
               className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-white/[0.06]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
-              {duplicar.isPending ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <Copy size={13} />
-              )}
+              {duplicar.isPending ? <Mascote tamanho={13} girando /> : <Copy size={13} />}
             </button>
             <button
               type="button"

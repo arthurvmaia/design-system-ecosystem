@@ -85,6 +85,7 @@ function Leitura({ rotulo, valor }: { rotulo: string; valor: number | undefined 
 
 /** Rótulos humanos por etapa — o propósito da tela, não o número do pipeline. */
 function pageLabel(pathname: string): { section: string; title: string } {
+  if (pathname.startsWith('/inicio')) return { section: 'Bem-vindo', title: 'Início' };
   if (pathname.startsWith('/extract')) return { section: 'Traga referências', title: 'Extrair' };
   if (pathname.startsWith('/gallery')) return { section: 'Escolha o que gostou', title: 'Galeria' };
   if (pathname.startsWith('/library')) return { section: 'Seu acervo', title: 'Biblioteca' };

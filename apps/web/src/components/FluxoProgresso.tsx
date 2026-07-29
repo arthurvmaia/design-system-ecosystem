@@ -1,4 +1,5 @@
 import { Check } from 'lucide-react';
+import { Mascote } from './Mascote';
 
 /**
  * Progresso em linguagem de gente.
@@ -207,13 +208,25 @@ function AnelLoading({ pct, concluido }: { pct: number; concluido: boolean }) {
           />
         </svg>
       )}
+      {/* O núcleo dentro do anel: é a cara de "estou pensando". Fica ATRÁS do
+          número, apagado, porque quem precisa ler ali é o percentual — o mascote
+          está dizendo que há alguém trabalhando, não quanto falta. */}
+      {!concluido && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Mascote tamanho={38} pulsando esmaecido />
+        </div>
+      )}
       <div className="absolute inset-0 flex items-center justify-center">
         {concluido ? (
           <Check size={20} style={{ color: 'var(--color-signal)' }} />
         ) : (
           <span
             className="ds-data text-[13px] font-medium"
-            style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
+            style={{
+              color: 'var(--color-fg)',
+              fontFamily: 'var(--font-display)',
+              textShadow: '0 0 8px rgb(0 0 0 / 0.9)',
+            }}
           >
             {Math.round(pct)}
             <span className="text-[9px]" style={{ color: 'var(--color-fg-subtle)' }}>

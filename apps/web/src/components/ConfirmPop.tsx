@@ -1,5 +1,5 @@
-import { Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { Mascote } from './Mascote';
 import { Modal } from './Modal';
 
 /**
@@ -67,7 +67,7 @@ export function ConfirmPop({
               color: 'var(--color-bone-1)',
             }}
           >
-            {busy && <Loader2 size={12} className="animate-spin" />}
+            {busy && <Mascote tamanho={12} girando />}
             {confirmLabel}
           </button>
         </div>

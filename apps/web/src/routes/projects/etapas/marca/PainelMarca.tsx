@@ -1,10 +1,11 @@
+import { Mascote } from '@/components/Mascote';
 import { Select } from '@/components/seletores';
 import { api } from '@/lib/api';
 import { ROTULO_LOCAL_DE_LOGO, ROTULO_TIPO_DE_LOGO } from '@/lib/marca-rotulos';
 import { toast } from '@/lib/toast';
 import { LocalDeLogo, type LogoVariante, TipoDeLogo, distribuirLogos } from '@ds/shared/schemas';
 import { useMutation } from '@tanstack/react-query';
-import { Loader2, Trash2, Upload } from 'lucide-react';
+import { Trash2, Upload } from 'lucide-react';
 import { Campo, INPUT, type WizardBranding, inputStyle, mediaUrl } from '../../partes';
 import { Recolhivel, SecaoCabecalho } from './partes';
 
@@ -149,11 +150,7 @@ export function PainelMarca({
             className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-[12px] transition-colors hover:border-[var(--color-signal)]"
             style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg-muted)' }}
           >
-            {upload.isPending ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Upload size={13} />
-            )}
+            {upload.isPending ? <Mascote tamanho={13} girando /> : <Upload size={13} />}
             {branding.logos.length === 0 ? 'enviar logo (png/svg)' : 'adicionar outra variação'}
             <input
               type="file"

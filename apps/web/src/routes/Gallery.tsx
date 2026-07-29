@@ -1,4 +1,5 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
+import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import {
@@ -29,7 +30,6 @@ import {
   Columns2,
   Heart,
   Layers,
-  Loader2,
   MousePointer2,
   MoveVertical,
   Play,
@@ -677,11 +677,7 @@ function SegmentsView({
             fontFamily: 'var(--font-body)',
           }}
         >
-          {classify.isPending ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <Sparkles size={12} />
-          )}
+          {classify.isPending ? <Mascote tamanho={12} girando /> : <Sparkles size={12} />}
           Classificar com IA
         </button>
       </div>
@@ -785,11 +781,7 @@ function SegmentsView({
             className="ds-btn flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
-            {curtirLote.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Heart size={12} />
-            )}
+            {curtirLote.isPending ? <Mascote tamanho={12} girando /> : <Heart size={12} />}
             Curtir selecionados
           </button>
           <button
@@ -1158,11 +1150,7 @@ function SegmentCard({
                 title={segment.inLibrary ? 'Já na biblioteca' : 'Adicionar à biblioteca'}
               >
                 {add.isPending ? (
-                  <Loader2
-                    size={13}
-                    className="animate-spin"
-                    style={{ color: 'var(--color-fg-muted)' }}
-                  />
+                  <Mascote tamanho={13} girando esmaecido />
                 ) : (
                   <Heart
                     size={13}
@@ -1417,11 +1405,7 @@ function SegmentCardFilho({
             title={segment.inLibrary ? 'Já na biblioteca' : 'Adicionar à biblioteca'}
           >
             {add.isPending ? (
-              <Loader2
-                size={11}
-                className="animate-spin"
-                style={{ color: 'var(--color-fg-muted)' }}
-              />
+              <Mascote tamanho={11} girando esmaecido />
             ) : (
               <Heart
                 size={11}
@@ -1594,7 +1578,7 @@ function SegmentDetail({
               className="ds-btn flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium disabled:opacity-50"
               style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
             >
-              {add.isPending ? <Loader2 size={12} className="animate-spin" /> : <Heart size={12} />}
+              {add.isPending ? <Mascote tamanho={12} girando /> : <Heart size={12} />}
               {segment.inLibrary ? 'Na Biblioteca' : 'Curtir'}
             </button>
           </div>
@@ -1671,12 +1655,13 @@ function EmptyState() {
   return (
     <div className="flex h-full items-center justify-center">
       <div className="ds-slide-up max-w-[400px] text-center">
-        <div
-          className="text-[11px] uppercase tracking-[0.24em]"
-          style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
-        >
-          Galeria vazia
-        </div>
+        <Mascote
+          tamanho={96}
+          esmaecido
+          alt="O núcleo do sistema, apagado: nada foi trazido ainda"
+          className="mx-auto mb-6"
+        />
+        <div className="ds-label">Galeria vazia</div>
         <h2
           className="ds-text-glow mt-2 text-[24px]"
           style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}

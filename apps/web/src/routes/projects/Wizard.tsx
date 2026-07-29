@@ -1,3 +1,4 @@
+import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import {
   type MediaItem,
@@ -34,7 +35,7 @@ import {
   sugerirSecoes,
 } from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Check, CloudOff, Loader2, Rocket } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CloudOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { StepEstrutura } from './etapas/EtapaEstrutura';
 import { StepMarca } from './etapas/EtapaMarca';
@@ -345,7 +346,7 @@ export function ProjectWizard({
                   color: autosave === 'falha' ? 'var(--color-signal)' : 'var(--color-fg-subtle)',
                 }}
               >
-                {autosave === 'salvando' && <Loader2 size={11} className="animate-spin" />}
+                {autosave === 'salvando' && <Mascote tamanho={11} girando />}
                 {autosave === 'salvo' && <Check size={11} />}
                 {autosave === 'falha' && <CloudOff size={11} />}
                 {ROTULO_AUTOSAVE[autosave]}
@@ -364,11 +365,7 @@ export function ProjectWizard({
               className="ds-btn ds-glow flex items-center gap-2 rounded-full px-6 py-2.5 text-[13px] font-medium disabled:opacity-50"
               style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
             >
-              {gerar.isPending ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <Rocket size={13} />
-              )}
+              {gerar.isPending ? <Mascote tamanho={13} girando /> : <Mascote tamanho={15} />}
               Gerar site
             </button>
           ) : (
@@ -391,11 +388,7 @@ export function ProjectWizard({
                 className="ds-btn ds-glow flex items-center gap-2 rounded-full px-6 py-2.5 text-[13px] font-medium disabled:opacity-40"
                 style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
               >
-                {avancar.isPending ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : (
-                  <ArrowRight size={13} />
-                )}
+                {avancar.isPending ? <Mascote tamanho={13} girando /> : <ArrowRight size={13} />}
                 Próximo
               </button>
             </div>

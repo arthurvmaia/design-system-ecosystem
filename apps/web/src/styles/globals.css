@@ -328,6 +328,63 @@
   animation: ds-glow-pulse 2.4s ease-in-out infinite alternate;
 }
 
+/* O núcleo respirando: só brilho e escala mínima, sem deslocamento. O mascote
+   aparece ao lado de texto, e uma imagem que se move faz a linha inteira parecer
+   tremer. */
+.ds-nucleo-pulsa {
+  animation: ds-nucleo 3.2s ease-in-out infinite;
+}
+
+/* O núcleo grande da tela de Início, dentro de um halo próprio. O halo é uma
+   camada separada porque precisa vazar para fora do desenho — se fosse sombra da
+   imagem, o alfa do PNG a recortaria junto. */
+.ds-home-halo {
+  position: absolute;
+  inset: -34%;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgb(14 165 233 / 0.22) 0%, transparent 62%);
+  filter: blur(28px);
+  pointer-events: none;
+}
+
+.ds-home-nucleo {
+  animation: ds-marca-orbe 34s linear infinite;
+}
+
+/* O núcleo girando: é o indicador de carregamento do app inteiro.
+   1,4 s por volta — a mesma cadência do spinner que ele substitui, para a espera
+   não passar a parecer mais lenta do que era. O brilho oscila junto, senão em
+   12px o giro de um desenho radial quase não se percebe. */
+.ds-nucleo-gira {
+  animation: ds-nucleo-gira 1.4s linear infinite;
+}
+
+@keyframes ds-nucleo-gira {
+  0% {
+    transform: rotate(0deg);
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.4);
+  }
+  100% {
+    transform: rotate(1turn);
+    filter: brightness(1);
+  }
+}
+
+@keyframes ds-nucleo {
+  0%,
+  100% {
+    filter: brightness(0.85);
+    transform: scale(0.98);
+  }
+  50% {
+    filter: brightness(1.25);
+    transform: scale(1.02);
+  }
+}
+
 @keyframes ds-glow-pulse {
   from {
     box-shadow: 0 0 16px -6px rgb(56 189 248 / 0.4);
@@ -362,27 +419,70 @@
   text-shadow: 0 0 18px rgb(56 189 248 / 0.5);
 }
 
-/* A marca inclina e o ponto bate. */
-.ds-logo-hover {
-  transition: transform 0.35s var(--ease-ds);
+/* ── A marca ─────────────────────────────────────────────────────────────────
+   O núcleo dentro de um anel de instrumento. Os dois giram em sentidos
+   OPOSTOS e em velocidades diferentes: é o que dá movimento contínuo sem nada
+   sair do lugar nem piscar. Uma marca que pisca chama atenção o tempo todo; uma
+   que gira devagar só diz que está ligada.
+
+   O anel é um cônico mascarado — o mesmo truque do `.ds-beam`, mas permanente e
+   muito mais discreto. */
+.ds-marca-nucleo {
+  transition: transform 0.5s var(--ease-entrada);
 }
 
-.ds-logo-hover:hover {
-  transform: rotate(-4deg) scale(1.06);
+.ds-marca:hover .ds-marca-nucleo {
+  transform: scale(1.08);
 }
 
-.ds-logo-hover:hover .ds-logo-dot {
-  animation: ds-beat 0.6s ease-in-out;
+.ds-marca-anel {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  padding: 1px;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 190deg,
+    rgb(56 189 248 / 0.55) 280deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: ds-marca-anel 9s linear infinite;
+  pointer-events: none;
 }
 
-@keyframes ds-beat {
-  0%,
-  100% {
-    transform: scale(1);
+@keyframes ds-marca-anel {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* O orbe gira ao contrário, bem mais devagar, e respira de leve. Devagar de
+   propósito: o desenho tem anéis e marcações finas, e girar rápido vira cintilação
+   no canto do olho de quem está lendo outra coisa na tela. */
+.ds-marca-orbe {
+  animation: ds-marca-orbe 26s linear infinite;
+}
+
+@keyframes ds-marca-orbe {
+  0% {
+    transform: rotate(0deg);
+    filter: brightness(0.9);
   }
   50% {
-    transform: scale(1.25);
+    filter: brightness(1.15);
   }
+  100% {
+    transform: rotate(-1turn);
+    filter: brightness(0.9);
+  }
+}
+
+.ds-marca:hover .ds-marca-orbe {
+  filter: brightness(1.35) drop-shadow(0 0 10px rgb(56 189 248 / 0.6));
 }
 
 /* ── Superfícies com gradiente ─────────────────────────────────────────────── */
@@ -611,6 +711,41 @@
   pointer-events: none;
 }
 
+/* O vídeo do mascote, como cenário. `object-fit: contain` e não `cover`: o
+   mascote é um círculo centrado, e cortar as bordas dele numa tela larga tiraria
+   justamente os anéis externos, que são o desenho. */
+.intro-video {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  /* O vídeo é PANO DE FUNDO: ocupa a tela inteira, e o conteúdo vive por cima.
+     `cover` porque é uma cena (a bancada inteira), não um ícone recortado —
+     faixas pretas dos lados dariam ar de slide, e a ideia é o app abrir dentro
+     do laboratório. */
+  object-fit: cover;
+  object-position: center;
+  background: #000000;
+}
+
+/* O véu que faz o vídeo ser fundo e não assunto.
+   Duas camadas na mesma declaração: uma vinheta radial que fecha as bordas e
+   guarda o centro, e um escurecimento uniforme por cima. Sem ele, um quadro
+   claro do vídeo apaga o texto — e a informação, que é o que o log tem de
+   melhor, viraria enfeite ilegível. */
+.intro-veu {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(
+      ellipse 70% 60% at 50% 50%,
+      rgb(0 0 0 / 0.35) 0%,
+      rgb(0 0 0 / 0.86) 100%
+    ), rgb(0 0 0 / 0.45);
+}
+
 /* Grade e halo próprios da intro: mais densos que os do app, porque aqui a tela
    está vazia e a grade É o cenário. */
 .intro-bg {
@@ -680,6 +815,15 @@
   text-align: left;
 }
 
+/* O texto da abertura corre por cima de um vídeo, e vídeo tem quadro claro.
+   O véu escurece a cena, mas quem garante a leitura em QUALQUER quadro é a
+   sombra presa ao próprio texto — véu suficiente para isso apagaria o vídeo. */
+.intro-log,
+.intro-line1,
+.intro-line2 {
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.9), 0 0 14px rgb(0 0 0 / 0.75);
+}
+
 .intro-linha {
   display: flex;
   align-items: baseline;
@@ -730,7 +874,6 @@
   font-size: clamp(22px, 5vw, 46px);
   line-height: 1.05;
   color: var(--color-bone-1);
-  text-shadow: 0 0 40px rgb(56 189 248 / 0.35);
   opacity: 0;
   animation: intro-rise 1s var(--ease-entrada) both;
 }
@@ -744,7 +887,7 @@
   text-transform: uppercase;
   letter-spacing: 0.3em;
   font-size: clamp(10px, 1.6vw, 13px);
-  color: var(--color-fg-subtle);
+  color: var(--color-fg-muted);
   opacity: 0;
   animation: intro-fade 0.9s var(--ease-ds) both;
 }
@@ -848,6 +991,10 @@
     display: none;
   }
 
+  .ds-marca-anel {
+    display: none;
+  }
+
   .ds-reveal {
     opacity: 1;
     transform: none;
@@ -858,7 +1005,8 @@
      curta agora porque o tema reage por cor, não por deslocamento. */
   .ds-card:hover .ds-card-content,
   .ds-btn:hover,
-  .ds-logo-hover:hover {
+  .ds-marca:hover .ds-marca-nucleo,
+  .ds-nucleo-pulsa {
     transform: none;
   }
 }
@@ -874,7 +1022,8 @@
   transition-duration: 0.01ms !important;
 }
 :root.reduz-movimento .ds-beam::after,
-:root.reduz-movimento .intro-scan {
+:root.reduz-movimento .intro-scan,
+:root.reduz-movimento .ds-marca-anel {
   display: none;
 }
 :root.reduz-movimento .ds-reveal {
@@ -883,6 +1032,7 @@
 }
 :root.reduz-movimento .ds-card:hover .ds-card-content,
 :root.reduz-movimento .ds-btn:hover,
-:root.reduz-movimento .ds-logo-hover:hover {
+:root.reduz-movimento .ds-marca:hover .ds-marca-nucleo,
+:root.reduz-movimento .ds-nucleo-pulsa {
   transform: none;
 }

@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Compass,
+  Home,
   Layers,
   Library,
   type LucideIcon,
@@ -32,6 +33,7 @@ export type NavItemDef = {
  * propósito — ela é exceção, não etapa obrigatória.
  */
 export const primaryNav: NavItemDef[] = [
+  { to: '/inicio', label: 'Início', icon: Home, description: 'O que este app faz' },
   { to: '/extract', label: 'Extrair', icon: UploadCloud, description: 'Nova extração' },
   { to: '/gallery', label: 'Galeria', icon: Compass, description: 'Triagem de candidatos' },
   { to: '/library', label: 'Biblioteca', icon: Library, description: 'Acervo curado' },

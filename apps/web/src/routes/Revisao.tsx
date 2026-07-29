@@ -1,11 +1,12 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
+import { Mascote } from '@/components/Mascote';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type RejectedSegment, api, previewRejeitadoUrl } from '@/lib/api';
 import { usePreferencias } from '@/lib/preferencias';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Info, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { CheckCircle2, Info, Sparkles, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 const CAT_LABEL: Record<string, string> = {
@@ -179,11 +180,7 @@ function CardRejeitado({
             className="ds-btn flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-40"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
-            {recuperar.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Sparkles size={12} />
-            )}
+            {recuperar.isPending ? <Mascote tamanho={12} girando /> : <Sparkles size={12} />}
             Aproveitar mesmo assim
           </button>
           <div className="relative ml-auto">
@@ -198,11 +195,7 @@ function CardRejeitado({
               className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:bg-[rgba(239,68,68,0.14)] disabled:opacity-40"
               style={{ color: 'var(--color-fg-muted)' }}
             >
-              {descartar.isPending ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Trash2 size={12} />
-              )}
+              {descartar.isPending ? <Mascote tamanho={12} girando /> : <Trash2 size={12} />}
               Descartar
             </button>
             <ConfirmPop

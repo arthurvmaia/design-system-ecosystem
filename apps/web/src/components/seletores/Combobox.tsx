@@ -1,6 +1,7 @@
+import { Mascote } from '@/components/Mascote';
 import { cn } from '@/lib/cn';
 import { type OpcaoDeSeletor, filtrarOpcoes, moverAtivo } from '@/lib/seletor-core';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { Flutuante } from './Flutuante';
 import { ListaDeOpcoes } from './partes';
@@ -113,7 +114,7 @@ export function Combobox({
           style={{ color: 'var(--color-fg)' }}
         />
         {carregando ? (
-          <Loader2 size={14} className="shrink-0 animate-spin opacity-50" />
+          <Mascote tamanho={14} girando esmaecido className="shrink-0" />
         ) : (
           <ChevronDown
             size={14}

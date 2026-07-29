@@ -11,6 +11,7 @@ import { SettingsPage } from '@/routes/Settings';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { HomePage } from './routes/Home';
 import { ProjectsPage } from './routes/projects';
 
 const queryClient = new QueryClient({
@@ -50,7 +51,8 @@ export function App() {
       <Router>
         <Routes>
           <Route element={<Shell />}>
-            <Route index element={<Navigate to="/extract" replace />} />
+            <Route index element={<Navigate to="/inicio" replace />} />
+            <Route path="inicio" element={<HomePage />} />
             <Route path="/extract" element={<ExtractPage />} />
             <Route path="/gallery" element={<GalleryPage />} />
             <Route path="/revisao" element={<RevisaoPage />} />
@@ -59,7 +61,7 @@ export function App() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/meus-projetos" element={<MeusProjetosPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/extract" replace />} />
+            <Route path="*" element={<Navigate to="/inicio" replace />} />
           </Route>
         </Routes>
       </Router>

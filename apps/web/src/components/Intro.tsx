@@ -17,11 +17,17 @@ import { useEffect, useRef, useState } from 'react';
  * sequência segue. Cortina que trava porque o backend demorou é pior que
  * cortina nenhuma.
  *
- * O modo vídeo continua existindo: quem largar um `/intro.mp4` em `public/`
- * (ver `intro.README.md`) tem a própria abertura no lugar desta.
+ * O vídeo do mascote entra como CENÁRIO, não no lugar do log. Antes era um ou
+ * outro; ficou os dois. Trocar os números reais do acervo por uma animação seria
+ * trocar informação por enfeite, e um vídeo de 7 s sozinho é tempo parado. Juntos,
+ * o vídeo dá a cara e o log dá a notícia.
+ *
+ * Quem quiser outra abertura troca o `/intro.mp4` em `public/` (ver
+ * `intro.README.md`) — o mecanismo é o mesmo.
  */
 
 const VIDEO_SRC = '/intro.mp4';
+/** Sem vídeo, a abertura dura isto. Com vídeo, quem manda é o `onEnded`. */
 const DURACAO_MS = 5200;
 const DURACAO_REDUZIDA_MS = 2000;
 /** Intervalo entre as linhas do log. */
@@ -74,8 +80,13 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
     window.setTimeout(onFinish, 800);
   };
 
-  // Descobre se há um vídeo próprio; senão, a sequência de boot.
+  // Descobre se há vídeo. Com movimento reduzido nem pergunta: quem pediu menos
+  // movimento não deve receber sete segundos de animação em tela cheia.
   useEffect(() => {
+    if (reduzido) {
+      setModo('canvas');
+      return;
+    }
     let vivo = true;
     fetch(VIDEO_SRC, { method: 'HEAD' })
       .then((r) => {
@@ -88,19 +99,28 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [reduzido]);
 
-  // O relógio da abertura. No modo vídeo quem manda é o `onEnded`, mas o timer
-  // fica de rede: vídeo que não dispara `ended` deixaria a cortina para sempre.
+  // O relógio da abertura. No modo vídeo quem manda é o `onEnded`, e este timer é
+  // rede de segurança: vídeo que não dispara `ended` — codec sem suporte, arquivo
+  // truncado, aba em segundo plano — deixaria a cortina na tela para sempre.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `finalizar` é idempotente por guarda de ref (`jaFinalizou`), então não precisa reagendar quando a identidade dela muda
   useEffect(() => {
-    const t = window.setTimeout(finalizar, duracao + (modo === 'video' ? 20000 : 0));
+    if (modo === 'descobrindo') return;
+    const t = window.setTimeout(finalizar, modo === 'video' ? 20000 : duracao);
     return () => window.clearTimeout(t);
   }, [duracao, modo]);
 
+  // O som é SEMPRE o sintetizado, e o vídeo fica sempre mudo.
+  //
+  // Duas razões. A primeira é técnica: vídeo com áudio não roda sem gesto do
+  // usuário, e um vídeo que não roda é uma tela preta — mudo, ele sempre toca.
+  // A segunda é de projeto: a ignição é escrita para acompanhar o que a tela
+  // faz (as falhas, a pegada, o regime, um bipe por linha do log), coisa que a
+  // trilha embutida num vídeo qualquer não teria como fazer.
   useEffect(() => {
-    if (modo !== 'canvas' || !somLigado || reduzido) return;
-    const parar = tocarBoot(duracao);
+    if (modo === 'descobrindo' || !somLigado || reduzido) return;
+    const parar = tocarIgnicao(modo === 'video' ? 7000 : duracao);
     pararSom.current = parar;
     return () => {
       parar();
@@ -115,44 +135,58 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
   return (
     <div className={`intro-root${saindo ? ' intro-out' : ''}`} role="presentation">
       {modo === 'video' ? (
-        <video
-          ref={videoRef}
-          src={VIDEO_SRC}
-          autoPlay
-          muted={!somLigado}
-          playsInline
-          onEnded={finalizar}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+        <>
+          {/* Mudo sempre, de propósito: o navegador bloqueia autoplay com som, e
+              o bloqueio é silencioso — o vídeo fica parado no primeiro quadro e
+              a abertura parece não ter vídeo nenhum. Quem faz o som aqui é a
+              ignição sintetizada, que também acompanha o log. */}
+          <video
+            ref={videoRef}
+            src={VIDEO_SRC}
+            autoPlay
+            muted
+            playsInline
+            preload="auto"
+            onEnded={finalizar}
+            className="intro-video"
+          />
+          {/* O véu existe para o log ser legível por cima de qualquer quadro do
+              vídeo. Sem ele, um trecho claro apaga o texto e a informação vira
+              enfeite ilegível — que é o oposto do que ela está fazendo ali. */}
+          <div className="intro-veu" aria-hidden />
+        </>
       ) : (
         <>
           <div className="intro-halo" aria-hidden />
           <div className="intro-bg" aria-hidden />
           <div className="intro-scan" aria-hidden />
+        </>
+      )}
 
-          <div className="intro-stage">
-            <div className="intro-log">
-              {linhas.map((l, i) => (
-                <div key={l.rotulo} className="intro-linha" style={{ animationDelay: atraso(i) }}>
-                  <span className="rotulo">&gt; {l.rotulo}</span>
-                  <span className="pontos" aria-hidden />
-                  <span className="valor">{l.valor ?? '—'}</span>
-                </div>
-              ))}
+      {/* O log vale nos DOIS modos: é ele que carrega a notícia. */}
+      {modo !== 'descobrindo' && (
+        <div className="intro-stage">
+          <div className="intro-log">
+            {linhas.map((l, i) => (
+              <div key={l.rotulo} className="intro-linha" style={{ animationDelay: atraso(i) }}>
+                <span className="rotulo">&gt; {l.rotulo}</span>
+                <span className="pontos" aria-hidden />
+                <span className="valor">{l.valor ?? '—'}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="intro-marca">
+            <div className="intro-line1" style={{ animationDelay: atrasoMarca(0) }}>
+              Design System
             </div>
-
-            <div className="intro-marca">
-              <div className="intro-line1" style={{ animationDelay: atrasoMarca(0) }}>
-                Design System
-              </div>
-              <div className="intro-underline" style={{ animationDelay: atrasoMarca(0.15) }} />
-              <div className="intro-line2" style={{ animationDelay: atrasoMarca(0.35) }}>
-                <span className="intro-dot" aria-hidden />
-                extrai · cura · gera
-              </div>
+            <div className="intro-underline" style={{ animationDelay: atrasoMarca(0.15) }} />
+            <div className="intro-line2" style={{ animationDelay: atrasoMarca(0.35) }}>
+              <span className="intro-dot" aria-hidden />
+              extrai · cura · gera
             </div>
           </div>
-        </>
+        </div>
       )}
 
       <div className="intro-controls">
@@ -176,15 +210,26 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
 }
 
 /**
- * A trilha, sintetizada em Web Audio.
+ * O som de um sistema tentando ligar.
  *
- * Sintetizada em vez de arquivo por dois motivos: a abertura não depende de
- * baixar nada, e dá para cortar no meio sem estalo. Devolve a função que corta —
- * quem clica em "pular" não pode continuar ouvindo o fim de um som que já não
- * tem imagem. O ganho desce em rampa antes de parar, porque cortar um oscilador
- * no seco produz um clique audível.
+ * Sintetizado, não gravado: a abertura não depende de baixar nada, e dá para
+ * cortar no meio sem estalo. Devolve a função que corta — quem aperta "pular"
+ * não pode continuar ouvindo o fim de um som que já não tem imagem.
+ *
+ * A dramaturgia é a de uma máquina antiga acordando, e é feita de três partes:
+ *
+ * 1. **A ignição falha duas vezes.** Um zumbido grave sobe, engasga e morre.
+ *    É o que faz o terceiro ser um alívio em vez de só um começo.
+ * 2. **A pegada.** Varredura de frequência subindo com o filtro abrindo junto,
+ *    mais um golpe grave — o instante em que o núcleo pega.
+ * 3. **O regime.** Duas ondas quase afinadas, batendo lentamente entre si. O
+ *    batimento é o que soa "ligado" em vez de "nota musical parada".
+ *
+ * Sobre o autoplay: o navegador cria o contexto suspenso enquanto não houve
+ * gesto do usuário. Em vez de fingir que tocou, o retorno inclui o religamento
+ * no primeiro clique ou tecla — o som entra atrasado, mas entra.
  */
-function tocarBoot(duracaoMs: number): () => void {
+function tocarIgnicao(duracaoMs: number): () => void {
   let ctx: AudioContext;
   try {
     const Ctor =
@@ -196,48 +241,121 @@ function tocarBoot(duracaoMs: number): () => void {
     return () => {};
   }
 
-  const agora = ctx.currentTime;
-  const fim = agora + duracaoMs / 1000;
+  const t0 = ctx.currentTime;
+  const fim = t0 + duracaoMs / 1000;
   const mestre = ctx.createGain();
-  mestre.gain.value = 0.0001;
+  mestre.gain.value = 0.9;
   mestre.connect(ctx.destination);
-  mestre.gain.exponentialRampToValueAtTime(0.16, agora + 1.2);
-  mestre.gain.exponentialRampToValueAtTime(0.0001, fim);
 
-  // Drone: duas ondas quase afinadas. O batimento lento entre elas é o que dá a
-  // sensação de máquina ligada, em vez de uma nota musical parada.
-  const filtro = ctx.createBiquadFilter();
-  filtro.type = 'lowpass';
-  filtro.frequency.value = 520;
-  filtro.connect(mestre);
+  /** Uma tentativa que não pega: sobe, engasga, morre. */
+  const tentativa = (quando: number, dur: number): void => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(300, quando);
+    f.frequency.linearRampToValueAtTime(900, quando + dur * 0.6);
+    f.frequency.linearRampToValueAtTime(180, quando + dur);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(38, quando);
+    osc.frequency.linearRampToValueAtTime(84, quando + dur * 0.6);
+    osc.frequency.linearRampToValueAtTime(30, quando + dur);
+    g.gain.setValueAtTime(0.0001, quando);
+    g.gain.exponentialRampToValueAtTime(0.12, quando + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, quando + dur);
+    osc.connect(f);
+    f.connect(g);
+    g.connect(mestre);
+    osc.start(quando);
+    osc.stop(quando + dur + 0.05);
+  };
 
-  for (const hz of [55, 55.6, 110]) {
+  tentativa(t0 + 0.15, 0.42);
+  tentativa(t0 + 0.85, 0.34);
+
+  // A pegada: varredura subindo com o filtro abrindo junto.
+  const pega = t0 + 1.5;
+  const sweep = ctx.createOscillator();
+  const sweepG = ctx.createGain();
+  const sweepF = ctx.createBiquadFilter();
+  sweepF.type = 'lowpass';
+  sweepF.frequency.setValueAtTime(220, pega);
+  sweepF.frequency.exponentialRampToValueAtTime(4200, pega + 1.1);
+  sweep.type = 'sawtooth';
+  sweep.frequency.setValueAtTime(40, pega);
+  sweep.frequency.exponentialRampToValueAtTime(220, pega + 1.1);
+  sweepG.gain.setValueAtTime(0.0001, pega);
+  sweepG.gain.exponentialRampToValueAtTime(0.16, pega + 0.5);
+  sweepG.gain.exponentialRampToValueAtTime(0.02, pega + 1.5);
+  sweep.connect(sweepF);
+  sweepF.connect(sweepG);
+  sweepG.connect(mestre);
+  sweep.start(pega);
+  sweep.stop(pega + 1.6);
+
+  // O golpe grave do instante em que pega.
+  const golpe = ctx.createOscillator();
+  const golpeG = ctx.createGain();
+  golpe.type = 'sine';
+  golpe.frequency.setValueAtTime(160, pega + 0.95);
+  golpe.frequency.exponentialRampToValueAtTime(38, pega + 1.45);
+  golpeG.gain.setValueAtTime(0.0001, pega + 0.95);
+  golpeG.gain.exponentialRampToValueAtTime(0.3, pega + 1.02);
+  golpeG.gain.exponentialRampToValueAtTime(0.0001, pega + 1.7);
+  golpe.connect(golpeG);
+  golpeG.connect(mestre);
+  golpe.start(pega + 0.95);
+  golpe.stop(pega + 1.8);
+
+  // O regime: duas ondas quase afinadas, batendo devagar entre si.
+  const regime = pega + 1.0;
+  const droneG = ctx.createGain();
+  const droneF = ctx.createBiquadFilter();
+  droneF.type = 'lowpass';
+  droneF.frequency.value = 620;
+  droneG.gain.setValueAtTime(0.0001, regime);
+  droneG.gain.exponentialRampToValueAtTime(0.11, regime + 1.2);
+  droneG.gain.exponentialRampToValueAtTime(0.0001, fim);
+  droneF.connect(droneG);
+  droneG.connect(mestre);
+  for (const hz of [55, 55.7, 110.4]) {
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
     osc.frequency.value = hz;
-    osc.connect(filtro);
-    osc.start(agora);
+    osc.connect(droneF);
+    osc.start(regime);
     osc.stop(fim + 0.1);
   }
 
-  // Um bipe curto por linha do log, subindo de tom: é o que amarra o som ao que
-  // está acontecendo na tela, em vez de ser trilha por cima.
+  // Um bipe por linha do log, subindo de tom — amarra o som ao que acontece na
+  // tela, em vez de ser trilha por cima.
   for (let i = 0; i < 4; i++) {
-    const t = agora + 0.35 + i * PASSO_S;
+    const t = regime + 0.5 + i * PASSO_S;
+    if (t > fim - 0.3) break;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.value = 880 + i * 110;
+    osc.frequency.value = 880 + i * 130;
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.06, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    g.gain.exponentialRampToValueAtTime(0.05, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
     osc.connect(g);
     g.connect(mestre);
     osc.start(t);
-    osc.stop(t + 0.2);
+    osc.stop(t + 0.18);
+  }
+
+  // Se o navegador segurou o contexto por falta de gesto, o primeiro clique ou
+  // tecla libera. Ouvintes de uma vez só, e removidos no corte.
+  const destravar = (): void => void ctx.resume().catch(() => {});
+  if (ctx.state === 'suspended') {
+    window.addEventListener('pointerdown', destravar, { once: true });
+    window.addEventListener('keydown', destravar, { once: true });
   }
 
   return () => {
+    window.removeEventListener('pointerdown', destravar);
+    window.removeEventListener('keydown', destravar);
     try {
       mestre.gain.cancelScheduledValues(ctx.currentTime);
       mestre.gain.setValueAtTime(mestre.gain.value, ctx.currentTime);
