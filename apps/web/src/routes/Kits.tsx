@@ -773,7 +773,11 @@ function KitDesignSystemPanel({
   kitId: string;
   desatualizado: boolean;
 }) {
-  const [aberto, setAberto] = useState(true);
+  // Fechado por padrão: é conferência, não tarefa. Quem abre o editor de kit
+  // veio escolher peças; este painel serve para tirar uma dúvida específica
+  // ("o que vai acontecer com as cores?"), e ocupar a tela o tempo todo com a
+  // resposta de uma pergunta que ainda não foi feita é o que deixa a tela suja.
+  const [aberto, setAberto] = useState(false);
   const ds = useQuery({
     queryKey: ['kit-design-system', kitId],
     queryFn: () => api.getKitDesignSystem(kitId),
@@ -840,6 +844,21 @@ function KitDesignSystemPanel({
                   novas.
                 </div>
               )}
+              {/* A explicação vem ANTES dos swatches, e não depois.
+                  Ela ficava no rodapé do painel, e o efeito foi medido em uso
+                  real: quem lê de cima para baixo encontra primeiro uma fila de
+                  quadradinhos com percentagens sem rótulo, e a pergunta que
+                  aparece é "para que serve isto?". A resposta chegava tarde
+                  demais para ser lida. */}
+              <div
+                className="text-[12px] leading-[1.55]"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                Estas são as cores que as peças deste kit usam hoje, e o papel que eu dei a cada
+                uma. Quando eu gerar um site, cada cor com {LIMIAR_RECOLORIR_PCT}% ou mais de
+                confiança vira a cor equivalente da paleta do projeto; abaixo disso eu mantenho a
+                cor original, porque errar a troca é pior que não trocar.
+              </div>
               {item.tema === 'misto' && (
                 <div
                   className="text-[12px] leading-snug"
@@ -856,10 +875,6 @@ function KitDesignSystemPanel({
                   nome={nomeDaOrigem(origem.designSystemId)}
                 />
               ))}
-              <div className="text-[11px] leading-snug" style={{ color: 'var(--color-fg-subtle)' }}>
-                Papel com {LIMIAR_RECOLORIR_PCT}% ou mais de confiança eu troco pela cor da marca na
-                geração; abaixo disso, a cor original fica.
-              </div>
               {item.limitacoes.length > 0 && (
                 <div
                   className="rounded-lg border px-3.5 py-3"

@@ -73,3 +73,28 @@ test('fontes: genéricas ficam de fora, monospace sugere mono', () => {
     undefined,
   );
 });
+
+test('só a primeira família da pilha conta: o resto é fallback, não escolha', () => {
+  // O caso real do painel do kit: a pilha de um site trazia a fonte escolhida
+  // seguida de sete fallbacks de sistema e de emoji. Listar todos punha
+  // "Apple Color Emoji" e "Menlo" ao lado de "Geist" como se fossem decisões.
+  const fontes = inventariarFontes(
+    `.a{font-family:Geist,-apple-system,BlinkMacSystemFont,'Segoe UI','Apple Color Emoji','Segoe UI Symbol'}`,
+  );
+  assert.deepEqual(
+    fontes.map((f) => f.familia),
+    ['Geist'],
+  );
+});
+
+test('genérica na frente não rouba o lugar da família escolhida', () => {
+  const fontes = inventariarFontes(`.a{font-family:system-ui,'Playfair Display',serif}`);
+  assert.deepEqual(
+    fontes.map((f) => f.familia),
+    ['Playfair Display'],
+  );
+});
+
+test('pilha inteiramente genérica não inventa família nenhuma', () => {
+  assert.deepEqual(inventariarFontes('.a{font-family:sans-serif}'), []);
+});
