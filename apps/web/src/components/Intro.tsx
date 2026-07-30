@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import { ORBIS } from '@/lib/orbis';
 import { usePreferencias } from '@/lib/preferencias';
 import { useQuery } from '@tanstack/react-query';
 import { SkipForward, Volume2, VolumeX } from 'lucide-react';
@@ -40,6 +41,15 @@ type Linha = { rotulo: string; valor: string | undefined };
 
 export function Intro({ onFinish }: { onFinish: () => void }) {
   const [saindo, setSaindo] = useState(false);
+  /**
+   * O navegador segurou o som e a imagem está esperando junto.
+   *
+   * Não é um detalhe de áudio: enquanto isso for verdade, o vídeo fica PARADO
+   * no primeiro quadro de propósito, porque som e imagem desta abertura foram
+   * sincronizados quadro a quadro e deixar um correr sem o outro entrega as
+   * duas coisas erradas.
+   */
+  const [somTravado, setSomTravado] = useState(false);
   const [modo, setModo] = useState<Modo>('descobrindo');
   const jaFinalizou = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -125,6 +135,26 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
     const parar = tocarIgnicao(
       modo === 'video' ? 7000 : duracao,
       modo === 'video' ? BATIDAS_VIDEO : BATIDAS_CANVAS,
+      {
+        aoBloquear: () => {
+          setSomTravado(true);
+          const v = videoRef.current;
+          if (v !== null) {
+            v.pause();
+            v.currentTime = 0;
+          }
+        },
+        // Voltam JUNTOS, do zero. Retomar de onde a imagem parou deixaria a
+        // ignição do som acontecendo depois da ignição da tela.
+        aoDestravar: () => {
+          setSomTravado(false);
+          const v = videoRef.current;
+          if (v !== null) {
+            v.currentTime = 0;
+            void v.play().catch(() => {});
+          }
+        },
+      },
     );
     pararSom.current = parar;
     return () => {
@@ -166,6 +196,20 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
           <div className="intro-bg" aria-hidden />
           <div className="intro-scan" aria-hidden />
         </>
+      )}
+
+      {/* Mudo sem explicação parece app quebrado. Uma linha, discreta, dizendo
+          o que falta e o que fazer. Some sozinha no primeiro toque. */}
+      {somTravado && somLigado && (
+        <button
+          type="button"
+          className="intro-destravar"
+          onClick={() => {
+            /* o ouvinte de pointerdown do próprio som faz o trabalho */
+          }}
+        >
+          Toque para ouvir o {ORBIS}
+        </button>
       )}
 
       {/* O log vale nos DOIS modos: é ele que carrega a notícia. */}
@@ -279,7 +323,11 @@ const BATIDAS_CANVAS: Batidas = {
 };
 const BATIDAS_VIDEO: Batidas = { falha1: 0.5, falha2: 1.35, pega: 2.5, subida: 1.6, vozApos: 0.3 };
 
-function tocarIgnicao(duracaoMs: number, batidas: Batidas): () => void {
+function tocarIgnicao(
+  duracaoMs: number,
+  batidas: Batidas,
+  avisos?: { aoBloquear?: () => void; aoDestravar?: () => void },
+): () => void {
   let ctx: AudioContext;
   try {
     const Ctor =
@@ -480,13 +528,38 @@ function tocarIgnicao(duracaoMs: number, batidas: Batidas): () => void {
       /* sem voz: a ignição sozinha continua contando a história */
     });
 
-  // Se o navegador segurou o contexto por falta de gesto, o primeiro clique ou
-  // tecla libera. Ouvintes de uma vez só, e removidos no corte.
-  const destravar = (): void => void ctx.resume().catch(() => {});
-  if (ctx.state === 'suspended') {
-    window.addEventListener('pointerdown', destravar, { once: true });
-    window.addEventListener('keydown', destravar, { once: true });
-  }
+  // ── Quando o navegador segura o som ──────────────────────────────────────
+  //
+  // O contexto nasce suspenso enquanto não houve gesto do usuário. O que isso
+  // provoca é pior do que silêncio, e foi medido: `ctx.currentTime` NÃO ANDA
+  // enquanto ele está suspenso, mas o vídeo anda. Quem clicava aos 4 s ouvia a
+  // ignição começar do zero com a imagem já perto do fim, as duas contando
+  // histórias diferentes ao mesmo tempo.
+  //
+  // Primeiro tentamos destravar sozinhos: às vezes a permissão já existe (o
+  // navegador aberto pelo INICIAR, ou uma origem em que a pessoa já interagiu
+  // antes) e o `resume()` simplesmente funciona.
+  //
+  // Se não funcionar, quem chamou é avisado para SEGURAR A IMAGEM também. Só
+  // assim as duas voltam juntas no primeiro toque.
+  const destravar = (): void => {
+    ctx
+      .resume()
+      .then(() => {
+        if (ctx.state === 'running') avisos?.aoDestravar?.();
+      })
+      .catch(() => {});
+  };
+
+  void ctx
+    .resume()
+    .catch(() => {})
+    .finally(() => {
+      if (ctx.state === 'running') return;
+      avisos?.aoBloquear?.();
+      window.addEventListener('pointerdown', destravar, { once: true });
+      window.addEventListener('keydown', destravar, { once: true });
+    });
 
   return () => {
     window.removeEventListener('pointerdown', destravar);
