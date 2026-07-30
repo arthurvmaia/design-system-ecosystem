@@ -21,7 +21,7 @@ export function BrandMark() {
           movimento sem nenhum dos dois sair do lugar. */}
       <span className="ds-marca-nucleo relative grid h-[30px] w-[30px] shrink-0 place-items-center">
         <span className="ds-marca-anel" aria-hidden />
-        <Mascote tamanho={22} className="ds-marca-orbe" />
+        <Mascote tamanho={22} animacaoPropria className="ds-marca-orbe" />
       </span>
 
       {/* O nome em cima, o que ele faz embaixo.

@@ -213,7 +213,7 @@ function AnelLoading({ pct, concluido }: { pct: number; concluido: boolean }) {
           está dizendo que há alguém trabalhando, não quanto falta. */}
       {!concluido && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <Mascote tamanho={38} pulsando esmaecido />
+          <Mascote tamanho={38} esmaecido />
         </div>
       )}
       <div className="absolute inset-0 flex items-center justify-center">

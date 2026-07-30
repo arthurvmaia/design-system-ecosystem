@@ -487,8 +487,8 @@ function VazioState({ carregando, onNovo }: { carregando: boolean; onNovo: () =>
       <Mascote
         tamanho={96}
         esmaecido
-        pulsando={carregando}
-        alt={carregando ? 'Conferindo os kits' : 'O núcleo do sistema, apagado: nenhum kit ainda'}
+        girando={carregando}
+        alt={carregando ? 'Conferindo os kits' : 'O Orbis, em repouso: nenhum kit ainda'}
         className="mx-auto"
       />
       <div className="mt-5 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>

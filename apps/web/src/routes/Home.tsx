@@ -76,7 +76,6 @@ export function HomePage() {
           <span className="ds-home-halo" aria-hidden />
           <Mascote
             tamanho={132}
-            pulsando
             alt={`${ORBIS}, o núcleo do sistema`}
             className="ds-home-nucleo relative"
           />

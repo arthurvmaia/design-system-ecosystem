@@ -285,11 +285,11 @@ function VazioState({ carregando }: { carregando: boolean }) {
       <Mascote
         tamanho={96}
         esmaecido
-        pulsando={carregando}
+        girando={carregando}
         alt={
           carregando
-            ? 'O núcleo do sistema, pulsando: procurando os sites prontos'
-            : 'O núcleo do sistema, apagado: nenhum site pronto ainda'
+            ? 'O Orbis, girando: procurando os sites prontos'
+            : 'O Orbis, em repouso: nenhum site pronto ainda'
         }
         className="mx-auto"
       />

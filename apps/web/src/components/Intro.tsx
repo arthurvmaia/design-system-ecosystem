@@ -122,7 +122,10 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
   // trilha embutida num vídeo qualquer não teria como fazer.
   useEffect(() => {
     if (modo === 'descobrindo' || !somLigado || reduzido) return;
-    const parar = tocarIgnicao(modo === 'video' ? 7000 : duracao);
+    const parar = tocarIgnicao(
+      modo === 'video' ? 7000 : duracao,
+      modo === 'video' ? BATIDAS_VIDEO : BATIDAS_CANVAS,
+    );
     pararSom.current = parar;
     return () => {
       parar();
@@ -231,7 +234,52 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
  * gesto do usuário. Em vez de fingir que tocou, o retorno inclui o religamento
  * no primeiro clique ou tecla — o som entra atrasado, mas entra.
  */
-function tocarIgnicao(duracaoMs: number): () => void {
+
+/**
+ * As batidas da ignicao, em segundos.
+ *
+ * O som conta uma historia (falha, falha, pega, regime) e ela so funciona se
+ * cair EM CIMA do que a tela faz. Com a animacao em canvas quem manda e o som,
+ * porque o canvas foi desenhado em volta dele. Com video quem manda e o video,
+ * e ai os numeros nao podem ser inventados.
+ *
+ * Os do video foram MEDIDOS: abri o intro.mp4 num navegador, amostrei o brilho
+ * medio do quadro a cada 0,25 s e li a curva. Ela diz, sem ambiguidade:
+ *
+ *   0,00 a 1,25 s   escuro (brilho ~3)
+ *   1,50 s          um tremeluzir (5,3) que morre logo depois
+ *   2,50 s em diante subida continua (5,3 → 9 → 16 → 23)
+ *   4,00 a 4,25 s   o estouro (67 → 73), o instante em que ele liga
+ *   4,50 s adiante  estavel, camera se aproximando
+ *
+ * Antes desta medicao o som acendia em 1,5 s e a voz falava em 3,0 s: o Orbis
+ * se apresentava 1,1 s ANTES de acender na tela.
+ *
+ * Trocar o video sem refazer essa leitura devolve o desencontro. O jeito de
+ * refazer esta em `docs/` junto do intro.README.md.
+ */
+type Batidas = {
+  /** As duas ignicoes que falham. */
+  falha1: number;
+  falha2: number;
+  /** Quando a luz comeca a subir de verdade. */
+  pega: number;
+  /** Quanto tempo a subida leva ate o estouro. */
+  subida: number;
+  /** Quanto tempo depois do estouro o Orbis fala. */
+  vozApos: number;
+};
+
+const BATIDAS_CANVAS: Batidas = {
+  falha1: 0.15,
+  falha2: 0.85,
+  pega: 1.5,
+  subida: 1.1,
+  vozApos: 0.4,
+};
+const BATIDAS_VIDEO: Batidas = { falha1: 0.5, falha2: 1.35, pega: 2.5, subida: 1.6, vozApos: 0.3 };
+
+function tocarIgnicao(duracaoMs: number, batidas: Batidas): () => void {
   let ctx: AudioContext;
   try {
     const Ctor =
@@ -272,45 +320,47 @@ function tocarIgnicao(duracaoMs: number): () => void {
     osc.stop(quando + dur + 0.05);
   };
 
-  tentativa(t0 + 0.15, 0.42);
-  tentativa(t0 + 0.85, 0.34);
+  tentativa(t0 + batidas.falha1, 0.42);
+  tentativa(t0 + batidas.falha2, 0.34);
 
   // A pegada: varredura subindo com o filtro abrindo junto.
-  const pega = t0 + 1.5;
+  const pega = t0 + batidas.pega;
+  /** O instante do estouro: onde o golpe grave e a voz se penduram. */
+  const estouro = pega + batidas.subida;
   const sweep = ctx.createOscillator();
   const sweepG = ctx.createGain();
   const sweepF = ctx.createBiquadFilter();
   sweepF.type = 'lowpass';
   sweepF.frequency.setValueAtTime(220, pega);
-  sweepF.frequency.exponentialRampToValueAtTime(4200, pega + 1.1);
+  sweepF.frequency.exponentialRampToValueAtTime(4200, estouro);
   sweep.type = 'sawtooth';
   sweep.frequency.setValueAtTime(40, pega);
-  sweep.frequency.exponentialRampToValueAtTime(220, pega + 1.1);
+  sweep.frequency.exponentialRampToValueAtTime(220, estouro);
   sweepG.gain.setValueAtTime(0.0001, pega);
   sweepG.gain.exponentialRampToValueAtTime(0.16, pega + 0.5);
-  sweepG.gain.exponentialRampToValueAtTime(0.02, pega + 1.5);
+  sweepG.gain.exponentialRampToValueAtTime(0.02, estouro + 0.4);
   sweep.connect(sweepF);
   sweepF.connect(sweepG);
   sweepG.connect(mestre);
   sweep.start(pega);
-  sweep.stop(pega + 1.6);
+  sweep.stop(estouro + 0.5);
 
   // O golpe grave do instante em que pega.
   const golpe = ctx.createOscillator();
   const golpeG = ctx.createGain();
   golpe.type = 'sine';
-  golpe.frequency.setValueAtTime(160, pega + 0.95);
-  golpe.frequency.exponentialRampToValueAtTime(38, pega + 1.45);
-  golpeG.gain.setValueAtTime(0.0001, pega + 0.95);
-  golpeG.gain.exponentialRampToValueAtTime(0.3, pega + 1.02);
-  golpeG.gain.exponentialRampToValueAtTime(0.0001, pega + 1.7);
+  golpe.frequency.setValueAtTime(160, estouro);
+  golpe.frequency.exponentialRampToValueAtTime(38, estouro + 0.5);
+  golpeG.gain.setValueAtTime(0.0001, estouro);
+  golpeG.gain.exponentialRampToValueAtTime(0.3, estouro + 0.07);
+  golpeG.gain.exponentialRampToValueAtTime(0.0001, estouro + 0.75);
   golpe.connect(golpeG);
   golpeG.connect(mestre);
-  golpe.start(pega + 0.95);
-  golpe.stop(pega + 1.8);
+  golpe.start(estouro);
+  golpe.stop(estouro + 0.85);
 
   // O regime: duas ondas quase afinadas, batendo devagar entre si.
-  const regime = pega + 1.0;
+  const regime = estouro - 0.5;
   const droneG = ctx.createGain();
   const droneF = ctx.createBiquadFilter();
   droneF.type = 'lowpass';
@@ -385,7 +435,7 @@ function tocarIgnicao(duracaoMs: number): () => void {
       // golpe grave, mas se a frase for longa ela entra antes para terminar
       // junto com a cena. Se não couber nem começando agora, não toca. Meia
       // apresentação é pior que nenhuma.
-      const ideal = pega + 1.5;
+      const ideal = estouro + batidas.vozApos;
       const ultimoPossivel = fim - audio.duration - 0.15;
       const quando = Math.min(ideal, ultimoPossivel);
       if (quando < ctx.currentTime) return;
