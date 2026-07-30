@@ -34,10 +34,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Sem isto, um teste novo que esqueça de apontar para um diretório temporário
-  # escreveria no HOME do runner. Custa uma linha e fecha a porta antes.
-  DS_ECOSYSTEM_ROOT: ${{ runner.temp }}/ds-data
   TURBO_TELEMETRY_DISABLED: 1
+  # `DS_ECOSYSTEM_ROOT` NÃO pode ficar aqui. O contexto `runner` não existe no
+  # `env` de nível de workflow (só `github`, `inputs` e `vars` existem), e o
+  # arquivo inteiro é recusado antes de criar job nenhum — foi o que aconteceu
+  # na primeira execução. Ele é definido por passo, com a variável $RUNNER_TEMP,
+  # que o shell sempre tem.
 
 jobs:
   testes:
@@ -57,6 +59,11 @@ jobs:
         node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
+
+      # Onde os dados do app moram. Sem isto, um teste novo que esqueca de
+      # apontar para um diretorio temporario escreveria no HOME do runner.
+      - name: Diretório de dados descartável
+        run: echo "DS_ECOSYSTEM_ROOT=$RUNNER_TEMP/ds-data" >> "$GITHUB_ENV"
 
       # O pnpm vem ANTES do setup-node: o `cache: pnpm` do setup-node precisa
       # do binário já no PATH. E sem `version:`, para a ação ler o campo
@@ -121,6 +128,11 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+
+      # Onde os dados do app moram. Sem isto, um teste novo que esqueca de
+      # apontar para um diretorio temporario escreveria no HOME do runner.
+      - name: Diretório de dados descartável
+        run: echo "DS_ECOSYSTEM_ROOT=$RUNNER_TEMP/ds-data" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
