@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  envolverCamadaDePagina,
   envolverSecao,
   extrairCorpo,
   limparParaComposicao,
@@ -68,4 +69,22 @@ test('envolverSecao: seção sem peça é "gerado"; seção pela metade é "mist
     envolverSecao('<div/>', { role: 'cta', componentIds: ['cmp_a'], criouAlgo: true }),
     /data-origem="misto"/,
   );
+});
+
+// Como nos testes de envolverSecao, cada atributo e cada propriedade do estilo
+// é conferido SOZINHO: asserção por pedaço sobrevive ao próximo campo.
+test('envolverCamadaDePagina: camada fixa atrás de tudo, sem roubar clique', () => {
+  const html = envolverCamadaDePagina('<canvas id="p"></canvas>', {
+    componentIds: ['cmp_fundo', 'cmp_brilho'],
+  });
+  assert.match(html, /data-ds-camadas-de-pagina/);
+  assert.match(html, /aria-hidden="true"/, 'a camada é decorativa para o leitor de tela');
+  assert.match(html, /data-componente="cmp_fundo cmp_brilho"/, 'os ids saem na ordem');
+  assert.match(html, /position:fixed/, 'a camada atravessa a página inteira');
+  assert.match(html, /inset:0/, 'cobre a viewport toda');
+  assert.match(html, /z-index:-1/, 'fica atrás de todo o conteúdo');
+  assert.match(html, /pointer-events:none/, 'fundo não rouba clique');
+  assert.match(html, /overflow:hidden/, 'efeito que vaza não cria rolagem horizontal');
+  assert.ok(html.includes('<canvas id="p"></canvas>'), 'o corpo vestido segue dentro da camada');
+  assert.equal((html.match(/<div/g) ?? []).length, 1, 'um embrulho só, sem aninhamento extra');
 });

@@ -2,14 +2,36 @@ import { ConfirmPop } from '@/components/ConfirmPop';
 import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
-import { type KitRecord, type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
+import {
+  type KitDesignSystem,
+  type KitEmUso,
+  type KitRecord,
+  type LibraryComponentRecord,
+  api,
+  previewComponentUrl,
+} from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { ROTULO_TOKEN } from '@/lib/marca-rotulos';
 import { TRABALHANDO, TRATAMENTO, VAZIO, conta } from '@/lib/orbis';
+import { usePreferencias } from '@/lib/preferencias';
+import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
+import { CONFIANCA_MINIMA_PARA_RECOLORIR } from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Copy, Layers, Package, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  Copy,
+  Layers,
+  Package,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 const CAT_LABEL: Record<string, string> = {
   typography: 'Tipografia',
@@ -29,12 +51,85 @@ const CAT_LABEL: Record<string, string> = {
   other: 'Outros',
 };
 
+// ── Design system consolidado do kit ─────────────────────────────────────────
+
+type OrigemDoKit = KitDesignSystem['origens'][number];
+type ClusterDoKit = OrigemDoKit['clusters'][number];
+
+/** Rótulos pt-BR; a UI não mostra id técnico (mesma regra do marca-rotulos). */
+const ROTULO_TEMA: Record<KitDesignSystem['tema'], string> = {
+  claro: 'tema claro',
+  escuro: 'tema escuro',
+  misto: 'tema misto',
+};
+const ROTULO_PAPEL_FONTE: Record<'display' | 'body' | 'mono', string> = {
+  display: 'títulos',
+  body: 'texto',
+  mono: 'mono',
+};
+
+/** O mesmo limiar do composer, em %; o painel promete só o que a geração faz. */
+const LIMIAR_RECOLORIR_PCT = Math.round(CONFIANCA_MINIMA_PARA_RECOLORIR * 100);
+
+/**
+ * As cores que resumem o kit num relance (faixa do card): clusters com papel
+ * primeiro, por confiança, porque são os que dialogam com a marca; depois os
+ * demais. Sem repetir hex e no máximo 6, senão a faixa vira ruído.
+ */
+const coresDoResumo = (item: KitDesignSystem | null): string[] => {
+  if (item === null) return [];
+  const clusters = item.origens.flatMap((o) => o.clusters);
+  const ordenados = [
+    ...clusters.filter((c) => c.papel !== null).sort((a, b) => b.confianca - a.confianca),
+    ...clusters.filter((c) => c.papel === null),
+  ];
+  const unicas: string[] = [];
+  for (const c of ordenados) {
+    if (!unicas.includes(c.corCanonica)) unicas.push(c.corCanonica);
+    if (unicas.length >= 6) break;
+  }
+  return unicas;
+};
+
 export function KitsPage() {
+  const qc = useQueryClient();
   const kits = useQuery({ queryKey: ['kits'], queryFn: api.listKits });
   const [editing, setEditing] = useState<KitRecord | null | 'novo'>(null);
 
+  // ── Seleção múltipla + exclusão em lote ────────────────────────────────────
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [confirmaLote, setConfirmaLote] = useState(false);
+  const [emUsoPendente, setEmUsoPendente] = useState<KitEmUso[] | null>(null);
+
   const items = kits.data?.items ?? [];
   useReveal([items.length]);
+
+  useEffect(() => {
+    setSel((s) =>
+      prune(
+        s,
+        (kits.data?.items ?? []).map((k) => k.id),
+      ),
+    );
+  }, [kits.data]);
+
+  const excluir = useMutation({
+    mutationFn: (args: { ids: string[]; confirmar: boolean }) =>
+      api.excluirKitsEmLote(args.ids, args.confirmar),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['kits'] });
+      qc.invalidateQueries({ queryKey: ['projects'] });
+      if (res.excluidos.length > 0) {
+        toast.ok(`Excluí ${conta(res.excluidos.length, 'kit', 'kits')}.`);
+      }
+      setSel((s) => new Set([...s].filter((id) => !res.excluidos.includes(id))));
+      // Só o que está EM USO e ainda NÃO saiu volta para a segunda confirmação;
+      // sem o filtro, a resposta da chamada confirmada reabriria o aviso.
+      const pendentes = res.emUso.filter((u) => !res.excluidos.includes(u.id));
+      setEmUsoPendente(pendentes.length > 0 ? pendentes : null);
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui excluir agora.'),
+  });
 
   return (
     <div className="mx-auto max-w-[1080px] px-8 py-12">
@@ -76,24 +171,153 @@ export function KitsPage() {
       {items.length === 0 ? (
         <VazioState carregando={kits.isPending} onNovo={() => setEditing('novo')} />
       ) : (
-        <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {items.map((kit) => (
-            <KitCard key={kit.id} kit={kit} onEdit={() => setEditing(kit)} />
-          ))}
-        </div>
+        <>
+          <div
+            className="mt-8 flex items-center gap-2 text-[12px]"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isAllSelected(
+                  sel,
+                  items.map((k) => k.id),
+                )}
+                onChange={() =>
+                  setSel((s) =>
+                    toggleAllVisible(
+                      s,
+                      items.map((k) => k.id),
+                    ),
+                  )
+                }
+                className="h-4 w-4 accent-[var(--color-primary)]"
+              />
+              Selecionar todos os kits
+            </label>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+            {items.map((kit) => (
+              <KitCard
+                key={kit.id}
+                kit={kit}
+                onEdit={() => setEditing(kit)}
+                selected={sel.has(kit.id)}
+                onToggle={() => setSel((s) => toggleSel(s, kit.id))}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {editing !== null && (
         <KitEditor kit={editing === 'novo' ? null : editing} onClose={() => setEditing(null)} />
       )}
+
+      {/* Barra contextual — só existe quando há seleção. */}
+      {sel.size > 0 && (
+        <div
+          className="ds-scale-in fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full border px-5 py-2.5"
+          style={{
+            backgroundColor: 'rgba(13, 13, 14, 0.97)',
+            borderColor: 'var(--color-border-strong)',
+            boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          }}
+        >
+          <span className="text-[13px]" style={{ color: 'var(--color-fg)' }}>
+            {conta(sel.size, 'kit selecionado', 'kits selecionados')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSel(new Set())}
+            className="text-[12px] underline"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            Limpar
+          </button>
+          <button
+            type="button"
+            disabled={excluir.isPending}
+            onClick={() =>
+              usePreferencias.getState().confirmarAntesDeExcluir
+                ? setConfirmaLote(true)
+                : excluir.mutate({ ids: [...sel], confirmar: false })
+            }
+            className="ds-btn flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
+          >
+            {excluir.isPending ? <Mascote tamanho={12} girando /> : <Trash2 size={12} />}
+            Excluir
+          </button>
+        </div>
+      )}
+
+      <ConfirmPop
+        open={confirmaLote}
+        title={`Excluir ${conta(sel.size, 'kit', 'kits')}?`}
+        description="O kit é só uma seleção: as peças continuam na Biblioteca, do jeito que estão. Os kits que algum projeto usa eu confirmo outra vez antes de excluir."
+        confirmLabel="Excluir"
+        busy={excluir.isPending}
+        onConfirm={() => {
+          setConfirmaLote(false);
+          excluir.mutate({ ids: [...sel], confirmar: false });
+        }}
+        onClose={() => setConfirmaLote(false)}
+      />
+
+      <ConfirmPop
+        open={emUsoPendente !== null}
+        title={conta(emUsoPendente?.length ?? 0, 'kit está em uso', 'kits estão em uso')}
+        description={
+          <div className="space-y-1.5">
+            {(emUsoPendente ?? []).slice(0, 5).map((u) => (
+              <div key={u.id} className="text-[12px] leading-snug">
+                <strong>{u.name}</strong> é o kit de {u.projetos.join(', ')}
+              </div>
+            ))}
+            <div className="pt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+              Se excluir mesmo assim, projeto nenhum some: eles só perdem a ligação com o kit, e os
+              sites que eu já gerei continuam em disco.
+            </div>
+          </div>
+        }
+        confirmLabel="Excluir mesmo assim"
+        busy={excluir.isPending}
+        onConfirm={() => {
+          const ids = (emUsoPendente ?? []).map((u) => u.id);
+          setEmUsoPendente(null);
+          excluir.mutate({ ids, confirmar: true });
+        }}
+        onClose={() => setEmUsoPendente(null)}
+      />
     </div>
   );
 }
 
-function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
+function KitCard({
+  kit,
+  onEdit,
+  selected,
+  onToggle,
+}: {
+  kit: KitRecord;
+  onEdit: () => void;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const qc = useQueryClient();
   const [confirmDel, setConfirmDel] = useState(false);
   const capa = kit.components[0];
+
+  // O design system consolidado vira uma faixa de cores no card. `staleTime`
+  // alto de propósito: a primeira leitura pode consolidar no servidor, e a
+  // resposta só muda quando o kit troca de peças (aí a invalidação cobre).
+  const ds = useQuery({
+    queryKey: ['kit-design-system', kit.id],
+    queryFn: () => api.getKitDesignSystem(kit.id),
+    staleTime: 5 * 60_000,
+  });
+  const cores = useMemo(() => coresDoResumo(ds.data?.item ?? null), [ds.data]);
 
   const duplicate = useMutation({
     mutationFn: () => api.duplicateKit(kit.id),
@@ -116,7 +340,26 @@ function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
   });
 
   return (
-    <div className="ds-reveal ds-card ds-glass-static group rounded-xl">
+    <div
+      className="ds-reveal ds-card ds-glass-static group relative rounded-xl"
+      style={selected ? { outline: '2px solid var(--color-ion-5)' } : undefined}
+    >
+      {/* o checkbox fica FORA dos botões de ação — marcar não edita nem exclui */}
+      <label
+        className={cn(
+          'absolute top-2.5 left-2.5 z-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md transition-opacity',
+          selected ? 'opacity-100' : 'opacity-40 group-hover:opacity-100',
+        )}
+        style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
+      >
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          aria-label={`Selecionar ${kit.name}`}
+          className="h-4 w-4 accent-[var(--color-primary)]"
+        />
+      </label>
       <div className="ds-card-content overflow-hidden rounded-xl">
         <div className="relative">
           {capa ? (
@@ -179,6 +422,28 @@ function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
               </span>
             )}
           </div>
+
+          {/* A cara do kit num relance. Sem consolidado, a faixa não aparece. */}
+          {cores.length > 0 && (
+            <div className="mt-2.5 flex items-center gap-1">
+              {cores.map((hex) => (
+                <span
+                  key={hex}
+                  className="h-3.5 w-3.5 rounded border"
+                  style={{ backgroundColor: hex, borderColor: 'rgba(255,255,255,0.14)' }}
+                  title={hex}
+                />
+              ))}
+              {ds.data?.item?.tema === 'misto' && (
+                <span
+                  className="ds-data ml-1.5 text-[10px]"
+                  style={{ color: 'var(--color-fg-subtle)' }}
+                >
+                  tema misto
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -269,11 +534,19 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kits'] });
+      // O PATCH/POST reconsolida o design system no servidor; sem invalidar,
+      // o painel e a faixa do card mostrariam a paleta das peças antigas.
+      qc.invalidateQueries({ queryKey: ['kit-design-system'] });
       toast.ok(kit ? 'Salvei o kit.' : 'Criei o kit.');
       onClose();
     },
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui salvar o kit.'),
   });
+
+  // O consolidado reflete o kit SALVO; com a seleção mexida, o painel avisa
+  // que só reconsolido depois de salvar, em vez de fingir que já acompanhou.
+  const selecaoMudou =
+    kit !== null && selected.join('\n') !== kit.components.map((c) => c.id).join('\n');
 
   const mover = (i: number, dir: -1 | 1) => {
     const j = i + dir;
@@ -453,6 +726,10 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
           </div>
         </div>
 
+        {/* O design system consolidado: o que o kit afirma de cor e de fonte.
+            Kit novo ainda não tem id nem consolidação, então nem mostra. */}
+        {kit && <KitDesignSystemPanel kitId={kit.id} desatualizado={selecaoMudou} />}
+
         <div
           className="flex items-center justify-end gap-2 border-t px-6 py-4"
           style={{ borderColor: 'var(--color-border)' }}
@@ -478,6 +755,236 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * O painel do design system consolidado do kit.
+ *
+ * Mostra o que a consolidação afirmou (cluster com papel, confiança em número)
+ * e o que ela não conseguiu afirmar (clusters sem papel, limitações por
+ * extenso). O limiar vem do shared, o MESMO número que o composer usa na
+ * geração: o que o painel diz que recolore é exatamente o que sai recolorido.
+ */
+function KitDesignSystemPanel({
+  kitId,
+  desatualizado,
+}: {
+  kitId: string;
+  desatualizado: boolean;
+}) {
+  const [aberto, setAberto] = useState(true);
+  const ds = useQuery({
+    queryKey: ['kit-design-system', kitId],
+    queryFn: () => api.getKitDesignSystem(kitId),
+  });
+  // Só para dar nome humano às origens; sem isso o painel segue funcionando.
+  const sistemas = useQuery({ queryKey: ['design-systems'], queryFn: api.listDesignSystems });
+  const nomeDaOrigem = (id: string): string =>
+    sistemas.data?.items.find((s) => s.id === id)?.name ?? 'origem que não reconheci';
+
+  const item = ds.data?.item ?? null;
+
+  return (
+    <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+      <button
+        type="button"
+        onClick={() => setAberto((a) => !a)}
+        className="flex w-full items-center gap-2 px-5 py-3 text-left"
+      >
+        <span
+          className="text-[10px] uppercase tracking-[0.24em]"
+          style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
+        >
+          Design System
+        </span>
+        {item !== null && (
+          <span
+            className="ds-data rounded-full border px-2 py-0.5 text-[10px]"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+          >
+            {ROTULO_TEMA[item.tema]}
+          </span>
+        )}
+        <ChevronDown
+          size={13}
+          className={cn('ml-auto shrink-0 transition-transform', aberto && 'rotate-180')}
+          style={{ color: 'var(--color-fg-subtle)' }}
+        />
+      </button>
+
+      {aberto && (
+        <div className="max-h-[230px] space-y-4 overflow-y-auto px-5 pb-4">
+          {ds.isError ? (
+            <div className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+              Não consegui ler o design system deste kit agora.
+            </div>
+          ) : ds.isPending ? (
+            <div
+              className="flex items-center gap-2 text-[12px]"
+              style={{ color: 'var(--color-fg-muted)' }}
+            >
+              <Mascote tamanho={12} girando />
+              Consolidando as cores e as fontes das peças.
+            </div>
+          ) : item === null ? (
+            <div className="text-[12px] leading-[1.6]" style={{ color: 'var(--color-fg-muted)' }}>
+              Ainda não consolidei este kit. Enquanto isso, eu gero o site com as cores de origem de
+              cada peça.
+            </div>
+          ) : (
+            <>
+              {desatualizado && (
+                <div className="text-[11px] leading-snug" style={{ color: 'var(--color-signal)' }}>
+                  Este painel reflete a última versão salva. Salvando, eu reconsolido com as peças
+                  novas.
+                </div>
+              )}
+              {item.tema === 'misto' && (
+                <div
+                  className="text-[12px] leading-snug"
+                  style={{ color: 'var(--color-fg-muted)' }}
+                >
+                  As origens deste kit divergem de tema. Eu não misturo as paletas: cada origem
+                  mantém a sua.
+                </div>
+              )}
+              {item.origens.map((origem) => (
+                <OrigemDoPainel
+                  key={origem.designSystemId}
+                  origem={origem}
+                  nome={nomeDaOrigem(origem.designSystemId)}
+                />
+              ))}
+              <div className="text-[11px] leading-snug" style={{ color: 'var(--color-fg-subtle)' }}>
+                Papel com {LIMIAR_RECOLORIR_PCT}% ou mais de confiança eu troco pela cor da marca na
+                geração; abaixo disso, a cor original fica.
+              </div>
+              {item.limitacoes.length > 0 && (
+                <div
+                  className="rounded-lg border px-3.5 py-3"
+                  style={{
+                    borderColor: 'var(--color-border)',
+                    backgroundColor: 'rgba(0,0,0,0.25)',
+                  }}
+                >
+                  <div className="ds-label">O que eu não consegui afirmar</div>
+                  <ul className="mt-1.5 space-y-1">
+                    {item.limitacoes.map((l) => (
+                      <li
+                        key={l}
+                        className="text-[11px] leading-snug"
+                        style={{ color: 'var(--color-fg-muted)' }}
+                      >
+                        {l}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Uma origem consolidada: paleta com papel, as sem papel, e as fontes. */
+function OrigemDoPainel({ origem, nome }: { origem: OrigemDoKit; nome: string }) {
+  const comPapel = origem.clusters.filter((c) => c.papel !== null);
+  const semPapel = origem.clusters.filter((c) => c.papel === null);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className="truncate text-[12px]" style={{ color: 'var(--color-fg)' }}>
+          {nome}
+        </span>
+        <span className="ds-data shrink-0 text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+          {ROTULO_TEMA[origem.tema]}
+        </span>
+      </div>
+
+      {comPapel.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-2">
+          {comPapel.map((cl) => (
+            <SwatchComPapel key={`${cl.corCanonica}-${cl.papel}`} cluster={cl} />
+          ))}
+        </div>
+      )}
+
+      {semPapel.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            mantêm a cor original:
+          </span>
+          {semPapel.map((cl) => (
+            <span
+              key={cl.corCanonica}
+              className="h-4 w-4 rounded border"
+              style={{ backgroundColor: cl.corCanonica, borderColor: 'rgba(255,255,255,0.14)' }}
+              title={`${cl.corCanonica} · não deu para afirmar um papel com confiança`}
+            />
+          ))}
+        </div>
+      )}
+
+      {origem.fontes.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {origem.fontes.map((f) => (
+            <span
+              key={`${f.familia}-${f.papelSugerido}`}
+              className="rounded-full border px-2 py-0.5 text-[10px]"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+            >
+              {f.familia}
+              {f.papelSugerido !== null ? ` · ${ROTULO_PAPEL_FONTE[f.papelSugerido]}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Swatch de um cluster com papel. A confiança aparece de dois jeitos de
+ * propósito: em número (nunca adjetivo) e como opacidade do rótulo. O destaque
+ * em signal marca só quem cruza o limiar, porque só esses serão recoloridos.
+ */
+function SwatchComPapel({ cluster }: { cluster: ClusterDoKit }) {
+  const papel = cluster.papel;
+  if (papel === null) return null;
+  const recolore = cluster.confianca >= CONFIANCA_MINIMA_PARA_RECOLORIR;
+  const pct = Math.round(cluster.confianca * 100);
+
+  return (
+    <div
+      className="flex w-[72px] flex-col items-center gap-1"
+      title={
+        recolore
+          ? `${cluster.corCanonica} · ${ROTULO_TOKEN[papel]} · na geração eu troco pela cor da marca`
+          : `${cluster.corCanonica} · ${ROTULO_TOKEN[papel]} · confiança de ${pct}%, mantenho a cor original`
+      }
+    >
+      <span
+        className="h-8 w-full rounded-md border"
+        style={{ backgroundColor: cluster.corCanonica, borderColor: 'rgba(255,255,255,0.14)' }}
+      />
+      <span
+        className="w-full truncate text-center text-[9px] leading-tight"
+        style={{ color: 'var(--color-fg-muted)', opacity: 0.55 + cluster.confianca * 0.45 }}
+      >
+        {ROTULO_TOKEN[papel]}
+      </span>
+      <span
+        className="ds-data text-[9px]"
+        style={{ color: recolore ? 'var(--color-signal)' : 'var(--color-fg-subtle)' }}
+      >
+        {pct}%
+      </span>
+    </div>
   );
 }
 

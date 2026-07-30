@@ -11,6 +11,7 @@ export * from './component-contract.js';
 export * from './generate.js';
 export * from './kit.js';
 export * from './estrutura-marketing.js';
+export * from './kit-design-system.js';
 export * from './layout.js';
 export * from './midia-sugerida.js';
 export * from './project.js';

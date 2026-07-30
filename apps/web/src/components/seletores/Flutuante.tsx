@@ -76,14 +76,24 @@ export function Flutuante({
   return createPortal(
     <div
       id="ds-flutuante-ativo"
-      className="ds-fade-in fixed z-[120] overflow-hidden rounded-lg border shadow-2xl"
+      // `ds-scale-in` (0,5 s), não `ds-fade-in` (0,7 s): um dropdown que leva
+      // quase um segundo para ficar legível parece travado, não elegante.
+      className="ds-scale-in fixed z-[120] overflow-hidden rounded-lg border"
       style={{
         left: pos.x,
         top: pos.y,
         width: largura,
         maxHeight: pos.maxAltura,
-        backgroundColor: 'var(--color-surface-elevated)',
+        // Superfície SÓLIDA, mesma regra do Modal: a leitura não depende do que
+        // está atrás. O token `--color-surface-elevated` que ficava aqui é
+        // branco a 5% SEM blur — 95% do fundo atravessava e o dropdown ficava
+        // ilegível sobre qualquer conteúdo denso (afetava as 8 telas que usam
+        // seletores).
+        backgroundColor: 'rgba(13, 13, 14, 0.99)',
         borderColor: 'var(--color-border-strong)',
+        // A sombra dupla (queda + anel escuro) descola o flutuante do fundo
+        // mesmo quando o que está atrás também é escuro — padrão do Modal.
+        boxShadow: '0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.4)',
       }}
     >
       {children}

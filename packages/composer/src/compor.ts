@@ -1,4 +1,5 @@
 import { escoparCss, nomesGlobaisDe } from './escopo.js';
+import { type MapaDeRecoloracao, recolorirCss } from './recolorir.js';
 
 /**
  * A composição de várias origens num documento só.
@@ -117,7 +118,27 @@ export const envolverEmProxies = (peca: PecaComposta): string => {
  * essa ordem não decide quem vence — decide só a ordem de leitura do arquivo,
  * que é o que se quer para conseguir depurar.
  */
-export const compor = (pecas: readonly PecaComposta[]): ResultadoComposicao => {
+export type OpcoesComposicao = {
+  /**
+   * Mapa de recoloração POR ORIGEM (hexOpaco → papel semântico).
+   *
+   * A recoloração roda ANTES do escopo, sobre o CSS cru do bundle — o mesmo
+   * texto que a consolidação inventariou, então as chaves casam por
+   * construção. A ordem também mantém as duas transformações cegas uma para a
+   * outra: a recoloração nunca vê `:where(...)`, o escopo nunca vê
+   * `rgb(from ...)`.
+   *
+   * Origem sem entrada no mapa sai com as cores originais — kit antigo, peça
+   * com "manter cores originais", consolidação que falhou: tudo degrada para a
+   * aparência de origem, e o resultado diz quanto foi reescrito.
+   */
+  recoloracaoPorOrigem?: ReadonlyMap<string, MapaDeRecoloracao>;
+};
+
+export const compor = (
+  pecas: readonly PecaComposta[],
+  opcoes?: OpcoesComposicao,
+): ResultadoComposicao => {
   const avisos: string[] = [];
   const renomeados: ResultadoComposicao['renomeados'] = [];
   const partesCss: string[] = [];
@@ -142,7 +163,20 @@ export const compor = (pecas: readonly PecaComposta[]): ResultadoComposicao => {
 
     if (!origensComCss.has(peca.origem) && peca.css.trim().length > 0) {
       origensComCss.add(peca.origem);
-      const r = escoparCss(peca.css, {
+
+      // Recolorir antes de escopar (ver OpcoesComposicao).
+      let cssDaOrigem = peca.css;
+      const mapa = opcoes?.recoloracaoPorOrigem?.get(peca.origem);
+      if (mapa !== undefined && mapa.size > 0) {
+        const rec = recolorirCss(cssDaOrigem, mapa);
+        cssDaOrigem = rec.css;
+        avisos.push(
+          `[${peca.origem}] recoloração: ${rec.reescritas} cor(es) apontando para a marca, ${rec.mantidas} mantida(s).`,
+        );
+        avisos.push(...rec.avisos.map((a) => `[${peca.origem}] ${a}`));
+      }
+
+      const r = escoparCss(cssDaOrigem, {
         raiz: `${raiz}="${peca.origem}"`,
         corpo: `${corpo}="${peca.origem}"`,
         sufixo: peca.origem,

@@ -12,9 +12,11 @@ import {
   listarAssetsFaltando,
   podeApagarDesignSystem,
   resumirPipeline,
+  vaultCaptureV2Manifest,
   vaultDir,
   vaultDsDir,
   vaultExtractedDir,
+  vaultSegmentBundlesDir,
   vaultSegmentValidation,
   vaultSegmentsManifest,
 } from '@ds/shared';
@@ -72,20 +74,158 @@ const lerManifesto = (
   insights: Map<string, SegmentInsight>;
   naoAssociados: InteracaoNaoAssociada[];
   capturaParcial: SegmentsManifest['capturaParcial'];
+  /**
+   * Todos os segmentos do MANIFESTO (não só as linhas vivas do banco). A
+   * associação da conferência de pixel se mede sobre o que a captura escreveu:
+   * um segmento excluído na triagem some da lista, mas continua contando na
+   * ordem das comparações gravadas.
+   */
+  segmentos: Array<{ id: string; position: number; parentId: string | null }>;
 } => {
   const path = vaultSegmentsManifest(dsId as `ds_${string}`);
   if (!existsSync(path))
-    return { insights: new Map(), naoAssociados: [], capturaParcial: undefined };
+    return { insights: new Map(), naoAssociados: [], capturaParcial: undefined, segmentos: [] };
   try {
     const manifest = SegmentsManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
     return {
       insights: new Map((manifest.insights ?? []).map((i) => [i.segmentId, i])),
       naoAssociados: manifest.naoAssociados ?? [],
       capturaParcial: manifest.capturaParcial,
+      segmentos: manifest.segments.map((s) => ({
+        id: s.id,
+        position: s.position,
+        parentId: s.parentId ?? null,
+      })),
     };
   } catch {
-    return { insights: new Map(), naoAssociados: [], capturaParcial: undefined };
+    return { insights: new Map(), naoAssociados: [], capturaParcial: undefined, segmentos: [] };
   }
+};
+
+// ── Conferência de pixel e declarações do bundle ─────────────────────────────
+
+/** O que a Galeria mostra da conferência de pixel de um segmento. Frações 0..1. */
+type ConferenciaDePixel = { delta: number; limiar: number; passou: boolean };
+
+/** Uma comparação como está no manifesto V2, sem round-trip de schema. */
+type ComparacaoBruta = { a: string; b: string; delta: number; threshold: number; ok: boolean };
+
+/**
+ * As comparações de pixel do manifesto V2, lidas UMA vez por design system.
+ * Parse cru de propósito: o manifesto passa de 1 MB e a listagem só precisa
+ * deste array; validar o documento inteiro por schema custaria mais do que a
+ * informação vale.
+ */
+const lerComparacoesV2 = (dsId: string): ComparacaoBruta[] => {
+  const path = vaultCaptureV2Manifest(dsId as `ds_${string}`);
+  if (!existsSync(path)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as { visualComparisons?: unknown };
+    if (!Array.isArray(raw.visualComparisons)) return [];
+    return raw.visualComparisons.filter(
+      (c): c is ComparacaoBruta =>
+        typeof c === 'object' &&
+        c !== null &&
+        typeof (c as ComparacaoBruta).a === 'string' &&
+        typeof (c as ComparacaoBruta).b === 'string' &&
+        typeof (c as ComparacaoBruta).delta === 'number' &&
+        typeof (c as ComparacaoBruta).threshold === 'number' &&
+        typeof (c as ComparacaoBruta).ok === 'boolean',
+    );
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * O que a listagem precisa do bundle de um segmento: as limitações que o
+ * compilador declarou e se a representação é cápsula de runtime (a única que a
+ * validação por preview compara). `null` = segmento sem bundle (fluxo V1 ou
+ * subcomponente).
+ */
+const lerBundleParaListagem = (
+  dsId: string,
+  position: number,
+): { limitacoes: string[]; capsula: boolean } | null => {
+  const path = join(
+    vaultSegmentBundlesDir(dsId as `ds_${string}`),
+    `seg_${position}`,
+    'manifest.json',
+  );
+  if (!existsSync(path)) return null;
+  try {
+    const m = JSON.parse(readFileSync(path, 'utf8')) as {
+      limitations?: unknown;
+      representation?: { type?: unknown };
+    };
+    return {
+      limitacoes: Array.isArray(m.limitations)
+        ? m.limitations.filter((l): l is string => typeof l === 'string')
+        : [],
+      capsula: m.representation?.type === 'capsula-runtime',
+    };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Liga cada comparação de pixel ao segmento dela — só quando dá para AFIRMAR.
+ *
+ * O schema `VisualComparison` não tem chave por segmento (decisão antiga,
+ * confirmada em `validate-preview.ts`), então a única associação possível é
+ * pela ordem de escrita:
+ *
+ * - Na captura, o motor compara os bundles na ordem de posição dos segmentos
+ *   que têm print da dobra, e um item pulado NÃO deixa marca no array. A ordem
+ *   só é confiável quando a cobertura foi completa: mesmo tamanho dos dois
+ *   lados, tudo `captura`×`bundle`.
+ * - Na validação por preview, só cápsulas de runtime são comparadas, em ordem
+ *   de conclusão (workers concorrentes). Com uma única cápsula não há o que
+ *   confundir; com mais de uma, a ordem não diz nada.
+ *
+ * Fora desses dois casos a medição existe mas não tem dono identificável, e
+ * atribuí-la por palpite seria pintar número de medição. Fica sem dono.
+ */
+const associarConferencias = (opts: {
+  comparacoes: ComparacaoBruta[];
+  /** Ids dos segmentos COM print da dobra, em ordem de posição. */
+  comFrame: string[];
+  /** Ids dos segmentos cuja representação é cápsula de runtime, em ordem. */
+  capsulas: string[];
+}): Map<string, ConferenciaDePixel> => {
+  const out = new Map<string, ConferenciaDePixel>();
+  const cs = opts.comparacoes;
+  if (cs.length === 0) return out;
+
+  const resumo = (c: ComparacaoBruta): ConferenciaDePixel => ({
+    delta: c.delta,
+    limiar: c.threshold,
+    passou: c.ok,
+  });
+
+  const daCaptura = cs.every((c) => c.a === 'captura' && c.b === 'bundle');
+  if (daCaptura && cs.length === opts.comFrame.length) {
+    cs.forEach((c, i) => {
+      const id = opts.comFrame[i];
+      if (id !== undefined) out.set(id, resumo(c));
+    });
+    return out;
+  }
+
+  const daValidacao = cs.every((c) => c.b === 'preview');
+  const unica = cs[0];
+  const capsula = opts.capsulas[0];
+  if (
+    daValidacao &&
+    cs.length === 1 &&
+    opts.capsulas.length === 1 &&
+    unica !== undefined &&
+    capsula !== undefined
+  ) {
+    out.set(capsula, resumo(unica));
+  }
+  return out;
 };
 
 /**
@@ -152,17 +292,41 @@ designSystemsRoute.get('/:id/segments', (c) => {
     .where(eq(tables.segments.designSystemId, id))
     .orderBy(asc(tables.segments.position))
     .all();
-  const { insights, naoAssociados, capturaParcial } = lerManifesto(id);
+  const { insights, naoAssociados, capturaParcial, segmentos } = lerManifesto(id);
   const validacoes = lerValidacoes(id);
+
+  // A medição que ficava invisível: a conferência de pixel do manifesto V2 e as
+  // limitações que cada bundle declarou. O manifesto de captura é lido UMA vez;
+  // os manifests de bundle, um por seção (medido no acervo real: 12 a 32 KB
+  // cada, 8 a 12 seções por extração — leitura local barata).
+  const bundles = new Map<string, { limitacoes: string[]; capsula: boolean }>();
+  for (const s of segmentos) {
+    if (s.parentId !== null) continue; // subcomponente não tem bundle próprio
+    const b = lerBundleParaListagem(id, s.position);
+    if (b !== null) bundles.set(s.id, b);
+  }
+  const ordenados = [...segmentos].sort((a, b) => a.position - b.position);
+  const conferencias = associarConferencias({
+    comparacoes: lerComparacoesV2(id),
+    comFrame: ordenados.filter((s) => insights.get(s.id)?.framePath !== undefined).map((s) => s.id),
+    capsulas: ordenados.filter((s) => bundles.get(s.id)?.capsula === true).map((s) => s.id),
+  });
+
   // Resumo na listagem (contagens por estado de interação); o detalhe pesado —
   // o HTML dos estados — só é servido pela rota de preview.
   const items = rows.map((r) => {
     const bruto = insights.get(r.id) ?? null;
     const insight = bruto ? comValidacoes(bruto, validacoes.get(r.id)) : null;
+    const bundle = bundles.get(r.id);
+    const conferencia = conferencias.get(r.id);
     return {
       ...r,
       fidelity: insight,
       resumo: insight?.pipeline ? resumirPipeline(insight.pipeline) : null,
+      // `limitacoes` presente = o segmento TEM bundle (mesmo que a lista venha
+      // vazia); é como o front distingue "não medido" de "não se aplica".
+      ...(bundle !== undefined ? { limitacoes: bundle.limitacoes } : {}),
+      ...(conferencia !== undefined ? { comparacaoVisual: conferencia } : {}),
     };
   });
   return c.json({ items, naoAssociados, capturaParcial });

@@ -200,6 +200,24 @@ export const ProjectLayout = z.object({
    * conversam entre si.
    */
   preferDesignSystemId: z.string().nullable().default(null),
+  /**
+   * O que o usuário AUTORIZOU o Orbis a criar. Nada aqui é inferido: cada
+   * permissão nasce desligada e só liga por gesto explícito na tela.
+   *
+   * - `criarSecoesFaltantes`: quando a estrutura não tem uma seção que o site
+   *   precisa (navegação, abertura, rodapé), o Orbis pode criá-la no estilo do
+   *   kit — consultando o design system consolidado + a identidade do usuário.
+   * - `criarArteDeApoio`: em seção sem mídia, o Orbis pode compor arte de
+   *   apoio (SVG/CSS na paleta da marca, ou reuso das mídias gerais). Nunca é
+   *   geração de imagem por IA: não existe esse canal no modo queue, e a caixa
+   *   da tela diz exatamente o que ele faz.
+   */
+  permissoes: z
+    .object({
+      criarSecoesFaltantes: z.boolean().default(false),
+      criarArteDeApoio: z.boolean().default(false),
+    })
+    .default({ criarSecoesFaltantes: false, criarArteDeApoio: false }),
 });
 export type ProjectLayout = z.infer<typeof ProjectLayout>;
 
@@ -211,6 +229,7 @@ export const DEFAULT_LAYOUT: ProjectLayout = {
   density: 'equilibrado',
   motion: 'sutil',
   preferDesignSystemId: null,
+  permissoes: { criarSecoesFaltantes: false, criarArteDeApoio: false },
 };
 
 /** O mínimo que a resolução precisa saber de um componente do kit. */
@@ -347,4 +366,90 @@ export const normalizarProjectLayout = (raw: string | null): ProjectLayout => {
       : DEFAULT_LAYOUT;
   const tentado = ProjectLayout.safeParse(mesclado);
   return tentado.success ? tentado.data : ProjectLayout.parse(DEFAULT_LAYOUT);
+};
+
+// ── Camadas de página (fundo que atravessa o site inteiro) ──────────────────
+
+/**
+ * Uma peça de fundo não é uma seção. Na origem ela era uma camada fixa atrás
+ * de tudo (partículas, gradiente animado, textura de página); posta no fluxo
+ * como `<section>`, ela colapsa numa faixa e perde o sentido. A categoria
+ * `background` e o kind `effect` são as duas marcas com que a classificação
+ * identifica esse tipo de peça, e qualquer uma delas basta: um fundo pode
+ * chegar rotulado só por uma das vias.
+ */
+export const ehPecaDeFundo = (c: { category: string; kind: string }): boolean =>
+  c.category === 'background' || c.kind === 'effect';
+
+/**
+ * `ComponenteDoKitResumo` é o mínimo que a resolução precisa e NÃO carrega
+ * `kind` — mas os componentes do kit no payload carregam, e o objeto chega
+ * inteiro em runtime. Ler o campo por fora, com defesa, atende os dois
+ * formatos: sem `kind` sobra a detecção por categoria, e a peça que escapar
+ * continua no fluxo como hoje. A degradação é para o comportamento atual,
+ * nunca para quebrado.
+ */
+const temCaraDeFundo = (p: ComponenteDoKitResumo): boolean => {
+  const kind = (p as { kind?: unknown }).kind;
+  return ehPecaDeFundo({ category: p.category, kind: typeof kind === 'string' ? kind : '' });
+};
+
+/**
+ * Retira as peças de fundo das seções e as devolve como camadas da página.
+ *
+ * É um passo OPT-IN de quem monta o site, DEPOIS de `resolverSecoes` — a
+ * assinatura dela não muda, e quem não chamar isto continua com o
+ * comportamento de sempre. O destino das camadas é o embrulho fixo do gerador
+ * (`envolverCamadaDePagina`, em `@ds/generator`), que as põe atrás de todo o
+ * conteúdo, como eram na origem.
+ *
+ * Seção que só existia para carregar o fundo (sem outra peça, sem instrução e
+ * de origem `kit`) sai da lista: sem o fundo ela não tem conteúdo nenhum, e
+ * mantê-la produziria uma `<section>` vazia — que o próprio contrato do site
+ * gerado proíbe. A saída é avisada nominalmente, porque seção que some calada
+ * faz a pessoa achar que a estrutura dela foi ignorada.
+ *
+ * Seção com outras peças, com instrução ou com parte a criar (`mista`) fica:
+ * ainda há o que gerar nela. Ela só perde a peça de fundo, com aviso.
+ */
+export const separarCamadasDePagina = (
+  secoes: readonly SecaoResolvida[],
+): { secoes: SecaoResolvida[]; camadas: ComponenteDoKitResumo[]; avisos: string[] } => {
+  // Dedupe por id: o mesmo fundo posto em duas seções vira UMA camada. A
+  // camada cobre a página inteira; duplicá-la só empilharia o efeito duas
+  // vezes, sem nenhum ganho visual.
+  const camadas = new Map<string, ComponenteDoKitResumo>();
+  const avisos: string[] = [];
+  const restantes: SecaoResolvida[] = [];
+  for (const s of secoes) {
+    const fundos = s.pecas.filter(temCaraDeFundo);
+    if (fundos.length === 0) {
+      // Sem fundo, a seção atravessa intacta (mesmo objeto): entrada sem peça
+      // de fundo sai idêntica, e sem aviso nenhum.
+      restantes.push(s);
+      continue;
+    }
+    for (const f of fundos) if (!camadas.has(f.id)) camadas.set(f.id, f);
+    const pecas = s.pecas.filter((p) => !temCaraDeFundo(p));
+    const rotulo = s.nome.trim() === '' ? 'Uma seção' : `A seção "${s.nome.trim()}"`;
+    const nomes = fundos.map((f) => `"${f.name}"`).join(' e ');
+    const instrucao = s.instrucao?.trim() ?? '';
+    if (pecas.length === 0 && instrucao === '' && s.origem === 'kit') {
+      avisos.push(
+        fundos.length === 1
+          ? `${rotulo} só tinha o fundo ${nomes}; o fundo virou camada da página e a seção saiu.`
+          : `${rotulo} só tinha os fundos ${nomes}; os fundos viraram camada da página e a seção saiu.`,
+      );
+      continue;
+    }
+    avisos.push(
+      fundos.length === 1
+        ? `${rotulo} perdeu a peça de fundo ${nomes}: o fundo virou camada fixa da página inteira.`
+        : `${rotulo} perdeu as peças de fundo ${nomes}: os fundos viraram camada fixa da página inteira.`,
+    );
+    // Sem sobrar peça nenhuma, a seção passa a ser criada no estilo do kit —
+    // manter `kit` aqui mentiria a procedência no `data-origem` do site.
+    restantes.push({ ...s, pecas, origem: pecas.length === 0 ? 'criada' : s.origem });
+  }
+  return { secoes: restantes, camadas: [...camadas.values()], avisos };
 };

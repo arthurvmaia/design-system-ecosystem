@@ -92,3 +92,38 @@ export const envolverSecao = (
   const sid = dados.secaoId !== undefined ? ` data-secao-id="${dados.secaoId}"` : '';
   return `<section data-secao="${dados.role}"${sid} data-origem="${origem}"${cmp}>\n${corpo}\n</section>`;
 };
+
+/**
+ * Embrulha as peças de fundo da página numa camada fixa atrás de tudo.
+ *
+ * Na origem essas peças (categoria `background`, kind `effect`) eram uma
+ * camada que atravessa a página inteira; postas no fluxo como `<section>`,
+ * colapsam numa faixa. O engine-v2 já recompõe o conceito DENTRO do bundle
+ * (`data-ds-camadas-de-fundo`); este embrulho é o par do lado do site gerado,
+ * para a peça que `separarCamadasDePagina` (de `@ds/shared`) promoveu a
+ * camada da página.
+ *
+ * Cada propriedade do estilo tem um porquê:
+ * - `position:fixed` + `inset:0`: a camada cobre a viewport inteira e segue
+ *   presente durante toda a rolagem — é a limitação que o próprio bundle
+ *   declara: o fundo atravessa a página, não uma dobra.
+ * - `z-index:-1`: atrás de TODO o conteúdo, sem depender da posição no DOM
+ *   nem exigir z-index no resto da página.
+ * - `pointer-events:none`: fundo é decoração; ele não pode roubar o clique
+ *   de um link ou botão que passa por cima.
+ * - `overflow:hidden`: efeito que desenha além da borda (partícula, blob
+ *   animado) não pode criar rolagem horizontal — requisito do mobile.
+ *
+ * `aria-hidden="true"` porque a camada é puramente decorativa: leitor de tela
+ * não tem o que anunciar ali.
+ *
+ * O `corpo` chega aqui JÁ vestido nos dois proxies do compositor
+ * (`data-ds-raiz`/`data-ds-corpo`): o CSS de origem precisa casar dentro da
+ * camada do mesmo jeito que casa dentro de uma seção — o embrulho não pode
+ * despir a peça.
+ */
+export const envolverCamadaDePagina = (
+  corpo: string,
+  dados: { componentIds: readonly string[] },
+): string =>
+  `<div data-ds-camadas-de-pagina aria-hidden="true" data-componente="${dados.componentIds.join(' ')}" style="position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden">\n${corpo}\n</div>`;

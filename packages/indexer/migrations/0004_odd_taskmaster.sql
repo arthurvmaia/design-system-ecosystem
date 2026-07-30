@@ -1,0 +1,1 @@
+ALTER TABLE `kits` ADD `tokens_json` text;

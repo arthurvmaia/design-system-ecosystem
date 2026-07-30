@@ -6,12 +6,29 @@ export {
   nomesGlobaisDe,
 } from './escopo.js';
 export {
+  type OpcoesComposicao,
   type PecaComposta,
   type ResultadoComposicao,
   atributosDeProxy,
   compor,
   envolverEmProxies,
 } from './compor.js';
+export { type CorAnalisada, type Oklch, analisarCor, distanciaOk, paraOklch } from './cor.js';
+export {
+  type ContextoDeCor,
+  type FonteInventariada,
+  type OcorrenciaDeCor,
+  coresDoValor,
+  inventariarCores,
+  inventariarFontes,
+} from './inventario.js';
+export { type ConsolidacaoDaOrigem, consolidarCores } from './clusters.js';
+export {
+  type MapaDeRecoloracao,
+  type ResultadoRecoloracao,
+  mapaDeRecoloracao,
+  recolorirCss,
+} from './recolorir.js';
 
 /**
  * `@ds/composer` — juntar peças de origens diferentes sem que elas se estraguem.

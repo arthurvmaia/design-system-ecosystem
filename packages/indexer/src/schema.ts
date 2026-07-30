@@ -142,6 +142,22 @@ export const kits = sqliteTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     description: text('description'),
+    /**
+     * O design system FINAL do kit, consolidado (`KitDesignSystem` do shared):
+     * as cores de todas as peças agrupadas em clusters com papel semântico,
+     * POR ORIGEM, mais o tema e as limitações da consolidação.
+     *
+     * É a camada que faltava entre "kit é uma lista de peças" e "kit é o
+     * design system final" que o comentário desta tabela sempre prometeu. É
+     * daqui que a recoloração tira o mapa literal→papel, e é isto que o Orbis
+     * consulta (junto da identidade do usuário) para criar qualquer coisa "no
+     * estilo do kit".
+     *
+     * Nulo = ainda não consolidado (kit antigo, ou a consolidação falhou). A
+     * leitura faz backfill preguiçoso; a geração sem ele degrada para a
+     * aparência original das peças, nunca para quebrado.
+     */
+    tokensJson: text('tokens_json'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },

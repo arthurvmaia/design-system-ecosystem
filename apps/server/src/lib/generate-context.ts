@@ -32,7 +32,15 @@ export type DadosParaContexto = {
     mediaManifestJson: string | null;
     layoutJson: string | null;
   };
-  kit: { id: string; name: string };
+  kit: {
+    id: string;
+    name: string;
+    /**
+     * O design system consolidado (`kits.tokensJson`, já parseado). Vai no
+     * payload para a recoloração; null degrada para as cores de origem.
+     */
+    designSystem?: unknown;
+  };
   /** Componentes do kit NA ORDEM curada (links resolvidos pelo chamador). */
   componentes: readonly {
     id: string;
@@ -112,7 +120,12 @@ export const montarContextoDeGeracao = (dados: DadosParaContexto): ContextoDeGer
     projectId: dados.projeto.id,
     projectName: dados.projeto.name,
     kitId: dados.kit.id,
-    kit: { id: dados.kit.id, name: dados.kit.name, components },
+    kit: {
+      id: dados.kit.id,
+      name: dados.kit.name,
+      components,
+      designSystem: dados.kit.designSystem ?? null,
+    },
     layout,
     branding,
     content,

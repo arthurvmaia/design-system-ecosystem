@@ -45,8 +45,23 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
+  // Sem estes três, um .mov saía como application/octet-stream e o <video>
+  // recusava o arquivo — caixa preta sem erro. O mapa completo (com fontes e
+  // áudio) vive em routes/asset.ts:45-49; aqui só o que a prévia de mídia serve.
+  '.mov': 'video/quicktime',
+  '.ogv': 'video/ogg',
+  '.m4v': 'video/x-m4v',
   '.json': 'application/json; charset=utf-8',
 };
+
+// Extensões que decidem o `kind` quando o navegador não manda o MIME do arquivo
+// (file.type vem VAZIO em alguns sistemas). Espelham o MIME map acima.
+const EXT_VIDEO = new Set(['.mp4', '.webm', '.mov', '.ogv', '.m4v']);
+const EXT_IMAGEM = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.ico']);
+
+// 200 MB: acima disso o upload trava o navegador, o manifest fica gigante e a
+// prévia não dá conta — vídeo desse tamanho pertence a um serviço de vídeo.
+const TAMANHO_MAXIMO_BYTES = 200 * 1024 * 1024;
 
 /** Lê e desserializa o manifest de mídias de um projeto, tolerante a lixo. */
 const lerManifest = (mediaManifestJson: string | null): MediaItem[] => {
@@ -228,11 +243,32 @@ projectsRoute.post('/:id/media', async (c) => {
     return c.json({ error: 'sem_arquivo' }, 400);
   }
 
+  if (file.size > TAMANHO_MAXIMO_BYTES) {
+    return c.json(
+      {
+        error: 'arquivo_grande_demais',
+        message:
+          'Esse vídeo passa de 200 MB. Comprima antes de enviar, ou suba para um serviço de vídeo e cole o link.',
+      },
+      413,
+    );
+  }
+
   const kind = typeof body.kind === 'string' ? body.kind : 'image';
   const kindParsed = z
     .enum(['image', 'video', 'logo', 'icon', '3d', 'lottie', 'mockup'])
     .safeParse(kind);
   if (!kindParsed.success) return c.json({ error: 'kind_invalido' }, 400);
+
+  // O front infere o `kind` a partir de `file.type`, mas o navegador manda esse
+  // campo VAZIO para alguns arquivos — e aí todo vídeo chegava como 'image' e o
+  // thumb renderizava um <img> de .mp4 (caixa quebrada, sem erro). A extensão é
+  // a evidência que sobra, então o servidor corrige aqui, nos dois sentidos.
+  // Só image↔video: 'logo', 'icon' etc. são intenção declarada, não inferência.
+  const ext = extname(file.name || '').toLowerCase();
+  let kindFinal = kindParsed.data;
+  if (kindFinal === 'image' && EXT_VIDEO.has(ext)) kindFinal = 'video';
+  else if (kindFinal === 'video' && EXT_IMAGEM.has(ext)) kindFinal = 'image';
 
   const dir = projectMediaDir(id as `prj_${string}`);
   mkdirSync(dir, { recursive: true });
@@ -246,7 +282,7 @@ projectsRoute.post('/:id/media', async (c) => {
   const item: MediaItem = {
     path: stored,
     mimeType: file.type || MIME[extname(stored).toLowerCase()] || 'application/octet-stream',
-    kind: kindParsed.data,
+    kind: kindFinal,
     originalName: original,
     ...(typeof body.alt === 'string' && body.alt ? { alt: body.alt } : {}),
     // A âncora é o id da seção. O `slotRole` NÃO é gravado aqui: ele é o espelho
@@ -383,9 +419,20 @@ projectsRoute.post('/:id/generate', async (c) => {
       : [];
   });
   const ausentes = links.map((l) => l.componentId).filter((cid) => !porId.has(cid));
+  // O design system consolidado viaja no payload. `kit` é a linha crua da
+  // tabela, então o tokensJson está à mão. JSON quebrado degrada para null
+  // (sem recoloração), nunca para 500.
+  const designSystemDoKit = (() => {
+    if (kit.tokensJson == null) return null;
+    try {
+      return JSON.parse(kit.tokensJson) as unknown;
+    } catch {
+      return null;
+    }
+  })();
   const contexto = montarContextoDeGeracao({
     projeto: row,
-    kit: { id: kit.id, name: kit.name },
+    kit: { id: kit.id, name: kit.name, designSystem: designSystemDoKit },
     componentes: componentesDoKit,
     ausentes,
   });

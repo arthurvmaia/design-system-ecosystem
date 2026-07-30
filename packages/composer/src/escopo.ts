@@ -27,7 +27,9 @@ import selectorParser from 'postcss-selector-parser';
  * O que este arquivo NÃO faz, de propósito:
  *
  * - **Não toca em custom properties.** `--cor-x` não é global: é herdada. Basta
- *   escopar o `:root` para a colisão sumir sozinha.
+ *   escopar o `:root` para a colisão sumir sozinha. A decisão vale para colisão
+ *   ENTRE origens; a marca alcança as peças porque usa o namespace `--marca-*`,
+ *   que nenhuma origem declara — do lado dela não há o que colidir.
  * - **Não renomeia nomes globais sem colisão.** Renomear `@keyframes girar` em
  *   toda origem produziria um diff enorme e quebraria `animation: girar` escrito
  *   em `style=""` inline, que ninguém reescreve. Só o que colide é renomeado.
@@ -70,6 +72,59 @@ const ANCORA_DE = (raiz: string, corpo: string): Record<string, string> => ({
 });
 
 /**
+ * Pseudo-elementos que a sintaxe antiga escreve com UM dois-pontos só. O parser
+ * os devolve como `pseudo` igual a `:hover` — distinguir aqui evita tratar
+ * `:after` como pseudo-classe e emitir uma variante que nunca casa.
+ */
+const PSEUDO_ELEMENTOS_LEGADOS = new Set([':before', ':after', ':first-line', ':first-letter']);
+
+/**
+ * O nó pode casar com o próprio div de proxy?
+ *
+ * Só classe, atributo e pseudo-classe: o proxy é um `<div>`, então seletor de
+ * tipo (`p.intro` nunca é o proxy) e pseudo-elemento (que mira OUTRA caixa, não
+ * o elemento) desqualificam o composto inteiro. Id fica de fora por cautela:
+ * o proxy não carrega o id do documento de origem.
+ */
+const podeSerOProxy = (n: selectorParser.Node): boolean => {
+  if (n.type === 'class' || n.type === 'attribute') return true;
+  if (n.type === 'pseudo') {
+    const v = n.value.toLowerCase();
+    return !v.startsWith('::') && !PSEUDO_ELEMENTOS_LEGADOS.has(v);
+  }
+  return false;
+};
+
+/**
+ * A variante de auto-casamento do caso 3 (ver o comentário de `escoparSeletor`),
+ * construída ANTES de o seletor original ganhar o prefixo descendente.
+ *
+ * `:where([raiz], [corpo])` mira os DOIS proxies porque a classe copiada pode
+ * estar em qualquer um: `dark` vinha do `<html>` (proxy raiz), `text-white`
+ * vinha do `<body>` (proxy corpo). O `:where()` vale zero e o `:is(<composto>)`
+ * vale a especificidade do composto — a variante empata com o seletor original.
+ */
+const varianteDeAutoCasamento = (
+  sel: selectorParser.Selector,
+  opts: { raiz: string; corpo: string },
+): string | null => {
+  const nodes = [...sel.nodes];
+  const idxCombinador = nodes.findIndex((n) => n.type === 'combinator');
+  const composto = idxCombinador === -1 ? nodes : nodes.slice(0, idxCombinador);
+  const resto = idxCombinador === -1 ? [] : nodes.slice(idxCombinador);
+  if (composto.length === 0) return null;
+  if (!composto.every(podeSerOProxy)) return null;
+  // `trim` tira só o respiro à esquerda que o parser guarda no primeiro nó;
+  // dentro de um composto não existe espaço (espaço seria combinador).
+  const compostoStr = composto
+    .map((n) => String(n))
+    .join('')
+    .trim();
+  const restoStr = resto.map((n) => String(n)).join('');
+  return `:where([${opts.raiz}], [${opts.corpo}]):is(${compostoStr})${restoStr}`;
+};
+
+/**
  * Reescreve um seletor para dentro do escopo.
  *
  * Três casos, e cada um existe por um motivo medido:
@@ -80,7 +135,26 @@ const ANCORA_DE = (raiz: string, corpo: string): Record<string, string> => ({
  * 2. **`html.dark .card`** vira `:where([raiz].dark) .card`: o qualificador
  *    acompanha a âncora. Perder o `.dark` transformaria um seletor de tema em
  *    seletor global.
- * 3. **Qualquer outro** ganha a âncora do corpo à esquerda.
+ * 3. **Qualquer outro** ganha a âncora do corpo à esquerda — e, quando o
+ *    primeiro composto pode ser o PRÓPRIO proxy, uma segunda variante em lista.
+ *
+ * A segunda variante do caso 3 existe por um defeito medido num site gerado:
+ * `envolverEmProxies` copia as classes do `<html>`/`<body>` de origem para os
+ * próprios divs proxy (`<div data-ds-corpo="x" class="bg-black text-white">`),
+ * mas o prefixo DESCENDENTE `:where([corpo]) .text-white` nunca casa com o
+ * elemento que CARREGA a classe — só com descendentes dele. O rodapé de um site
+ * escuro perdeu o `text-white` e ficou ilegível, e o remendo acabou escrito à
+ * mão no marca.css. Por isso `.text-white` sai como
+ * `:where([corpo]) .text-white, :where([raiz], [corpo]):is(.text-white)`.
+ * O mesmo vale para o composto como ANCESTRAL: em `.dark .card`, o `.dark`
+ * copiado para o proxy raiz também era regra morta, porque o descendente exigia
+ * um `.dark` DENTRO do corpo — a variante `:where([raiz], [corpo]):is(.dark)
+ * .card` devolve o tema.
+ *
+ * A variante NÃO sobe a especificidade, por construção: `:where()` vale ZERO e
+ * `:is(<composto>)` vale exatamente a especificidade do composto — o contrato
+ * "o escopo não sobe especificidade", que é o que deixa o marca.css vencer a
+ * cascata sem `!important`, continua verdadeiro nas duas variantes.
  *
  * `@keyframes` não passa por aqui: `from`/`to`/`50%` são passos, não seletores.
  */
@@ -93,6 +167,11 @@ export const escoparSeletor = (seletor: string, opts: { raiz: string; corpo: str
     if (n.type === 'tag' && (n.value === 'html' || n.value === 'body')) return n.value;
     return null;
   };
+
+  // As variantes de auto-casamento saem em LISTA, depois do seletor escopado.
+  // Elas são acumuladas aqui (e não inseridas na AST durante o `each`) para a
+  // iteração não visitar o que ela mesma acabou de criar.
+  const variantes: string[] = [];
 
   const transform = selectorParser((raizSel) => {
     raizSel.each((sel) => {
@@ -130,13 +209,18 @@ export const escoparSeletor = (seletor: string, opts: { raiz: string; corpo: str
       }
       if (trocouAlguma) return;
 
-      // 2. Seletor sem âncora de documento: prefixa com a do corpo.
+      // 2. Seletor sem âncora de documento: prefixa com a do corpo — e, quando
+      // o primeiro composto pode ser o próprio proxy, guarda a variante de
+      // auto-casamento (construída ANTES do prefixo, sobre o seletor original).
+      const variante = varianteDeAutoCasamento(sel, opts);
       sel.prepend(selectorParser.combinator({ value: ' ' }));
       sel.prepend(selectorParser.string({ value: `:where([${opts.corpo}])` }));
+      if (variante !== null) variantes.push(variante);
     });
   });
   try {
-    return transform.processSync(seletor);
+    const escopado = transform.processSync(seletor);
+    return variantes.length === 0 ? escopado : `${escopado}, ${variantes.join(', ')}`;
   } catch {
     // Seletor que o parser não entende fica como estava: escopar errado é pior
     // que não escopar, porque produz uma regra que não casa com nada.

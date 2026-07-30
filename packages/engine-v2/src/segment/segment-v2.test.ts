@@ -800,6 +800,88 @@ test('bloco sem título usa o texto visível como nome — não fica "Bloco"', (
   assert.ok(s.name.includes('um pouco de texto'), `nome: ${s.name}`);
 });
 
+// ── Fidelidade do fundo ──────────────────────────────────────────────────────
+//
+// A condição antiga comparava a lista de assets do fundo com ela mesma (sempre
+// verdadeira) e TODO fundo saía `capturado` — inclusive o que continuava
+// buscando a imagem na origem. Os três testes fixam a regra de verdade: com
+// cópia local é `capturado`, sem cópia é `detectado`, e gradiente (sem asset)
+// não exige cópia nenhuma.
+
+const entradaComFundo = (
+  assetsLocais: ReadonlySet<string>,
+  fundo: Partial<BackgroundDetection> = {},
+): EntradaSegmentacao => {
+  const secaoFp = fp({ tag: 'section', id: 'hero-fundo' });
+  return entradaVazia({
+    structuralMap: [
+      node({
+        fingerprint: secaoFp,
+        role: 'section',
+        subtreeTextLength: 300,
+        areaShare: 0.8,
+        pageBox: { x: 0, y: 0, w: 1440, h: 900 },
+      }),
+    ],
+    visualLayers: [camada({ fingerprint: secaoFp, ownerSection: secaoFp.hash })],
+    backgroundDetections: [
+      {
+        id: 'bg_hero',
+        source: 'css-image',
+        fingerprint: secaoFp,
+        ownerSection: secaoFp.hash,
+        cssValue: 'url("https://x.test/fundo.jpg")',
+        variables: {},
+        assetUrls: ['https://x.test/fundo.jpg'],
+        animated: false,
+        animationEvidence: [],
+        coversSection: true,
+        confidence: 'alta',
+        limitations: [],
+        ...fundo,
+      },
+    ],
+    htmlPorHash: new Map([
+      [
+        secaoFp.hash,
+        '<section id="hero-fundo"><h2>Planos</h2><div class="card">Um</div><div class="card">Dois</div></section>',
+      ],
+    ]),
+    assetsLocais,
+  });
+};
+
+test('fundo com imagem E cópia local sai `capturado`', () => {
+  const r = segmentarPorEvidencia(entradaComFundo(new Set(['https://x.test/fundo.jpg'])));
+  const s = r.segmentos[0];
+  assert.ok(s, `rejeitados: ${r.rejeitados.map((x) => x.motivos.join(';')).join(' | ')}`);
+  assert.equal(s.fidelity.background, 'capturado');
+});
+
+test('fundo com imagem SEM cópia local sai `detectado`, não `capturado`', () => {
+  const r = segmentarPorEvidencia(entradaComFundo(new Set()));
+  const s = r.segmentos[0];
+  assert.ok(s);
+  assert.equal(
+    s.fidelity.background,
+    'detectado',
+    'a imagem segue na origem: `capturado` prometeria o que o bundle não leva',
+  );
+});
+
+test('fundo sem asset (gradiente) não exige cópia: segue `capturado`', () => {
+  const r = segmentarPorEvidencia(
+    entradaComFundo(new Set(), {
+      source: 'css-gradient',
+      cssValue: 'linear-gradient(180deg, #000, #333)',
+      assetUrls: [],
+    }),
+  );
+  const s = r.segmentos[0];
+  assert.ok(s);
+  assert.equal(s.fidelity.background, 'capturado', 'gradiente viaja no CSS, sem arquivo');
+});
+
 // ── Camadas de fundo atrás da região ─────────────────────────────────────────
 //
 // O fundo de uma página (feixes de luz, blobs, grão) é IRMÃO do conteúdo, não

@@ -1,7 +1,6 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
-import { atributosDeProxy, envolverEmProxies, escoparCss, nomesGlobaisDe } from '@ds/composer';
 import {
   type GeneratePayload,
   OBJETIVOS,
@@ -11,19 +10,23 @@ import {
   derivarEscala,
   distribuirTokens,
   explicarPapel,
-  libraryComponentBundleDir,
-  libraryComponentMetadata,
   projectGeneratedVersionDir,
   resolverSecoes,
 } from '@ds/shared';
 import { z } from 'zod';
-import { lerCssDoBundle } from './cascata.js';
 import { type ModeloDeCopy, executarPlano, montarPlanoEditorial } from './editorial.js';
-import { cssResponsivoBase } from './responsivo.js';
+import { montarPaginaDoKit } from './pagina.js';
 
 export { cssResponsivoBase } from './responsivo.js';
 export { lerCssDoBundle, type LeituraDeCss } from './cascata.js';
 export { type PecaDoKit, comporPecasDoKit, lerPecaDoBundle } from './pecas.js';
+export { consolidarDesignSystemDoKit } from './design-system-do-kit.js';
+export {
+  type EntradaDaPagina,
+  type ResultadoDaPagina,
+  type SecaoCriativa,
+  montarPaginaDoKit,
+} from './pagina.js';
 export {
   type LinhaDeBase,
   type MedidaDeBundle,
@@ -40,37 +43,6 @@ export {
 } from './fidelidade.js';
 export type { Contexto, Veredito, Violacao } from './portao.js';
 export { avaliarPortao, linhasDeContexto } from './portao.js';
-import {
-  atributosDoDocumentoDaPeca,
-  envolverSecao,
-  extrairCorpo,
-  limparParaComposicao,
-  reescreverRefsCss,
-  reescreverRefsHtml,
-} from './montagem.js';
-
-/**
- * A origem de uma peça: o design system de onde ela veio.
- *
- * É por origem que o escopo é feito, não por peça. Duas peças do mesmo site
- * compartilham o CSS e precisam compartilhar a âncora — separá-las duplicaria a
- * folha inteira e ainda quebraria seletores que atravessam as duas.
- *
- * Sem metadata legível, a peça vira a própria origem. Isola de qualquer jeito
- * (só com mais CSS repetido), o que é melhor que arriscar colisão.
- */
-const origemDaPeca = (cmpId: string): string => {
-  try {
-    const meta = JSON.parse(
-      readFileSync(libraryComponentMetadata(cmpId as `cmp_${string}`), 'utf8'),
-    ) as { origin?: { designSystemId?: unknown } };
-    const ds = meta.origin?.designSystemId;
-    if (typeof ds === 'string' && ds.length > 0) return ds;
-  } catch {
-    // metadata ausente ou ilegível: a peça responde por si
-  }
-  return cmpId;
-};
 
 /**
  * Gerador de site.
@@ -325,15 +297,6 @@ Componha o site.`;
   return CompositionPlan.parse(JSON.parse(match[0]));
 };
 
-const applySubstitutions = (html: string, subs?: Record<string, string>): string => {
-  if (!subs) return html;
-  let out = html;
-  for (const [from, to] of Object.entries(subs)) {
-    out = out.split(from).join(to);
-  }
-  return out;
-};
-
 /**
  * CSS da marca aplicado ao site gerado.
  *
@@ -408,183 +371,35 @@ export const generateSite = async (
 
   const iso = new Date().toISOString().replace(/[:.]/g, '-');
   const outputDir = projectGeneratedVersionDir(input.projectId as `prj_${string}`, iso);
-  mkdirSync(outputDir, { recursive: true });
-  mkdirSync(join(outputDir, 'assets'), { recursive: true });
 
-  // Monta cada seção levando o BUNDLE COMPLETO do componente: corpo extraído
-  // (bundles V2 são documentos completos), CSS dividido concatenado na ordem,
-  // JS e arquivos copiados para o namespace do componente — o esqueleto viaja
-  // inteiro, não só os primeiros bytes do HTML.
-  let bodyHtml = '';
-  let concatCss = '';
-  // Nomes globais já declarados por alguma origem. A primeira a declarar
-  // `@keyframes girar` fica com o nome; as seguintes renomeiam. Assim o diff
-  // fica no lado novo, e o site que já existia não muda de comportamento.
-  const nomesGlobaisJaUsados = {
-    keyframes: new Set<string>(),
-    fontFace: new Set<string>(),
-    layer: new Set<string>(),
-  };
-  // Uma origem escopa o CSS UMA vez: duas peças do mesmo site têm CSS idêntico,
-  // e duplicá-lo dobraria o arquivo sem mudar um pixel.
-  const origensComCssIncluido = new Set<string>();
-  const subsPorSecao = new Map(plan.sections.map((s) => [s.secaoId, s.substitutions]));
-  const { secoes: resolvidas } = resolverSecoes(input.layout.secoes, input.kit.components);
-
-  // O laço externo é a ESTRUTURA DO USUÁRIO, na ordem dele. O interno são as
-  // peças daquela seção — todas dentro da mesma <section>, que é o que "N peças
-  // por seção" quer dizer no HTML final.
-  for (const secao of resolvidas) {
-    const substituicoes = subsPorSecao.get(secao.id);
-    let corpoDaSecao = '';
-    const usados: string[] = [];
-    let faltou = false;
-
-    for (const peca of secao.pecas) {
-      const bundleDir = libraryComponentBundleDir(peca.id as `cmp_${string}`);
-      const htmlPath = join(bundleDir, 'index.html');
-      if (!existsSync(htmlPath)) {
-        opts.onProgress?.(`Peça ${peca.id} sem bundle em disco, seguindo sem ela`);
-        faltou = true;
-        continue;
-      }
-
-      // A ordem dos `<link>` do bundle É a cascata. Ler a pasta e ordenar por
-      // nome punha `animations` antes de `tokens` e as folhas externas de nome
-      // hexadecimal no meio — todo o cuidado do compilador em não inverter a
-      // cascata era desfeito aqui, e o site saía errado sem nada faltar.
-      const leitura = lerCssDoBundle(bundleDir);
-      let css = leitura.css;
-      if (leitura.faltando.length > 0) {
-        opts.onProgress?.(
-          `Peça ${peca.id}: ${leitura.faltando.length} folha(s) de estilo declaradas e ausentes`,
-        );
-      }
-      if (css.trim() === '') {
-        opts.onProgress?.(`Peça ${peca.id} entrou SEM estilo nenhum — o bundle não tem CSS`);
-      }
-
-      const documentoDaPeca = readFileSync(htmlPath, 'utf8');
-      let corpo = limparParaComposicao(extrairCorpo(documentoDaPeca));
-      corpo = applySubstitutions(corpo, substituicoes);
-
-      // ── Escopo por origem ─────────────────────────────────────────────
-      //
-      // O CSS de cada peça agora vem INTEIRO da página de origem — é o que faz
-      // a peça sair igual ao original, depois que a poda acabou. O preço é que
-      // dois sites feitos com utilitários definem `.flex` e `.p-6` cada um do
-      // seu jeito, e o segundo a carregar apagava o primeiro.
-      //
-      // A âncora entra dentro de `:where()`, que tem especificidade ZERO: a
-      // origem fica isolada, a ordem interna dela sobrevive, e o `marca.css`
-      // continua vencendo por ser o último — sem um `!important` sequer. Fosse
-      // fora do `:where()`, todo o CSS subiria um degrau e a identidade do
-      // usuário perderia a cascata em todo lugar de uma vez, sem erro nenhum.
-      const origem = origemDaPeca(peca.id);
-      const proxies = atributosDeProxy(origem);
-      // Uma origem entra com CSS uma vez só. Como o escopo é POR ORIGEM, a
-      // folha da primeira peça já veste todas as peças daquele site — repetir
-      // dobraria o arquivo sem mudar um pixel.
-      const jaTemOCssDestaOrigem = origensComCssIncluido.has(origem);
-      if (jaTemOCssDestaOrigem) {
-        css = '';
-      } else {
-        origensComCssIncluido.add(origem);
-        const escopo = escoparCss(css, {
-          raiz: `${proxies.raiz}="${origem}"`,
-          corpo: `${proxies.corpo}="${origem}"`,
-          sufixo: origem,
-          nomesUsados: nomesGlobaisJaUsados,
-        });
-        css = escopo.css;
-        for (const a of escopo.avisos) opts.onProgress?.(`Peça ${peca.id}: ${a}`);
-        for (const n of escopo.renomeados) {
-          opts.onProgress?.(`Peça ${peca.id}: @${n.tipo} "${n.de}" renomeado para "${n.para}"`);
-        }
-        const declarados = nomesGlobaisDe(css);
-        for (const n of declarados.keyframes) nomesGlobaisJaUsados.keyframes.add(n);
-        for (const n of declarados.fontFace) nomesGlobaisJaUsados.fontFace.add(n);
-        for (const n of declarados.layer) nomesGlobaisJaUsados.layer.add(n);
-      }
-
-      // Os proxies: sem eles, um seletor escopado não teria em que casar.
-      corpo = envolverEmProxies({
-        origem,
-        html: corpo,
-        css: '',
-        documentoAttrs: atributosDoDocumentoDaPeca(documentoDaPeca),
-      });
-
-      // Arquivos do bundle (JS, imagens, fontes) vão para assets/<cmpId>/ e as
-      // referências são reescritas — componentes não colidem entre si.
-      const assetsDir = join(bundleDir, 'assets');
-      if (existsSync(assetsDir)) {
-        const destino = join(outputDir, 'assets', peca.id);
-        for (const entry of readdirSync(assetsDir)) {
-          if (entry === 'css') continue;
-          cpSync(join(assetsDir, entry), join(destino, entry), { recursive: true });
-        }
-        corpo = reescreverRefsHtml(corpo, peca.id);
-        css = reescreverRefsCss(css, peca.id);
-      }
-
-      corpoDaSecao += `\n${corpo}\n`;
-      if (css.trim().length > 0) {
-        concatCss += `\n/* origem ${origem} — primeira peça: ${peca.id} */\n${css}`;
-      }
-      usados.push(peca.id);
-    }
-
-    // Seção que o usuário pediu sem peça do kit: no modo API não há como criar
-    // o visual, então ela sai declarada e vazia em vez de sumir da página. O
-    // modo fila, que é quem gera de verdade, cria a seção no estilo do kit.
-    if (usados.length === 0) {
-      corpoDaSecao = `\n<!-- seção "${secao.nome}" pedida sem peça do kit: criar no estilo -->\n`;
-    }
-
-    bodyHtml += `\n${envolverSecao(corpoDaSecao, {
-      role: secao.slug,
-      secaoId: secao.id,
-      componentIds: usados,
-      criouAlgo: faltou,
-    })}\n`;
-    opts.onProgress?.(`Adicionado: ${secao.nome} (${usados.length} peça(s))`);
+  // A montagem inteira delega ao `montarPaginaDoKit` — a MESMA implementação
+  // do modo fila. Antes eram dois montadores (o laço daqui e o passo a passo
+  // do CLAUDE.md), e todo conserto tinha de acontecer duas vezes ou divergir
+  // em silêncio: a recoloração e o fundo-como-camada nasceram no montador novo
+  // e este laço nunca os teria. O plano do LLM entra como o CRIATIVO
+  // (substituições por seção), que é exatamente o formato que o montador
+  // espera.
+  const resultado = montarPaginaDoKit({
+    projectId: input.projectId as `prj_${string}`,
+    titulo: input.projectName,
+    kit: { id: input.kit.id, components: input.kit.components },
+    designSystem: input.kit.designSystem ?? null,
+    layout: input.layout,
+    branding: input.branding,
+    secoes: plan.sections.map((sec) => ({
+      secaoId: sec.secaoId,
+      substituicoes: sec.substitutions,
+    })),
+    outputDir,
+  });
+  for (const aviso of resultado.avisos) opts.onProgress?.(aviso);
+  if (resultado.faltando.length > 0) {
+    opts.onProgress?.(`Peças sem bundle em disco: ${resultado.faltando.join(', ')}`);
   }
+  opts.onProgress?.(
+    `Recoloração: ${resultado.recoloracao.reescritas} cor(es) apontando para a marca em ${resultado.recoloracao.origens} origem(ns)`,
+  );
 
-  // Ordem da cascata: ESQUELETO (CSS dos componentes) → RESPONSIVO (vence as
-  // larguras fixas capturadas, só no mobile) → MARCA (a identidade por último,
-  // vencendo sem !important).
-  const brandingCss = buildBrandingCss(input.branding);
-  writeFileSync(join(outputDir, 'assets/styles.css'), concatCss, 'utf8');
-  writeFileSync(join(outputDir, 'assets/responsivo.css'), cssResponsivoBase(), 'utf8');
-  writeFileSync(join(outputDir, 'assets/marca.css'), brandingCss, 'utf8');
-
-  // Importa as fontes escolhidas (só os pesos usados) via <link> no head — a
-  // aplicação aos títulos/corpo está no styles.css. Preconnect para acelerar.
-  const fontImportUrl = buildTypographyCss(input.branding.typography).importUrl;
-  const fontLinks = fontImportUrl
-    ? `<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link rel="stylesheet" href="${fontImportUrl}"/>
-`
-    : '';
-
-  const finalHtml = `<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>${input.projectName}</title>
-${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
-<link rel="stylesheet" href="assets/responsivo.css"/>
-<link rel="stylesheet" href="assets/marca.css"/>
-</head>
-<body>
-${bodyHtml}
-</body>
-</html>`;
-
-  writeFileSync(join(outputDir, 'index.html'), finalHtml, 'utf8');
   writeFileSync(join(outputDir, 'plan.json'), JSON.stringify(plan, null, 2), 'utf8');
 
   // Pipeline editorial (A11): com modelo plugado e voz definida, a copy nasce
@@ -604,5 +419,12 @@ ${bodyHtml}
     );
   }
 
-  return { outputDir, plan, totalBytes: finalHtml.length + concatCss.length + brandingCss.length };
+  const totalBytes = resultado.arquivos.reduce((n, rel) => {
+    try {
+      return n + readFileSync(join(outputDir, rel)).length;
+    } catch {
+      return n;
+    }
+  }, 0);
+  return { outputDir, plan, totalBytes };
 };

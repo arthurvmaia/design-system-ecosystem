@@ -1,5 +1,6 @@
 import type {
   IdentidadeVerbal,
+  KitDesignSystem,
   LocalDeLogo,
   LogoVariante,
   PaletaDoProjeto,
@@ -8,7 +9,7 @@ import type {
   TipografiaDoProjeto,
 } from '@ds/shared/schemas';
 
-export type { ProjectLayout };
+export type { KitDesignSystem, ProjectLayout };
 
 export type HealthResponse = {
   status: 'ok';
@@ -106,6 +107,13 @@ export type SegmentFidelity = {
   framePath?: string;
 };
 
+/**
+ * Resultado da conferência de pixel do bundle deste segmento: o bundle foi
+ * aberto sozinho num navegador e comparado com o print da dobra de origem.
+ * Frações 0..1 (a UI formata em %).
+ */
+export type ConferenciaDePixel = { delta: number; limiar: number; passou: boolean };
+
 export type SegmentRecord = {
   id: string;
   designSystemId: string;
@@ -122,6 +130,14 @@ export type SegmentRecord = {
   fidelity?: SegmentFidelity | null;
   /** Resumo das interações por estado (contagens). Presente na listagem nova. */
   resumo?: PipelineResumo | null;
+  /** Presente quando a captura mediu o pixel E soube dizer de que segmento é. */
+  comparacaoVisual?: ConferenciaDePixel;
+  /**
+   * O que o bundle deste segmento declarou ao ser compilado. Campo presente =
+   * o segmento tem bundle (mesmo com a lista vazia); ausente = fluxo antigo ou
+   * subcomponente, em que a conferência de pixel nem se aplica.
+   */
+  limitacoes?: string[];
 };
 
 export type TaskEvent = { timestamp: number; level: 'info' | 'warn' | 'error'; message: string };
@@ -202,6 +218,12 @@ export type KitRecord = {
   /** Projetos que usam este kit — a UI avisa antes de excluir. */
   usedByProjects: Array<{ id: string; name: string }>;
 };
+
+/**
+ * Kit que algum projeto usa — a exclusão em lote devolve isto em vez de
+ * excluir, para a UI confirmar de novo com os projetos nomeados.
+ */
+export type KitEmUso = { id: string; name: string; projetos: string[] };
 
 export type CreateKitInput = {
   name: string;
@@ -502,6 +524,13 @@ export const api = {
   getKit: (id: string) => jsonFetch<{ item: KitRecord }>(`/api/kits/${id}`),
   getKitContratos: (id: string) =>
     jsonFetch<{ items: KitContratoResumo[] }>(`/api/kits/${id}/contratos`),
+  /**
+   * O design system consolidado do kit (paleta por origem, fontes, limitações).
+   * O servidor tenta o backfill na hora; `item: null` = nem agora deu, e a
+   * geração degrada para as cores de origem das peças.
+   */
+  getKitDesignSystem: (id: string) =>
+    jsonFetch<{ item: KitDesignSystem | null }>(`/api/kits/${id}/design-system`),
   createKit: (input: CreateKitInput) =>
     jsonFetch<{ item: KitRecord }>('/api/kits', { method: 'POST', body: JSON.stringify(input) }),
   updateKit: (id: string, input: UpdateKitInput) =>
@@ -511,6 +540,11 @@ export const api = {
     }),
   deleteKit: (id: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/kits/${id}`, { method: 'DELETE' }),
+  excluirKitsEmLote: (kitIds: string[], confirmarEmUso = false) =>
+    jsonFetch<{ excluidos: string[]; emUso: KitEmUso[]; faltando: string[] }>(
+      '/api/kits/excluir-lote',
+      { method: 'POST', body: JSON.stringify({ kitIds, confirmarEmUso }) },
+    ),
   duplicateKit: (id: string) =>
     jsonFetch<{ item: KitRecord }>(`/api/kits/${id}/duplicate`, { method: 'POST' }),
 
@@ -549,7 +583,20 @@ export const api = {
     if (meta.secaoId) form.append('secaoId', meta.secaoId);
     if (meta.alt) form.append('alt', meta.alt);
     const res = await fetch(`/api/projects/${id}/media`, { method: 'POST', body: form });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+    if (!res.ok) {
+      // Quando o servidor explica o problema por extenso (campo `message`, como
+      // no 413 do limite de 200 MB), o toast mostra essa frase — e não o JSON
+      // cru colado atrás de "413 Payload Too Large".
+      const texto = await res.text();
+      let mensagem = `${res.status} ${res.statusText}: ${texto}`;
+      try {
+        const corpo = JSON.parse(texto) as { message?: unknown };
+        if (typeof corpo.message === 'string' && corpo.message) mensagem = corpo.message;
+      } catch {
+        // corpo não era JSON; a mensagem técnica já serve
+      }
+      throw new Error(mensagem);
+    }
     return res.json();
   },
   /** Move a mídia de seção. `secaoId: null` devolve para "o gerador decide". */

@@ -101,7 +101,45 @@ test('lista vazia devolve composição vazia, sem quebrar', () => {
   assert.equal(r.css, '');
 });
 
+test('regra em classe que o PRÓPRIO proxy carrega casa com ele', () => {
+  // O <body> de origem tinha class="bg-x", e envolverEmProxies copia essa
+  // classe para o div do proxy. Só com o prefixo descendente, `.bg-x` virava
+  // regra morta no elemento que carrega a classe — defeito medido no site
+  // real: o rodapé escuro perdeu o text-white e o conserto foi escrito à mão
+  // no marca.css. O CSS composto tem de trazer a variante que casa com o
+  // próprio proxy.
+  const r = compor([
+    peca({
+      origem: 'ds_a',
+      css: '.bg-x{background:#000}',
+      documentoAttrs: { body: 'class="bg-x"' },
+    }),
+  ]);
+  assert.ok(
+    r.css.includes(':where([data-ds-raiz="ds_a"], [data-ds-corpo="ds_a"]):is(.bg-x)'),
+    `saiu: ${r.css}`,
+  );
+  // E o HTML de fato carrega a classe no proxy — as duas metades do conserto.
+  assert.ok(r.pecas[0]?.includes('data-ds-corpo="ds_a" class="bg-x"'));
+});
+
 test('aspas no id da origem não escapam do atributo', () => {
   const h = envolverEmProxies(peca({ origem: 'ds_"x' }));
   assert.ok(h.includes('data-ds-raiz="ds_&quot;x"'));
+});
+
+test('compor com recoloração: a origem mapeada consome a marca, a outra fica original', () => {
+  const mapa = new Map([['#0d3c1f', 'primary' as const]]);
+  const r = compor(
+    [
+      { origem: 'ds_a', html: '<p class="t">A</p>', css: '.t{color:#0d3c1f}' },
+      { origem: 'ds_b', html: '<p class="t">B</p>', css: '.t{color:#0d3c1f}' },
+    ],
+    { recoloracaoPorOrigem: new Map([['ds_a', mapa]]) },
+  );
+  assert.ok(r.css.includes('var(--marca-primary, #0d3c1f)'), 'ds_a recolorida');
+  // A parte da ds_b mantém o literal puro.
+  const parteB = r.css.slice(r.css.indexOf('origem: ds_b'));
+  assert.ok(!parteB.includes('--marca-'), 'ds_b intocada');
+  assert.ok(r.avisos.some((a) => a.includes('recoloração: 1')));
 });

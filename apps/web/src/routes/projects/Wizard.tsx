@@ -75,6 +75,16 @@ export function ProjectWizard({
   const [objetivo, setObjetivo] = useState<ObjetivoDoSite | null>(parsedLayout.objetivo);
   // Produtos vivem no conteúdo do projeto.
   const [produtos, setProdutos] = useState<Produto[]>(parsedContent.produtos ?? []);
+  // As permissões moram em `layout.permissoes`, mas cada caixa fica na etapa em
+  // que a decisão acontece: arte de apoio na Mídia, seções obrigatórias que
+  // faltam na Estrutura. Chave sem tela atravessa intacta pelo espalhamento do
+  // layout no salvar().
+  const [criarArteDeApoio, setCriarArteDeApoio] = useState(
+    parsedLayout.permissoes.criarArteDeApoio,
+  );
+  const [criarSecoesFaltantes, setCriarSecoesFaltantes] = useState(
+    parsedLayout.permissoes.criarSecoesFaltantes,
+  );
   const [media, setMedia] = useState<MediaItem[]>(parseMedia(existing?.mediaManifestJson));
 
   // Espelhos legados. A fonte do texto passou a ser `secao.instrucao`; `briefs` e
@@ -163,7 +173,12 @@ export function ProjectWizard({
       // Espalhar o layout lido preserva densidade, movimento e a preferência de
       // design system, que não têm tela: mandar só `secoes` faria o servidor
       // mesclar sobre o default e zerar os três a cada gravação.
-      layout: { ...parsedLayout, secoes, objetivo },
+      layout: {
+        ...parsedLayout,
+        secoes,
+        objetivo,
+        permissoes: { ...parsedLayout.permissoes, criarArteDeApoio, criarSecoesFaltantes },
+      },
     });
     qc.invalidateQueries({ queryKey: ['projects'] });
     return id;
@@ -193,8 +208,18 @@ export function ProjectWizard({
   // O `objetivo` ficou de fora quando foi criado, e o efeito era silencioso e
   // caro: escolher "Vender um produto" não mudava a assinatura, o autosave não
   // disparava, e a escolha se perdia ao fechar o wizard. A pessoa via o botão
-  // marcado e o app não guardava nada.
-  const assinatura = JSON.stringify({ name, kitId, branding, secoes, produtos, objetivo });
+  // marcado e o app não guardava nada. As permissões entram pela mesma razão:
+  // marcar uma caixa de autorização precisa disparar o autosave.
+  const assinatura = JSON.stringify({
+    name,
+    kitId,
+    branding,
+    secoes,
+    produtos,
+    objetivo,
+    criarArteDeApoio,
+    criarSecoesFaltantes,
+  });
   const ultimaSalva = useRef(existing !== null ? assinatura : '');
   const emVoo = useRef(false);
 
@@ -326,6 +351,8 @@ export function ProjectWizard({
               components={componentesDoKit}
               objetivo={objetivo}
               espacos={espacosDasPecas}
+              criarSecoesFaltantes={criarSecoesFaltantes}
+              onCriarSecoesFaltantes={setCriarSecoesFaltantes}
             />
           )}
           {step === ETAPA.midia && (
@@ -339,6 +366,8 @@ export function ProjectWizard({
               produtos={produtos}
               onProdutos={setProdutos}
               objetivo={objetivo}
+              criarArteDeApoio={criarArteDeApoio}
+              onCriarArteDeApoio={setCriarArteDeApoio}
             />
           )}
           {step === ETAPA.revisao && (

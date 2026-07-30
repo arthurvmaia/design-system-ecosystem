@@ -96,34 +96,56 @@ O payload é rico e é a fonte da verdade — não vá ler o banco por fora:
               // (path relativo a projects/<id>/media/)
 ```
 
-1. **Use SOMENTE os componentes do kit** (`payload.kit.components`), nunca a Biblioteca inteira. O kit é o Design System final; sair dele traz peças de origens que não conversam.
+O payload traz mais dois campos que mudam o jogo: `kit.designSystem` (o design
+system CONSOLIDADO do kit: clusters de cor com papel semântico por origem, tema,
+fontes, limitações) e `layout.permissoes` (`criarSecoesFaltantes`,
+`criarArteDeApoio` — o que o usuário AUTORIZOU você a criar; desligado = não
+crie, mesmo que falte).
 
-   Cada componente tem `bundlePath`, e o bundle vai **inteiro**: o corpo do `index.html` (bundles V2 são documentos completos), TODO o CSS na ordem dos `<link>`, o JS e os arquivos de `assets/`. Copie os arquivos para `assets/<cmp_id>/` no site gerado e reescreva as referências.
+**Você não monta mais o site à mão.** O determinístico inteiro — composição,
+escopo por origem, RECOLORAÇÃO para a paleta da marca, fundo de página como
+camada fixa, responsivo base, `marca.css`, cópia de assets e mídia — mora em
+`montarPaginaDoKit` (`@ds/generator`), executável por comando. Seu trabalho é o
+CRIATIVO, entregue como dado:
 
-   **O CSS de duas origens COLIDE — não monte à mão.** Cada bundle carrega o CSS inteiro da página de origem (é o que faz a peça sair igual ao original). Dois sites feitos com utilitários definem `.flex`, `.container`, `.p-6` e os tokens de `:root` cada um do seu jeito, e quem carregar por último apaga o outro: o site sai com metade das peças erradas, sem erro nenhum aparecer. Use:
+1. **Escreva `entrada-geracao.json`** na pasta do projeto
+   (`~/design-system-ecosystem/projects/<prj_id>/entrada-geracao.json`), no
+   formato de `scripts/pagina-montar.ts`: os campos estruturais copiados do
+   payload (`projectId`, `titulo`, `kit`, `layout`, `branding`) mais o seu
+   criativo:
+   - `secoes[]`: por seção, `substituicoes` (trecho EXATO do HTML de origem →
+     texto novo, no tom da marca — `derivarDiretrizes`/`explicarPapel` seguem
+     valendo) e/ou `htmlCriado` para seção sem peça. Ao criar, consulte DUAS
+     fontes nesta ordem: o `kit.designSystem` (as cores por papel, as fontes,
+     o tema) e a identidade do usuário (`branding`). É isso que faz a seção
+     criada parecer do mesmo site.
+   - `cssCriado`: as regras das suas seções criadas (use os tokens
+     `var(--marca-...)`, nunca hex solto).
+   - `responsivoExtra`: o que ESTE site pede além do `cssResponsivoBase`.
+   - `midia[]`: `{de, para}` — onde entra cada arquivo de
+     `projects/<id>/media/`. Mídia com `secaoId` vai naquela seção; sem
+     `secaoId`, a posição é decisão sua. **Vídeo (`kind: 'video'`) entra como
+     `<video>`** com `muted playsInline` (e `controls` quando for conteúdo,
+     `autoplay loop` quando for fundo) — nunca como `<img>`.
+2. **Respeite as permissões.** Sem `criarSecoesFaltantes`, não invente seção
+   que o usuário não pediu (nem nav, nem rodapé — apenas avise no resumo). Sem
+   `criarArteDeApoio`, seção sem mídia fica sem mídia. Com as permissões
+   ligadas, crie no estilo do kit: arte de apoio é SVG/CSS na paleta da marca
+   ou reuso das mídias gerais, nunca imagem inventada por IA.
+3. **Rode `pnpm pagina <caminho do entrada-geracao.json>`.** Ele monta tudo,
+   imprime o destino, a contagem da recoloração e os avisos. Leia os avisos:
+   substituição que não casou e peça sem bundle aparecem ali, e é mais barato
+   corrigir a entrada e rodar de novo do que remendar a saída.
+4. **NUNCA copie texto, nome ou marca do site de origem.** O kit empresta só o
+   jeito visual; a identidade é a do usuário.
+5. **Valide como sempre**: navegador headless em ~1440px e ~390px (janela na
+   cara de quem usa o computador é interrupção, não validação), e feche com
+   `pnpm fila:concluir <job_id>`.
 
-   ```ts
-   import { comporPecasDoKit } from '@ds/generator';
-
-   const { css, pecas, scripts, faltando } = comporPecasDoKit(
-     payload.kit.components.map((c) => ({
-       id: c.id,
-       bundlePath: c.bundlePath,
-       designSystemId: c.designSystemId, // o escopo é por ORIGEM, não por peça
-     })),
-   );
-   ```
-
-   `css` vai para `assets/styles.css` já escopado por origem — com a âncora dentro de `:where()`, que tem especificidade ZERO, então o `marca.css` continua vencendo a cascata sem `!important`. `pecas[i]` é o HTML daquela peça já vestido nos dois proxies (`data-ds-raiz`/`data-ds-corpo`, com as classes do `<html>` e do `<body>` de origem), que é o que faz `html.dark body .card` casar. `scripts` são os `<script src>` remotos deduplicados. Peça sem bundle em disco entra em `faltando` em vez de derrubar a geração.
-2. **A estrutura é `layout.secoes`, na ordem.** Uma `<section>` por item da lista, na sequência em que aparecem. Você **não acrescenta, não remove e não reordena** seção nenhuma: essa lista é a arquitetura que a pessoa desenhou, seção a seção, na tela de Estrutura. Não existe mais blueprint nem modo criativo.
-3. **Cada seção leva as peças de `componentIds`, todas, na ordem, DENTRO da mesma `<section>`.** `componentIds` vazio é uma decisão legítima e comum: crie aquela seção inteira no estilo do kit (mesmas cores, tipografia, espaçamento, densidade). Envolva assim:
-   `<section data-secao="<papel ou 'secao'>" data-secao-id="<sec_...>" data-origem="biblioteca|gerado|misto" data-componente="cmp_a cmp_b">`.
-   `slugDaSecao()` e `resolverSecoes()` de `@ds/shared` resolvem o papel e as peças (inclusive peça que saiu do kit). `data-origem` é `misto` quando parte da seção veio do kit e parte você criou — dizer "biblioteca" numa seção meio inventada esconde a procedência. Nenhuma seção fica vazia.
-4. **A IDV do usuário entra POR CIMA do esqueleto, nunca dentro dele**: o CSS dos componentes fica em `assets/styles.css` e a marca em `assets/marca.css`, carregada DEPOIS — os tokens vencem a cascata sem `!important`. Com `branding.paleta`, use `distribuirTokens()` (17 tokens semânticos); com `branding.tipografia`, use `derivarEscala()` (H1–H6, peso, respiro). O texto de cada seção vem de `secao.instrucao`: é o que aquela seção **deve ou não deve comunicar**. **Instrução vazia significa que a pessoa delegou o texto a você**: escreva no tom da marca SEM inventar fatos, números, clientes ou prêmios — sem informação concreta, texto seguro e fácil de editar. Quando delegado, use `explicarPapel(secao.papel, layout.objetivo)` de `@ds/shared` para saber **o que aquela seção faz na página** (abertura promete, prova social mostra que outros confiaram, objeções respondem o que trava a decisão) — sem isso, todas as seções saem com o mesmo tom. Logos: `distribuirLogos(branding.logos)` decide a variação por local (`logosLocais` sobrepõe). Respeite a voz (`identidadeVerbal` → `derivarDiretrizes()`), `density` e `motion`.
-5. **Mídia e produtos.** Mídia com `secaoId` entra naquela seção; mídia **sem** `secaoId` foi deixada de propósito para você posicionar onde funcionar melhor. `content.produtos` é a vitrine: monte-a com as peças do kit (card/pricing/gallery), usando `imagemPath` como foto e respeitando o que está vazio — produto sem preço não ganha preço inventado. Lista vazia significa que o site **não tem** seção de produto.
-6. **NUNCA copie texto, nome ou marca do site de origem.** O kit empresta só o jeito visual; a identidade é a do usuário.
-7. **Responsividade é REQUISITO, não melhoria.** O site precisa de uma versão mobile pensada: meta viewport, nada de rolagem horizontal, colunas empilhadas, mídia proporcional, texto ≥16px, alvos de toque ≥44px, navegação adaptada. Escreva a camada em `assets/responsivo.css` carregada ENTRE `styles.css` e `marca.css` (use `cssResponsivoBase()` de `@ds/generator` como base e adapte o que o kit exigir, sem perder o estilo dele). O seletor `[data-secao="nav"]` do `cssResponsivoBase()` só alcança a barra de navegação: confirme que ela saiu com esse `data-secao`, senão o comportamento dela no celular some sem erro nenhum. Valide em ~1440px e ~390px antes de concluir, e faça isso com o navegador **em modo headless** — abrir janela na cara de quem está usando o computador não é validação, é interrupção.
-8. Escreva em `~/design-system-ecosystem/projects/<prj_id>/generated/<timestamp>/` com `index.html` + assets. É o que a tela **Meus sites** serve na prévia e empacota no `.zip`. O `fila:concluir` valida: assets referenciados existem, `marca.css` carrega depois do `styles.css`, toda seção tem `data-origem`, a meta viewport está declarada e existe CSS com `@media` de largura.
+**Não escreva scripts `_tmp-*` de montagem.** Se algo determinístico faltar no
+`montarPaginaDoKit`, isso é defeito do motor — conserte o motor (com teste) em
+vez de contornar num script descartável. Os restos de `_tmp-*` de gerações
+antigas são exatamente o que este contrato aposenta.
 
 ## Avisando que está trabalhando
 
@@ -178,6 +200,7 @@ pnpm fila:progresso   # reporta 0-100 de um job em andamento
 pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
 pnpm segmentar        # segmenta um ds_id à mão (conserto; o fila:concluir já faz sozinho)
 pnpm voz              # gera a voz do Orbis para a abertura (sintetizador do Windows)
+pnpm pagina           # monta um site do kit a partir de um entrada-geracao.json (modo queue)
 pnpm medir-fidelidade # mede o acervo e compara com a linha de base (--gravar adota o resultado)
                       # --falhar-se-piorar vira PORTAO: sai 1 se reprovar, 2 se nao der para verificar
 pnpm reextrair        # re-captura um ds_id (ou --todos) no MESMO id, trocando só no fim

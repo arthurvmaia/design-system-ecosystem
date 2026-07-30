@@ -3,6 +3,7 @@ import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import {
+  type ConferenciaDePixel,
   type DesignSystemRecord,
   type SegmentFidelity,
   type SegmentRecord,
@@ -177,19 +178,42 @@ function FidelityBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
   );
 }
 
+/** Fração 0..1 como percentual pt-BR: 0.032 vira "3,2%"; 0.08 vira "8%". */
+const pct = (v: number): string =>
+  `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+
 /**
  * Painel de fidelidade no detalhe: diz o nível de suporte, os avisos e as
  * interações conhecidas. É a promessa de "não esconder a falha" cumprida na UI —
  * a pessoa vê o que o componente reproduz e o que não reproduz antes de curtir.
+ * A conferência de pixel entra aqui: a captura abriu o bundle sozinho e mediu a
+ * diferença contra o print da dobra — mostrar essa medição é o que separa "eu
+ * conferi" de "eu acho que ficou igual".
  */
-function FidelityPanel({ fidelity }: { fidelity?: SegmentFidelity | null }) {
+function FidelityPanel({
+  fidelity,
+  comparacao,
+  limitacoes,
+}: {
+  fidelity?: SegmentFidelity | null;
+  comparacao?: ConferenciaDePixel;
+  limitacoes?: string[];
+}) {
   if (!fidelity) return null;
   const temPipeline = (fidelity.pipeline?.length ?? 0) > 0;
+  // `limitacoes` presente (mesmo vazia) = o segmento tem bundle, então a
+  // conferência de pixel se aplica; ausente = peça antiga ou subcomponente.
+  const temBundle = limitacoes !== undefined;
+  // O que o compilador declarou e os avisos acima ainda não disseram — repetir
+  // a mesma frase em duas listas só ensinaria a pessoa a não ler nenhuma.
+  const declaracoes = (limitacoes ?? []).filter((l) => !fidelity.warnings.includes(l));
   const semRessalva =
     fidelity.support === 'completo' &&
     fidelity.warnings.length === 0 &&
     fidelity.interactions.length === 0 &&
-    !temPipeline;
+    !temPipeline &&
+    !temBundle &&
+    comparacao === undefined;
   if (semRessalva) return null;
   const cor = SUPORTE_COR[fidelity.support] ?? '#78716c';
 
@@ -238,6 +262,18 @@ function FidelityPanel({ fidelity }: { fidelity?: SegmentFidelity | null }) {
           )}
         </div>
       )}
+      {comparacao !== undefined ? (
+        <div
+          className="ds-data mt-2 text-[11px]"
+          style={{ color: comparacao.passou ? 'var(--color-ok)' : 'var(--color-warn)' }}
+        >
+          conferência de pixel: delta {pct(comparacao.delta)} (limiar {pct(comparacao.limiar)})
+        </div>
+      ) : temBundle ? (
+        <div className="mt-2 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+          esta peça não passou pela conferência de pixel
+        </div>
+      ) : null}
       {fidelity.warnings.length > 0 && (
         <ul className="mt-2 space-y-1">
           {fidelity.warnings.map((w) => (
@@ -255,6 +291,24 @@ function FidelityPanel({ fidelity }: { fidelity?: SegmentFidelity | null }) {
             </li>
           ))}
         </ul>
+      )}
+      {declaracoes.length > 0 && (
+        <div className="mt-2">
+          <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            o que esta captura declarou:
+          </span>
+          <ul className="mt-1 space-y-1">
+            {declaracoes.map((l) => (
+              <li
+                key={l}
+                className="text-[11px] leading-relaxed"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                {l}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -1587,7 +1641,11 @@ function SegmentDetail({
             </button>
           </div>
         </div>
-        <FidelityPanel fidelity={segment.fidelity} />
+        <FidelityPanel
+          fidelity={segment.fidelity}
+          comparacao={segment.comparacaoVisual}
+          limitacoes={segment.limitacoes}
+        />
         {modo === 'print' && print !== undefined ? (
           <div className="p-4">
             {/* Imagem, não iframe: é registro do que a captura viu, não o

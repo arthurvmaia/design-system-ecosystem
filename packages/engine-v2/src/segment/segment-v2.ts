@@ -959,6 +959,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       midias,
       externos: externos.length,
       totalAssets: assetsDoSegmento.size,
+      assetsLocais: entrada.assetsLocais,
       estados: estados.length,
       acoes,
       ponteiro,
@@ -1085,6 +1086,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       midias: midiasDoFundo,
       externos: 0,
       totalAssets: 0,
+      assetsLocais: entrada.assetsLocais,
       estados: 0,
       acoes: [],
       ponteiro: [],
@@ -1206,6 +1208,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       midias: [],
       externos: 0,
       totalAssets: 0,
+      assetsLocais: entrada.assetsLocais,
       estados: 0,
       acoes: [],
       ponteiro: [],
@@ -1372,6 +1375,8 @@ const montarFidelidade = (opts: {
   midias: readonly MediaDetection[];
   externos: number;
   totalAssets: number;
+  /** URLs de asset COM cópia local — decide se um fundo por imagem viaja mesmo. */
+  assetsLocais: ReadonlySet<string>;
   estados: number;
   acoes: readonly ExecutedAction[];
   ponteiro: readonly PointerResponse[];
@@ -1414,7 +1419,13 @@ const montarFidelidade = (opts: {
     background:
       opts.backgrounds.length === 0
         ? 'ausente'
-        : opts.backgrounds.every((b) => b.assetUrls.length === 0 || b.assetUrls.every(() => true))
+        : // `capturado` exige que cada imagem de fundo tenha CÓPIA LOCAL. A
+          // condição anterior comparava a lista com ela mesma (sempre verdadeira)
+          // e todo fundo saía `capturado`, inclusive o que seguia dependendo da
+          // origem. Fundo sem asset (gradiente, cor) não precisa de cópia.
+          opts.backgrounds.every(
+              (b) => b.assetUrls.length === 0 || b.assetUrls.every((u) => opts.assetsLocais.has(u)),
+            )
           ? 'capturado'
           : 'detectado',
     media: opts.midias.length === 0 ? 'ausente' : opts.externos === 0 ? 'portatil' : 'externo',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { KitDesignSystem } from './kit-design-system.js';
 import { ProjectLayout } from './layout.js';
 import { MediaManifest, ProjectBranding, ProjectContent } from './project.js';
 
@@ -38,6 +39,14 @@ export const GeneratePayload = z.object({
     id: z.string(),
     name: z.string(),
     components: z.array(KitComponenteDeGeracao).min(1),
+    /**
+     * O design system consolidado do kit (`kits.tokensJson`), quando existe.
+     *
+     * Aditivo: jobs antigos não têm o campo e continuam válidos. Sem ele a
+     * geração não recolore nada — as peças saem com a aparência de origem, que
+     * é a degradação combinada, e o motivo aparece nos avisos da montagem.
+     */
+    designSystem: KitDesignSystem.nullable().optional(),
   }),
   layout: ProjectLayout,
   blueprintId: z.string().optional(),
