@@ -38,6 +38,8 @@ export {
   medirScripts,
   resumir,
 } from './fidelidade.js';
+export type { Contexto, Veredito, Violacao } from './portao.js';
+export { avaliarPortao, linhasDeContexto } from './portao.js';
 import {
   atributosDoDocumentoDaPeca,
   envolverSecao,

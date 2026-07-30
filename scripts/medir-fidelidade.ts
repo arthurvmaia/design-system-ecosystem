@@ -4,6 +4,10 @@
  * Uso:
  *   pnpm medir-fidelidade              # mede e grava/compara com a linha de base
  *   pnpm medir-fidelidade --gravar     # força regravar a linha de base
+ *   pnpm medir-fidelidade --falhar-se-piorar   # PORTÃO: sai 1 se alguma regra
+ *                                              # absoluta for violada, 2 se não
+ *                                              # deu para verificar
+ *   pnpm medir-fidelidade --falhar-se-piorar --exigir-base   # sem base também reprova
  *
  * Existe porque "melhorou" precisa ser um número. Antes de mexer no motor,
  * rode uma vez: o resultado fica em `~/design-system-ecosystem/fidelidade.json`
@@ -20,8 +24,10 @@ import { join } from 'node:path';
 import {
   type LinhaDeBase,
   type MedidaDeBundle,
+  avaliarPortao,
   bundlesEm,
   comparar,
+  linhasDeContexto,
   medirBundle,
   resumir,
 } from '@ds/generator';
@@ -141,10 +147,73 @@ const imprimir = (l: LinhaDeBase): void => {
   }
 };
 
+/**
+ * O modo portão: a medição deixa de relatar e passa a reprovar.
+ *
+ * Três códigos de saída, e o terceiro é o que impede a verificação de mentir:
+ *
+ * - `0` passou
+ * - `1` reprovou (uma regra absoluta foi violada, ou `--exigir-base` e não há base)
+ * - `2` não deu para verificar (sem base, sem acervo, base ilegível)
+ *
+ * Sem o `2`, "não consegui medir" viraria "está bom" — que é exatamente o que
+ * acontece hoje, quando o comando compara populações disjuntas e imprime
+ * "72,6% → 0%" como se fosse conquista.
+ *
+ * Sob esta flag a linha de base NUNCA é gravada. Gravar na primeira execução
+ * petrificaria o estado atual como régua sem ninguém olhar, e foi assim que um
+ * acervo com 2908 instrumentações vazadas viraria "o bom".
+ */
+const rodarPortao = (base: LinhaDeBase | null, agora: LinhaDeBase, exigirBase: boolean): never => {
+  const v = avaliarPortao(base, agora);
+
+  console.log('');
+  for (const l of linhasDeContexto(v.contexto)) console.log(`  ${l}`);
+  console.log('');
+
+  if (v.estado === 'reprovou') {
+    console.log(`  REPROVOU. ${v.resumo}\n`);
+    for (const x of v.violacoes.slice(0, 20)) {
+      console.log(`    ${x.bundle}: ${x.explicacao}`);
+    }
+    if (v.violacoes.length > 20) console.log(`    ... e mais ${v.violacoes.length - 20}.`);
+    console.log('');
+    process.exit(1);
+  }
+
+  if (v.estado === 'nao-deu-para-verificar') {
+    console.log(`  NÃO DEU PARA VERIFICAR. ${v.resumo}\n`);
+    process.exit(exigirBase ? 1 : 2);
+  }
+
+  console.log(`  Passou. ${v.resumo}\n`);
+  process.exit(0);
+};
+
+/** Lê a linha de base do disco. `null` quando não existe ou não dá para ler. */
+const lerLinhaDeBase = (caminho: string): LinhaDeBase | null => {
+  if (!existsSync(caminho)) return null;
+  try {
+    const lida = JSON.parse(readFileSync(caminho, 'utf8')) as LinhaDeBase;
+    return Array.isArray(lida?.bundles) ? lida : null;
+  } catch {
+    return null;
+  }
+};
+
 if (executadoDireto(import.meta.url)) {
   const forcarGravar = process.argv.includes('--gravar');
+  const portao = process.argv.includes('--falhar-se-piorar');
+  const exigirBase = process.argv.includes('--exigir-base');
   const caminho = arquivoDaLinhaDeBase();
   const agora = medirAcervo();
+
+  if (portao) {
+    // O acervo vazio é tratado DENTRO do portão, que o chama de "não deu para
+    // verificar". Sair 0 aqui, como o modo relatório faz, seria dizer que um
+    // acervo sem nada passou em tudo.
+    rodarPortao(lerLinhaDeBase(caminho), agora, exigirBase);
+  }
 
   if (agora.resumo.total === 0) {
     console.log('\n  Nenhum bundle no acervo. Extraia algum site primeiro.\n');
@@ -152,15 +221,17 @@ if (executadoDireto(import.meta.url)) {
   }
 
   if (existsSync(caminho) && !forcarGravar) {
-    let antes: LinhaDeBase | null = null;
-    try {
-      antes = JSON.parse(readFileSync(caminho, 'utf8')) as LinhaDeBase;
-    } catch {
-      antes = null;
-    }
+    const antes = lerLinhaDeBase(caminho);
     if (antes !== null) {
       const quando = new Date(antes.gravadoEm).toLocaleString('pt-BR');
       console.log(`\n  Comparando com a linha de base de ${quando}:\n`);
+      // O contexto vem ANTES dos números, porque sem ele os números mentem: uma
+      // base de 23 sites que não existem mais contra 2 sites novos produz
+      // "instrumentação 72,6% → 0%", que parece conquista e é troca de acervo.
+      for (const l of linhasDeContexto(avaliarPortao(antes, agora).contexto)) {
+        console.log(`    ${l}`);
+      }
+      console.log('');
       for (const { linha, melhorou } of comparar(antes, agora)) {
         console.log(`    ${melhorou ? '+' : ' '} ${linha}`);
       }

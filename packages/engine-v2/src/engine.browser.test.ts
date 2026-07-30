@@ -20,7 +20,38 @@ import { type ServidorFixture, iniciarServidorFixture } from './testing/fixture-
  */
 
 const RAIZ_FIXTURES = join(process.cwd(), 'fixtures');
-const TEM_PW = (await carregarPlaywright()) !== null;
+
+/**
+ * Ter o pacote não é ter o navegador, e a diferença reprovava a suíte inteira.
+ *
+ * `carregarPlaywright()` só testa o `import('playwright')`. O pacote é
+ * dependência NORMAL de `@ds/server`, então o import resolve em qualquer
+ * instalação — mas o binário do Chromium só chega com
+ * `playwright install chromium`, que nenhum passo de instalação roda.
+ *
+ * Num ambiente sem o binário, `TEM_PW` dava verdadeiro, o `before()` chamava
+ * `capturarComV2` e o `chromium.launch()` estourava com "Executable doesn't
+ * exist": 37 falhas que pareciam defeito do motor V2 e não eram. O comentário
+ * no topo deste arquivo promete "pula (não falha) sem Playwright", e a promessa
+ * era falsa exatamente onde mais importa — num runner de CI limpo.
+ *
+ * A sonda é a mesma dos outros dez arquivos de navegador: abrir e fechar um
+ * Chromium descartável. Custa poucos milissegundos e é a única pergunta que
+ * corresponde ao que o teste vai fazer.
+ */
+const temNavegador = async (): Promise<boolean> => {
+  const pw = await carregarPlaywright();
+  if (pw === null) return false;
+  try {
+    const b = await pw.chromium.launch({ headless: true });
+    await b.close();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const TEM_PW = await temNavegador();
 
 let servidor: ServidorFixture | null = null;
 let tmp = '';

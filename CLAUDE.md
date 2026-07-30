@@ -165,6 +165,10 @@ Isso valida o schema, registra no SQLite e move o job para `concluido/`. Se o sc
 pnpm dev              # sobe server (8787) + web (5173)
 pnpm typecheck        # tsc em todos os pacotes
 pnpm lint             # biome
+pnpm test             # suite rapida (~10s): tudo menos os testes de navegador
+pnpm test:navegador   # os 11 arquivos com Chromium (~4min, precisa do playwright)
+pnpm test:tudo        # os dois
+pnpm verificar        # lint + typecheck + test + portao de fidelidade
 pnpm db:migrate       # aplica migrations
 pnpm fila             # lista a fila
 pnpm extrair          # extrai um job de URL por navegador (renderiza o DOM real) — passo 1 do modo queue
@@ -174,6 +178,7 @@ pnpm fila:progresso   # reporta 0-100 de um job em andamento
 pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
 pnpm segmentar        # segmenta um ds_id à mão (conserto; o fila:concluir já faz sozinho)
 pnpm medir-fidelidade # mede o acervo e compara com a linha de base (--gravar adota o resultado)
+                      # --falhar-se-piorar vira PORTAO: sai 1 se reprovar, 2 se nao der para verificar
 pnpm reextrair        # re-captura um ds_id (ou --todos) no MESMO id, trocando só no fim
 pnpm regiao:recompilar # limpa/recompila bundles do acervo sem reabrir navegador (--todos, --seco)
 pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
@@ -181,6 +186,34 @@ pnpm acervo:limpar-orfas # lista (e com --apagar remove) pastas do vault sem des
 pnpm acervo:exportar  # zip portátil do acervo (EXPORTAR-ACERVO.bat)
 pnpm acervo:importar  # importa acervo de outra máquina reescrevendo caminhos (IMPORTAR-ACERVO.bat)
 ```
+
+## Verificação
+
+O GitHub roda `.github/workflows/ci.yml` a cada push na main: lint, typecheck e a
+suíte rápida, em Node 22 e 24. O job de navegador roda separado e **ainda não
+bloqueia** — ele depende de tempo de parede e oscila conforme a CPU do runner.
+
+O portão de fidelidade **não** está no CI, e não é esquecimento: ele mede o
+acervo, que mora em `~/design-system-ecosystem` e não existe num runner limpo. O
+que roda no CI é o teste da lógica dele (`packages/generator/src/portao.test.ts`).
+
+Rode o portão na sua máquina depois de mexer em `engine-v2`, `composer` ou
+`generator`. É o mesmo gesto que o `pnpm reextrair` já pede no fim:
+
+```powershell
+pnpm medir-fidelidade --falhar-se-piorar
+```
+
+Ele reprova (saída 1) quando algum bundle do acervo tem instrumentação vazada,
+script declarado e ausente, ou seletor morto. Sai 2 quando **não deu para
+verificar**: sem linha de base, acervo vazio, base ilegível. Sair 0 nesses casos
+seria dizer que passou algo que ninguém mediu.
+
+A comparação par a par só vale entre bundles do MESMO diretório. Depois de um
+`pnpm reextrair`, `seg_3` é uma vaga e não uma identidade: os segmentos foram
+refeitos e aquele número pode ser outra dobra da página. Quando a base for de
+outro acervo, o comando diz isso por extenso em vez de comparar populações
+diferentes e chamar o resultado de melhora.
 
 ## Arquitetura
 

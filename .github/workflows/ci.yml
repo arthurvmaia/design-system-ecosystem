@@ -1,0 +1,153 @@
+# Verificação automática do repo.
+#
+# Existe porque a garantia de que a suíte passa era "o Claude rodou antes de
+# commitar" — isto é um hábito, não um contrato. Duas coisas já estavam
+# quebradas sem ninguém notar: o `pnpm test` inteiro (um pacote que a raiz nunca
+# declarou) e o `pnpm lint` (rascunho de um job já concluído).
+#
+# Dois jobs, de propósito:
+#
+#   testes    rápido (~10 s de suíte), determinístico, BLOQUEIA.
+#   navegador lento (~4 min), depende de tempo de parede, NÃO bloqueia ainda.
+#
+# A separação não é organizacional, é medida: 9% dos testes consumiam 96% do
+# tempo, e são justamente os que oscilam conforme a CPU da máquina. Misturados,
+# o CI ficaria lento e vermelho pelo motivo errado — e vermelho que se aprende a
+# ignorar é pior que CI nenhum.
+#
+# O portão de fidelidade NÃO está aqui: ele mede o acervo, que mora fora do repo
+# (`~/design-system-ecosystem`) e não existe num runner limpo. O que roda aqui é
+# o teste unitário da lógica dele, em packages/generator/src/portao.test.ts. O
+# portão em si é local: `pnpm medir-fidelidade --falhar-se-piorar`.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Dois commits seguidos não devem enfileirar duas verificações da mesma branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Sem isto, um teste novo que esqueça de apontar para um diretório temporário
+  # escreveria no HOME do runner. Custa uma linha e fecha a porta antes.
+  DS_ECOSYSTEM_ROOT: ${{ runner.temp }}/ds-data
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  testes:
+    name: testes (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 é o piso declarado no engines; 24 é o que a máquina de quem
+        # desenvolve realmente roda. Testar só um dos dois deixa o outro cego.
+        #
+        # Node 20 ficou de fora por dois motivos medidos, não por gosto: o
+        # `node --test` só aceita padrão glob a partir do 21 (a PR é
+        # SEMVER-MAJOR e nunca foi retroportada), e o better-sqlite3 não publica
+        # prebuild linux-x64 para o ABI do 20.
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      # O pnpm vem ANTES do setup-node: o `cache: pnpm` do setup-node precisa
+      # do binário já no PATH. E sem `version:`, para a ação ler o campo
+      # `packageManager` do package.json — fixar aqui criaria uma segunda fonte
+      # de verdade, e um pnpm 10 bloquearia o script de install do
+      # better-sqlite3, que só falharia bem depois, ao abrir o banco.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # Cache do STORE do pnpm, nunca de node_modules, e com a major do Node na
+      # chave. O better-sqlite3 é nativo: um binding compilado para um ABI
+      # aberto por outro estoura em ERR_DLOPEN_FAILED, e o erro aparece longe
+      # da causa, na hora de abrir o banco.
+      - name: Onde fica o store do pnpm
+        id: store
+        run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.store.outputs.dir }}
+          key: pnpm-store-${{ runner.os }}-node${{ matrix.node }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-node${{ matrix.node }}-
+
+      - run: pnpm install --frozen-lockfile
+
+      # O .nvmrc é lido por humano e por ferramenta, e já mentiu uma vez:
+      # prometia 20.11.0, versão em que a suíte não roda. Aqui ele passa a ser
+      # verificado junto com o resto.
+      - name: O .nvmrc respeita o piso do engines
+        run: |
+          nvmrc_major="$(cut -d. -f1 .nvmrc)"
+          piso="$(node -p "require('./package.json').engines.node.replace(/[^0-9.]/g,'').split('.')[0]")"
+          echo ".nvmrc=$nvmrc_major  piso=$piso  rodando=$(node -v)"
+          if [ "$nvmrc_major" -lt "$piso" ]; then
+            echo "::error::.nvmrc pede Node $nvmrc_major, abaixo do piso $piso declarado em engines."
+            exit 1
+          fi
+
+      - run: pnpm lint
+
+      # `pnpm exec turbo` em vez de `pnpm typecheck`: o turbo.json declara
+      # `ui: tui`, que sem terminal interativo produz log ilegível, e daemon não
+      # tem uso num runner que morre no fim.
+      - name: typecheck
+        run: pnpm exec turbo run typecheck --no-daemon --ui=stream
+
+      - run: pnpm test
+
+  navegador:
+    name: navegador (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Não bloqueia AINDA. Estes testes trabalham com orçamento de tempo fixo
+    # (150 s por captura, passado explicitamente pelo teste, e explícito vence
+    # variável de ambiente), e já falharam numa máquina de 14 núcleos por
+    # disputa de CPU. Num runner de 4 vCPU a tendência é piorar.
+    #
+    # Vira bloqueante depois de duas semanas de verde, e só depois de afrouxar
+    # as asserções sensíveis à velocidade da máquina.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Onde fica o store do pnpm
+        id: store
+        run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.store.outputs.dir }}
+          key: pnpm-store-${{ runner.os }}-node24-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-node24-
+
+      - run: pnpm install --frozen-lockfile
+
+      # O navegador ocupa ~690 MB descompactado, e o lock fixa a versão do
+      # playwright — então a chave muda junto com ela.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # Com --filter, porque o pnpm não hoista: o node_modules/.bin da raiz tem
+      # só biome, tsc, tsserver, tsx e turbo. Em @ds/server o playwright é
+      # dependência normal, não opcional.
+      - name: Instalar o Chromium
+        run: pnpm --filter @ds/server exec playwright install --with-deps chromium
+
+      - run: pnpm test:navegador

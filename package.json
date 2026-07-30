@@ -21,7 +21,7 @@
     "regiao:recompilar": "tsx scripts/regiao-recompilar.ts",
     "projeto:restaurar": "tsx scripts/projeto-restaurar.ts",
     "mascote": "tsx scripts/mascote.ts",
-    "test": "node --import tsx --test \"packages/**/src/**/*.test.ts\" \"apps/**/src/**/*.test.ts\" \"scripts/**/*.test.ts\"",
+    "test": "node --import tsx --test \"packages/**/src/**/!(*.browser).test.ts\" \"apps/**/src/**/!(*.browser).test.ts\" \"scripts/**/*.test.ts\"",
     "testar:segmentacao": "tsx scripts/testar-segmentacao.ts",
     "fila:escolher": "tsx scripts/selecionar.ts",
     "fila:progresso": "tsx scripts/fila-progresso.ts",
@@ -30,7 +30,10 @@
     "clean": "turbo run clean",
     "comparar": "tsx scripts/comparar-motores.ts",
     "reextrair": "tsx scripts/reextrair.ts",
-    "acervo:limpar-orfas": "tsx scripts/acervo-limpar-orfas.ts"
+    "acervo:limpar-orfas": "tsx scripts/acervo-limpar-orfas.ts",
+    "test:navegador": "node --import tsx --test --test-concurrency=1 \"packages/**/src/**/*.browser.test.ts\" \"apps/**/src/**/*.browser.test.ts\"",
+    "test:tudo": "pnpm test && pnpm test:navegador",
+    "verificar": "pnpm lint && pnpm typecheck && pnpm test && pnpm medir-fidelidade --falhar-se-piorar"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
@@ -40,7 +43,7 @@
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=20.11.0",
+    "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
   },
   "dependencies": {

@@ -10,8 +10,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "clean": "node ../../scripts/limpar.mjs"
+    "test": "node --import tsx --test \"src/**/!(*.browser).test.ts\"",
+    "clean": "node ../../scripts/limpar.mjs",
+    "test:navegador": "node --import tsx --test --test-concurrency=1 \"src/**/*.browser.test.ts\""
   },
   "dependencies": {
     "@ds/shared": "workspace:*"
