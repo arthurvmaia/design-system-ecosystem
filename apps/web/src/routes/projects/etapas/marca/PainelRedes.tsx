@@ -59,7 +59,8 @@ export function PainelRedes({
   };
 
   return (
-    <div className="max-w-[560px] space-y-3">
+    // A largura agora é do cartão da grade; o teto de 560px era da coluna solta.
+    <div className="space-y-3">
       <SecaoCabecalho
         titulo="Redes sociais"
         descricao="Preencha só as redes que a marca usa. Cada uma pode escolher onde aparece no site. No automático, ela vai para o rodapé e para a seção de contato."
@@ -102,7 +103,7 @@ export function PainelRedes({
               {erro && (
                 <div
                   role="alert"
-                  className="mt-1 text-[11px]"
+                  className="mt-1 text-[12px]"
                   style={{ color: 'var(--color-ion-3)' }}
                 >
                   {erro}
@@ -111,7 +112,7 @@ export function PainelRedes({
               {preenchida && entrada !== undefined && entrada.visivel && (
                 <div className="mt-1.5 flex items-center gap-2">
                   <span
-                    className="shrink-0 text-[10px] uppercase tracking-[0.14em]"
+                    className="shrink-0 text-[11px] uppercase tracking-[0.14em]"
                     style={{ color: 'var(--color-fg-subtle)' }}
                   >
                     Onde aparece

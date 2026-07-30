@@ -12,6 +12,7 @@ import {
   moverSecaoVisivel,
   papeisObrigatoriosFaltantes,
   papelEfetivoDaSecao,
+  resumirSugestao,
   selinhoDaPeca,
   separarFundos,
   tirarFundo,
@@ -80,6 +81,43 @@ test('selinhoDaPeca diz onde a peça funciona, e cala quando não sabe', () => {
   assert.equal(selinhoDaPeca('hero'), 'boa para abertura');
   // background não pertence a papel nenhum: sem selinho, em vez de chute.
   assert.equal(selinhoDaPeca('background'), undefined);
+});
+
+// ── Resumo da sugestão ───────────────────────────────────────────────────────
+
+test('resumirSugestao devolve a frase curta inteira, sem reticências', () => {
+  assert.equal(
+    resumirSugestao('uma faixa horizontal de logos em cinza'),
+    'uma faixa horizontal de logos em cinza',
+  );
+});
+
+test('resumirSugestao corta na primeira pontuação forte: o resto é detalhe', () => {
+  assert.equal(
+    resumirSugestao('um bloco de abertura ocupando a tela: título grande, uma linha de apoio'),
+    'um bloco de abertura ocupando a tela',
+  );
+  assert.equal(
+    resumirSugestao('três cartões curtos; sem imagem, o texto é o argumento'),
+    'três cartões curtos',
+  );
+});
+
+test('resumirSugestao acima do limite corta em fronteira de palavra', () => {
+  const resumo = resumirSugestao(
+    'uma grade de imagens grandes com o título ao passar o cursor',
+    30,
+  );
+  assert.equal(resumo, 'uma grade de imagens grandes…');
+  // A palavra que termina exatamente no limite entra inteira.
+  assert.equal(resumirSugestao('doze letras aqui', 11), 'doze letras…');
+});
+
+test('resumirSugestao não deixa vírgula pendurada antes das reticências', () => {
+  assert.equal(
+    resumirSugestao('blocos alternados, um benefício por bloco', 18),
+    'blocos alternados…',
+  );
 });
 
 // ── Agrupamento da grade ─────────────────────────────────────────────────────

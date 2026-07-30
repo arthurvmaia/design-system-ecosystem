@@ -62,11 +62,37 @@ export const MembroDoCluster = z.object({
 export type MembroDoCluster = z.infer<typeof MembroDoCluster>;
 
 /**
+ * O que separa um cluster DERIVADO do parente de quem ele herdou o papel.
+ *
+ * Existe por causa de um defeito medido no kit real: das 111 cores sem papel,
+ * **49 eram variações de uma cor que JÁ TINHA papel** — o verde `#4a6b5a` e o
+ * `#8abf9e` são o mesmo verde do `primary`, um mais escuro e outro mais claro
+ * (estados de hover, tintas de fundo). Sem herança, o `primary` virava a cor
+ * da marca e essas ficavam verdes: o site saía metade convertido, que é
+ * exatamente a pior das saídas possíveis.
+ *
+ * Herdar o papel não basta: pintar as três com a MESMA cor da marca apagaria a
+ * hierarquia que o site de origem tinha (o hover deixaria de ser mais escuro).
+ * Por isso a relação viaja junto e é reaplicada sobre a cor da marca:
+ * "12% mais claro e com metade do croma" continua sendo 12% mais claro e com
+ * metade do croma, agora no amarelo do usuário em vez de no verde da origem.
+ */
+export const AjusteDeCor = z.object({
+  /** L do cluster menos L do parente, em OKLCH (-1..1). */
+  deltaL: z.number().min(-1).max(1),
+  /** Croma do cluster dividido pelo do parente. 1 = mesma saturação. */
+  ratioC: z.number().min(0).max(4),
+});
+export type AjusteDeCor = z.infer<typeof AjusteDeCor>;
+
+/**
  * Um grupo de cores próximas com (talvez) um papel.
  *
- * `papel: null` é um estado LEGÍTIMO e comum: significa "não deu para afirmar
- * com confiança". A recoloração pula o cluster e a aparência original fica —
- * que é o contrato de degradação de todo este pipeline.
+ * `papel: null` é um estado LEGÍTIMO: significa "não deu para afirmar com
+ * confiança". A recoloração pula o cluster e a aparência original fica — que é
+ * o contrato de degradação de todo este pipeline. Sombra, overlay e cor
+ * semântica (o verde de "deu certo", o vermelho de erro) caem aqui de
+ * propósito: forçá-las na paleta da marca destruiria o significado delas.
  */
 export const ClusterDeCor = z.object({
   papel: PapelDeCor.nullable(),
@@ -75,6 +101,12 @@ export const ClusterDeCor = z.object({
   membros: z.array(MembroDoCluster).min(1),
   /** 0..1. Abaixo do limiar de recoloração, o papel é informativo apenas. */
   confianca: z.number().min(0).max(1),
+  /**
+   * Preenchido quando o papel foi HERDADO de um vizinho de matiz. Null = o
+   * papel é próprio, e a cor da marca entra sem ajuste. Aditivo: um design
+   * system gravado antes deste campo continua válido e lê como `null`.
+   */
+  ajuste: AjusteDeCor.nullable().default(null),
 });
 export type ClusterDeCor = z.infer<typeof ClusterDeCor>;
 

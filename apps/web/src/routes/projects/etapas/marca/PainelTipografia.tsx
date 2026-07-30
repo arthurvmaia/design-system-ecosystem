@@ -48,7 +48,7 @@ export function PainelTipografia({
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <div
-              className="mb-1.5 text-[10px] uppercase tracking-[0.2em]"
+              className="mb-1.5 text-[11px] uppercase tracking-[0.2em]"
               style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
             >
               Fonte de títulos
@@ -61,7 +61,7 @@ export function PainelTipografia({
           </div>
           <div>
             <div
-              className="mb-1.5 text-[10px] uppercase tracking-[0.2em]"
+              className="mb-1.5 text-[11px] uppercase tracking-[0.2em]"
               style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
             >
               Fonte de corpo
@@ -76,7 +76,7 @@ export function PainelTipografia({
         <button
           type="button"
           onClick={() => setB({ fontBody: branding.fontDisplay })}
-          className="text-[11px] underline"
+          className="text-[12px] underline"
           style={{ color: 'var(--color-fg-muted)' }}
         >
           Usar a fonte de títulos também no corpo
@@ -84,7 +84,7 @@ export function PainelTipografia({
 
         <div>
           <div
-            className="mb-1.5 text-[10px] uppercase tracking-[0.2em]"
+            className="mb-1.5 text-[11px] uppercase tracking-[0.2em]"
             style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
           >
             Jeito dos títulos
@@ -104,11 +104,11 @@ export function PainelTipografia({
                     backgroundColor: ativo ? 'rgba(14,165,233,0.14)' : 'transparent',
                   }}
                 >
-                  <span className="block text-[12px]" style={{ color: 'var(--color-fg)' }}>
+                  <span className="block text-[13px]" style={{ color: 'var(--color-fg)' }}>
                     {ROTULO_PRESET_TITULOS[p].nome}
                   </span>
                   <span
-                    className="block text-[10px] leading-snug"
+                    className="block text-[11px] leading-snug"
                     style={{ color: 'var(--color-fg-subtle)' }}
                   >
                     {ROTULO_PRESET_TITULOS[p].descricao}
@@ -121,7 +121,7 @@ export function PainelTipografia({
 
         <div>
           <div
-            className="mb-1.5 text-[10px] uppercase tracking-[0.2em]"
+            className="mb-1.5 text-[11px] uppercase tracking-[0.2em]"
             style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
           >
             Jeito do texto
@@ -141,11 +141,11 @@ export function PainelTipografia({
                     backgroundColor: ativo ? 'rgba(14,165,233,0.14)' : 'transparent',
                   }}
                 >
-                  <span className="block text-[12px]" style={{ color: 'var(--color-fg)' }}>
+                  <span className="block text-[13px]" style={{ color: 'var(--color-fg)' }}>
                     {ROTULO_PRESET_CORPO[p].nome}
                   </span>
                   <span
-                    className="block text-[10px] leading-snug"
+                    className="block text-[11px] leading-snug"
                     style={{ color: 'var(--color-fg-subtle)' }}
                   >
                     {ROTULO_PRESET_CORPO[p].descricao}
@@ -159,7 +159,7 @@ export function PainelTipografia({
         <Recolhivel rotulo="Ajuste fino dos títulos" detalhe="sobrepõe o jeito escolhido">
           <div className="space-y-2.5">
             <label
-              className="flex items-center gap-3 text-[11px]"
+              className="flex items-center gap-3 text-[12px]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               <span className="w-[110px] shrink-0">Peso</span>
@@ -178,7 +178,7 @@ export function PainelTipografia({
               </span>
             </label>
             <label
-              className="flex items-center gap-3 text-[11px]"
+              className="flex items-center gap-3 text-[12px]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               <span className="w-[110px] shrink-0">Contraste H1–H6</span>
@@ -197,7 +197,7 @@ export function PainelTipografia({
               </span>
             </label>
             <label
-              className="flex items-center gap-3 text-[11px]"
+              className="flex items-center gap-3 text-[12px]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               <span className="w-[110px] shrink-0">Altura da linha</span>
@@ -228,7 +228,7 @@ export function PainelTipografia({
                   type="button"
                   aria-pressed={escala.transformacaoTitulos === v}
                   onClick={() => setAjuste({ transformacao: v })}
-                  className="rounded-md border px-2.5 py-1 text-[11px] transition-colors"
+                  className="rounded-md border px-2.5 py-1 text-[12px] transition-colors"
                   style={{
                     borderColor:
                       escala.transformacaoTitulos === v
@@ -245,7 +245,7 @@ export function PainelTipografia({
               <button
                 type="button"
                 onClick={() => setTipo({ ajusteTitulos: undefined })}
-                className="text-[11px] underline"
+                className="text-[12px] underline"
                 style={{ color: 'var(--color-fg-muted)' }}
               >
                 Voltar ao jeito escolhido
@@ -257,7 +257,7 @@ export function PainelTipografia({
 
       {/* Preview REAL: a escala derivada, nas fontes escolhidas */}
       <div className="space-y-3">
-        <div className="flex flex-wrap gap-2 text-[11px]">
+        <div className="flex flex-wrap gap-2 text-[12px]">
           <span
             className="rounded-full border px-2.5 py-1"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}

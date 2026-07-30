@@ -65,72 +65,41 @@ test('kit vazio ainda propõe a página inteira, toda criada no estilo', () => {
   );
 });
 
-test('cada peça cai na seção do papel dela', () => {
+test('a sugestão nasce SEM peça alocada, mesmo com kit cheio', () => {
+  // O contrato inverteu por decisão de quem usa: a alocação de peça é a parte
+  // que a pessoa quer fazer, e a sugestão pré-preenchida transformava a
+  // montagem em conferência. O kit fica à disposição na tela ("peças ainda sem
+  // seção"); a estrutura sugerida é o argumento de marketing puro.
   const secoes = sugerirSecoes(
     [cmp('cmp_h', 'Hero escuro', 'hero'), cmp('cmp_n', 'Barra', 'nav')],
     contador(),
   );
-  const porPapel = new Map(secoes.map((s) => [s.papel, s]));
-  assert.deepEqual(porPapel.get('hero')?.componentIds, ['cmp_h']);
-  assert.deepEqual(porPapel.get('nav')?.componentIds, ['cmp_n']);
+  assert.ok(secoes.every((s) => s.componentIds.length === 0));
 });
 
-test('a segunda peça da mesma categoria entra NA MESMA seção', () => {
-  // É o caso que o modelo anterior não sabia expressar: um papel aceitava uma
-  // peça só, e a segunda era simplesmente descartada da sugestão.
-  //
-  // O teste usa `testimonial` porque só um papel a aceita. Com `card` o
-  // resultado seria outro e igualmente correto: a sequência tem várias seções
-  // que aceitam card (funcionalidades, demonstração, galeria), então duas peças
-  // de card se ESPALHAM em vez de empilhar — o que rende mais página.
-  const secoes = sugerirSecoes(
-    [cmp('cmp_a', 'Depoimento', 'testimonial'), cmp('cmp_b', 'Outro depoimento', 'testimonial')],
+test('nenhuma seção extra é inventada para acomodar peça do kit', () => {
+  // Antes, uma peça de pricing fazia nascer uma seção de planos; uma categoria
+  // desconhecida virava seção com o nome da peça. As duas iam parar no meio do
+  // argumento sem a pessoa pedir. Agora a página sugerida é a sequência do
+  // objetivo, inteira e só ela.
+  const comPecas = sugerirSecoes(
+    [cmp('cmp_p', 'Tabela de planos', 'pricing'), cmp('cmp_x', 'Linha do tempo', 'timeline')],
     contador(),
   );
-  const depoimentos = secoes.find((s) => s.papel === 'testimonials');
-  assert.deepEqual(depoimentos?.componentIds, ['cmp_a', 'cmp_b']);
-  assert.equal(
-    secoes.filter((s) => s.papel === 'testimonials').length,
-    1,
-    'duas peças iguais não podem virar duas seções repetidas',
-  );
-});
-
-test('duas peças de card se espalham pela página em vez de empilhar numa seção', () => {
-  // O outro lado da mesma regra, e é o comportamento que se quer: espalhar o
-  // kit rende mais página que empilhar tudo num lugar só.
-  const secoes = sugerirSecoes(
-    [cmp('cmp_a', 'Cards', 'card'), cmp('cmp_b', 'Mais cards', 'card')],
-    contador(),
-  );
-  const comPeca = secoes.filter((s) => s.componentIds.length > 0);
-  assert.equal(comPeca.length, 2);
+  const semPecas = sugerirSecoes([], contador());
   assert.deepEqual(
-    comPeca.flatMap((s) => s.componentIds),
-    ['cmp_a', 'cmp_b'],
+    comPecas.map((s) => s.papel),
+    semPecas.map((s) => s.papel),
   );
 });
 
-test('peça de papel fora da espinha vira uma seção nova, antes do fechamento', () => {
-  const secoes = sugerirSecoes([cmp('cmp_p', 'Tabela de planos', 'pricing')], contador());
-  const papeis = secoes.map((s) => s.papel);
-  assert.ok(papeis.includes('pricing'), 'a peça curada tem de aparecer no site');
-  assert.ok(papeis.indexOf('pricing') < papeis.indexOf('footer'), 'nada entra depois do rodapé');
-});
-
-test('peça de categoria que nenhum papel reconhece não some: vira seção com o nome dela', () => {
-  const secoes = sugerirSecoes([cmp('cmp_x', 'Linha do tempo', 'timeline')], contador());
-  const nova = secoes.find((s) => s.componentIds.includes('cmp_x'));
-  assert.ok(nova !== undefined, 'a peça curada foi descartada da sugestão');
-  assert.equal(nova.nome, 'Linha do tempo');
-  assert.equal(nova.papel, undefined, 'sem papel reconhecido, o campo fica em branco');
-});
-
-test('um componente de formulário não produz duas seções de contato', () => {
-  const secoes = sugerirSecoes([cmp('cmp_f', 'Formulário', 'form')], contador());
-  const contatos = secoes.filter((s) => s.papel === 'contact');
-  assert.equal(contatos.length, 1);
-  assert.deepEqual(contatos[0]?.componentIds, ['cmp_f']);
+test('os nomes saem numerados na ordem da página', () => {
+  const secoes = sugerirSecoes([], contador());
+  assert.equal(secoes[0]?.nome, 'Seção 1 · Navegação');
+  assert.ok(
+    secoes.every((sec, i) => sec.nome.startsWith(`Seção ${i + 1} · `)),
+    'cada nome carrega a posição inicial dela na página',
+  );
 });
 
 test('a sugestão é determinística e os ids não se repetem', () => {

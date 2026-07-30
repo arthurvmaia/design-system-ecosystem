@@ -89,6 +89,31 @@ export const selinhoDaPeca = (categoria: string): string | undefined => {
     : `boa para ${ROTULO_DE_PAPEL[papel].toLocaleLowerCase('pt-BR')}`;
 };
 
+// ── Resumo da sugestão de peça ──────────────────────────────────────────────
+
+/**
+ * Encurta a sugestão de peça (`EtapaDeMarketing.sugestao`) para os lugares
+ * pequenos da tela — o bloco pontilhado da prévia tem uns 220px de largura.
+ *
+ * A frase inteira é boa na lista; num bloco estreito ela vira parágrafo. O
+ * corte segue o desenho das próprias frases: a primeira pontuação forte (`:`
+ * ou `;`) separa o TIPO da peça do detalhamento dela, então o que vem depois
+ * pode cair sem perda. Se ainda assim passar do limite, o corte é em fronteira
+ * de palavra, com reticências — nunca no meio de uma palavra, que lê como
+ * defeito.
+ */
+export const resumirSugestao = (texto: string, limite = 64): string => {
+  const cabeca = (texto.split(/[:;]/, 1)[0] ?? texto).trim();
+  if (cabeca.length <= limite) return cabeca;
+  // Uma posição além do limite: se ali houver espaço, a palavra que termina
+  // exatamente no limite entra inteira.
+  const janela = cabeca.slice(0, limite + 1);
+  const ultimoEspaco = janela.lastIndexOf(' ');
+  const corte = (ultimoEspaco > 0 ? janela.slice(0, ultimoEspaco) : janela.slice(0, limite)).trim();
+  // Vírgula pendurada antes das reticências lê como frase rasgada.
+  return `${corte.replace(/[,.]+$/u, '')}…`;
+};
+
 // ── Agrupamento da grade de peças ───────────────────────────────────────────
 
 /**

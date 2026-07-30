@@ -1,5 +1,6 @@
 import type { WizardBranding } from '../../partes';
 import { INPUT, inputStyle, rotulo } from '../../partes';
+import { SecaoCabecalho } from './partes';
 
 /**
  * Contato e chamada principal.
@@ -23,7 +24,7 @@ export function PainelContato({
     dica?: string,
   ): React.ReactElement => (
     <label className="block">
-      <span className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]" style={rotulo}>
+      <span className="mb-1.5 block text-[12px] uppercase tracking-[0.16em]" style={rotulo}>
         {label}
       </span>
       <input
@@ -39,15 +40,11 @@ export function PainelContato({
 
   return (
     <div className="space-y-5">
-      <div>
-        <div className="text-[11px] uppercase tracking-[0.2em]" style={rotulo}>
-          Contato e chamada
-        </div>
-        <p className="mt-1 text-[13px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
-          É o que o site oferece para a pessoa dar o próximo passo. O que você deixar em branco
-          simplesmente não aparece.
-        </p>
-      </div>
+      {/* O cabeçalho padrão dos painéis: na grade, os seis cartões abrem igual. */}
+      <SecaoCabecalho
+        titulo="Contato e chamada"
+        descricao="É o que o site oferece para a pessoa dar o próximo passo. O que você deixar em branco simplesmente não aparece."
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {campo('E-mail', branding.contact.email, (v) =>
@@ -65,7 +62,7 @@ export function PainelContato({
       </div>
 
       <div>
-        <div className="mb-3 text-[11px] uppercase tracking-[0.2em]" style={rotulo}>
+        <div className="mb-3 text-[12px] uppercase tracking-[0.2em]" style={rotulo}>
           Chamada principal
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -82,7 +79,7 @@ export function PainelContato({
             'ex.: https://wa.me/5511999999999',
           )}
         </div>
-        <p className="mt-2 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+        <p className="mt-2 text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
           Sem isso, os botões do site saem com um texto padrão.
         </p>
       </div>

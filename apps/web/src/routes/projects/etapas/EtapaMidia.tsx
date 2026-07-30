@@ -11,7 +11,8 @@ import {
   sugerirMidiaDaSecao,
 } from '@ds/shared/schemas';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Image as ImageIcon, Play, Plus, Trash2, Upload } from 'lucide-react';
+import { AlertTriangle, Image as ImageIcon, Play, Plus, Trash2, Upload } from 'lucide-react';
+import { useState } from 'react';
 import { mediaUrl } from '../partes';
 
 /**
@@ -528,6 +529,15 @@ function MidiaThumb({
   onMover: (valor: string) => void;
   onRemover: () => void;
 }) {
+  // Vídeo que o navegador não decodifica (o caso real: HEVC enviado antes de
+  // o upload recusar esse formato). Dois sinais somados, porque um só perde
+  // metade dos casos:
+  // 1) `onError` do elemento — arquivo corrompido ou container recusado;
+  // 2) `loadedmetadata` com `videoWidth === 0` — o caso HEVC de verdade: o
+  //    container MP4 é lido (duração e faixas chegam), mas nenhum quadro
+  //    decodifica, então `onError` nunca dispara e o thumb ficaria um
+  //    retângulo preto com um Play que não toca nada.
+  const [naoDecodifica, setNaoDecodifica] = useState(false);
   return (
     <div className="ds-glass-static group relative overflow-hidden rounded-md">
       <div
@@ -545,22 +555,44 @@ function MidiaThumb({
               preload="metadata"
               playsInline
               muted
+              onError={() => setNaoDecodifica(true)}
+              onLoadedMetadata={(e) => {
+                if (e.currentTarget.videoWidth === 0) setNaoDecodifica(true);
+              }}
             />
-            {/* O ícone diz "isto é um vídeo" — o quadro parado sozinho passa
-                por imagem. Decorativo: o nome do arquivo já está logo abaixo. */}
-            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            {naoDecodifica ? (
+              /* No lugar do Play: um Play aqui prometeria o que o vídeo não
+                 entrega. O texto curto cabe no thumb; a explicação inteira vai
+                 no `title`, e por isso o overlay recebe ponteiro (sem hover não
+                 há tooltip). Ele cobre só a área do vídeo: o excluir logo
+                 abaixo, que é o caminho de correção, continua clicável. */
               <span
-                className="flex h-6 w-6 items-center justify-center rounded-full"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center"
                 style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
+                title="O arquivo está em um formato que os navegadores não tocam (provavelmente HEVC). Exporte em H.264 e envie de novo; eu já recuso novos uploads assim."
               >
-                <Play
-                  size={11}
-                  fill="currentColor"
-                  aria-hidden
-                  style={{ color: 'var(--color-bone-1)' }}
-                />
+                <AlertTriangle size={13} aria-hidden style={{ color: 'var(--color-warn)' }} />
+                <span className="text-[9px] leading-tight" style={{ color: 'var(--color-bone-2)' }}>
+                  este vídeo não toca no navegador
+                </span>
               </span>
-            </span>
+            ) : (
+              /* O ícone diz "isto é um vídeo" — o quadro parado sozinho passa
+                  por imagem. Decorativo: o nome do arquivo já está logo abaixo. */
+              <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full"
+                  style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
+                >
+                  <Play
+                    size={11}
+                    fill="currentColor"
+                    aria-hidden
+                    style={{ color: 'var(--color-bone-1)' }}
+                  />
+                </span>
+              </span>
+            )}
           </>
         ) : projectId ? (
           <img

@@ -11,6 +11,7 @@ import {
   type ProjectBranding,
   type ProjectContent,
   ProjectLayout,
+  analisarVideo,
   enqueueJob,
   jobsAbertosDoProjeto,
   newProjectId,
@@ -277,6 +278,23 @@ projectsRoute.post('/:id/media', async (c) => {
   const safe = original.replace(/[^\w.-]/g, '_');
   const stored = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}-${safe}`;
   const bytes = Buffer.from(await file.arrayBuffer());
+
+  // O `.mp4` é um CONTAINER: o nome do arquivo não diz o codec que tem dentro.
+  // Caso real: um `.mp4` de 29 MB entrou sem reclamação nenhuma e virou um
+  // retângulo PRETO na tela de mídia e no site entregue, porque era HEVC
+  // (H.265) — formato que os navegadores não tocam. Nada falhava, nada avisava.
+  //
+  // Recusar aqui é a única saída honesta: transcodificar exigiria ffmpeg, um
+  // binário que este repo evita, e aceitar em silêncio entrega um site com um
+  // buraco preto no meio. A análise só recusa quando tem CERTEZA (ver
+  // `analisarVideo`); o que ela não sabe afirmar, passa.
+  if (kindFinal === 'video') {
+    const analise = analisarVideo(bytes);
+    if (!analise.tocaNaWeb && analise.motivo !== null) {
+      return c.json({ error: 'codec_nao_suportado', message: analise.motivo }, 415);
+    }
+  }
+
   writeFileSync(join(dir, stored), bytes);
 
   const item: MediaItem = {

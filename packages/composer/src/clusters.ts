@@ -28,6 +28,20 @@ const DELTA_MESMA_COR = 0.03;
 const CROMA_NEUTRO = 0.04;
 /** Peso mínimo de um cluster para merecer papel: 1% do total. */
 const FRACAO_MINIMA = 0.01;
+/**
+ * Distância de matiz, em graus, dentro da qual duas cores são a MESMA família.
+ *
+ * 25 graus é largo o bastante para pegar um hover mais escuro e uma tinta mais
+ * clara do mesmo verde, e estreito o bastante para não confundir um verde com
+ * um azul (que distam ~120) nem com um amarelo (~90).
+ */
+const FAIXA_DE_FAMILIA = 25;
+
+/** Distância angular entre dois matizes, pelo caminho curto. */
+const distanciaDeMatiz = (a: number, b: number): number => {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+};
 
 type Grupo = {
   centro: Oklch;
@@ -221,13 +235,78 @@ export const consolidarCores = (ocorrencias: readonly OcorrenciaDeCor[]): Consol
   }
 
   // ── 6. Montagem ───────────────────────────────────────────────────────────
+  // ── 6. Herança por família de matiz ───────────────────────────────────────
+  //
+  // O passo que faltava, e o defeito era grande: medido no kit real, das 111
+  // cores sem papel, 49 eram VARIAÇÕES de uma cor que já tinha papel. O verde
+  // `#4a6b5a` (escuro) e o `#8abf9e` (claro) são o mesmo verde do `primary`,
+  // usados em hover e em tinta de fundo. Sem esta passada, o `primary` virava
+  // a cor da marca e as duas continuavam verdes — o site saía METADE
+  // convertido, que é pior do que não converter nada: parece defeito, não
+  // parece escolha.
+  //
+  // A herança carrega a RELAÇÃO, não só o papel. Pintar as três com a mesma
+  // cor apagaria a hierarquia da origem (o hover deixaria de ser mais escuro).
+  // O que viaja é "quanto mais claro" e "quanto menos saturado", reaplicado
+  // sobre a cor da marca.
+  //
+  // Só entre cromáticos: um neutro perto de um acento não é variação dele, e
+  // sombra/overlay não deve virar cor de marca nunca.
+  const comPapelCromatico = [...papelPorGrupo.entries()].filter(
+    ([g]) => g.centro.c >= CROMA_NEUTRO,
+  );
+  const derivados = new Map<Grupo, { papel: PapelDeCor; deltaL: number; ratioC: number }>();
+  for (const g of grupos) {
+    if (papelPorGrupo.has(g) || g.centro.c < CROMA_NEUTRO) continue;
+    // O parente é o de matiz mais próxima dentro da faixa: uma variação de
+    // tom, não uma cor diferente.
+    const candidatos = comPapelCromatico
+      .map(([p, atrib]) => ({ p, atrib, dh: distanciaDeMatiz(p.centro.h, g.centro.h) }))
+      .filter((x) => x.dh < FAIXA_DE_FAMILIA)
+      .sort((a, b) => a.dh - b.dh);
+    const escolhido = candidatos[0];
+    if (escolhido === undefined) continue;
+    derivados.set(g, {
+      papel: escolhido.atrib.papel,
+      deltaL: g.centro.l - escolhido.p.centro.l,
+      // Croma do parente pode ser pequeno; o piso evita razão absurda.
+      ratioC: Math.min(4, g.centro.c / Math.max(0.02, escolhido.p.centro.c)),
+    });
+  }
+
+  // ── 7. Montagem ───────────────────────────────────────────────────────────
   const clusters: ClusterDeCor[] = grupos.map((g) => {
     const atribuicao = papelPorGrupo.get(g);
+    if (atribuicao !== undefined) {
+      return {
+        papel: atribuicao.papel,
+        corCanonica: g.hexCanonico,
+        membros: g.membros,
+        confianca: atribuicao.confianca,
+        ajuste: null,
+      };
+    }
+    const derivado = derivados.get(g);
+    if (derivado !== undefined) {
+      return {
+        papel: derivado.papel,
+        corCanonica: g.hexCanonico,
+        membros: g.membros,
+        // Herdado vale um pouco menos que próprio, mas passa do limiar: a
+        // evidência (mesmo matiz de uma cor já classificada) é forte.
+        confianca: 0.55,
+        ajuste: {
+          deltaL: Number(derivado.deltaL.toFixed(3)),
+          ratioC: Number(derivado.ratioC.toFixed(3)),
+        },
+      };
+    }
     return {
-      papel: atribuicao?.papel ?? null,
+      papel: null,
       corCanonica: g.hexCanonico,
       membros: g.membros,
-      confianca: atribuicao?.confianca ?? 0,
+      confianca: 0,
+      ajuste: null,
     };
   });
 

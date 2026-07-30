@@ -68,7 +68,9 @@ export function PainelMarca({
   }));
 
   return (
-    <div className="max-w-[560px] space-y-5">
+    // A largura agora é do cartão da grade; o teto de 560px era do tempo em que
+    // o painel morava sozinho numa coluna solta.
+    <div className="space-y-5">
       <SecaoCabecalho
         titulo="Marca"
         descricao="O nome como aparece no site e as variações da logo. Quanto mais variações, melhor cada canto do site fica. Mas uma só já resolve tudo."
@@ -147,7 +149,7 @@ export function PainelMarca({
           ))}
 
           <label
-            className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-[12px] transition-colors hover:border-[var(--color-signal)]"
+            className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-[13px] transition-colors hover:border-[var(--color-signal)]"
             style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg-muted)' }}
           >
             {upload.isPending ? <Mascote tamanho={13} girando /> : <Upload size={13} />}
@@ -195,7 +197,7 @@ export function PainelMarca({
                     )}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="text-[11px]" style={{ color: 'var(--color-fg)' }}>
+                    <div className="text-[12px]" style={{ color: 'var(--color-fg)' }}>
                       {ROTULO_LOCAL_DE_LOGO[local]}
                     </div>
                     <Select

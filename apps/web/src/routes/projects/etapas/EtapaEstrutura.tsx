@@ -13,14 +13,18 @@ import {
   moverSecaoVisivel,
   papeisObrigatoriosFaltantes,
   papelEfetivoDaSecao,
+  resumirSugestao,
   selinhoDaPeca,
   separarFundos,
   tirarFundo,
 } from '@/lib/estrutura-checagens';
 import { ORBIS } from '@/lib/orbis';
 import {
+  EXPLICA_AIDA,
   type EspacosDaPeca,
+  type EtapaAida,
   type ObjetivoDoSite,
+  ROTULO_AIDA,
   ROTULO_DE_PAPEL,
   type SecaoDoSite,
   type SecaoResolvida,
@@ -54,6 +58,13 @@ const AUTOMATICO = '__automatico__';
  * continua numa seção de `layout.secoes`); papéis obrigatórios que faltam
  * viram um aviso com a permissão `criarSecoesFaltantes`; e seção sem peça
  * segue sendo decisão legítima, mostrada como bloco pontilhado na prévia.
+ *
+ * Cada linha carrega duas orientações da etapa de marketing, com hierarquia
+ * fixa: a frase `faz` diz o que a seção FAZ na página (sempre visível), e a
+ * `sugestao` é a observação do Orbis sobre que TIPO de peça encaixar ali —
+ * escrita sem olhar o kit, mostrada enquanto a seção está vazia, que é quando
+ * a pessoa ainda não sabe o que procurar. O chip AIDA ao lado do papel situa
+ * a seção no argumento (Atenção → Interesse → Desejo → Ação).
  */
 export function StepEstrutura({
   secoes,
@@ -255,6 +266,7 @@ export function StepEstrutura({
           .filter((r): r is SecaoResolvida => r !== undefined)}
         fundos={fundos}
         ativa={aberta}
+        objetivo={objetivo}
         aoAbrir={(id) => setAberta(id)}
       />
 
@@ -265,6 +277,7 @@ export function StepEstrutura({
             const s = secoes.find((x) => x.id === escolhendoPara);
             return s === undefined ? undefined : papelEfetivoDaSecao(s, components);
           })()}
+          objetivo={objetivo}
           components={components}
           aoEscolher={(id) => {
             adicionarPeca(escolhendoPara, id);
@@ -322,6 +335,11 @@ function LinhaDaSecao({
     etapa !== undefined
       ? `Esta seção ${etapa.faz}.`
       : 'Seção livre. O texto dela me diz o que mostrar.';
+  // A observação do Orbis (que tipo de peça encaixar) só aparece enquanto a
+  // seção está vazia: é orientação de ANTES da escolha. Com peça dentro, ela
+  // viraria o app questionando uma decisão que a pessoa já tomou.
+  const observacao =
+    etapa !== undefined && pecas.length === 0 ? `Eu poria aqui ${etapa.sugestao}.` : undefined;
 
   return (
     <div
@@ -381,7 +399,7 @@ function LinhaDaSecao({
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <span
-                className="truncate text-[14px] font-medium"
+                className="truncate text-[15px] font-medium"
                 style={{
                   color: s.nome.trim() === '' ? 'var(--color-ion-3)' : 'var(--color-fg)',
                 }}
@@ -390,14 +408,15 @@ function LinhaDaSecao({
               </span>
               {papel !== undefined && (
                 <span
-                  className="ds-data shrink-0 text-[10px] uppercase tracking-[0.08em]"
+                  className="ds-data shrink-0 text-[11px] uppercase tracking-[0.08em]"
                   style={{ color: 'var(--color-ion-3)' }}
                 >
                   {ROTULO_DE_PAPEL[papel]}
                 </span>
               )}
+              {etapa !== undefined && <ChipAida momento={etapa.aida} />}
               <span
-                className="ml-auto shrink-0 text-[10px] uppercase tracking-[0.08em]"
+                className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.08em]"
                 style={{
                   color: pecas.length > 0 ? 'var(--color-fg-muted)' : 'var(--color-fg-subtle)',
                 }}
@@ -408,11 +427,19 @@ function LinhaDaSecao({
               </span>
             </div>
             <div
-              className="mt-0.5 line-clamp-2 text-[11px] leading-snug"
-              style={{ color: 'var(--color-fg-subtle)' }}
+              className="mt-0.5 line-clamp-2 text-[13px] leading-snug"
+              style={{ color: 'var(--color-fg-muted)' }}
             >
               {frase}
             </div>
+            {observacao !== undefined && (
+              <div
+                className="mt-0.5 line-clamp-2 text-[12px] italic leading-snug"
+                style={{ color: 'var(--color-ion-3)' }}
+              >
+                {observacao}
+              </div>
+            )}
           </div>
         </button>
 
@@ -440,7 +467,7 @@ function LinhaDaSecao({
             if (midia.fonte === 'nenhuma') return null;
             return (
               <div
-                className="flex flex-wrap items-baseline gap-x-2 rounded-lg border px-3 py-2.5 text-[12px] leading-relaxed"
+                className="flex flex-wrap items-baseline gap-x-2 rounded-lg border px-3 py-2.5 text-[13px] leading-relaxed"
                 style={{ borderColor: 'var(--color-border)' }}
               >
                 <span className="ds-data" style={{ color: 'var(--color-ion-3)' }}>
@@ -454,7 +481,7 @@ function LinhaDaSecao({
           })()}
 
           <label className="block">
-            <span className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]" style={rotulo}>
+            <span className="mb-1.5 block text-[12px] uppercase tracking-[0.16em]" style={rotulo}>
               Nome da seção
             </span>
             <input
@@ -468,7 +495,7 @@ function LinhaDaSecao({
           </label>
 
           <div>
-            <span className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]" style={rotulo}>
+            <span className="mb-1.5 block text-[12px] uppercase tracking-[0.16em]" style={rotulo}>
               Peças desta seção
             </span>
             {pecas.length > 0 && (
@@ -486,7 +513,7 @@ function LinhaDaSecao({
                       />
                     </div>
                     <span
-                      className="min-w-0 flex-1 truncate text-[12px]"
+                      className="min-w-0 flex-1 truncate text-[13px]"
                       style={{ color: 'var(--color-fg)' }}
                     >
                       {p.name}
@@ -537,13 +564,13 @@ function LinhaDaSecao({
               <Plus size={12} />
               {pecas.length > 0 ? 'Adicionar outra peça' : 'Escolher uma peça do kit'}
             </button>
-            <p className="mt-1.5 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            <p className="mt-1.5 text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
               Sem nenhuma peça, esta seção é criada do zero no estilo do kit.
             </p>
           </div>
 
           <label className="block">
-            <span className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]" style={rotulo}>
+            <span className="mb-1.5 block text-[12px] uppercase tracking-[0.16em]" style={rotulo}>
               O que esta seção deve dizer? (opcional)
             </span>
             <textarea
@@ -554,13 +581,13 @@ function LinhaDaSecao({
               className={`${INPUT} resize-y leading-relaxed`}
               style={inputStyle}
             />
-            <span className="mt-1.5 block text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            <span className="mt-1.5 block text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
               Deixe vazio e eu escrevo no tom da sua marca, sem inventar fato, número ou cliente.
             </span>
           </label>
 
           <div>
-            <span className="mb-1.5 block text-[11px] uppercase tracking-[0.16em]" style={rotulo}>
+            <span className="mb-1.5 block text-[12px] uppercase tracking-[0.16em]" style={rotulo}>
               Tipo de seção (opcional)
             </span>
             <Select
@@ -574,13 +601,49 @@ function LinhaDaSecao({
                 onMudar({ papel: v === AUTOMATICO ? undefined : SectionRole.parse(v) })
               }
             />
-            <p className="mt-1.5 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            <p className="mt-1.5 text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
               Só muda quais peças aparecem sugeridas aqui e como a seção se comporta no celular.
             </p>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+// ── O momento AIDA ──────────────────────────────────────────────────────────
+
+/**
+ * A cor de cada momento, nas vars do tema. O caminho é o do funil: os dois
+ * primeiros momentos ficam no ciano da marca (a página ainda se apresenta),
+ * o desejo esquenta no âmbar e a ação fecha no verde de "pode ir". Dose
+ * baixa de propósito: o chip situa a seção no argumento, não compete com o
+ * conteúdo dela.
+ */
+const COR_DA_AIDA: Record<EtapaAida, string> = {
+  atencao: 'var(--color-ion-4)',
+  interesse: 'var(--color-ion-3)',
+  desejo: 'var(--color-warn)',
+  acao: 'var(--color-ok)',
+};
+
+/** O momento AIDA da seção; o `title` explica o que ele tenta fazer. */
+function ChipAida({ momento }: { momento: EtapaAida }) {
+  const cor = COR_DA_AIDA[momento];
+  return (
+    <span
+      className="ds-data shrink-0 rounded-full border px-1.5 py-px text-[10px] uppercase tracking-[0.08em]"
+      title={EXPLICA_AIDA[momento]}
+      style={{
+        color: cor,
+        // `color-mix` porque as vars são hex: é o jeito de dosar a MESMA cor
+        // em borda e fundo sem duplicar valores fora do tema.
+        borderColor: `color-mix(in srgb, ${cor} 35%, transparent)`,
+        backgroundColor: `color-mix(in srgb, ${cor} 8%, transparent)`,
+      }}
+    >
+      {ROTULO_AIDA[momento]}
+    </span>
   );
 }
 
@@ -716,16 +779,31 @@ function BlocoDeFundo({
  * seções. Nada é gerado — são os mesmos documentos de prévia que a Biblioteca
  * usa, reduzidos. Clicar numa seção a abre na lista, como no editor da Shopify.
  * Só existe em md+; no celular a lista basta.
+ *
+ * Três escolhas de apresentação, todas vindas de uso real:
+ *
+ * - **peça nunca é cortada no meio.** A versão anterior recortava cada peça em
+ *   240px, e uma seção alta aparecia decapitada — parecia defeito da captura.
+ *   Agora a miniatura cresce até a altura REAL do documento na escala da
+ *   coluna: a peça sai menor, mas inteira, e a pilha vira a página em
+ *   miniatura de verdade.
+ * - **o nome da seção é a legenda entre os blocos.** Sem ela, duas peças
+ *   vizinhas de seções diferentes liam como uma coisa só.
+ * - **seção sem peça diz o que vai nascer ali**: o bloco pontilhado carrega o
+ *   nome e o resumo da sugestão de peça, em vez de só "criada no estilo" —
+ *   que descrevia o COMO e escondia o quê.
  */
 function PreviaEmpilhada({
   secoes,
   fundos,
   ativa,
+  objetivo,
   aoAbrir,
 }: {
   secoes: readonly SecaoResolvida[];
   fundos: readonly FundoEmUso[];
   ativa: string | null;
+  objetivo: ObjetivoDoSite | null;
   aoAbrir: (id: string) => void;
 }) {
   return (
@@ -740,7 +818,7 @@ function PreviaEmpilhada({
           </span>
         </div>
         <div
-          className="max-h-[58vh] overflow-y-auto rounded-lg border"
+          className="max-h-[70vh] scroll-smooth overflow-y-auto overscroll-contain rounded-lg border"
           style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0,0,0,0.3)' }}
         >
           {secoes.length === 0 && (
@@ -751,40 +829,71 @@ function PreviaEmpilhada({
               Sem seção ainda. O que você montar aparece aqui.
             </div>
           )}
-          {secoes.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => aoAbrir(r.id)}
-              title={`Abrir a seção ${r.nome || 'sem nome'}`}
-              className="block w-full p-0.5 text-left"
-              style={{
-                backgroundColor: ativa === r.id ? 'rgba(56,189,248,0.1)' : 'transparent',
-              }}
-            >
-              {r.pecas.length === 0 ? (
-                <div
-                  className="rounded border border-dashed px-2 py-4 text-center text-[10px] leading-relaxed"
-                  style={{ borderColor: 'rgba(255,255,255,0.16)', color: 'var(--color-fg-subtle)' }}
-                >
-                  {r.nome.trim() === '' ? 'sem nome' : r.nome}
-                  <br />
-                  criada no estilo do kit
-                </div>
-              ) : (
-                r.pecas.map((p, i) => (
-                  <div key={`${p.id}-${i}`} className="max-h-[240px] overflow-hidden">
-                    <PreviewFrame
-                      src={previewComponentUrl(p.id)}
-                      title={p.name}
-                      aspect={16 / 9}
-                      autoHeight
-                    />
+          {secoes.map((r) => {
+            const nome = r.nome.trim() === '' ? 'sem nome' : r.nome;
+            // O `slug` da resolução é o mesmo papel que o gerador vai usar;
+            // tipá-lo de volta dá acesso à etapa de marketing (a sugestão).
+            const papel = SectionRole.safeParse(r.slug);
+            const etapa = papel.success ? explicarPapel(papel.data, objetivo) : undefined;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => aoAbrir(r.id)}
+                title={`Abrir a seção ${r.nome || 'sem nome'}`}
+                className="block w-full px-1 pb-1.5 text-left"
+                style={{
+                  backgroundColor: ativa === r.id ? 'rgba(56,189,248,0.1)' : 'transparent',
+                }}
+              >
+                {r.pecas.length === 0 ? (
+                  <div
+                    className="mt-1.5 rounded-md border border-dashed px-3 py-4 text-center leading-relaxed"
+                    style={{ borderColor: 'rgba(255,255,255,0.16)' }}
+                  >
+                    <div className="text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
+                      {nome}
+                    </div>
+                    <div className="text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                      criada no estilo do kit
+                    </div>
+                    {etapa !== undefined && (
+                      <div
+                        className="mt-1 text-[10px] italic leading-snug"
+                        style={{ color: 'var(--color-ion-3)' }}
+                      >
+                        {resumirSugestao(etapa.sugestao)}
+                      </div>
+                    )}
                   </div>
-                ))
-              )}
-            </button>
-          ))}
+                ) : (
+                  <>
+                    <div
+                      className="ds-data truncate pt-1.5 pb-1 text-[10px] uppercase tracking-[0.12em]"
+                      style={{
+                        color: ativa === r.id ? 'var(--color-ion-3)' : 'var(--color-fg-subtle)',
+                      }}
+                    >
+                      {nome}
+                    </div>
+                    {/* As peças da MESMA seção ficam coladas: é um trecho
+                        contínuo da página, não uma lista de cards. */}
+                    <div className="overflow-hidden rounded-sm">
+                      {r.pecas.map((p, i) => (
+                        <PreviewFrame
+                          key={`${p.id}-${i}`}
+                          src={previewComponentUrl(p.id)}
+                          title={p.name}
+                          aspect={16 / 9}
+                          autoHeight
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </button>
+            );
+          })}
           {fundos.length > 0 && (
             <div
               className="flex items-center gap-1.5 border-t px-2.5 py-2 text-[10px]"
@@ -813,18 +922,23 @@ function PreviaEmpilhada({
 function ModalDePecas({
   nomeDaSecao,
   papel,
+  objetivo,
   components,
   aoEscolher,
   aoFechar,
 }: {
   nomeDaSecao: string;
   papel: SectionRole | undefined;
+  objetivo: ObjetivoDoSite | null;
   components: KitComponentRef[];
   aoEscolher: (id: string) => void;
   aoFechar: () => void;
 }) {
   const { encaixam, outras } = agruparPecasParaSecao(components, papel);
   const vazio = encaixam.length === 0 && outras.length === 0;
+  // A observação do Orbis repetida AQUI porque é agora que ela decide algo:
+  // a pessoa está com a grade aberta, escolhendo.
+  const etapa = papel !== undefined ? explicarPapel(papel, objetivo) : undefined;
 
   const grade = (pecas: readonly PecaDoKit[]) => (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -867,6 +981,11 @@ function ModalDePecas({
           <p className="mt-0.5 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
             Toque numa peça para colocá-la na seção.
           </p>
+          {etapa !== undefined && (
+            <p className="mt-1 text-[12px] italic" style={{ color: 'var(--color-ion-3)' }}>
+              Eu poria aqui {etapa.sugestao}.
+            </p>
+          )}
         </div>
 
         {vazio && (

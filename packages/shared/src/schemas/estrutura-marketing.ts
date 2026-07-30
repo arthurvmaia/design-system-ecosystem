@@ -9,11 +9,9 @@ import { newSectionId } from '../ids.js';
 import {
   type ComponenteDoKitResumo,
   type ObjetivoDoSite,
-  ROLE_CATEGORIES,
   ROTULO_DE_PAPEL,
   type SecaoDoSite,
   type SectionRole,
-  papelParaCategoria,
 } from './layout.js';
 
 /**
@@ -63,6 +61,33 @@ export const OBJETIVOS: Record<ObjetivoDoSite, { rotulo: string; explica: string
   },
 };
 
+/**
+ * Em que momento da decisão esta seção age — o AIDA.
+ *
+ * Atenção, Interesse, Desejo, Ação é a espinha das quatro sequências, e não é
+ * enfeite de vocabulário: é o que explica por que a ordem é aquela. Uma página
+ * que pede a Ação antes de construir o Desejo não converte; uma que fica no
+ * Interesse e nunca pede nada, também não. Ver o momento de cada seção ao lado
+ * do nome é o que permite reordenar sem quebrar o argumento.
+ */
+export const ETAPAS_AIDA = ['atencao', 'interesse', 'desejo', 'acao'] as const;
+export type EtapaAida = (typeof ETAPAS_AIDA)[number];
+
+export const ROTULO_AIDA: Record<EtapaAida, string> = {
+  atencao: 'Atenção',
+  interesse: 'Interesse',
+  desejo: 'Desejo',
+  acao: 'Ação',
+};
+
+/** O que cada momento do AIDA está tentando fazer com quem lê. */
+export const EXPLICA_AIDA: Record<EtapaAida, string> = {
+  atencao: 'fazer a pessoa parar e entender onde ela chegou',
+  interesse: 'dar motivo para continuar lendo em vez de fechar',
+  desejo: 'fazer ela se ver com aquilo, e querer',
+  acao: 'pedir o passo, num lugar onde ele é fácil de dar',
+};
+
 /** Uma etapa da página, no vocabulário de marketing. */
 export type EtapaDeMarketing = {
   /** Papel semântico — casa peça do kit e vira o `data-secao`. */
@@ -71,6 +96,17 @@ export type EtapaDeMarketing = {
   nome?: string;
   /** O que esta seção faz na página, em uma frase. */
   faz: string;
+  /** O momento da decisão em que ela age. */
+  aida: EtapaAida;
+  /**
+   * Que TIPO de peça cai bem aqui — descrito sem olhar o kit de ninguém.
+   *
+   * É a diferença entre "a peça X do seu kit encaixa" e "aqui vai uma barra de
+   * navegação". A primeira depende do que a pessoa curou e muda a cada kit; a
+   * segunda é a orientação de que ela precisa ANTES de escolher, quando a seção
+   * ainda está vazia e ela não sabe o que procurar.
+   */
+  sugestao: string;
   /**
    * A imagem que esta etapa costuma pedir, e por quê.
    *
@@ -92,11 +128,19 @@ export type EtapaDeMarketing = {
  */
 export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
   'captar-contato': [
-    { papel: 'nav', faz: 'leva a pessoa direto ao que ela veio procurar' },
+    {
+      papel: 'nav',
+      faz: 'leva a pessoa direto ao que ela veio procurar',
+      aida: 'atencao',
+      sugestao: 'uma barra de navegação com o logo e poucos links, fixa no topo',
+    },
     {
       papel: 'hero',
       nome: 'Abertura com a promessa',
       faz: 'diz em uma frase o que você resolve e para quem',
+      aida: 'atencao',
+      sugestao:
+        'um bloco de abertura ocupando a tela: título grande, uma linha de apoio, um botão e uma imagem ao lado ou atrás',
       midia: {
         quantas: 1,
         oQue: 'uma imagem forte do produto, do serviço ou de quem usa',
@@ -107,11 +151,16 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'features',
       nome: 'O problema',
       faz: 'nomeia a dor que a pessoa já sente, antes de oferecer a solução',
+      aida: 'interesse',
+      sugestao:
+        'três ou quatro cartões curtos, cada um nomeando uma dor; sem imagem, o texto é o argumento',
     },
     {
       papel: 'showcase',
       nome: 'Como funciona',
       faz: 'mostra o caminho em poucos passos, para tirar o medo do desconhecido',
+      aida: 'interesse',
+      sugestao: 'uma sequência numerada de passos, em linha ou empilhada, com uma imagem por passo',
       midia: {
         quantas: 3,
         oQue: 'uma imagem por passo',
@@ -122,6 +171,8 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'logos',
       nome: 'Prova social',
       faz: 'mostra que outras pessoas já confiaram antes dela',
+      aida: 'desejo',
+      sugestao: 'uma faixa horizontal de logos em cinza, todos do mesmo tamanho',
       midia: {
         quantas: 4,
         oQue: 'logos de clientes ou parceiros',
@@ -132,17 +183,38 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'faq',
       nome: 'Objeções',
       faz: 'responde o que trava a decisão, no lugar onde ela trava',
+      aida: 'desejo',
+      sugestao: 'uma lista de perguntas que abrem ao clicar, uma embaixo da outra',
     },
-    { papel: 'contact', nome: 'Deixe seu contato', faz: 'o pedido, sem rodeio e sem competição' },
-    { papel: 'footer', faz: 'fecha a página e guarda o que é obrigatório' },
+    {
+      papel: 'contact',
+      nome: 'Deixe seu contato',
+      faz: 'o pedido, sem rodeio e sem competição',
+      aida: 'acao',
+      sugestao: 'um formulário curto (nome, contato e mais nada) ou um botão único de WhatsApp',
+    },
+    {
+      papel: 'footer',
+      faz: 'fecha a página e guarda o que é obrigatório',
+      aida: 'acao',
+      sugestao: 'um rodapé com contato, redes e o obrigatório, em texto pequeno',
+    },
   ],
 
   'vender-produto': [
-    { papel: 'nav', faz: 'leva a pessoa direto ao que ela veio procurar' },
+    {
+      papel: 'nav',
+      faz: 'leva a pessoa direto ao que ela veio procurar',
+      aida: 'atencao',
+      sugestao: 'uma barra de navegação com o logo e poucos links, fixa no topo',
+    },
     {
       papel: 'hero',
       nome: 'Abertura com a oferta',
       faz: 'diz o que é, para quem, e por que vale',
+      aida: 'atencao',
+      sugestao:
+        'um bloco de abertura com a foto do produto grande, o preço ou a oferta em destaque e um botão de compra',
       midia: {
         quantas: 1,
         oQue: 'a foto principal do produto',
@@ -153,11 +225,15 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'features',
       nome: 'O que é',
       faz: 'descreve o produto pelo que ele faz, não pelo que ele tem',
+      aida: 'interesse',
+      sugestao: 'um bloco de texto com imagem ao lado, ou três cartões descrevendo o produto',
     },
     {
       papel: 'showcase',
       nome: 'Benefícios',
       faz: 'traduz cada característica no que ela muda no dia da pessoa',
+      aida: 'interesse',
+      sugestao: 'blocos alternados de imagem e texto, um benefício por bloco',
       midia: {
         quantas: 3,
         oQue: 'o produto em uso, em situações diferentes',
@@ -168,6 +244,8 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'catalog',
       nome: 'Vitrine',
       faz: 'apresenta os produtos com preço, para a escolha ser possível',
+      aida: 'desejo',
+      sugestao: 'uma grade de cartões de produto: foto, nome, preço e botão',
       midia: {
         quantas: 4,
         oQue: 'uma foto por produto',
@@ -178,6 +256,8 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'testimonials',
       nome: 'Prova',
       faz: 'quem já comprou fala, e vale mais do que você falando',
+      aida: 'desejo',
+      sugestao: 'cartões de depoimento com foto redonda, nome e a frase entre aspas',
       midia: {
         quantas: 3,
         oQue: 'rosto de quem depôs',
@@ -188,17 +268,38 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'faq',
       nome: 'Garantia e objeções',
       faz: 'prazo, troca, devolução, o que costuma travar a compra',
+      aida: 'desejo',
+      sugestao: 'uma lista de perguntas que abrem ao clicar, com prazo, troca e devolução',
     },
-    { papel: 'cta', nome: 'Comprar', faz: 'a ação, sozinha na tela, sem distração ao redor' },
-    { papel: 'footer', faz: 'fecha a página e guarda o que é obrigatório' },
+    {
+      papel: 'cta',
+      nome: 'Comprar',
+      faz: 'a ação, sozinha na tela, sem distração ao redor',
+      aida: 'acao',
+      sugestao: 'uma faixa larga com fundo de cor, uma frase e um botão só, sem mais nada em volta',
+    },
+    {
+      papel: 'footer',
+      faz: 'fecha a página e guarda o que é obrigatório',
+      aida: 'acao',
+      sugestao: 'um rodapé com contato, redes e o obrigatório, em texto pequeno',
+    },
   ],
 
   'apresentar-servico': [
-    { papel: 'nav', faz: 'leva a pessoa direto ao que ela veio procurar' },
+    {
+      papel: 'nav',
+      faz: 'leva a pessoa direto ao que ela veio procurar',
+      aida: 'atencao',
+      sugestao: 'uma barra de navegação com o logo e poucos links, fixa no topo',
+    },
     {
       papel: 'hero',
       nome: 'Abertura',
       faz: 'diz o que você faz, em uma frase que a pessoa repetiria',
+      aida: 'atencao',
+      sugestao:
+        'um bloco de abertura com uma frase que a pessoa repetiria, imagem do trabalho acontecendo e um botão de conversa',
       midia: {
         quantas: 1,
         oQue: 'uma imagem do trabalho acontecendo, ou de quem o recebe',
@@ -209,11 +310,15 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'features',
       nome: 'Para quem é',
       faz: 'deixa claro quem se beneficia — e, por consequência, quem não',
+      aida: 'interesse',
+      sugestao: 'três ou quatro cartões dizendo para quem serve, e por consequência para quem não',
     },
     {
       papel: 'showcase',
       nome: 'O método',
       faz: 'mostra como o trabalho corre, do primeiro contato à entrega',
+      aida: 'interesse',
+      sugestao: 'uma linha do tempo ou passos numerados, do primeiro contato à entrega',
       midia: {
         quantas: 3,
         oQue: 'uma imagem por etapa do método',
@@ -224,27 +329,51 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'stats',
       nome: 'Resultados',
       faz: 'números do que já foi entregue, quando existirem',
+      aida: 'desejo',
+      sugestao: 'uma faixa com três ou quatro números grandes e um rótulo curto embaixo de cada',
     },
     {
       papel: 'about',
       nome: 'Quem faz',
       faz: 'quem está por trás — em serviço, a confiança é na pessoa',
+      aida: 'desejo',
+      sugestao: 'um bloco com sua foto ou da equipe ao lado de um texto em primeira pessoa',
       midia: {
         quantas: 1,
         oQue: 'uma foto sua ou da equipe',
         porque: 'contratar serviço é contratar gente; a foto é o que torna isso concreto',
       },
     },
-    { papel: 'contact', nome: 'Vamos conversar', faz: 'o convite para a conversa' },
-    { papel: 'footer', faz: 'fecha a página e guarda o que é obrigatório' },
+    {
+      papel: 'contact',
+      nome: 'Vamos conversar',
+      faz: 'o convite para a conversa',
+      aida: 'acao',
+      sugestao: 'um formulário curto ou um botão único de WhatsApp, com o convite acima',
+    },
+    {
+      papel: 'footer',
+      faz: 'fecha a página e guarda o que é obrigatório',
+      aida: 'acao',
+      sugestao: 'um rodapé com contato, redes e o obrigatório, em texto pequeno',
+    },
   ],
 
   'mostrar-trabalho': [
-    { papel: 'nav', faz: 'leva a pessoa direto ao que ela veio procurar' },
+    {
+      papel: 'nav',
+      faz: 'leva a pessoa direto ao que ela veio procurar',
+      aida: 'atencao',
+      sugestao:
+        'uma barra de navegação enxuta, quase invisível: no portfólio ela não pode competir com o trabalho',
+    },
     {
       papel: 'hero',
       nome: 'Abertura',
       faz: 'seu nome e o que você faz, curto — aqui o trabalho fala primeiro',
+      aida: 'atencao',
+      sugestao:
+        'uma abertura com uma imagem grande do melhor trabalho e seu nome em texto pequeno por cima',
       midia: {
         quantas: 1,
         oQue: 'o trabalho de que você mais se orgulha',
@@ -255,6 +384,9 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'gallery',
       nome: 'Seleção de trabalhos',
       faz: 'os trabalhos escolhidos, poucos e bem apresentados',
+      aida: 'interesse',
+      sugestao:
+        'uma grade ou mosaico de imagens grandes, com o título aparecendo só ao passar o cursor',
       midia: {
         quantas: 6,
         oQue: 'uma imagem por trabalho',
@@ -265,6 +397,8 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'showcase',
       nome: 'O processo',
       faz: 'como você chega no resultado — é o que separa você de quem só entrega',
+      aida: 'desejo',
+      sugestao: 'blocos de imagem e texto mostrando bastidor, rascunho e versões até o resultado',
       midia: {
         quantas: 3,
         oQue: 'bastidor, rascunho, versões intermediárias',
@@ -275,9 +409,22 @@ export const SEQUENCIAS: Record<ObjetivoDoSite, EtapaDeMarketing[]> = {
       papel: 'testimonials',
       nome: 'Depoimentos',
       faz: 'quem contratou conta como foi trabalhar com você',
+      aida: 'desejo',
+      sugestao: 'cartões de depoimento com foto, nome e o trabalho a que ele se refere',
     },
-    { papel: 'contact', nome: 'Contato', faz: 'o caminho para o próximo trabalho' },
-    { papel: 'footer', faz: 'fecha a página e guarda o que é obrigatório' },
+    {
+      papel: 'contact',
+      nome: 'Contato',
+      faz: 'o caminho para o próximo trabalho',
+      aida: 'acao',
+      sugestao: 'um bloco simples com e-mail e redes, ou um botão único de conversa',
+    },
+    {
+      papel: 'footer',
+      faz: 'fecha a página e guarda o que é obrigatório',
+      aida: 'acao',
+      sugestao: 'um rodapé com contato, redes e o obrigatório, em texto pequeno',
+    },
   ],
 };
 
@@ -335,11 +482,15 @@ const AVULSOS: Partial<Record<SectionRole, EtapaDeMarketing>> = {
     papel: 'pricing',
     nome: 'Planos',
     faz: 'põe os planos lado a lado, para a escolha ser por comparação e não por dúvida',
+    aida: 'desejo',
+    sugestao: 'uma tabela de dois ou três planos lado a lado, com o recomendado em destaque',
   },
   team: {
     papel: 'team',
     nome: 'Equipe',
     faz: 'mostra quem faz o trabalho, quando as pessoas são parte do que se compra',
+    aida: 'desejo',
+    sugestao: 'uma grade de fotos da equipe com nome e função embaixo de cada uma',
     midia: {
       quantas: 3,
       oQue: 'uma foto por pessoa',
@@ -350,16 +501,22 @@ const AVULSOS: Partial<Record<SectionRole, EtapaDeMarketing>> = {
     papel: 'stats',
     nome: 'Números',
     faz: 'traz o que já foi feito em número, quando houver número real para mostrar',
+    aida: 'desejo',
+    sugestao: 'uma faixa com três ou quatro números grandes e um rótulo curto embaixo de cada',
   },
   about: {
     papel: 'about',
     nome: 'Sobre',
     faz: 'conta de onde você vem e por que faz isso',
+    aida: 'desejo',
+    sugestao: 'um bloco com foto ao lado de um texto em primeira pessoa',
   },
   gallery: {
     papel: 'gallery',
     nome: 'Galeria',
     faz: 'mostra o trabalho em imagem, sem texto no caminho',
+    aida: 'interesse',
+    sugestao: 'uma grade ou mosaico de imagens grandes, quase sem texto no caminho',
     midia: {
       quantas: 6,
       oQue: 'as imagens da galeria',
@@ -370,6 +527,8 @@ const AVULSOS: Partial<Record<SectionRole, EtapaDeMarketing>> = {
     papel: 'catalog',
     nome: 'Catálogo',
     faz: 'lista os produtos para a pessoa escolher',
+    aida: 'desejo',
+    sugestao: 'uma grade de cartões de produto: foto, nome, preço e botão',
     midia: {
       quantas: 4,
       oQue: 'uma foto por produto',
@@ -380,21 +539,29 @@ const AVULSOS: Partial<Record<SectionRole, EtapaDeMarketing>> = {
     papel: 'cta',
     nome: 'Chamada para ação',
     faz: 'o pedido, isolado, sem nada competindo por atenção ao lado',
+    aida: 'acao',
+    sugestao: 'uma faixa larga com fundo de cor, uma frase e um botão só, sem nada em volta',
   },
   testimonials: {
     papel: 'testimonials',
     nome: 'Depoimentos',
     faz: 'quem já contratou fala — vale mais do que você falando',
+    aida: 'desejo',
+    sugestao: 'cartões de depoimento com foto, nome e a frase entre aspas',
   },
   showcase: {
     papel: 'showcase',
     nome: 'Demonstração',
     faz: 'mostra o que foi dito acontecendo, em vez de só descrever',
+    aida: 'interesse',
+    sugestao: 'blocos alternados de imagem e texto mostrando a coisa acontecendo',
   },
   logos: {
     papel: 'logos',
     nome: 'Prova social',
     faz: 'mostra quem já confiou antes',
+    aida: 'desejo',
+    sugestao: 'uma faixa horizontal de logos em cinza, todos do mesmo tamanho',
     midia: {
       quantas: 4,
       oQue: 'logos de clientes ou parceiros',
@@ -406,72 +573,35 @@ const AVULSOS: Partial<Record<SectionRole, EtapaDeMarketing>> = {
 // ── A estrutura sugerida ────────────────────────────────────────────────────
 
 /**
- * Propõe a estrutura inicial a partir do kit e do OBJETIVO do site.
+ * Propõe a estrutura inicial a partir do OBJETIVO do site. Só dele.
  *
- * A espinha que existia aqui (`nav, hero, logos, features, contact, footer`) era
- * uma lista de papéis na ordem em que costumam aparecer. Não estava errada,
- * estava vazia de intenção: uma página que capta contato e uma que vende um
- * produto precisam responder coisas diferentes, em ordens diferentes. Agora a
- * sequência vem de `estrutura-marketing.ts`, por objetivo, e cada seção nasce
- * sabendo o que faz na página.
+ * A versão anterior fazia mais: casava peça do kit com papel e pré-alocava
+ * cada uma numa seção, e as sobras viravam seções extras. Parecia ajuda e era
+ * atropelo, por decisão de quem usa: a alocação de peça é a parte que a pessoa
+ * QUER fazer, e uma sugestão que já chega preenchida transforma a montagem em
+ * conferência. Pior, o argumento de marketing sumia no meio das seções extras
+ * que só existiam porque uma peça sobrou.
  *
- * Duas passadas, como antes. Primeiro a sequência: cada etapa vira uma seção e
- * recebe a primeira peça compatível ainda não usada — espalhar o kit pela página
- * rende mais que empilhar tudo numa seção só. Depois o resto do kit: peça que
- * sobrou puxa a seção do papel dela; se essa seção já existe, a peça entra NELA.
+ * O que sai agora é o esqueleto argumentativo puro, numerado na ordem da
+ * página ("Seção 1 · Navegação", "Seção 2 · Abertura com a oferta"...), cada
+ * seção VAZIA e carregando duas orientações da etapa: o momento AIDA em que
+ * ela age e a sugestão do TIPO de peça que cai bem ali — escrita sem olhar o
+ * kit de ninguém, porque é a orientação de antes da escolha.
  *
- * O rodapé continua sendo materializado junto com o resto da sequência, e não
- * depois das sobras, pelo mesmo motivo de sempre: se ele viesse por último, um
- * componente de formulário criaria uma seção "Contato" no laço de sobras e a
- * sequência criaria outra, vazia, logo abaixo.
+ * O número no nome é ponto de partida, como o resto: a pessoa renomeia e
+ * reordena à vontade, e o app não tenta manter a numeração em dia.
  *
- * Determinística: mesmo kit e mesmo objetivo, mesma proposta. O `novoId` é
- * injetável para o teste não depender de ulid.
+ * O parâmetro do kit continua na assinatura por compatibilidade com os
+ * chamadores; ele deixou de influenciar a sugestão.
  */
 export const sugerirSecoes = (
-  componentes: readonly ComponenteDoKitResumo[],
+  _componentes: readonly ComponenteDoKitResumo[],
   novoId: () => string = newSectionId,
   objetivo?: ObjetivoDoSite | null,
-): SecaoDoSite[] => {
-  const usados = new Set<string>();
-  const sequencia = sequenciaDe(objetivo);
-
-  const secaoDaEtapa = (etapa: EtapaDeMarketing): SecaoDoSite => {
-    const cats = ROLE_CATEGORIES[etapa.papel];
-    const peca = componentes.find((c) => cats.includes(c.category) && !usados.has(c.id));
-    if (peca !== undefined) usados.add(peca.id);
-    return {
-      id: novoId(),
-      nome: nomeDaEtapa(etapa),
-      papel: etapa.papel,
-      componentIds: peca !== undefined ? [peca.id] : [],
-    };
-  };
-
-  const daSequencia = sequencia.map(secaoDaEtapa);
-  // O fechamento fica no fim: as sobras entram ANTES dele, no meio da página,
-  // que é onde uma seção extra faz sentido. Empurrá-las para depois do rodapé
-  // seria pôr conteúdo abaixo do fim da página.
-  const ultimo = daSequencia[daSequencia.length - 1];
-  const fecha = ultimo !== undefined && ultimo.papel === 'footer';
-  const corpo = fecha ? daSequencia.slice(0, -1) : daSequencia;
-  const fechamento = fecha && ultimo !== undefined ? [ultimo] : [];
-  const extras: SecaoDoSite[] = [];
-
-  for (const c of componentes) {
-    if (usados.has(c.id)) continue;
-    usados.add(c.id);
-    const papel = papelParaCategoria(c.category);
-    if (papel === undefined) {
-      // Categoria que nenhum papel reconhece. A peça não some por isso: vira uma
-      // seção com o nome dela, sem papel, para o usuário renomear.
-      extras.push({ id: novoId(), nome: c.name, componentIds: [c.id] });
-      continue;
-    }
-    const jaExiste = [...corpo, ...fechamento, ...extras].find((s) => s.papel === papel);
-    if (jaExiste !== undefined) jaExiste.componentIds.push(c.id);
-    else extras.push({ id: novoId(), nome: ROTULO_DE_PAPEL[papel], papel, componentIds: [c.id] });
-  }
-
-  return [...corpo, ...extras, ...fechamento];
-};
+): SecaoDoSite[] =>
+  sequenciaDe(objetivo).map((etapa, i) => ({
+    id: novoId(),
+    nome: `Seção ${i + 1} · ${nomeDaEtapa(etapa)}`,
+    papel: etapa.papel,
+    componentIds: [],
+  }));

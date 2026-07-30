@@ -14,12 +14,13 @@ const cluster = (over: Partial<ClusterDeCor>): ClusterDeCor => ({
   corCanonica: '#0d3c1f',
   confianca: 0.8,
   membros: [{ literal: '#0d3c1f', hexOpaco: '#0d3c1f', ocorrencias: 1, contexto: 'bg' }],
+  ajuste: null,
   ...over,
 });
 
 const MAPA = new Map([
-  ['#0d3c1f', 'primary' as const],
-  ['#f69066', 'accent' as const],
+  ['#0d3c1f', { papel: 'primary' as const, ajuste: null }],
+  ['#f69066', { papel: 'accent' as const, ajuste: null }],
 ]);
 
 test('opaco vira var() com o literal de fallback', () => {
@@ -101,7 +102,39 @@ test('mapaDeRecoloracao respeita papel null e o limiar de confiança', () => {
       membros: [{ literal: '#222222', hexOpaco: '#222222', ocorrencias: 1, contexto: 'text' }],
     }),
   ]);
-  assert.equal(mapa.get('#0d3c1f'), 'primary');
+  assert.equal(mapa.get('#0d3c1f')?.papel, 'primary');
   assert.equal(mapa.get('#111111'), undefined, 'papel null fica de fora');
   assert.equal(mapa.get('#222222'), undefined, 'confiança abaixo do limiar fica de fora');
+});
+
+test('cor DERIVADA preserva a relação com o parente, em OKLCH', () => {
+  // #8abf9e é o verde primary clareado. Sem herança ele ficaria verde enquanto
+  // o primary virava amarelo, e o site sairia METADE convertido. Com herança,
+  // ele vira "o amarelo da marca, 24% mais claro e com 55% do croma".
+  const mapa = new Map([
+    ['#8abf9e', { papel: 'primary' as const, ajuste: { deltaL: 0.24, ratioC: 0.55 } }],
+  ]);
+  const r = recolorirCss('.a{background:#8abf9e}', mapa);
+  assert.equal(
+    r.css,
+    '.a{background:oklch(from var(--marca-primary, #8abf9e) calc(l + 0.240) calc(c * 0.550) h)}',
+  );
+});
+
+test('derivada mais ESCURA usa subtração: calc(l + -0.1) não é CSS válido', () => {
+  const mapa = new Map([
+    ['#4a6b5a', { papel: 'primary' as const, ajuste: { deltaL: -0.12, ratioC: 0.4 } }],
+  ]);
+  const r = recolorirCss('.a{color:#4a6b5a}', mapa);
+  assert.ok(r.css.includes('calc(l - 0.120)'), r.css);
+  assert.ok(!r.css.includes('+ -'), 'nunca soma um negativo');
+});
+
+test('derivada com alfa mantém o alfa como expressão', () => {
+  const mapa = new Map([
+    ['#4a6b5a', { papel: 'primary' as const, ajuste: { deltaL: -0.12, ratioC: 0.4 } }],
+  ]);
+  const r = recolorirCss('.a{background:rgb(74 107 90 / var(--tw-bg-opacity, 1))}', mapa);
+  assert.ok(r.css.includes('/ var(--tw-bg-opacity, 1))'), r.css);
+  assert.ok(r.css.startsWith('.a{background:oklch(from var(--marca-primary'), r.css);
 });

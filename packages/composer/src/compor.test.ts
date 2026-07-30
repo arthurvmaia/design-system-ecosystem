@@ -129,7 +129,7 @@ test('aspas no id da origem não escapam do atributo', () => {
 });
 
 test('compor com recoloração: a origem mapeada consome a marca, a outra fica original', () => {
-  const mapa = new Map([['#0d3c1f', 'primary' as const]]);
+  const mapa = new Map([['#0d3c1f', { papel: 'primary' as const, ajuste: null }]]);
   const r = compor(
     [
       { origem: 'ds_a', html: '<p class="t">A</p>', css: '.t{color:#0d3c1f}' },

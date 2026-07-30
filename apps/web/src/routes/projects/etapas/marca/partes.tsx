@@ -13,21 +13,21 @@ export function SecaoCabecalho({
   opcional?: boolean;
 }) {
   return (
-    <div className="mb-4">
-      <div className="flex items-center gap-2">
-        <h3 className="text-[15px] font-medium" style={{ color: 'var(--color-fg)' }}>
+    <div className="mb-5">
+      <div className="flex items-center gap-2.5">
+        <h3 className="text-[17px] font-medium" style={{ color: 'var(--color-fg)' }}>
           {titulo}
         </h3>
         {opcional && (
           <span
-            className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em]"
+            className="rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-[0.12em]"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-subtle)' }}
           >
             Opcional
           </span>
         )}
       </div>
-      <p className="mt-1 text-[12px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
+      <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
         {descricao}
       </p>
     </div>
@@ -51,13 +51,13 @@ export function Recolhivel({
         type="button"
         onClick={() => setAberto((a) => !a)}
         aria-expanded={aberto}
-        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-[12px] transition-colors hover:text-[var(--color-fg)]"
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-[13px] transition-colors hover:text-[var(--color-fg)]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
         <span className="min-w-0">
           {rotulo}
           {detalhe && (
-            <span className="ml-2 text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            <span className="ml-2 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
               {detalhe}
             </span>
           )}
@@ -102,13 +102,13 @@ export function ChipsInput({
 
   return (
     <div
-      className="flex min-h-[38px] flex-wrap items-center gap-1.5 rounded-md border px-2 py-1.5"
+      className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-md border px-2.5 py-1.5"
       style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0,0,0,0.35)' }}
     >
       {valores.map((v) => (
         <span
           key={v}
-          className="ds-tag inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]"
+          className="ds-tag inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px]"
           style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
         >
           {v}
@@ -137,7 +137,7 @@ export function ChipsInput({
             aoMudar(valores.slice(0, -1));
           }
         }}
-        className="min-w-[120px] flex-1 bg-transparent text-[12px] outline-none"
+        className="min-w-[120px] flex-1 bg-transparent text-[13px] outline-none"
         style={{ color: 'var(--color-fg)' }}
       />
     </div>

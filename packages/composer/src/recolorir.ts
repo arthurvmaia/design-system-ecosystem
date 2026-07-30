@@ -1,4 +1,4 @@
-import type { ClusterDeCor, PapelDeCor } from '@ds/shared';
+import type { AjusteDeCor, ClusterDeCor, PapelDeCor } from '@ds/shared';
 import { CONFIANCA_MINIMA_PARA_RECOLORIR } from '@ds/shared';
 import postcss from 'postcss';
 import { coresDoValor } from './inventario.js';
@@ -33,7 +33,13 @@ import { coresDoValor } from './inventario.js';
  * cor da página e não pode ser tocado.
  */
 
-export type MapaDeRecoloracao = ReadonlyMap<string /* hexOpaco */, PapelDeCor>;
+/**
+ * O destino de uma cor: o papel que ela assume e, quando o papel foi HERDADO
+ * de um vizinho de matiz, a relação a preservar (ver `AjusteDeCor`).
+ */
+export type DestinoDaCor = { papel: PapelDeCor; ajuste: AjusteDeCor | null };
+
+export type MapaDeRecoloracao = ReadonlyMap<string /* hexOpaco */, DestinoDaCor>;
 
 export type ResultadoRecoloracao = {
   css: string;
@@ -52,26 +58,47 @@ export type ResultadoRecoloracao = {
  * painel do kit mostra "este cluster será recolorido" com a MESMA régua).
  */
 export const mapaDeRecoloracao = (clusters: readonly ClusterDeCor[]): MapaDeRecoloracao => {
-  const mapa = new Map<string, PapelDeCor>();
+  const mapa = new Map<string, DestinoDaCor>();
   for (const c of clusters) {
     if (c.papel === null || c.confianca < CONFIANCA_MINIMA_PARA_RECOLORIR) continue;
+    const destino: DestinoDaCor = { papel: c.papel, ajuste: c.ajuste };
     for (const m of c.membros) {
       // Primeiro papel vence: um hex não pode servir a dois papéis, e a ordem
       // dos clusters já é a de peso.
-      if (!mapa.has(m.hexOpaco)) mapa.set(m.hexOpaco, c.papel);
+      if (!mapa.has(m.hexOpaco)) mapa.set(m.hexOpaco, destino);
     }
   }
   return mapa;
 };
 
+/** `+ 0.12` ou `- 0.12`: `calc(l + -0.12)` não é CSS válido. */
+const somaEmCalc = (n: number): string =>
+  n < 0 ? `- ${Math.abs(n).toFixed(3)}` : `+ ${n.toFixed(3)}`;
+
 /** A expressão recolorida de UM literal, dado o papel. */
-const reescrever = (hexOpaco: string, alfa: string | undefined, papel: PapelDeCor): string =>
-  alfa === undefined
-    ? `var(--marca-${papel}, ${hexOpaco})`
+const reescrever = (hexOpaco: string, alfa: string | undefined, destino: DestinoDaCor): string => {
+  const fonte = `var(--marca-${destino.papel}, ${hexOpaco})`;
+  const { ajuste } = destino;
+
+  if (ajuste !== null) {
+    // Cor DERIVADA: o papel foi herdado de um vizinho de matiz, e o que a
+    // separa dele tem de sobreviver à troca. Em OKLCH isso é literal — a
+    // luminância se desloca pelo mesmo tanto e o croma escala pela mesma
+    // razão, agora em torno da cor da marca. É assim que um hover mais escuro
+    // continua mais escuro depois de virar amarelo.
+    const canais = `calc(l ${somaEmCalc(ajuste.deltaL)}) calc(c * ${ajuste.ratioC.toFixed(3)}) h`;
+    return alfa === undefined
+      ? `oklch(from ${fonte} ${canais})`
+      : `oklch(from ${fonte} ${canais} / ${alfa})`;
+  }
+
+  return alfa === undefined
+    ? fonte
     : // Sintaxe de cor relativa: preserva o alfa como expressão (pode ser um
       // var() do Tailwind) enquanto os canais vêm do token da marca. O
       // fallback dentro do var() mantém a degradação para o literal original.
-      `rgb(from var(--marca-${papel}, ${hexOpaco}) r g b / ${alfa})`;
+      `rgb(from ${fonte} r g b / ${alfa})`;
+};
 
 export const recolorirCss = (css: string, mapa: MapaDeRecoloracao): ResultadoRecoloracao => {
   if (mapa.size === 0) {
@@ -105,12 +132,12 @@ export const recolorirCss = (css: string, mapa: MapaDeRecoloracao): ResultadoRec
 
     let valor = decl.value;
     for (const cor of cores) {
-      const papel = mapa.get(cor.hexOpaco);
-      if (papel === undefined) {
+      const destino = mapa.get(cor.hexOpaco);
+      if (destino === undefined) {
         mantidas++;
         continue;
       }
-      const nova = reescrever(cor.hexOpaco, cor.alfa, papel);
+      const nova = reescrever(cor.hexOpaco, cor.alfa, destino);
       // Replace de UMA ocorrência do literal exato. O literal veio do próprio
       // valor, então ele existe; se o mesmo literal aparece duas vezes no
       // valor, o laço o encontra de novo na próxima cor da lista.

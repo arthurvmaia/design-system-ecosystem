@@ -32,59 +32,64 @@ export function StepProjeto({
 }) {
   const objetivos = Object.keys(OBJETIVOS) as ObjetivoDoSite[];
   return (
-    <div className="space-y-5">
-      <Campo label="Nome do projeto">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => onName(e.target.value)}
-          placeholder="Ex: Landing do Cliente X"
-          className={INPUT}
-          style={inputStyle}
-        />
-      </Campo>
-      <div>
-        <div className="mb-2 text-[10px] uppercase tracking-[0.2em]" style={rotulo}>
-          Kit base <span style={{ color: 'var(--color-ion-3)' }}>*</span>
-        </div>
-        {kits.length === 0 ? (
-          <div className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            Nenhum kit disponível. Monte um em Design Systems.
+    // Duas colunas na moldura larga do wizard: nome + kit de um lado, objetivo
+    // do outro. Empilhado, a etapa era uma coluna estreita com metade da tela
+    // vazia; no celular a grade volta a ser uma coluna só.
+    <div className="grid grid-cols-1 items-start gap-x-10 gap-y-7 xl:grid-cols-2">
+      <div className="space-y-6">
+        <Campo label="Nome do projeto">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => onName(e.target.value)}
+            placeholder="Ex: Landing do Cliente X"
+            className={INPUT}
+            style={inputStyle}
+          />
+        </Campo>
+        <div>
+          <div className="mb-2 text-[12px] uppercase tracking-[0.18em]" style={rotulo}>
+            Kit base <span style={{ color: 'var(--color-ion-3)' }}>*</span>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {kits.map((k) => (
-              <button
-                key={k.id}
-                type="button"
-                onClick={() => onKit(k.id)}
-                className="ds-glass rounded-lg p-3 text-left"
-                style={kitId === k.id ? { borderColor: 'var(--color-ion-5)' } : undefined}
-              >
-                <div className="text-[13px] font-medium" style={{ color: 'var(--color-fg)' }}>
-                  {k.name}
-                </div>
-                <div
-                  className="ds-data mt-1 text-[10px]"
-                  style={{ color: 'var(--color-fg-subtle)' }}
+          {kits.length === 0 ? (
+            <div className="text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
+              Nenhum kit disponível. Monte um em Design Systems.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {kits.map((k) => (
+                <button
+                  key={k.id}
+                  type="button"
+                  onClick={() => onKit(k.id)}
+                  className="ds-glass rounded-lg p-4 text-left"
+                  style={kitId === k.id ? { borderColor: 'var(--color-ion-5)' } : undefined}
                 >
-                  {k.components.length} componentes
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+                  <div className="text-[15px] font-medium" style={{ color: 'var(--color-fg)' }}>
+                    {k.name}
+                  </div>
+                  <div
+                    className="ds-data mt-1 text-[11px]"
+                    style={{ color: 'var(--color-fg-subtle)' }}
+                  >
+                    {k.components.length} componentes
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div>
-        <div className="mb-1 text-[10px] uppercase tracking-[0.2em]" style={rotulo}>
+        <div className="mb-1 text-[12px] uppercase tracking-[0.18em]" style={rotulo}>
           O que este site precisa fazer
         </div>
-        <p className="mb-2.5 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+        <p className="mb-3 text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
           Isso muda a estrutura que o app vai propor na próxima etapa. Você pode trocar tudo depois,
           e pode pular: sem escolha, ele propõe a estrutura mais geral.
         </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {objetivos.map((o) => {
             const escolhido = objetivo === o;
             return (
@@ -95,14 +100,14 @@ export function StepProjeto({
                 // forma de voltar a "sem objetivo" seria recriar o projeto.
                 onClick={() => onObjetivo(escolhido ? null : o)}
                 aria-pressed={escolhido}
-                className="ds-glass rounded-lg p-3 text-left"
+                className="ds-glass rounded-lg p-4 text-left"
                 style={escolhido ? { borderColor: 'var(--color-ion-5)' } : undefined}
               >
-                <div className="text-[13px] font-medium" style={{ color: 'var(--color-fg)' }}>
+                <div className="text-[15px] font-medium" style={{ color: 'var(--color-fg)' }}>
                   {OBJETIVOS[o].rotulo}
                 </div>
                 <div
-                  className="mt-1 text-[11px] leading-relaxed"
+                  className="mt-1 text-[12px] leading-relaxed"
                   style={{ color: 'var(--color-fg-subtle)' }}
                 >
                   {OBJETIVOS[o].explica}

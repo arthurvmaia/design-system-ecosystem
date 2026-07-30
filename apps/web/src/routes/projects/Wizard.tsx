@@ -321,15 +321,27 @@ export function ProjectWizard({
   const travadoPorBloqueante = bloqueantes(problemas).length > 0;
 
   return (
-    <Modal open onClose={onClose} size="xl" title={existing ? 'Editar projeto' : 'Novo projeto'}>
-      <div className="flex max-h-[88vh] flex-col">
+    // A moldura é quase de tela cheia: o wizard é uma tela de TRABALHO, com
+    // etapas em grade, e o modal padrão de 1200px espremia tudo numa coluna.
+    // O `!` vence a largura do size="xl" e o teto de 88vh do Modal; a altura é
+    // FIXA em 94vh para o rodapé (Voltar/Próximo) não pular de lugar a cada
+    // etapa — só o corpo rola, por isso o bodyScroll do Modal fica desligado.
+    <Modal
+      open
+      onClose={onClose}
+      size="xl"
+      title={existing ? 'Editar projeto' : 'Novo projeto'}
+      className="h-[94vh]! max-h-[94vh]! max-w-[1440px]!"
+      bodyScroll={false}
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
         <StepBar
           step={step}
           maxVisitado={tetoLiberado}
           onStep={(s) => s <= tetoLiberado && setStep(s)}
         />
 
-        <div className="min-h-[300px] flex-1 overflow-y-auto px-6 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-10 md:py-8">
           {step === ETAPA.projeto && (
             <StepProjeto
               name={name}
@@ -384,22 +396,22 @@ export function ProjectWizard({
         </div>
 
         <div
-          className="flex items-center justify-between border-t px-6 py-4"
+          className="flex items-center justify-between border-t px-6 py-4 md:px-8"
           style={{ borderColor: 'var(--color-border)' }}
         >
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => (step === 0 ? onClose() : setStep((s) => s - 1))}
-              className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] transition-colors hover:text-[var(--color-fg)]"
+              className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] transition-colors hover:text-[var(--color-fg)]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
-              <ArrowLeft size={13} />
+              <ArrowLeft size={14} />
               {step === 0 ? 'Cancelar' : 'Voltar'}
             </button>
             {autosave !== 'ocioso' && (
               <output
-                className="flex items-center gap-1.5 text-[11px]"
+                className="flex items-center gap-1.5 text-[12px]"
                 style={{
                   color: autosave === 'falha' ? 'var(--color-signal)' : 'var(--color-fg-subtle)',
                 }}
@@ -420,17 +432,17 @@ export function ProjectWizard({
               title={
                 travadoPorBloqueante ? 'Resolva os itens bloqueantes listados acima' : undefined
               }
-              className="ds-btn ds-glow flex items-center gap-2 rounded-full px-6 py-2.5 text-[13px] font-medium disabled:opacity-50"
+              className="ds-btn ds-glow flex items-center gap-2 rounded-full px-7 py-3 text-[14px] font-medium disabled:opacity-50"
               style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
             >
-              {gerar.isPending ? <Mascote tamanho={13} girando /> : <Mascote tamanho={15} />}
+              {gerar.isPending ? <Mascote tamanho={14} girando /> : <Mascote tamanho={16} />}
               Gerar site
             </button>
           ) : (
             <div className="flex items-center gap-3">
               {pendencias.length > 0 && (
                 <output
-                  className="max-w-[46ch] text-right text-[12px] leading-snug"
+                  className="max-w-[46ch] text-right text-[13px] leading-snug"
                   style={{ color: 'var(--color-fg-muted)' }}
                 >
                   {pendencias[0]?.mensagem}
@@ -443,10 +455,10 @@ export function ProjectWizard({
                 // Botão travado que não diz por quê vira adivinhação. A pendência
                 // aparece ao lado, e o title repete para quem navega por teclado.
                 title={pendencias[0]?.mensagem}
-                className="ds-btn ds-glow flex items-center gap-2 rounded-full px-6 py-2.5 text-[13px] font-medium disabled:opacity-40"
+                className="ds-btn ds-glow flex items-center gap-2 rounded-full px-7 py-3 text-[14px] font-medium disabled:opacity-40"
                 style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
               >
-                {avancar.isPending ? <Mascote tamanho={13} girando /> : <ArrowRight size={13} />}
+                {avancar.isPending ? <Mascote tamanho={14} girando /> : <ArrowRight size={14} />}
                 Próximo
               </button>
             </div>
@@ -468,7 +480,7 @@ function StepBar({
 }) {
   return (
     <div
-      className="flex items-center overflow-x-auto border-b px-6 py-3"
+      className="flex items-center overflow-x-auto border-b px-6 py-3.5 md:px-8"
       style={{ borderColor: 'var(--color-border)' }}
     >
       {ETAPAS.map((label, i) => {
@@ -495,7 +507,7 @@ function StepBar({
               disabled={travada}
               aria-current={active ? 'step' : undefined}
               title={travada ? 'Avance pelas etapas para desbloquear' : `Ir para ${label}`}
-              className="flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-[11px] uppercase tracking-[0.12em] transition-colors disabled:cursor-default"
+              className="flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] uppercase tracking-[0.12em] transition-colors disabled:cursor-default"
               style={{
                 backgroundColor: active ? 'rgba(56,189,248,0.12)' : 'transparent',
                 color: active
@@ -507,7 +519,7 @@ function StepBar({
               }}
             >
               <span
-                className="ds-data flex h-[15px] w-[15px] items-center justify-center rounded-full text-[9px]"
+                className="ds-data flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px]"
                 style={{
                   backgroundColor: done
                     ? 'var(--color-ion-7)'
@@ -522,7 +534,7 @@ function StepBar({
                       : 'var(--color-fg-subtle)',
                 }}
               >
-                {done ? <Check size={9} /> : String(i + 1).padStart(2, '0')}
+                {done ? <Check size={10} /> : String(i + 1).padStart(2, '0')}
               </span>
               {label}
             </button>

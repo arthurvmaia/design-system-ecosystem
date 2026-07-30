@@ -40,6 +40,7 @@ const DS: KitDesignSystem = {
           corCanonica: '#0d3c1f',
           confianca: 0.8,
           membros: [{ literal: '#0d3c1f', hexOpaco: '#0d3c1f', ocorrencias: 3, contexto: 'bg' }],
+          ajuste: null,
         },
       ],
       fontes: [],

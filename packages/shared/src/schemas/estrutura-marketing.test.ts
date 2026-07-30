@@ -65,10 +65,16 @@ test('sem objetivo, cai na sequência mais geral', () => {
 
 test('nomeDaEtapa usa o nome próprio quando existe, senão o rótulo do papel', () => {
   assert.equal(
-    nomeDaEtapa({ papel: 'hero', nome: 'Abertura com a oferta', faz: 'x' }),
+    nomeDaEtapa({
+      papel: 'hero',
+      nome: 'Abertura com a oferta',
+      faz: 'x',
+      aida: 'atencao',
+      sugestao: 'x',
+    }),
     'Abertura com a oferta',
   );
-  assert.equal(nomeDaEtapa({ papel: 'footer', faz: 'x' }), 'Rodapé');
+  assert.equal(nomeDaEtapa({ papel: 'footer', faz: 'x', aida: 'acao', sugestao: 'x' }), 'Rodapé');
 });
 
 test('explicarPapel acha o papel fora do objetivo escolhido, em vez de desistir', () => {
@@ -118,41 +124,24 @@ test('a sugestão é determinística: mesmo kit e mesmo objetivo, mesma página'
   assert.deepEqual(um, dois);
 });
 
-test('cada seção da sugestão nasce com o nome da etapa, não com um rótulo cru', () => {
+test('cada seção nasce numerada com o nome da etapa: "Seção 2 · Abertura com a oferta"', () => {
   n = 0;
   const secoes = sugerirSecoes([], id, 'vender-produto');
   const hero = secoes.find((s) => s.papel === 'hero');
-  assert.equal(hero?.nome, 'Abertura com a oferta');
+  assert.equal(hero?.nome, 'Seção 2 · Abertura com a oferta');
+  assert.equal(secoes[0]?.nome, 'Seção 1 · Navegação');
 });
 
-test('a peça que sobra entra ANTES do rodapé, nunca depois', () => {
-  // Seção depois do rodapé é conteúdo abaixo do fim da página.
+test('a sugestão NÃO aloca peça nenhuma: alocar é trabalho de quem monta', () => {
+  // Era o contrário, e era atropelo por decisão de quem usa: a sugestão
+  // chegava preenchida e a montagem virava conferência. O kit fica à
+  // disposição na tela ("peças ainda sem seção"); a estrutura nasce vazia.
   n = 0;
-  const kit = [cmp({ id: 'cmp_p', category: 'pricing' })];
-  const secoes = sugerirSecoes(kit, id, 'mostrar-trabalho');
-  const iPricing = secoes.findIndex((s) => s.papel === 'pricing');
-  const iFooter = secoes.findIndex((s) => s.papel === 'footer');
-  assert.ok(iPricing !== -1, 'a peça de preço não pode sumir');
-  assert.ok(iPricing < iFooter, 'ela precisa ficar antes do rodapé');
-});
-
-test('não sai seção duplicada quando a peça casa com um papel da sequência', () => {
-  n = 0;
-  const kit = [cmp({ id: 'cmp_f', category: 'form' })];
+  const kit = [cmp({ id: 'cmp_a', category: 'hero' }), cmp({ id: 'cmp_b', category: 'form' })];
   const secoes = sugerirSecoes(kit, id, 'captar-contato');
-  const contatos = secoes.filter((s) => s.papel === 'contact');
-  assert.equal(contatos.length, 1);
-  assert.deepEqual(contatos[0]?.componentIds, ['cmp_f']);
-});
-
-test('peça de categoria que nenhum papel reconhece vira seção própria, sem sumir', () => {
-  n = 0;
-  const kit = [cmp({ id: 'cmp_x', category: 'inventada', name: 'Widget' })];
-  const secoes = sugerirSecoes(kit, id, 'captar-contato');
-  const dela = secoes.find((s) => s.componentIds.includes('cmp_x'));
-  assert.ok(dela !== undefined);
-  assert.equal(dela?.nome, 'Widget');
-  assert.equal(dela?.papel, undefined);
+  assert.ok(secoes.every((s) => s.componentIds.length === 0));
+  // E nenhuma seção extra é inventada para acomodar peça que sobrou.
+  assert.equal(secoes.length, SEQUENCIAS['captar-contato'].length);
 });
 
 test('kit vazio ainda propõe a página inteira: a tela não abre em branco', () => {
@@ -166,6 +155,38 @@ test('todo papel da sequência sabe que categoria aceita (ou aceita nenhuma, de 
   for (const obj of ObjetivoDoSite.options) {
     for (const e of SEQUENCIAS[obj]) {
       assert.ok(ROLE_CATEGORIES[e.papel] !== undefined, `papel ${e.papel} fora de ROLE_CATEGORIES`);
+    }
+  }
+});
+
+test('toda etapa diz que TIPO de peça cai bem ali, sem olhar kit nenhum', () => {
+  // É a observação que a tela mostra numa seção vazia: "aqui vai uma barra de
+  // navegação", "aqui cai bem a foto do produto". Etapa sem sugestão deixaria
+  // a pessoa escolhendo às cegas.
+  for (const obj of ObjetivoDoSite.options) {
+    for (const e of SEQUENCIAS[obj]) {
+      assert.ok(e.sugestao.trim().length > 15, `${e.papel} de ${obj} sem sugestão de peça`);
+    }
+  }
+  for (const papel of Object.keys(ROLE_CATEGORIES) as Array<keyof typeof ROLE_CATEGORIES>) {
+    const e = explicarPapel(papel);
+    assert.ok(e !== undefined && e.sugestao.trim().length > 15, `avulso ${papel} sem sugestão`);
+  }
+});
+
+test('a ordem AIDA nunca anda para trás dentro de uma sequência', () => {
+  // Atenção → Interesse → Desejo → Ação. Uma sequência que pede a Ação e
+  // depois volta a construir Interesse quebra o argumento que ela mesma
+  // propõe; este teste congela a espinha.
+  const ordem = { atencao: 0, interesse: 1, desejo: 2, acao: 3 } as const;
+  for (const obj of ObjetivoDoSite.options) {
+    let anterior = 0;
+    for (const e of SEQUENCIAS[obj]) {
+      assert.ok(
+        ordem[e.aida] >= anterior,
+        `${obj}: a etapa ${e.papel} (${e.aida}) regride no AIDA`,
+      );
+      anterior = ordem[e.aida];
     }
   }
 });

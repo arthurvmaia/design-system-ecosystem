@@ -53,7 +53,8 @@ export function PainelVoz({
   const temEscolha = iv.tons.length > 0 || iv.arquetipos.length > 0;
 
   return (
-    <div className="max-w-[560px] space-y-5">
+    // A largura agora é do cartão da grade; o teto de 560px era da coluna solta.
+    <div className="space-y-5">
       <SecaoCabecalho
         titulo="Voz da marca"
         descricao="Como a marca fala. O tom muda vocabulário e ritmo; a postura muda o argumento. O primeiro de cada lista domina. Clique na estrela para trocar."
@@ -83,7 +84,7 @@ export function PainelVoz({
         />
         {conflito !== null && (
           <output
-            className="mt-1.5 block rounded-md border px-2.5 py-1.5 text-[11px] leading-relaxed"
+            className="mt-1.5 block rounded-md border px-2.5 py-1.5 text-[12px] leading-relaxed"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
           >
             {conflito}
@@ -94,7 +95,7 @@ export function PainelVoz({
       {temEscolha && (
         <div className="rounded-lg border p-3.5" style={{ borderColor: 'var(--color-border)' }}>
           <div
-            className="mb-2.5 text-[10px] uppercase tracking-[0.2em]"
+            className="mb-2.5 text-[11px] uppercase tracking-[0.2em]"
             style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
           >
             Como isso soa na prática
@@ -102,7 +103,7 @@ export function PainelVoz({
           <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
             {EIXOS.map((eixo) => (
               <div key={eixo} className="flex items-center justify-between gap-3">
-                <span className="text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
+                <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
                   {ROTULO_EIXO[eixo]}
                 </span>
                 <span
@@ -133,7 +134,7 @@ export function PainelVoz({
               {diretrizes.orientacoes.slice(0, 4).map((o) => (
                 <li
                   key={o}
-                  className="text-[11px] leading-relaxed"
+                  className="text-[12px] leading-relaxed"
                   style={{ color: 'var(--color-fg-muted)' }}
                 >
                   {o}
@@ -150,7 +151,7 @@ export function PainelVoz({
             {EIXOS.map((eixo) => (
               <label key={eixo} className="flex items-center gap-3">
                 <span
-                  className="w-[150px] shrink-0 text-[11px]"
+                  className="w-[150px] shrink-0 text-[12px]"
                   style={{ color: 'var(--color-fg-muted)' }}
                 >
                   {ROTULO_EIXO[eixo]}
@@ -168,7 +169,7 @@ export function PainelVoz({
                   style={{ accentColor: 'var(--color-primary)' }}
                 />
                 <span
-                  className="ds-data w-4 text-right text-[11px]"
+                  className="ds-data w-4 text-right text-[12px]"
                   style={{ color: 'var(--color-fg)' }}
                 >
                   {diretrizes.eixos[eixo]}
@@ -179,7 +180,7 @@ export function PainelVoz({
               <button
                 type="button"
                 onClick={() => setIv({ eixos: undefined })}
-                className="text-[11px] underline"
+                className="text-[12px] underline"
                 style={{ color: 'var(--color-fg-muted)' }}
               >
                 Voltar ao automático
