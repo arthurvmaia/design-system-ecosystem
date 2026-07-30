@@ -293,9 +293,26 @@ function Abrir-App {
     }
 }
 
-# --- 6. Porta livre? --------------------------------------------------------
-$ocupada = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
-if ($ocupada) {
+# --- 6. As portas estao livres? ---------------------------------------------
+#
+# O app sao DOIS processos: a tela na 5173 e o servidor na 8787. Este bloco so
+# olhava a 5173, e o resultado era ruim de um jeito especifico: com a 5173 livre
+# e a 8787 ocupada, o INICIAR seguia normalmente, a tela subia e o servidor
+# morria cuspindo um stack trace de Node no meio da janela
+# (`EADDRINUSE: address already in use :::8787`). Quem le aquilo nao tem como
+# saber que o problema e "ja tem um servidor rodando".
+#
+# Aconteceu de verdade, e por isso as duas portas passaram a ser conferidas
+# antes de qualquer coisa subir.
+function PortaOcupada($porta) {
+    $null -ne (Get-NetTCPConnection -LocalPort $porta -State Listen -ErrorAction SilentlyContinue)
+}
+
+$tela = PortaOcupada 5173
+$servidor = PortaOcupada 8787
+
+if ($tela -and $servidor) {
+    # O app inteiro ja esta no ar: e so trazer a janela.
     Write-Host ''
     Write-Host '  O app ja esta rodando em outra janela.' -ForegroundColor Yellow
     Abrir-App 'http://localhost:5173'
@@ -304,6 +321,37 @@ if ($ocupada) {
     Write-Host '  Pressione ENTER para fechar.' -ForegroundColor DarkGray
     Read-Host | Out-Null
     exit 0
+}
+
+if ($tela -or $servidor) {
+    # Meio no ar: subir por cima faria a metade que falta morrer com stack trace.
+    $qual = if ($servidor) { '8787 (o servidor)' } else { '5173 (a tela)' }
+    $pid8787 = (Get-NetTCPConnection -LocalPort 8787 -State Listen -ErrorAction SilentlyContinue |
+                Select-Object -First 1).OwningProcess
+    $pid5173 = (Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue |
+                Select-Object -First 1).OwningProcess
+    $processo = if ($servidor) { $pid8787 } else { $pid5173 }
+
+    Write-Host ''
+    Erro "Sobrou um pedaco do app rodando na porta $qual."
+    Write-Host ''
+    Write-Host '  Isso acontece quando a janela anterior foi fechada pela metade,' -ForegroundColor Gray
+    Write-Host '  ou quando alguem subiu o app pelo terminal e esqueceu.' -ForegroundColor Gray
+    Write-Host ''
+    Write-Host '  Posso encerrar esse processo e continuar.' -ForegroundColor White
+    $resposta = Read-Host '  Encerrar e continuar? (S/n)'
+    if ($resposta -eq '' -or $resposta -match '^[sSyY]') {
+        foreach ($alvo in @($pid8787, $pid5173)) {
+            if ($alvo) { Stop-Process -Id $alvo -Force -ErrorAction SilentlyContinue }
+        }
+        Start-Sleep -Seconds 2
+        if ((PortaOcupada 5173) -or (PortaOcupada 8787)) {
+            Parar 'Nao consegui liberar a porta. Reinicie o computador ou feche o terminal que esta rodando o app.'
+        }
+        Ok 'Porta liberada'
+    } else {
+        Parar 'Feche a janela que esta usando a porta e clique no INICIAR de novo.'
+    }
 }
 
 # --- 7. Abre o navegador assim que o app subir ------------------------------
