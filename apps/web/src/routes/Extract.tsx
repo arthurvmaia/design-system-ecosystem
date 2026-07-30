@@ -2,6 +2,7 @@ import { Mascote } from '@/components/Mascote';
 import { QueuePanel } from '@/components/QueuePanel';
 import { type QueueJobRef, type TaskRecord, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { TRABALHANDO, saudacaoCompleta } from '@/lib/orbis';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Link as LinkIcon, MousePointerClick, UploadCloud } from 'lucide-react';
 import { type ChangeEvent, useState } from 'react';
@@ -79,7 +80,7 @@ export function ExtractPage() {
           name: urlName || undefined,
         });
       }
-      if (!htmlFile) throw new Error('Selecione um arquivo HTML');
+      if (!htmlFile) throw new Error('Preciso de um arquivo HTML para começar.');
       return api.createDesignSystem({
         kind: 'html',
         html: htmlFile.content,
@@ -117,7 +118,7 @@ export function ExtractPage() {
         className="ds-slide-up ds-d1 ds-text-glow mt-4 text-[42px] font-medium leading-[1.05] tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
-        Trazer um site novo para o ecossistema.
+        {saudacaoCompleta()} Qual site vamos capturar hoje?
       </h1>
       <p
         className="ds-slide-up ds-d2 mt-4 max-w-[62ch] text-[15px] leading-[1.6]"
@@ -125,15 +126,15 @@ export function ExtractPage() {
       >
         {isQueueMode ? (
           <>
-            Cole o endereço de um site ou envie um arquivo HTML. O pedido fica guardado na fila.
-            Nada roda agora. Quando quiser processar, dê dois cliques em{' '}
+            Cole o endereço de um site ou envie um arquivo HTML: eu guardo o pedido na fila e não
+            rodo nada agora. Quando quiser que eu comece, dê dois cliques em{' '}
             <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong>, na pasta do aplicativo,
             e escolha o que rodar.
           </>
         ) : (
           <>
-            Cole o endereço de um site ou envie um arquivo HTML. A extração abre a página, captura o
-            visual por completo e traz as seções aproveitáveis para a Galeria.
+            Cole o endereço de um site ou envie um arquivo HTML. Eu abro a página, capturo o visual
+            inteiro e levo as seções aproveitáveis para a Galeria.
           </>
         )}
       </p>
@@ -148,8 +149,8 @@ export function ExtractPage() {
             color: 'var(--color-fg)',
           }}
         >
-          A extração automática não está ativa neste computador, então nada roda por aqui agora.
-          Peça para quem fez a instalação ativar. Seus pedidos não se perdem.
+          Não consigo extrair sozinho neste computador: a extração automática não está ativa. Peça
+          para quem fez a instalação ativar, seus pedidos ficam guardados até lá.
         </div>
       )}
 
@@ -225,7 +226,7 @@ export function ExtractPage() {
             className="text-[10px] uppercase tracking-[0.24em]"
             style={{ color: 'var(--color-signal)', fontFamily: 'var(--font-display)' }}
           >
-            Registrado na fila
+            Guardei na fila
           </div>
           <div className="mt-2 text-[15px]" style={{ color: 'var(--color-fg)' }}>
             {queuedJob.label}
@@ -236,9 +237,9 @@ export function ExtractPage() {
           >
             <MousePointerClick size={14} className="mt-0.5 shrink-0" />
             <span>
-              Nada rodou ainda. Para processar, dê dois cliques em{' '}
+              Ainda não rodei nada. Para eu começar, dê dois cliques em{' '}
               <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong>, na pasta do
-              aplicativo. Ele mostra a fila e você escolhe o que rodar.
+              aplicativo: ele mostra a fila e você escolhe o que rodar.
             </span>
           </div>
         </div>
@@ -397,7 +398,7 @@ function TaskProgress({
           className="text-[13px] font-medium"
           style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
         >
-          {running ? 'Extraindo a referência…' : done ? 'Extração concluída' : 'Extração'}
+          {running ? TRABALHANDO.extraindo : done ? 'Terminei a extração.' : 'Extração'}
         </div>
         <StatusBadge status={task.status} />
       </div>
@@ -408,8 +409,8 @@ function TaskProgress({
 
       {failed && (
         <div className="mt-4 text-[13px] leading-relaxed" style={{ color: 'var(--color-danger)' }}>
-          Não deu para concluir esta extração. Tente de novo. Se acontecer outra vez, pode ser que o
-          site esteja bloqueando a captura.
+          Não consegui concluir esta extração. Tente de novo: se falhar outra vez, o site pode estar
+          bloqueando a minha captura.
           {task.errorMessage && (
             <span className="mt-1 block text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
               Detalhe: {task.errorMessage}

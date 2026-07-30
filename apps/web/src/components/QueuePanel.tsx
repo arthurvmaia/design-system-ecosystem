@@ -1,3 +1,4 @@
+import { conta } from '@/lib/orbis';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, MousePointerClick, X } from 'lucide-react';
 import { FluxoProgresso } from './FluxoProgresso';
@@ -43,7 +44,7 @@ type Semaforo = 'verde' | 'amarelo' | 'vermelho';
  */
 const SEMAFORO: Record<Semaforo, { cor: string; texto: string }> = {
   verde: { cor: '#3fb950', texto: 'tudo certo' },
-  amarelo: { cor: '#d29922', texto: 'atenção' },
+  amarelo: { cor: '#d29922', texto: 'algo falhou' },
   vermelho: { cor: '#f85149', texto: 'sem resposta' },
 };
 
@@ -80,9 +81,9 @@ export function QueuePanel() {
           className="mt-3 text-[13px] leading-relaxed"
           style={{ color: 'var(--color-fg-muted)' }}
         >
-          O aplicativo não respondeu, então não deu para ler a fila. Feche e abra ele de novo: dê
-          dois cliques em <strong style={{ color: 'var(--color-fg)' }}>INICIAR</strong> na pasta do
-          aplicativo. Seus pedidos continuam guardados.
+          Não consegui ler a fila, o aplicativo não respondeu. Dê dois cliques em{' '}
+          <strong style={{ color: 'var(--color-fg)' }}>INICIAR</strong> na pasta do aplicativo para
+          abrir de novo, seus pedidos continuam guardados.
         </div>
       </div>
     );
@@ -110,17 +111,14 @@ export function QueuePanel() {
 
       {data.erros > 0 && (
         <div className="mt-3 text-[12px] leading-relaxed" style={{ color: SEMAFORO.amarelo.cor }}>
-          {data.erros === 1
-            ? 'Um pedido não foi concluído'
-            : `${data.erros} pedidos não foram concluídos`}{' '}
-          na última rodada. Nada se perdeu. Na próxima vez que você processar, dá para tentar de
-          novo.
+          Não terminei {conta(data.erros, 'pedido', 'pedidos')} na última rodada. Nada se perdeu, dá
+          para tentar de novo na próxima.
         </div>
       )}
 
       {pendentes.length === 0 ? (
         <div className="mt-3 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          Nada pendente.
+          Não tenho nada na fila.
         </div>
       ) : (
         <>
@@ -157,16 +155,18 @@ export function QueuePanel() {
             <span>
               {data.progresso !== null && data.progresso.emAndamento === false ? (
                 <>
-                  <strong style={{ color: 'var(--color-fg)' }}>Nada está rodando agora.</strong> O
-                  pedido está guardado e não se perde. Para começar, dê dois cliques em{' '}
+                  <strong style={{ color: 'var(--color-fg)' }}>
+                    Não estou rodando nada agora.
+                  </strong>{' '}
+                  O pedido está guardado. Para eu começar, dê dois cliques em{' '}
                   <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do
-                  aplicativo e escolha o que quer rodar.
+                  aplicativo e escolha o que eu rodo.
                 </>
               ) : (
                 <>
-                  Para processar, dê dois cliques em{' '}
+                  Para eu processar, dê dois cliques em{' '}
                   <strong style={{ color: 'var(--color-fg)' }}>PROCESSAR</strong> na pasta do
-                  aplicativo. Ele mostra a fila e você escolhe o que quer rodar.
+                  aplicativo. Ele mostra a fila e você escolhe o que eu rodo.
                 </>
               )}
             </span>

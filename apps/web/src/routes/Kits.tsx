@@ -4,6 +4,7 @@ import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type KitRecord, type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { TRABALHANDO, TRATAMENTO, VAZIO, conta } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -49,14 +50,14 @@ export function KitsPage() {
             className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"
             style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
           >
-            Seus kits finais.
+            Aqui as peças viram um kit.
           </h1>
           <p
             className="ds-slide-up ds-d2 mt-3 max-w-[62ch] text-[14px] leading-[1.6]"
             style={{ color: 'var(--color-fg-muted)' }}
           >
-            Um kit é um grupo de componentes da Biblioteca que você juntou e deu nome. É a partir
-            dele que o site é gerado.
+            Um kit não é uma pasta, {TRATAMENTO}: é o design system final. Eu gero o site usando só
+            as peças que estiverem nele.
           </p>
         </div>
         <div className="ds-scale-in ds-d2">
@@ -98,9 +99,9 @@ function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
     mutationFn: () => api.duplicateKit(kit.id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kits'] });
-      toast.ok('Kit duplicado.');
+      toast.ok('Dupliquei o kit.');
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao duplicar.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui duplicar o kit.'),
   });
 
   const del = useMutation({
@@ -108,10 +109,10 @@ function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kits'] });
       qc.invalidateQueries({ queryKey: ['projects'] });
-      toast.ok('Kit excluído.');
+      toast.ok('Excluí o kit.');
       setConfirmDel(false);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui excluir o kit.'),
   });
 
   return (
@@ -170,12 +171,11 @@ function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
               style={{ color: 'var(--color-fg-subtle)' }}
             >
               <Package size={12} style={{ color: 'var(--color-signal)' }} />
-              {kit.components.length} componente{kit.components.length === 1 ? '' : 's'}
+              {conta(kit.components.length, 'peça', 'peças')}
             </span>
             {kit.usedByProjects.length > 0 && (
               <span className="ds-data text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                · usado em {kit.usedByProjects.length} projeto
-                {kit.usedByProjects.length === 1 ? '' : 's'}
+                · usado em {conta(kit.usedByProjects.length, 'projeto', 'projetos')}
               </span>
             )}
           </div>
@@ -192,12 +192,13 @@ function KitCard({ kit, onEdit }: { kit: KitRecord; onEdit: () => void }) {
         description={
           kit.usedByProjects.length > 0 ? (
             <>
-              <strong>{kit.usedByProjects.length} projeto(s)</strong> usam este kit (
-              {kit.usedByProjects.map((p) => p.name).join(', ')}). Eles não somem: só perdem a
-              ligação com o kit de origem. Os sites que já foram gerados continuam lá.
+              Este kit está em{' '}
+              <strong>{conta(kit.usedByProjects.length, 'projeto', 'projetos')}</strong> (
+              {kit.usedByProjects.map((p) => p.name).join(', ')}). Eles não somem: perdem só a
+              ligação com o kit de origem, e os sites que eu já gerei continuam em disco.
             </>
           ) : (
-            'O kit é só uma seleção. Os componentes continuam na Biblioteca, do jeito que estão.'
+            'O kit é só uma seleção: as peças continuam na Biblioteca, do jeito que estão.'
           )
         }
       />
@@ -268,10 +269,10 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kits'] });
-      toast.ok(kit ? 'Kit atualizado.' : 'Kit criado.');
+      toast.ok(kit ? 'Salvei o kit.' : 'Criei o kit.');
       onClose();
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao salvar o kit.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui salvar o kit.'),
   });
 
   const mover = (i: number, dir: -1 | 1) => {
@@ -336,7 +337,7 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                   className="px-2 py-10 text-center text-[12px]"
                   style={{ color: 'var(--color-fg-subtle)' }}
                 >
-                  Nenhum componente ainda. Escolha na Biblioteca, ao lado.
+                  Kit vazio. Escolha as peças na Biblioteca, ao lado.
                 </div>
               )}
               {selected.map((id, i) => {
@@ -444,8 +445,8 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                   style={{ color: 'var(--color-fg-subtle)' }}
                 >
                   {(lib.data.items.length ?? 0) === 0
-                    ? 'Sua Biblioteca está vazia. Vá até a Galeria e curta alguns componentes.'
-                    : 'Tudo já está no kit, ou nada aqui bate com a busca.'}
+                    ? 'A Biblioteca está vazia. Guarde peças na Galeria e elas aparecem aqui.'
+                    : 'Ou já está tudo no kit, ou nada aqui bate com a busca.'}
                 </div>
               )}
             </div>
@@ -487,12 +488,20 @@ function VazioState({ carregando, onNovo }: { carregando: boolean; onNovo: () =>
         tamanho={96}
         esmaecido
         pulsando={carregando}
-        alt={carregando ? 'Carregando os kits' : 'O núcleo do sistema, apagado: nenhum kit ainda'}
+        alt={carregando ? 'Conferindo os kits' : 'O núcleo do sistema, apagado: nenhum kit ainda'}
         className="mx-auto"
       />
       <div className="mt-5 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>
-        {carregando ? 'Carregando...' : 'Nenhum kit ainda.'}
+        {carregando ? TRABALHANDO.carregandoKits : VAZIO.kits.titulo}
       </div>
+      {!carregando && (
+        <div
+          className="mx-auto mt-2 max-w-[46ch] text-[13px] leading-[1.6]"
+          style={{ color: 'var(--color-fg-subtle)' }}
+        >
+          {VAZIO.kits.corpo}
+        </div>
+      )}
       {!carregando && (
         <button
           type="button"

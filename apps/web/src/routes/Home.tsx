@@ -1,6 +1,7 @@
 import { Mascote } from '@/components/Mascote';
 import { api } from '@/lib/api';
 import { primaryNav } from '@/lib/nav';
+import { ORBIS, saudacaoCompleta } from '@/lib/orbis';
 import { useReveal } from '@/lib/use-reveal';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
@@ -49,12 +50,13 @@ export function HomePage() {
   };
 
   const oQueFaz: Record<string, string> = {
-    '/extract': 'Traga um site que você gosta. O navegador abre a página e captura o visual dela.',
-    '/gallery': 'Veja o que veio, peça por peça, e escolha o que presta.',
-    '/library': 'O que você escolheu fica guardado aqui, com nome e etiqueta.',
-    '/design-systems': 'Junte as peças num kit. É ele que vira a base visual do seu site.',
-    '/projects': 'Monte a estrutura, traga a sua marca e o seu texto. O kit dá só o jeito visual.',
-    '/meus-projetos': 'O site fica pronto para ver, baixar em .zip e subir onde você quiser.',
+    '/extract': 'Me dê o endereço. Abro a página num navegador de verdade e capturo o visual dela.',
+    '/gallery': 'Mostro peça por peça o que capturei, e o que ficou de fora. A escolha é sua.',
+    '/library': 'Guardo aqui as peças escolhidas, com nome e etiqueta.',
+    '/design-systems': 'Junte as peças num kit. É dele que eu tiro a base visual do seu site.',
+    '/projects':
+      'Desenhe a estrutura e traga a sua marca e o seu texto. Do kit eu uso só o visual.',
+    '/meus-projetos': 'Deixo o site pronto para ver, baixar em .zip e subir onde quiser.',
   };
 
   const etapas = primaryNav.filter((n) => n.to !== '/inicio');
@@ -75,7 +77,7 @@ export function HomePage() {
           <Mascote
             tamanho={132}
             pulsando
-            alt="O núcleo do sistema"
+            alt={`${ORBIS}, o núcleo do sistema`}
             className="ds-home-nucleo relative"
           />
         </div>
@@ -85,14 +87,14 @@ export function HomePage() {
             className="ds-slide-up ds-d1 ds-text-glow text-[40px] leading-[1.05] font-medium tracking-tight"
             style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
           >
-            O laboratório de design systems.
+            {saudacaoCompleta()} Por onde começamos?
           </h1>
           <p
             className="ds-slide-up ds-d2 mt-4 max-w-[60ch] text-[15px] leading-[1.7]"
             style={{ color: 'var(--color-fg-muted)' }}
           >
-            Você traz sites de que gosta. O app captura o visual deles, você escolhe as peças que
-            presta e junta num kit. Depois monta o seu site em cima desse kit, com a{' '}
+            Sou o {ORBIS}. Traga os sites de que gosta, que eu capturo o visual deles, guardo as
+            peças que passarem na sua triagem e monto o site em cima do kit, com a{' '}
             <strong style={{ color: 'var(--color-fg)' }}>sua</strong> marca e o{' '}
             <strong style={{ color: 'var(--color-fg)' }}>seu</strong> texto.
           </p>
@@ -100,7 +102,7 @@ export function HomePage() {
             className="ds-slide-up ds-d3 mt-3 max-w-[60ch] text-[14px] leading-[1.7]"
             style={{ color: 'var(--color-fg-subtle)' }}
           >
-            Do site de origem vem só o jeito visual. Nome, texto e identidade nunca são copiados.
+            Do site de origem eu tiro só o jeito visual. Nome, texto e identidade eu nunca copio.
           </p>
 
           <Link
@@ -180,12 +182,12 @@ export function HomePage() {
       >
         <Mascote tamanho={30} esmaecido className="mt-0.5" />
         <span>
-          O trabalho pesado — extrair um site, gerar um outro — não roda sozinho. Você registra o
-          pedido aqui e ele fica na fila. Para processar, abra o{' '}
+          Trabalho pesado, extrair um site ou gerar outro, eu não faço sozinho: o pedido fica na
+          fila até alguém abrir o{' '}
           <span className="ds-data" style={{ color: 'var(--color-fg)' }}>
             PROCESSAR
           </span>{' '}
-          na pasta do aplicativo e escolha o que rodar. É o que mantém a conta no seu controle.
+          na pasta do aplicativo e escolher o que rodar. A conta continua no seu controle.
         </span>
       </div>
     </div>

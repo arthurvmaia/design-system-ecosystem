@@ -2,7 +2,7 @@
 setlocal
 chcp 65001 >nul
 cls
-title Importar acervo - Design System Ecosystem
+title Orbis - Importar acervo
 cd /d "%~dp0"
 
 REM Importa um acervo exportado noutra maquina (EXPORTAR-ACERVO.bat).

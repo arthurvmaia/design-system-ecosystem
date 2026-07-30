@@ -177,6 +177,7 @@ pnpm fila:escolher    # lista numerado e devolve os ids escolhidos (usado pelo P
 pnpm fila:progresso   # reporta 0-100 de um job em andamento
 pnpm fila:concluir    # valida, segmenta, indexa e fecha um job
 pnpm segmentar        # segmenta um ds_id à mão (conserto; o fila:concluir já faz sozinho)
+pnpm voz              # gera a voz do Orbis para a abertura (sintetizador do Windows)
 pnpm medir-fidelidade # mede o acervo e compara com a linha de base (--gravar adota o resultado)
                       # --falhar-se-piorar vira PORTAO: sai 1 se reprovar, 2 se nao der para verificar
 pnpm reextrair        # re-captura um ds_id (ou --todos) no MESMO id, trocando só no fim

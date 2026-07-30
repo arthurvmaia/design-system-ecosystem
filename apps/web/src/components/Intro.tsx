@@ -27,6 +27,8 @@ import { useEffect, useRef, useState } from 'react';
  */
 
 const VIDEO_SRC = '/intro.mp4';
+/** A voz do Orbis, gerada por `pnpm voz`. */
+const VOZ_SRC = '/orbis-voz.wav';
 /** Sem vídeo, a abertura dura isto. Com vídeo, quem manda é o `onEnded`. */
 const DURACAO_MS = 5200;
 const DURACAO_REDUZIDA_MS = 2000;
@@ -64,7 +66,7 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
 
   const linhas: Linha[] = [
     {
-      rotulo: 'núcleo',
+      rotulo: 'orbis',
       valor: saude.isLoading ? undefined : saude.data?.status === 'ok' ? 'no ar' : 'fora do ar',
     },
     { rotulo: 'acervo', valor: conta(ds.data?.items.length, 'sistema', 'sistemas') },
@@ -344,6 +346,89 @@ function tocarIgnicao(duracaoMs: number): () => void {
     osc.start(t);
     osc.stop(t + 0.18);
   }
+
+  // ── A voz ────────────────────────────────────────────────────────────────
+  //
+  // O Orbis se apresenta no instante em que o núcleo pega. Antes disso a
+  // máquina ainda está tentando ligar, e falar por cima das duas ignições
+  // falhadas desmontaria a dramaturgia: quem fala já acordou.
+  //
+  // O timbre de robô é feito AQUI, e não no arquivo. A gravação sai limpa do
+  // sintetizador do Windows (`pnpm voz`) e o caráter vem de duas coisas:
+  //
+  // 1. **Modulação em anel.** Um oscilador grave multiplica a amplitude da voz.
+  //    É o efeito clássico de voz de máquina, e é o que tira dela o "alguém
+  //    lendo uma frase".
+  // 2. **Banda estreita.** Passa-faixa de 300 a 3400 Hz, a banda de um alto
+  //    falante de comunicação. Tirar o grave e o brilho é metade do efeito.
+  //
+  // A mistura é 55% seca e 45% modulada, medida de ouvido: no anel puro a frase
+  // fica mecânica e ILEGÍVEL, e uma boas-vindas que ninguém entende não é
+  // boas-vindas.
+  //
+  // Falha em silêncio de propósito. Sem o arquivo, sem `decodeAudioData` ou com
+  // a aba em segundo plano, a abertura segue com o som de ignição: a voz é
+  // acabamento, e acabamento não derruba a entrada do app.
+  const anelOsc = ctx.createOscillator();
+  fetch(VOZ_SRC)
+    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('sem voz'))))
+    .then((buf) => ctx.decodeAudioData(buf))
+    .then((audio) => {
+      // Quando a fala entra: depois da pegada, e cedo o bastante para CABER.
+      //
+      // O primeiro corte foi por tempo: a voz entrava num instante fixo e a
+      // cortina saía por cima da última sílaba. Afinar os dois à mão resolveria
+      // esta frase e quebraria na próxima, porque o arquivo é gerado por
+      // comando (`pnpm voz`) e muda de tamanho com o texto.
+      //
+      // Então a hora sai da duração real do buffer: o ideal é logo depois do
+      // golpe grave, mas se a frase for longa ela entra antes para terminar
+      // junto com a cena. Se não couber nem começando agora, não toca. Meia
+      // apresentação é pior que nenhuma.
+      const ideal = pega + 1.5;
+      const ultimoPossivel = fim - audio.duration - 0.15;
+      const quando = Math.min(ideal, ultimoPossivel);
+      if (quando < ctx.currentTime) return;
+
+      const fonte = ctx.createBufferSource();
+      fonte.buffer = audio;
+
+      const banda = ctx.createBiquadFilter();
+      banda.type = 'bandpass';
+      banda.frequency.value = 1500;
+      banda.Q.value = 0.7;
+
+      const seca = ctx.createGain();
+      seca.gain.value = 0.55;
+      const modulada = ctx.createGain();
+      modulada.gain.value = 0;
+
+      // O oscilador vai para o GANHO do nó, não para a entrada de áudio: é isso
+      // que multiplica um sinal pelo outro em vez de somar os dois.
+      const profundidade = ctx.createGain();
+      profundidade.gain.value = 0.45;
+      anelOsc.type = 'sine';
+      anelOsc.frequency.value = 47;
+      anelOsc.connect(profundidade);
+      profundidade.connect(modulada.gain);
+
+      const voz = ctx.createGain();
+      voz.gain.value = 1.15;
+
+      fonte.connect(banda);
+      banda.connect(seca);
+      banda.connect(modulada);
+      seca.connect(voz);
+      modulada.connect(voz);
+      voz.connect(mestre);
+
+      anelOsc.start(quando);
+      anelOsc.stop(fim + 0.2);
+      fonte.start(quando);
+    })
+    .catch(() => {
+      /* sem voz: a ignição sozinha continua contando a história */
+    });
 
   // Se o navegador segurou o contexto por falta de gesto, o primeiro clique ou
   // tecla libera. Ouvintes de uma vez só, e removidos no corte.

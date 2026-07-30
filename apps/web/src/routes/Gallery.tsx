@@ -15,6 +15,7 @@ import {
 } from '@/lib/api';
 import { oQueFaltou } from '@/lib/captura-parcial';
 import { cn } from '@/lib/cn';
+import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
 import { usePreferencias } from '@/lib/preferencias';
 import {
   isAllSelected,
@@ -125,7 +126,7 @@ const STATUS_DA_EXTRACAO: Record<string, string> = {
   segmented: 'Pronta',
   classifying: 'Organizando…',
   ready: 'Pronta',
-  failed: 'Não concluída',
+  failed: 'Não terminei',
 };
 const SUPORTE_COR: Record<string, string> = {
   completo: '#16a34a',
@@ -330,10 +331,10 @@ function DsSidebar({
       qc.invalidateQueries({ queryKey: ['library'] });
       // Apagar uma extração remove os rejeitados dela — o contador de Pendências muda.
       qc.invalidateQueries({ queryKey: ['rejeitados'] });
-      toast.ok('Extração removida da Galeria.');
+      toast.ok('Removi a extração da Galeria.');
       setConfirming(null);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao remover.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui remover a extração.'),
   });
 
   return (
@@ -354,11 +355,11 @@ function DsSidebar({
       <div className="flex-1 overflow-y-auto p-2">
         {loading ? (
           <div className="p-4 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            carregando...
+            {TRABALHANDO.carregandoAcervo}
           </div>
         ) : list.length === 0 ? (
           <div className="p-4 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            nenhuma extração ainda. vá em Extrair.
+            Ainda não trouxe nenhum site. Vá em Extrair.
           </div>
         ) : (
           list.map((ds) => (
@@ -414,17 +415,17 @@ function DsSidebar({
         onClose={() => setConfirming(null)}
         description={
           <>
-            Remove esta extração e seus <strong>{impacto.data?.segmentos ?? '…'} segmentos</strong>{' '}
-            da Galeria.
+            Tiro esta extração e os <strong>{impacto.data?.segmentos ?? '…'} segmentos</strong> que
+            separei dela da Galeria.
             {(impacto.data?.componentesDaBiblioteca.length ?? 0) > 0 ? (
               <>
                 {' '}
-                Os <strong>{impacto.data?.componentesDaBiblioteca.length} componentes</strong> já
-                curados na Biblioteca sobrevivem (são cópias), mas as prévias deles podem perder
-                fontes e runtime da origem.
+                Os <strong>{impacto.data?.componentesDaBiblioteca.length} componentes</strong> que
+                já foram para a Biblioteca continuam lá (são cópias), mas as prévias deles podem
+                perder as fontes e o runtime da origem.
               </>
             ) : (
-              ' Nada da Biblioteca depende dela.'
+              ' Nada na Biblioteca depende dela.'
             )}
           </>
         }
@@ -459,10 +460,10 @@ function SegmentsView({
   const classify = useMutation({
     mutationFn: () => api.classify(dsId),
     onSuccess: () => {
-      toast.info('Classificação enviada. Os nomes e categorias atualizam ao terminar.');
+      toast.info('Estou classificando. Os nomes e as categorias mudam quando eu terminar.');
       setTimeout(() => qc.invalidateQueries({ queryKey: ['segments', dsId] }), 3000);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao classificar.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui classificar.'),
   });
 
   const [detalhe, setDetalhe] = useState<SegmentRecord | null>(null);
@@ -550,26 +551,24 @@ function SegmentsView({
       qc.invalidateQueries({ queryKey: ['library'] });
       const partes: string[] = [];
       if (r.added.length > 0)
-        partes.push(
-          `${r.added.length} ${r.added.length === 1 ? 'item adicionado' : 'itens adicionados'} à Biblioteca`,
-        );
+        partes.push(`Levei ${conta(r.added.length, 'item', 'itens')} para a Biblioteca`);
       if (r.already.length > 0)
-        partes.push(`${r.already.length} já ${r.already.length === 1 ? 'estava' : 'estavam'}`);
-      toast.ok(partes.join(' · ') || 'Nada novo a adicionar.');
+        partes.push(`${conta(r.already.length, 'já estava lá', 'já estavam lá')}`);
+      toast.ok(partes.join(' · ') || 'Não havia nada novo para levar.');
       setSel(new Set());
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao curtir em lote.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui curtir a seleção.'),
   });
 
   const excluirLote = useMutation({
     mutationFn: () => api.deleteSegmentsBatch(dsId, [...sel]),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      toast.ok(`${r.deleted} ${r.deleted === 1 ? 'item excluído' : 'itens excluídos'} da Galeria.`);
+      toast.ok(`Tirei ${conta(r.deleted, 'item', 'itens')} da Galeria.`);
       setSel(new Set());
       setConfirmExcluir(false);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir em lote.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui excluir a seleção.'),
   });
 
   const selCount = sel.size;
@@ -634,8 +633,8 @@ function SegmentsView({
                 style={{ color: 'var(--color-warn)' }}
               />
               <span>
-                Esta captura <strong>não terminou dentro do tempo</strong>.{' '}
-                {oQueFaltou(segments.data.capturaParcial.fase)} Extraia o site de novo para
+                <strong>Não terminei esta captura dentro do tempo</strong>, senhor.{' '}
+                {oQueFaltou(segments.data.capturaParcial.fase)} Extraia o site de novo para eu
                 completar.
               </span>
             </div>
@@ -645,8 +644,10 @@ function SegmentsView({
               className="mt-2 rounded-md px-3 py-2 text-[11px] leading-relaxed"
               style={{ backgroundColor: 'rgba(245,158,11,0.14)', color: 'var(--color-fg)' }}
             >
-              Esta extração veio incompleta: parte das imagens e arquivos do site não foi baixada,
-              então as prévias podem aparecer sem estilo. Extraia este site de novo para corrigir.
+              Não consegui baixar{' '}
+              {conta(dsInfo.data?.assetsFaltando.length ?? 0, 'arquivo', 'arquivos')} deste site
+              (imagens, fontes), então algumas prévias aparecem sem estilo. Extraia este site de
+              novo para eu buscar o que faltou.
             </div>
           )}
           {rejDoDs > 0 && (
@@ -662,8 +663,9 @@ function SegmentsView({
                 style={{ color: 'var(--color-signal)' }}
               />
               <span>
-                <strong style={{ color: 'var(--color-fg)' }}>{rejDoDs}</strong> bloco(s) que o
-                algoritmo não conseguiu interpretar foram para Pendências. Ver pendências →
+                Não consegui interpretar{' '}
+                <strong style={{ color: 'var(--color-fg)' }}>{rejDoDs}</strong>{' '}
+                {rejDoDs === 1 ? 'bloco' : 'blocos'}, então mandei para Pendências. Ver pendências →
               </span>
             </button>
           )}
@@ -795,7 +797,7 @@ function SegmentsView({
             disabled={selCount < 2}
             title={
               selCount < 2
-                ? 'Selecione 2 ou 3 componentes para comparar'
+                ? 'Marque 2 ou 3 componentes e eu mostro lado a lado'
                 : 'Ver lado a lado, com interação'
             }
             className="ds-tag flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] disabled:opacity-40"
@@ -870,7 +872,7 @@ function SegmentsView({
             className="col-span-full py-16 text-center text-[13px]"
             style={{ color: 'var(--color-fg-subtle)' }}
           >
-            Nenhum segmento nessa combinação de filtros.
+            Não tenho nada que caiba nesses filtros.
           </div>
         )}
       </div>
@@ -905,7 +907,7 @@ function SegmentsView({
               Lado a lado
             </div>
             <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-              As prévias estão vivas. Passe o mouse e interaja para sentir a diferença.
+              Deixei as prévias vivas: passe o mouse e interaja para sentir a diferença.
             </p>
             <div
               className={cn(
@@ -948,12 +950,12 @@ function SegmentsView({
 
       <ConfirmPop
         open={confirmExcluir}
-        title={`Excluir ${selCount} ${selCount === 1 ? 'item' : 'itens'} da Galeria?`}
+        title={`Excluir ${conta(selCount, 'item', 'itens')} da Galeria?`}
         busy={excluirLote.isPending}
         confirmLabel={`Excluir ${selCount}`}
         onConfirm={() => excluirLote.mutate()}
         onClose={() => setConfirmExcluir(false)}
-        description="A Galeria é material de trabalho. O que você já curou na Biblioteca continua lá: some só da triagem. Se re-segmentar a extração, a lista completa volta."
+        description="A Galeria é material de trabalho: some só da triagem, e o que já foi para a Biblioteca continua lá. Se eu segmentar a extração de novo, a lista completa volta."
       />
     </div>
   );
@@ -1000,19 +1002,19 @@ function SegmentCard({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['segments', dsId] });
       qc.invalidateQueries({ queryKey: ['library'] });
-      toast.ok(`"${segment.name}" foi para a Biblioteca.`);
+      toast.ok(`Levei "${segment.name}" para a Biblioteca.`);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao curtir.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui curtir esta peça.'),
   });
 
   const del = useMutation({
     mutationFn: () => api.deleteSegment(dsId, segment.id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      toast.ok('Segmento removido da triagem.');
+      toast.ok('Tirei este segmento da triagem.');
       setConfirmDel(false);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui excluir.'),
   });
 
   const delay = index < 6 ? `ds-d${index + 1}` : '';
@@ -1179,10 +1181,10 @@ function SegmentCard({
           subcomponentes > 0
             ? `${
                 subcomponentes === 1
-                  ? 'O subcomponente extraído de dentro dela sai junto'
-                  : `Os ${subcomponentes} subcomponentes extraídos de dentro dela saem junto`
-              }. A Galeria é material de trabalho: se re-segmentar a extração, a lista completa volta. O que você curou na Biblioteca continua lá.`
-            : 'A Galeria é material de trabalho. Se re-segmentar a extração, a lista completa volta. O que você curou na Biblioteca continua lá.'
+                  ? 'A peça que tirei de dentro dela sai junto'
+                  : `As ${subcomponentes} peças que tirei de dentro dela saem junto`
+              }. A Galeria é material de trabalho: se eu segmentar a extração de novo, a lista completa volta. O que já foi para a Biblioteca continua lá.`
+            : 'A Galeria é material de trabalho. Se eu segmentar a extração de novo, a lista completa volta. O que já foi para a Biblioteca continua lá.'
         }
       />
     </div>
@@ -1241,8 +1243,8 @@ function PainelDePecas({
               {secao.name}
             </div>
             <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-              {pecas.length} {pecas.length === 1 ? 'peça extraída' : 'peças extraídas'} de dentro
-              desta seção. Curtir uma peça não leva a dobra junto, nem o contrário.
+              Tirei {conta(pecas.length, 'peça', 'peças')} de dentro desta seção. Curtir uma peça
+              não leva a dobra junto, nem o contrário.
             </p>
           </div>
           <button
@@ -1290,7 +1292,7 @@ function PainelDePecas({
               className="py-14 text-center text-[13px]"
               style={{ color: 'var(--color-fg-subtle)' }}
             >
-              Nenhuma peça foi extraída desta dobra.
+              Não tirei nenhuma peça desta dobra.
             </div>
           )}
         </div>
@@ -1325,19 +1327,19 @@ function SegmentCardFilho({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['segments', dsId] });
       qc.invalidateQueries({ queryKey: ['library'] });
-      toast.ok(`"${segment.name}" foi para a Biblioteca.`);
+      toast.ok(`Levei "${segment.name}" para a Biblioteca.`);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao curtir.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui curtir esta peça.'),
   });
 
   const del = useMutation({
     mutationFn: () => api.deleteSegment(dsId, segment.id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      toast.ok('Subcomponente removido da triagem.');
+      toast.ok('Tirei este subcomponente da triagem.');
       setConfirmDel(false);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui excluir.'),
   });
 
   return (
@@ -1428,7 +1430,7 @@ function SegmentCardFilho({
         confirmLabel="Excluir"
         onConfirm={() => del.mutate()}
         onClose={() => setConfirmDel(false)}
-        description="Sai só este subcomponente. A seção de origem continua na Galeria. Se re-segmentar a extração, a lista completa volta."
+        description="Sai só este subcomponente: a seção de origem continua na Galeria. Se eu segmentar a extração de novo, a lista completa volta."
       />
     </div>
   );
@@ -1472,10 +1474,10 @@ function SegmentDetail({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['segments', dsId] });
       qc.invalidateQueries({ queryKey: ['library'] });
-      toast.ok(`"${segment.name}" foi para a Biblioteca.`);
+      toast.ok(`Levei "${segment.name}" para a Biblioteca.`);
       onClose();
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao curtir.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui curtir esta peça.'),
   });
 
   return (
@@ -1513,7 +1515,7 @@ function SegmentDetail({
                 type="button"
                 onClick={() => setModo((m) => (m === 'estados' ? 'plano' : 'estados'))}
                 aria-pressed={modo === 'estados'}
-                title="Mostra os estados capturados (hover, clique, modal) aqui na prévia isolada"
+                title="Mostro aqui os estados que capturei: hover, clique, modal"
                 className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'estados' ? 'var(--color-primary)' : 'var(--color-border)',
@@ -1529,7 +1531,7 @@ function SegmentDetail({
                 type="button"
                 onClick={() => setModo((m) => (m === 'scroll' ? 'plano' : 'scroll'))}
                 aria-pressed={modo === 'scroll'}
-                title="Reproduz os efeitos de scroll capturados (reveal, parallax, sticky) rolando de verdade"
+                title="Rolo a prévia de verdade para mostrar o que capturei: revelar, parallax, barra fixa"
                 className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'scroll' ? 'var(--color-primary)' : 'var(--color-border)',
@@ -1545,7 +1547,7 @@ function SegmentDetail({
                 type="button"
                 onClick={() => setModo((m) => (m === 'hover' ? 'plano' : 'hover'))}
                 aria-pressed={modo === 'hover'}
-                title="Passa o mouse sozinho em cada elemento que reage, um de cada vez"
+                title="Passo o mouse sozinho em cada elemento que reage, um de cada vez"
                 className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'hover' ? 'var(--color-primary)' : 'var(--color-border)',
@@ -1561,7 +1563,7 @@ function SegmentDetail({
                 type="button"
                 onClick={() => setModo((m) => (m === 'print' ? 'plano' : 'print'))}
                 aria-pressed={modo === 'print'}
-                title="A dobra como a captura viu no site, para você comparar o componente com o original"
+                title="A dobra como eu vi no site, para comparar o componente com o original"
                 className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'print' ? 'var(--color-primary)' : 'var(--color-border)',
@@ -1599,8 +1601,8 @@ function SegmentDetail({
             />
             <p className="mt-3 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
               {abreNoPrint
-                ? 'Esta camada cobre a página toda, então sozinha ela não mostra nada. Aqui o conteúdo está esmaecido de propósito: o que importa é o fundo.'
-                : 'A dobra no site de origem, no momento da captura. Compare com a prévia para ver o que veio junto e o que ficou pelo caminho.'}
+                ? 'Esta camada cobre a página toda, então sozinha ela não mostra nada. Esmaeci o conteúdo de propósito: o que importa aqui é o fundo.'
+                : 'A dobra no site de origem, no momento em que capturei. Compare com a prévia para ver o que veio junto e o que ficou pelo caminho.'}
             </p>
           </div>
         ) : (
@@ -1668,10 +1670,10 @@ function EmptyState() {
           className="ds-text-glow mt-2 text-[24px]"
           style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
         >
-          Nenhuma extração ainda
+          {VAZIO.acervo.titulo}
         </h2>
         <p className="mt-3 text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>
-          Vá em Extrair e traga o primeiro site.
+          {VAZIO.acervo.corpo}
         </p>
       </div>
     </div>

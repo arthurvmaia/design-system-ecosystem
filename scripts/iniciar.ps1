@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $PSScriptRoot
 Set-Location $raiz
 
-$Host.UI.RawUI.WindowTitle = 'Design System Ecosystem'
+$Host.UI.RawUI.WindowTitle = 'Orbis'
 
 function Titulo($texto) {
     Write-Host ''
@@ -25,7 +25,8 @@ function Parar($mensagem) {
 Clear-Host
 Write-Host ''
 Write-Host '  ===========================================' -ForegroundColor Cyan
-Write-Host '     DESIGN SYSTEM ECOSYSTEM' -ForegroundColor Cyan
+Write-Host '     O R B I S' -ForegroundColor Cyan
+Write-Host '     design system ecosystem' -ForegroundColor DarkGray
 Write-Host '  ===========================================' -ForegroundColor Cyan
 
 # --- 1. Node.js -------------------------------------------------------------
@@ -235,12 +236,69 @@ if (-not (Test-Path $dbPath)) {
 }
 Ok 'Banco de dados pronto'
 
+# --- Abre o app numa janela propria, com o som liberado ---------------------
+#
+# O 'Start-Process http://...' entrega a URL ao navegador padrao e pronto. O
+# problema aparece na abertura: o navegador cria o AudioContext SUSPENSO ate
+# haver um gesto do usuario, entao a voz do Orbis e a ignicao so tocavam depois
+# que a pessoa clicava na aba. Quem acabou de dar dois cliques no INICIAR nao
+# entende por que precisa de um terceiro para ouvir.
+#
+# Como e o nosso .bat que abre o navegador, da para pedir a liberacao na
+# origem: '--autoplay-policy=no-user-gesture-required'.
+#
+# Duas decisoes que fazem isso funcionar de verdade:
+#
+# 1. PERFIL PROPRIO ('--user-data-dir'). Sem ele, se o Chrome ja estiver aberto
+#    a nova invocacao so repassa a URL para o processo existente e IGNORA todas
+#    as flags. Com perfil proprio sobe um processo separado, que obedece.
+# 2. MODO APP ('--app='). Janela sem barra de endereco nem abas. O app local
+#    passa a parecer um programa, nao um site aberto por acaso.
+#
+# Sem Chrome nem Edge, cai para o navegador padrao: o app funciona igual, so
+# que o som espera o primeiro clique, como antes.
+function Abrir-App {
+    param([string]$Url)
+
+    $candidatos = @(
+        (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'),
+        (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe')
+    )
+    $exe = $candidatos | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
+    if (-not $exe) {
+        Start-Process $Url
+        return
+    }
+
+    $perfil = Join-Path $env:LOCALAPPDATA 'Orbis\navegador'
+    if (-not (Test-Path $perfil)) { New-Item -ItemType Directory -Force -Path $perfil | Out-Null }
+
+    # Nao chamar de $args: e variavel automatica do PowerShell (os argumentos
+    # nao ligados da propria funcao), e sobrescreve-la e caminho para bug mudo.
+    $flags = @(
+        "--app=$Url",
+        "--user-data-dir=$perfil",
+        '--autoplay-policy=no-user-gesture-required',
+        '--no-first-run',
+        '--no-default-browser-check'
+    )
+    try {
+        Start-Process -FilePath $exe -ArgumentList $flags
+    } catch {
+        Start-Process $Url
+    }
+}
+
 # --- 6. Porta livre? --------------------------------------------------------
 $ocupada = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
 if ($ocupada) {
     Write-Host ''
     Write-Host '  O app ja esta rodando em outra janela.' -ForegroundColor Yellow
-    Start-Process 'http://localhost:5173'
+    Abrir-App 'http://localhost:5173'
     Write-Host '  Abri no navegador. Pode fechar esta janela.' -ForegroundColor Gray
     Write-Host ''
     Write-Host '  Pressione ENTER para fechar.' -ForegroundColor DarkGray
@@ -249,13 +307,19 @@ if ($ocupada) {
 }
 
 # --- 7. Abre o navegador assim que o app subir ------------------------------
-Start-Job -ScriptBlock {
+# A funcao viaja como texto de propriedade: Start-Job roda noutro processo e
+# NAO herda funcoes da sessao. Sem isto, o job falharia calado e o navegador
+# nunca abriria sozinho.
+$abrir = ${function:Abrir-App}.ToString()
+Start-Job -ArgumentList $abrir -ScriptBlock {
+    param($corpoDaFuncao)
+    Set-Item -Path function:Abrir-App -Value $corpoDaFuncao
     for ($i = 0; $i -lt 90; $i++) {
         Start-Sleep -Seconds 1
         $pronto = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
         if ($pronto) {
             Start-Sleep -Seconds 2
-            Start-Process 'http://localhost:5173'
+            Abrir-App 'http://localhost:5173'
             return
         }
     }

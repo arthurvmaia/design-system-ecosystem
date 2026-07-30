@@ -1,7 +1,8 @@
+import { ORBIS } from '@/lib/orbis';
 import { Mascote } from './Mascote';
 
 /**
- * Marca do produto: o núcleo mais o typemark.
+ * Marca do produto: o Orbis mais o typemark.
  *
  * O pontinho que existia aqui era um símbolo genérico — servia de âncora visual
  * e não dizia nada. O mascote diz: ele é o núcleo do sistema, e é a mesma coisa
@@ -23,20 +24,26 @@ export function BrandMark() {
         <Mascote tamanho={22} className="ds-marca-orbe" />
       </span>
 
-      {/* Empilhado, não em linha: em 260px de coluna as duas palavras lado a lado
-          quebravam no meio e a segunda linha ficava órfã embaixo. */}
+      {/* O nome em cima, o que ele faz embaixo.
+          Antes eram "Design System" e "Ecosystem", duas metades de um rótulo
+          descritivo: diziam a categoria do produto e nenhum nome. Agora o orbe
+          tem nome próprio, e é ele que fala com quem usa o app — então é o nome
+          que ocupa a linha forte, e a categoria desce para descritor.
+
+          Empilhado, não em linha: em 260px de coluna as duas palavras lado a
+          lado quebravam no meio e a segunda linha ficava órfã embaixo. */}
       <span className="flex min-w-0 flex-col leading-none">
         <span
-          className="ds-interactive-text text-[14px] font-semibold tracking-[0.1em] uppercase"
+          className="ds-interactive-text text-[15px] font-semibold tracking-[0.22em] uppercase"
           style={{ fontFamily: 'var(--font-display)', color: 'var(--color-fg)' }}
         >
-          Design System
+          {ORBIS}
         </span>
         <span
-          className="mt-[3px] text-[9px] tracking-[0.42em] uppercase"
+          className="mt-[3px] text-[9px] tracking-[0.3em] uppercase"
           style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-fg-subtle)' }}
         >
-          Ecosystem
+          Design System Ecosystem
         </span>
       </span>
     </div>

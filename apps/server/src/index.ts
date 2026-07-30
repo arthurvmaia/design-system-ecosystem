@@ -74,7 +74,7 @@ const boot = () => {
     console.warn('Aviso: migrations no boot falharam:', err instanceof Error ? err.message : err);
   }
 
-  console.log('Design System Ecosystem server');
+  console.log('Orbis (Design System Ecosystem) server');
   console.log(`  data root : ${getRoot()}`);
   console.log(`  modo      : ${getExecutionMode()}`);
   console.log(`  listening : http://localhost:${port}`);

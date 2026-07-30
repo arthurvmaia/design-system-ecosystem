@@ -1,5 +1,5 @@
 @echo off
-title Design System Ecosystem
+title Orbis
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\iniciar.ps1"
 if errorlevel 1 (
   echo.

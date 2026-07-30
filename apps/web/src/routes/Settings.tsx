@@ -1,3 +1,4 @@
+import { TRATAMENTO } from '@/lib/orbis';
 import { type Preferencias, usePreferencias } from '@/lib/preferencias';
 import { toast } from '@/lib/toast';
 
@@ -20,19 +21,19 @@ export function SettingsPage() {
         className="ds-slide-up ds-text-glow text-[36px] font-medium leading-[1.1] tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
-        Do seu jeito.
+        Do jeito que o {TRATAMENTO} preferir.
       </h1>
       <p
         className="ds-slide-up ds-d1 mt-3 max-w-[56ch] text-[15px] leading-[1.7]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        Tudo aqui vale na hora e fica guardado neste computador.
+        Ajuste aqui e eu passo a seguir na hora. Guardo a escolha neste computador.
       </p>
 
       <div className="mt-10 space-y-4">
         <Bloco
           titulo="Movimento na tela"
-          descricao="As animações dão vida ao aplicativo, mas nem todo mundo quer (ou pode) acompanhá-las. Reduzir desliga as animações e os efeitos de fundo."
+          descricao="Eu me mexo bastante enquanto trabalho, e nem todo mundo quer (ou pode) acompanhar isso. Em Reduzir sempre eu fico parado: sem animações, sem efeitos de fundo."
         >
           <Opcoes
             valor={prefs.movimento}
@@ -43,7 +44,7 @@ export function SettingsPage() {
             aoMudar={(v) =>
               definir(
                 { movimento: v as Preferencias['movimento'] },
-                v === 'reduzir' ? 'Animações reduzidas.' : 'Seguindo a preferência do aparelho.',
+                v === 'reduzir' ? 'Vou ficar parado.' : 'Sigo o que o aparelho pedir.',
               )
             }
           />
@@ -51,7 +52,7 @@ export function SettingsPage() {
 
         <Bloco
           titulo="Confirmar antes de excluir"
-          descricao="Com a confirmação ligada, excluir componentes ou blocos sempre pergunta antes. Se você desligar, cada exclusão vale já no primeiro clique. O risco é seu."
+          descricao="Com a confirmação ligada, eu pergunto antes de apagar qualquer componente ou bloco. Desligada, o primeiro clique já apaga, e eu não desfaço."
         >
           <Opcoes
             valor={prefs.confirmarAntesDeExcluir ? 'sim' : 'nao'}
@@ -62,7 +63,9 @@ export function SettingsPage() {
             aoMudar={(v) =>
               definir(
                 { confirmarAntesDeExcluir: v === 'sim' },
-                v === 'sim' ? 'Confirmação ligada.' : 'Exclusões valem no primeiro clique.',
+                v === 'sim'
+                  ? 'Vou perguntar antes.'
+                  : 'Não pergunto mais: o primeiro clique apaga.',
               )
             }
           />
@@ -70,7 +73,7 @@ export function SettingsPage() {
 
         <Bloco
           titulo="Abertura do aplicativo"
-          descricao="A sequência de inicialização que aparece ao entrar."
+          descricao="A sequência que eu mostro quando o aplicativo abre."
         >
           <Opcoes
             valor={prefs.introAoAbrir}
@@ -79,14 +82,14 @@ export function SettingsPage() {
               ['sempre', 'Sempre'],
             ]}
             aoMudar={(v) =>
-              definir({ introAoAbrir: v as Preferencias['introAoAbrir'] }, 'Preferência salva.')
+              definir({ introAoAbrir: v as Preferencias['introAoAbrir'] }, 'Anotado.')
             }
           />
         </Bloco>
 
         <Bloco
           titulo="Som da abertura"
-          descricao="A abertura toca uma trilha curta. Desligue se você costuma abrir o aplicativo perto de outras pessoas — a escolha fica guardada e não pergunta de novo."
+          descricao="Na abertura eu toco uma trilha curta. Em Mudo eu abro em silêncio, e não pergunto de novo."
         >
           <Opcoes
             valor={prefs.somDaIntro ? 'sim' : 'nao'}
@@ -97,7 +100,7 @@ export function SettingsPage() {
             aoMudar={(v) =>
               definir(
                 { somDaIntro: v === 'sim' },
-                v === 'sim' ? 'A abertura volta a ter som.' : 'A abertura fica muda.',
+                v === 'sim' ? 'Volto a tocar na abertura.' : 'Abro em silêncio.',
               )
             }
           />

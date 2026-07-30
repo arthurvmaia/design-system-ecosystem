@@ -2,7 +2,7 @@
 setlocal
 chcp 65001 >nul
 cls
-title Exportar acervo - Design System Ecosystem
+title Orbis - Exportar acervo
 cd /d "%~dp0"
 
 REM Junta vault, biblioteca, sites e o banco num zip na Area de Trabalho,

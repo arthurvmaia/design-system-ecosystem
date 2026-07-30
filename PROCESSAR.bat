@@ -2,7 +2,7 @@
 setlocal
 chcp 65001 >nul
 cls
-title Processar fila - Design System Ecosystem
+title Orbis - Processar fila
 cd /d "%~dp0"
 
 REM Processa SOMENTE os jobs que a pessoa escolher, DEPOIS que ela escolher.

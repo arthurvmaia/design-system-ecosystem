@@ -2,6 +2,7 @@ import { ConfirmPop } from '@/components/ConfirmPop';
 import { Mascote } from '@/components/Mascote';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type RejectedSegment, api, previewRejeitadoUrl } from '@/lib/api';
+import { TRATAMENTO } from '@/lib/orbis';
 import { usePreferencias } from '@/lib/preferencias';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
@@ -44,32 +45,32 @@ export function RevisaoPage() {
         className="ds-slide-up text-[11px] uppercase tracking-[0.28em]"
         style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}
       >
-        Precisa do seu olhar
+        Preciso do seu olhar
       </div>
       <h1
         className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
-        Alguns blocos ficaram para você decidir.
+        Separei alguns blocos para o {TRATAMENTO} decidir.
       </h1>
       <p
         className="ds-slide-up ds-d2 mt-3 max-w-[64ch] text-[15px] leading-[1.7]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        A Galeria recebe o que foi lido com confiança. Estes blocos ficaram de fora, cada um com o
-        motivo à vista. Se algo bom sobrou aqui, use aproveitar mesmo assim e ele vai para a
-        Galeria. Se você concordar com o motivo, descarte e a lista fica limpa.
+        Mandei para a Galeria o que li com confiança. Estes eu deixei de fora, cada um com o motivo
+        à vista: use aproveitar mesmo assim e o bloco vai para a Galeria, ou descarte e ele sai da
+        lista.
       </p>
 
       {total === 0 ? (
         <div className="ds-glass-static ds-slide-up ds-d3 mt-10 rounded-xl p-10 text-center">
           <CheckCircle2 size={22} className="mx-auto" style={{ color: 'var(--color-primary)' }} />
           <div className="mt-4 text-[15px]" style={{ color: 'var(--color-fg-muted)' }}>
-            {rej.isPending ? 'Carregando…' : 'Nada esperando por você.'}
+            {rej.isPending ? 'Conferindo o que ficou pendente.' : 'Não deixei nada pendente.'}
           </div>
           {!rej.isPending && (
             <div className="mt-2 text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              Tudo que foi extraído até agora já está na Galeria.
+              Tudo que capturei até agora está na Galeria.
             </div>
           )}
         </div>
@@ -124,19 +125,19 @@ function CardRejeitado({
   const recuperar = useMutation({
     mutationFn: () => api.recuperarRejeitado(dsId, item.id),
     onSuccess: () => {
-      toast.ok('Enviado para a Galeria.');
+      toast.ok('Mandei para a Galeria.');
       aoMudar();
     },
-    onError: () => toast.erro('Não deu para enviar agora. Tente de novo.'),
+    onError: () => toast.erro('Não consegui enviar. Tente de novo.'),
   });
 
   const descartar = useMutation({
     mutationFn: () => api.descartarRejeitado(dsId, item.id),
     onSuccess: () => {
-      toast.ok('Bloco descartado.');
+      toast.ok('Descartei o bloco.');
       aoMudar();
     },
-    onError: () => toast.erro('Não deu para descartar agora. Tente de novo.'),
+    onError: () => toast.erro('Não consegui descartar. Tente de novo.'),
   });
 
   const ocupado = recuperar.isPending || descartar.isPending;
@@ -201,7 +202,7 @@ function CardRejeitado({
             <ConfirmPop
               open={confirmaDescarte}
               title="Descartar este bloco?"
-              description="Ele sai da lista de pendências e não volta."
+              description="Ele sai das pendências e eu não trago de volta."
               confirmLabel="Descartar"
               busy={descartar.isPending}
               onConfirm={() => {

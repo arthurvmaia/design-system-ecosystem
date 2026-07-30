@@ -5,6 +5,7 @@ import { PreviewFrame } from '@/components/PreviewFrame';
 import { Select } from '@/components/seletores';
 import { type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
 import { usePreferencias } from '@/lib/preferencias';
 import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
@@ -82,17 +83,13 @@ export function LibraryPage() {
       qc.invalidateQueries({ queryKey: ['library'] });
       qc.invalidateQueries({ queryKey: ['segments'] });
       if (res.excluidos.length > 0) {
-        toast.ok(
-          res.excluidos.length === 1
-            ? 'Componente excluído.'
-            : `${res.excluidos.length} componentes excluídos.`,
-        );
+        toast.ok(`Excluí ${conta(res.excluidos.length, 'peça', 'peças')}.`);
       }
       setSel((s) => new Set([...s].filter((id) => !res.excluidos.includes(id))));
       // O que está EM USO não saiu — a pessoa decide com a informação na mão.
       setEmUsoPendente(res.emUso.length > 0 ? res.emUso : null);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não deu para excluir agora.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui excluir agora.'),
   });
 
   const filtered = useMemo(() => {
@@ -173,7 +170,7 @@ export function LibraryPage() {
               {LABEL[category]}
             </h1>
             <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
-              {filtered.length} componente{filtered.length === 1 ? '' : 's'}
+              {conta(filtered.length, 'peça guardada', 'peças guardadas')}
             </div>
           </div>
           <input
@@ -233,7 +230,11 @@ export function LibraryPage() {
               className="col-span-full py-16 text-center text-[13px]"
               style={{ color: 'var(--color-fg-subtle)' }}
             >
-              Nenhum componente aqui ainda. Vá na galeria e curte alguns.
+              {lib.isPending
+                ? TRABALHANDO.carregandoPecas
+                : (lib.data?.items.length ?? 0) === 0
+                  ? `${VAZIO.biblioteca.titulo} ${VAZIO.biblioteca.corpo}`
+                  : 'Nenhuma peça com esse filtro. Guardei as outras nas demais categorias.'}
             </div>
           )}
         </div>
@@ -254,7 +255,7 @@ export function LibraryPage() {
           }}
         >
           <span className="text-[13px]" style={{ color: 'var(--color-fg)' }}>
-            {sel.size} {sel.size === 1 ? 'selecionado' : 'selecionados'}
+            {conta(sel.size, 'peça selecionada', 'peças selecionadas')}
           </span>
           <button
             type="button"
@@ -283,8 +284,8 @@ export function LibraryPage() {
 
       <ConfirmPop
         open={confirmaLote}
-        title={sel.size === 1 ? 'Excluir 1 componente?' : `Excluir ${sel.size} componentes?`}
-        description="Eles saem da Biblioteca e voltam a aparecer na Galeria para curtir de novo. Componentes em uso por um kit pedem uma confirmação a mais."
+        title={`Excluir ${conta(sel.size, 'peça', 'peças')}?`}
+        description="Elas saem da Biblioteca e voltam para a Galeria, para curtir de novo. As que estiverem em algum kit eu confirmo outra vez antes de excluir."
         confirmLabel="Excluir"
         busy={excluir.isPending}
         onConfirm={() => {
@@ -296,11 +297,7 @@ export function LibraryPage() {
 
       <ConfirmPop
         open={emUsoPendente !== null}
-        title={
-          (emUsoPendente?.length ?? 0) === 1
-            ? 'Um componente está em uso'
-            : `${emUsoPendente?.length ?? 0} componentes estão em uso`
-        }
+        title={conta(emUsoPendente?.length ?? 0, 'peça está em uso', 'peças estão em uso')}
         description={
           <div className="space-y-1.5">
             {(emUsoPendente ?? []).slice(0, 5).map((u) => (
@@ -310,8 +307,9 @@ export function LibraryPage() {
               </div>
             ))}
             <div className="pt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-              Excluir mesmo assim tira {(emUsoPendente?.length ?? 0) === 1 ? 'a peça' : 'as peças'}{' '}
-              desses kits. Os sites que você já gerou continuam como estão.
+              Se excluir mesmo assim, eu tiro{' '}
+              {(emUsoPendente?.length ?? 0) === 1 ? 'a peça' : 'as peças'} desses kits. Os sites que
+              já gerei continuam como estão.
             </div>
           </div>
         }
@@ -448,10 +446,10 @@ function LibraryDetail({
       }),
     onSuccess: () => {
       invalidate();
-      toast.ok('Componente atualizado.');
+      toast.ok('Atualizei a peça.');
       onClose();
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao salvar.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui salvar.'),
   });
 
   const remove = useMutation({
@@ -459,10 +457,10 @@ function LibraryDetail({
     onSuccess: () => {
       invalidate();
       qc.invalidateQueries({ queryKey: ['segments'] });
-      toast.ok('Componente removido da Biblioteca.');
+      toast.ok('Tirei a peça da Biblioteca.');
       onClose();
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao remover.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui remover.'),
   });
 
   const addTag = () => {
@@ -523,7 +521,7 @@ function LibraryDetail({
           </Field>
           <Field label="Categoria">
             <Select
-              rotulo="Categoria do componente"
+              rotulo="Categoria da peça"
               opcoes={EDIT_CATEGORIES.map((c) => ({ valor: c, rotulo: LABEL[c] ?? c }))}
               valor={category}
               aoMudar={setCategory}
@@ -570,7 +568,7 @@ function LibraryDetail({
               rows={3}
               className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)] resize-none"
               style={inputStyle}
-              placeholder="anotações internas sobre este componente"
+              placeholder="anotações suas sobre esta peça"
             />
           </Field>
 
@@ -608,12 +606,13 @@ function LibraryDetail({
         description={
           (impacto.data?.usadoEmKits.length ?? 0) > 0 ? (
             <>
-              Este componente está em <strong>{impacto.data?.usadoEmKits.length} kit(s)</strong> (
-              {impacto.data?.usadoEmKits.map((k) => k.name).join(', ')}). Remover aqui tira ele
-              desses kits também, e apaga os arquivos do disco.
+              Esta peça está em{' '}
+              <strong>{conta(impacto.data?.usadoEmKits.length ?? 0, 'kit', 'kits')}</strong> (
+              {impacto.data?.usadoEmKits.map((k) => k.name).join(', ')}). Se eu remover, ela sai
+              desses kits também e apago os arquivos do disco.
             </>
           ) : (
-            'Apaga o bundle do disco e desfaz o vínculo com o segmento de origem. Não afeta nenhum kit.'
+            'Apago o bundle do disco e desfaço o vínculo com o segmento de origem. Nenhum kit usa esta peça.'
           )
         }
       />
@@ -636,7 +635,7 @@ function BgToggle({
       onClick={() => onChange(next)}
       className="ds-tag flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]"
       style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
-      title="Alternar o fundo da prévia (auto / claro / escuro)"
+      title="Troco o fundo da prévia: auto, claro, escuro."
     >
       <Sun size={11} />
       {label}

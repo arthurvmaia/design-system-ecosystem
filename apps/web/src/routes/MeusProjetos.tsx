@@ -2,6 +2,7 @@ import { ConfirmPop } from '@/components/ConfirmPop';
 import { Mascote } from '@/components/Mascote';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type MeusProjetosItem, api, downloadUrl, siteUrl } from '@/lib/api';
+import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -45,14 +46,14 @@ export function MeusProjetosPage() {
         className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
-        Prontos para sair daqui.
+        O que eu montei está pronto para sair daqui.
       </h1>
       <p
         className="ds-slide-up ds-d2 mt-3 max-w-[62ch] text-[14px] leading-[1.6]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        Cada versão é um site completo. Veja a prévia, abra numa aba ou baixe o .zip para subir num
-        host. Se quiser mudar alguma coisa, volte a editar o projeto e gere de novo.
+        Cada versão é um site completo: veja a prévia, abra numa aba ou baixe o .zip para subir num
+        host. Se quiser mudar alguma coisa, edite o projeto e eu gero de novo.
       </p>
 
       {items.length === 0 ? (
@@ -84,24 +85,29 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
 
   const abrirPasta = useMutation({
     mutationFn: () => api.abrirPasta(projeto.id),
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao abrir a pasta.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui abrir a pasta.'),
   });
   const duplicar = useMutation({
     mutationFn: () => api.duplicateProject(projeto.id),
     onSuccess: () => {
       invalidate();
-      toast.ok('Projeto duplicado como rascunho. Está em Gerar site.');
+      toast.ok('Dupliquei como rascunho. Está em Gerar site.');
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao duplicar.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui duplicar.'),
   });
   const excluir = useMutation({
     mutationFn: () => api.deleteProject(projeto.id),
     onSuccess: () => {
       invalidate();
-      toast.ok('Projeto excluído.');
+      toast.ok('Excluí o projeto.');
       setConfirmDel(false);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao excluir.'),
+    onError: (e) =>
+      toast.erro(
+        e instanceof Error
+          ? e.message
+          : 'Não consegui excluir. O arquivo pode estar aberto em outro programa.',
+      ),
   });
 
   return (
@@ -136,7 +142,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                 {projeto.name}
               </div>
               <div className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                {projeto.versoes.length} {projeto.versoes.length === 1 ? 'versão' : 'versões'}
+                {conta(projeto.versoes.length, 'versão', 'versões')}
               </div>
             </div>
           </div>
@@ -267,7 +273,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
         confirmLabel="Apagar projeto"
         onConfirm={() => excluir.mutate()}
         onClose={() => setConfirmDel(false)}
-        description="Leva junto todos os sites gerados dele. Não dá para desfazer."
+        description="Apago junto todos os sites gerados dele. Não dá para desfazer."
       />
     </div>
   );
@@ -282,18 +288,18 @@ function VazioState({ carregando }: { carregando: boolean }) {
         pulsando={carregando}
         alt={
           carregando
-            ? 'Carregando os sites'
-            : 'O núcleo do sistema, apagado: nenhum site gerado ainda'
+            ? 'O núcleo do sistema, pulsando: procurando os sites prontos'
+            : 'O núcleo do sistema, apagado: nenhum site pronto ainda'
         }
         className="mx-auto"
       />
       <div className="mt-5 text-[14px]" style={{ color: 'var(--color-fg-muted)' }}>
-        {carregando ? 'Carregando...' : 'Nenhum site gerado ainda.'}
+        {carregando ? TRABALHANDO.carregandoSites : VAZIO.sites.titulo}
       </div>
       {!carregando && (
         <div className="mt-2 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          Vá em <span className="ds-data">Gerar site</span>, monte um projeto a partir de um kit e
-          gere. Quando o site ficar pronto, ele aparece aqui.
+          Comece em <span className="ds-data">Gerar site</span>, a partir de um kit.{' '}
+          {VAZIO.sites.corpo}
         </div>
       )}
     </div>

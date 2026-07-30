@@ -33,7 +33,8 @@
     "acervo:limpar-orfas": "tsx scripts/acervo-limpar-orfas.ts",
     "test:navegador": "node --import tsx --test --test-concurrency=1 \"packages/**/src/**/*.browser.test.ts\" \"apps/**/src/**/*.browser.test.ts\"",
     "test:tudo": "pnpm test && pnpm test:navegador",
-    "verificar": "pnpm lint && pnpm typecheck && pnpm test && pnpm medir-fidelidade --falhar-se-piorar"
+    "verificar": "pnpm lint && pnpm typecheck && pnpm test && pnpm medir-fidelidade --falhar-se-piorar",
+    "voz": "tsx scripts/voz-orbis.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

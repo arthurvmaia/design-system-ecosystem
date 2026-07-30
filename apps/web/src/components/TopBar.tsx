@@ -85,19 +85,21 @@ function Leitura({ rotulo, valor }: { rotulo: string; valor: number | undefined 
 
 /** Rótulos humanos por etapa — o propósito da tela, não o número do pipeline. */
 function pageLabel(pathname: string): { section: string; title: string } {
-  if (pathname.startsWith('/inicio')) return { section: 'Bem-vindo', title: 'Início' };
-  if (pathname.startsWith('/extract')) return { section: 'Traga referências', title: 'Extrair' };
-  if (pathname.startsWith('/gallery')) return { section: 'Escolha o que gostou', title: 'Galeria' };
-  if (pathname.startsWith('/library')) return { section: 'Seu acervo', title: 'Biblioteca' };
+  if (pathname.startsWith('/inicio')) return { section: 'Estou pronto', title: 'Início' };
+  if (pathname.startsWith('/extract')) return { section: 'Me traga referências', title: 'Extrair' };
+  if (pathname.startsWith('/gallery')) return { section: 'O que eu capturei', title: 'Galeria' };
+  if (pathname.startsWith('/library')) return { section: 'Peças guardadas', title: 'Biblioteca' };
   if (pathname.startsWith('/design-systems')) {
-    return { section: 'Suas curadorias', title: 'Design Systems' };
+    return { section: 'Kits montados', title: 'Design Systems' };
   }
-  if (pathname.startsWith('/projects')) return { section: 'Monte o seu site', title: 'Gerar site' };
+  if (pathname.startsWith('/projects')) {
+    return { section: 'Monto com o seu kit', title: 'Gerar site' };
+  }
   if (pathname.startsWith('/meus-projetos')) {
-    return { section: 'Prontos para usar', title: 'Meus sites' };
+    return { section: 'O que eu já montei', title: 'Meus sites' };
   }
   if (pathname.startsWith('/revisao')) {
-    return { section: 'Precisa do seu olhar', title: 'Pendências' };
+    return { section: 'Preciso do seu olhar', title: 'Pendências' };
   }
   if (pathname.startsWith('/settings')) return { section: 'Do seu jeito', title: 'Configurações' };
   return { section: '', title: 'Início' };
