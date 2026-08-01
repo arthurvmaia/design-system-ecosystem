@@ -468,7 +468,7 @@ export function ProjectWizard({
             <button
               type="button"
               onClick={() => (step === 0 ? onClose() : setStep((s) => s - 1))}
-              className="flex items-center gap-1.5 rounded-full px-4 py-2 text-[13px] transition-colors hover:text-[var(--color-fg)]"
+              className="flex items-center gap-1.5 rounded-none px-4 py-2 text-[13px] transition-colors hover:text-[var(--color-fg)]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               <ArrowLeft size={14} />
@@ -497,7 +497,7 @@ export function ProjectWizard({
               title={
                 travadoPorBloqueante ? 'Resolva os itens bloqueantes listados acima' : undefined
               }
-              className="ds-btn ds-glow flex items-center gap-2 rounded-full px-7 py-3 text-[14px] font-medium disabled:opacity-50"
+              className="ds-btn ds-glow flex items-center gap-2 rounded-none px-7 py-3 text-[14px] font-medium disabled:opacity-50"
               style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
             >
               {gerar.isPending ? <Mascote tamanho={14} girando /> : <Mascote tamanho={16} />}
@@ -520,7 +520,7 @@ export function ProjectWizard({
                 // Botão travado que não diz por quê vira adivinhação. A pendência
                 // aparece ao lado, e o title repete para quem navega por teclado.
                 title={pendencias[0]?.mensagem}
-                className="ds-btn ds-glow flex items-center gap-2 rounded-full px-7 py-3 text-[14px] font-medium disabled:opacity-40"
+                className="ds-btn ds-glow flex items-center gap-2 rounded-none px-7 py-3 text-[14px] font-medium disabled:opacity-40"
                 style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
               >
                 {avancar.isPending ? <Mascote tamanho={14} girando /> : <ArrowRight size={14} />}
@@ -572,9 +572,9 @@ function StepBar({
               disabled={travada}
               aria-current={active ? 'step' : undefined}
               title={travada ? 'Avance pelas etapas para desbloquear' : `Ir para ${label}`}
-              className="flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] uppercase tracking-[0.12em] transition-colors disabled:cursor-default"
+              className="flex shrink-0 items-center gap-2 rounded-none px-3.5 py-1.5 text-[12px] uppercase tracking-[0.12em] transition-colors disabled:cursor-default"
               style={{
-                backgroundColor: active ? 'rgba(56,189,248,0.12)' : 'transparent',
+                backgroundColor: active ? 'rgba(34,211,238,0.12)' : 'transparent',
                 color: active
                   ? 'var(--color-ion-3)'
                   : done

@@ -159,7 +159,7 @@ export function KitsPage() {
           <button
             type="button"
             onClick={() => setEditing('novo')}
-            className="ds-btn ds-gradient-ion ds-glow flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium"
+            className="ds-btn ds-gradient-ion ds-glow flex items-center gap-2 rounded-none px-5 py-2.5 text-[13px] font-medium"
             style={{ color: 'var(--color-bone-1)' }}
           >
             <Plus size={14} />
@@ -217,7 +217,7 @@ export function KitsPage() {
       {/* Barra contextual — só existe quando há seleção. */}
       {sel.size > 0 && (
         <div
-          className="ds-scale-in fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full border px-5 py-2.5"
+          className="ds-scale-in fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-none border px-5 py-2.5"
           style={{
             backgroundColor: 'rgba(13, 13, 14, 0.97)',
             borderColor: 'var(--color-border-strong)',
@@ -243,7 +243,7 @@ export function KitsPage() {
                 ? setConfirmaLote(true)
                 : excluir.mutate({ ids: [...sel], confirmar: false })
             }
-            className="ds-btn flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            className="ds-btn flex items-center gap-1.5 rounded-none px-4 py-1.5 text-[12px] font-medium disabled:opacity-40"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
             {excluir.isPending ? <Mascote tamanho={12} girando /> : <Trash2 size={12} />}
@@ -490,7 +490,7 @@ function IconBtn({
       onClick={onClick}
       title={title}
       disabled={busy}
-      className="rounded-full p-1.5 transition-all duration-300 hover:scale-110 hover:bg-white/[0.06] disabled:opacity-50"
+      className="rounded-none p-1.5 transition-all duration-300 hover:scale-110 hover:bg-white/[0.06] disabled:opacity-50"
       style={{ color: danger ? 'var(--color-ion-3)' : 'var(--color-fg-muted)' }}
     >
       {busy ? <Mascote tamanho={13} girando /> : children}
@@ -683,7 +683,7 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="buscar na Biblioteca..."
-                className="ds-data w-full rounded-full border px-3.5 py-1.5 text-[12px] outline-none focus:border-[var(--color-signal)]"
+                className="ds-data w-full rounded-none border px-3.5 py-1.5 text-[12px] outline-none focus:border-[var(--color-signal)]"
                 style={fieldStyle}
               />
             </div>
@@ -746,7 +746,7 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
             type="button"
             onClick={() => save.mutate()}
             disabled={name.trim() === '' || save.isPending}
-            className="ds-btn ds-glow flex items-center gap-2 rounded-full px-5 py-2 text-[13px] font-medium disabled:opacity-40"
+            className="ds-btn ds-glow flex items-center gap-2 rounded-none px-5 py-2 text-[13px] font-medium disabled:opacity-40"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
             {save.isPending && <Mascote tamanho={12} girando />}
@@ -804,7 +804,7 @@ function KitDesignSystemPanel({
         </span>
         {item !== null && (
           <span
-            className="ds-data rounded-full border px-2 py-0.5 text-[10px]"
+            className="ds-data rounded-none border px-2 py-0.5 text-[10px]"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
           >
             {ROTULO_TEMA[item.tema]}
@@ -950,7 +950,7 @@ function OrigemDoPainel({ origem, nome }: { origem: OrigemDoKit; nome: string })
           {origem.fontes.map((f) => (
             <span
               key={`${f.familia}-${f.papelSugerido}`}
-              className="rounded-full border px-2 py-0.5 text-[10px]"
+              className="rounded-none border px-2 py-0.5 text-[10px]"
               style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
             >
               {f.familia}
@@ -1028,7 +1028,7 @@ function VazioState({ carregando, onNovo }: { carregando: boolean; onNovo: () =>
         <button
           type="button"
           onClick={onNovo}
-          className={cn('ds-btn mt-4 rounded-full px-4 py-2 text-[12px] font-medium')}
+          className={cn('ds-btn mt-4 rounded-none px-4 py-2 text-[12px] font-medium')}
           style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
         >
           Montar o primeiro kit

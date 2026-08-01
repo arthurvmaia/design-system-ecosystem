@@ -191,7 +191,7 @@ function Cabecalho({ estado, quantidade }: { estado: Semaforo; quantidade?: numb
         </span>
         {quantidade !== undefined && quantidade > 0 && (
           <span
-            className="ds-data rounded-full px-2 py-0.5 text-[10px]"
+            className="ds-data rounded-none px-2 py-0.5 text-[10px]"
             style={{ backgroundColor: 'var(--color-ion-8)', color: 'var(--color-bone-1)' }}
           >
             {quantidade}

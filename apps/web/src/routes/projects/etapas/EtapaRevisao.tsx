@@ -65,7 +65,7 @@ export function StepRevisao({
               <button
                 type="button"
                 onClick={() => onIr(p.etapa)}
-                className="flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors hover:border-[var(--color-signal)]"
+                className="flex shrink-0 items-center gap-1 rounded-none border px-2.5 py-1 text-[11px] transition-colors hover:border-[var(--color-signal)]"
                 style={{
                   borderColor: 'var(--color-border-strong)',
                   color: 'var(--color-fg-muted)',
@@ -95,7 +95,7 @@ export function StepRevisao({
                 <span
                   key={c.id}
                   title={`${c.nome} ${c.hex}`}
-                  className="h-4 w-4 rounded-full border"
+                  className="h-4 w-4 rounded-none border"
                   style={{ backgroundColor: c.hex, borderColor: 'var(--color-border)' }}
                 />
               ))}
@@ -126,7 +126,7 @@ export function StepRevisao({
 
       <div
         className="flex items-start gap-2 rounded-lg p-3 text-[12px] leading-relaxed"
-        style={{ backgroundColor: 'rgba(14,165,233,0.14)', color: 'var(--color-fg)' }}
+        style={{ backgroundColor: 'rgba(6,182,212,0.14)', color: 'var(--color-fg)' }}
       >
         <Sparkles size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--color-signal)' }} />
         <span>

@@ -113,7 +113,7 @@ export function PainelVoz({
                   {[0, 1, 2, 3, 4].map((n) => (
                     <span
                       key={n}
-                      className="h-[6px] w-[14px] rounded-full"
+                      className="h-[6px] w-[14px] rounded-none"
                       style={{
                         backgroundColor:
                           n <= diretrizes.eixos[eixo]

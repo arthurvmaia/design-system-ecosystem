@@ -79,7 +79,7 @@ export function ProjectsPage() {
             type="button"
             onClick={() => setWizard('novo')}
             disabled={kitCount === 0}
-            className="ds-btn ds-gradient-ion ds-glow flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40"
+            className="ds-btn ds-gradient-ion ds-glow flex items-center gap-2 rounded-none px-5 py-2.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40"
             style={{ color: 'var(--color-bone-1)' }}
           >
             <Mascote tamanho={15} />
@@ -226,7 +226,7 @@ function ProjectCard({
           <button
             type="button"
             onClick={onEdit}
-            className="ds-btn ds-glow-border ds-backdrop flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px]"
+            className="ds-btn ds-glow-border ds-backdrop flex items-center gap-1.5 rounded-none px-3.5 py-1.5 text-[12px]"
             style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-fg)' }}
           >
             <Pencil size={12} />
@@ -236,7 +236,7 @@ function ProjectCard({
             type="button"
             onClick={() => gerar.mutate()}
             disabled={gerar.isPending}
-            className="ds-btn ds-glow flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
+            className="ds-btn ds-glow flex items-center gap-1.5 rounded-none px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
             {gerar.isPending ? <Mascote tamanho={12} girando /> : <Wand2 size={12} />}
@@ -246,7 +246,7 @@ function ProjectCard({
             <button
               type="button"
               onClick={() => navigate('/meus-projetos')}
-              className="flex items-center gap-1.5 rounded-full px-2 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
+              className="flex items-center gap-1.5 rounded-none px-2 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               Ver site
@@ -258,7 +258,7 @@ function ProjectCard({
               onClick={() => duplicar.mutate()}
               disabled={duplicar.isPending}
               title="Duplicar"
-              className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-white/[0.06]"
+              className="rounded-none p-1.5 transition-all hover:scale-110 hover:bg-white/[0.06]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               {duplicar.isPending ? <Mascote tamanho={13} girando /> : <Copy size={13} />}
@@ -272,7 +272,7 @@ function ProjectCard({
                   ? 'Excluir'
                   : 'Tem um pedido na fila para este projeto. Cancele ele antes de apagar.'
               }
-              className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(239,68,68,0.16)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100 disabled:hover:bg-transparent"
+              className="rounded-none p-1.5 transition-all hover:scale-110 hover:bg-[rgba(239,68,68,0.16)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100 disabled:hover:bg-transparent"
               style={{ color: 'var(--color-ion-3)' }}
             >
               <Trash2 size={13} />
@@ -314,7 +314,7 @@ function TaskCard({ task }: { task: TaskRecord }) {
         <StatusBadge status={task.status} />
       </div>
       {(task.status === 'running' || task.status === 'queued') && (
-        <div className="ds-progress mt-5 rounded-full" />
+        <div className="ds-progress mt-5 rounded-none" />
       )}
       <div className="mt-4 max-h-[220px] overflow-y-auto">
         {(task.events ?? []).map((ev, i) => (
@@ -347,7 +347,7 @@ function StatusBadge({ status }: { status: string }) {
   };
   return (
     <span
-      className="ds-tag ds-backdrop rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em]"
+      className="ds-tag ds-backdrop rounded-none border px-3 py-1 text-[10px] uppercase tracking-[0.18em]"
       style={{
         backgroundColor: 'rgba(255, 255, 255, 0.04)',
         borderColor: 'var(--color-border)',

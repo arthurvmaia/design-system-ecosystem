@@ -36,8 +36,14 @@ const ITEM_ATIVO = 'ds-glass-static text-[var(--color-fg)]';
  */
 export function Sidebar() {
   return (
+    // z-10, o MESMO da coluna de conteúdo, e não mais que ela. Empate resolve
+    // pela ordem do documento, e o conteúdo vem depois: é o que faz um modal
+    // aberto numa tela cobrir a barra. Com z-20 aqui, o `z-[90]` do modal não
+    // adiantava nada — ele mora dentro da coluna, e índice de filho não escapa
+    // do contexto de empilhamento do pai. O modal do painel de peças aparecia
+    // com o título cortado atrás da barra.
     <aside
-      className="ds-backdrop relative z-20 flex h-full w-[260px] shrink-0 flex-col border-r"
+      className="ds-backdrop relative z-10 flex h-full w-[260px] shrink-0 flex-col border-r"
       style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
     >
       {/* Cabeçalho da marca. */}
@@ -159,7 +165,7 @@ function PendenciasNavItem({ item }: { item: NavItemDef }) {
           {badge.mostrar && (
             <span
               aria-hidden
-              className="ds-data ml-auto rounded-full border px-2 py-0.5 text-[10px] font-medium"
+              className="ds-data ml-auto rounded-none border px-2 py-0.5 text-[10px] font-medium"
               style={{
                 backgroundColor: 'rgba(245,158,11,0.16)',
                 borderColor: 'rgba(245,158,11,0.45)',
@@ -187,7 +193,7 @@ function BadgeInfo({ valor }: { valor: number }) {
   if (valor === 0) return null;
   return (
     <span
-      className="ds-data ds-tag ml-auto rounded-full border px-2 py-0.5 text-[10px] font-medium"
+      className="ds-data ds-tag ml-auto rounded-none border px-2 py-0.5 text-[10px] font-medium"
       style={{
         backgroundColor: 'rgba(255, 255, 255, 0.04)',
         borderColor: 'var(--color-border)',

@@ -211,7 +211,7 @@ export function StepEstrutura({
           <button
             type="button"
             onClick={novaSecao}
-            className="ds-btn ds-glow-border ds-backdrop flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px]"
+            className="ds-btn ds-glow-border ds-backdrop flex items-center gap-1.5 rounded-none px-3.5 py-1.5 text-[12px]"
             style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-fg)' }}
           >
             <Plus size={12} />
@@ -246,7 +246,7 @@ export function StepEstrutura({
               {sobrando.map((c) => (
                 <span
                   key={c.id}
-                  className="rounded-full border px-2.5 py-1 text-[12px]"
+                  className="rounded-none border px-2.5 py-1 text-[12px]"
                   style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
                 >
                   {c.name}
@@ -546,7 +546,7 @@ function LinhaDaSecao({
                       type="button"
                       onClick={() => onTirarPeca(j)}
                       aria-label={`Tirar ${p.name} desta seção`}
-                      className="rounded-full p-1 hover:bg-[rgba(239,68,68,0.2)]"
+                      className="rounded-none p-1 hover:bg-[rgba(239,68,68,0.2)]"
                       style={{ color: 'var(--color-fg-muted)' }}
                     >
                       <X size={11} />
@@ -558,7 +558,7 @@ function LinhaDaSecao({
             <button
               type="button"
               onClick={onEscolherPeca}
-              className="ds-glow-border flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px]"
+              className="ds-glow-border flex items-center gap-1.5 rounded-none border px-3.5 py-1.5 text-[12px]"
               style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
             >
               <Plus size={12} />
@@ -632,7 +632,7 @@ function ChipAida({ momento }: { momento: EtapaAida }) {
   const cor = COR_DA_AIDA[momento];
   return (
     <span
-      className="ds-data shrink-0 rounded-full border px-1.5 py-px text-[10px] uppercase tracking-[0.08em]"
+      className="ds-data shrink-0 rounded-none border px-1.5 py-px text-[10px] uppercase tracking-[0.08em]"
       title={EXPLICA_AIDA[momento]}
       style={{
         color: cor,
@@ -661,7 +661,7 @@ function AvisoObrigatorias({
   return (
     <div
       className="rounded-lg border px-3.5 py-3"
-      style={{ borderColor: 'rgba(56,189,248,0.35)', backgroundColor: 'rgba(56,189,248,0.05)' }}
+      style={{ borderColor: 'rgba(34,211,238,0.35)', backgroundColor: 'rgba(34,211,238,0.05)' }}
     >
       <div className="text-[13px] font-medium" style={{ color: 'var(--color-fg)' }}>
         {faltantes.length === 1
@@ -739,7 +739,7 @@ function BlocoDeFundo({
               type="button"
               onClick={() => aoTirar(f.secaoId, f.peca.id)}
               aria-label={`Tirar o fundo ${f.peca.name}`}
-              className="rounded-full p-1 hover:bg-[rgba(239,68,68,0.2)]"
+              className="rounded-none p-1 hover:bg-[rgba(239,68,68,0.2)]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               <X size={11} />
@@ -760,7 +760,7 @@ function BlocoDeFundo({
             <button
               type="button"
               onClick={() => aoUsar(c.id)}
-              className="ds-glow-border rounded-full border px-2.5 py-1 text-[11px]"
+              className="ds-glow-border rounded-none border px-2.5 py-1 text-[11px]"
               style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
             >
               Usar este fundo
@@ -843,7 +843,7 @@ function PreviaEmpilhada({
                 title={`Abrir a seção ${r.nome || 'sem nome'}`}
                 className="block w-full px-1 pb-1.5 text-left"
                 style={{
-                  backgroundColor: ativa === r.id ? 'rgba(56,189,248,0.1)' : 'transparent',
+                  backgroundColor: ativa === r.id ? 'rgba(34,211,238,0.1)' : 'transparent',
                 }}
               >
                 {r.pecas.length === 0 ? (
@@ -958,8 +958,8 @@ function ModalDePecas({
               </div>
               {selinho !== undefined && (
                 <span
-                  className="ds-data mt-1 inline-block rounded-full border px-1.5 py-0.5 text-[9px]"
-                  style={{ borderColor: 'rgba(56,189,248,0.3)', color: 'var(--color-ion-3)' }}
+                  className="ds-data mt-1 inline-block rounded-none border px-1.5 py-0.5 text-[9px]"
+                  style={{ borderColor: 'rgba(34,211,238,0.3)', color: 'var(--color-ion-3)' }}
                 >
                   {selinho}
                 </span>

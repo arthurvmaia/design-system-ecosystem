@@ -120,7 +120,7 @@ export function MultiSelect({
             {chips.map((o, i) => (
               <span
                 key={o.valor}
-                className="ds-tag inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]"
+                className="ds-tag inline-flex items-center gap-1 rounded-none border px-2 py-0.5 text-[11px]"
                 style={{
                   borderColor:
                     comPrincipal && i === 0 ? 'var(--color-primary)' : 'var(--color-border)',

@@ -165,7 +165,7 @@ export function Modal({
           type="button"
           onClick={onClose}
           aria-label="Fechar"
-          className="absolute top-3 right-3 z-10 rounded-full p-1.5 opacity-50 transition-all duration-300 hover:bg-white/[0.06] hover:opacity-100"
+          className="absolute top-3 right-3 z-10 rounded-none p-1.5 opacity-50 transition-all duration-300 hover:bg-white/[0.06] hover:opacity-100"
         >
           <X size={16} style={{ color: 'var(--color-fg)' }} />
         </button>

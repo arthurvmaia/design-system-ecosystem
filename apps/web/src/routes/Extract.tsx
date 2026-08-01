@@ -158,7 +158,7 @@ export function ExtractPage() {
           única, em vez de dois botões soltos: assim lê como chave de dois
           estados, que é o que é, e não como duas ações diferentes. */}
       <div
-        className="ds-slide-up ds-d3 mt-10 inline-flex gap-1 rounded-full border p-1"
+        className="ds-slide-up ds-d3 mt-10 inline-flex gap-1 rounded-none border p-1"
         style={{ borderColor: 'var(--color-border)' }}
       >
         <ModeButton active={mode === 'url'} onClick={() => setMode('url')} icon={LinkIcon}>
@@ -198,7 +198,7 @@ export function ExtractPage() {
             (mode === 'file' && !htmlFile) ||
             activeTask.data?.status === 'running'
           }
-          className="ds-btn ds-glow mt-6 flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40"
+          className="ds-btn ds-glow mt-6 flex items-center gap-2 rounded-none px-5 py-2.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-40"
           style={{
             backgroundColor: 'var(--color-primary)',
             color: 'var(--color-bone-1)',
@@ -280,14 +280,14 @@ function ModeButton({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'flex items-center gap-2 rounded-full px-4 py-1.5 text-[11px] uppercase tracking-[0.14em] transition-colors',
+        'flex items-center gap-2 rounded-none px-4 py-1.5 text-[11px] uppercase tracking-[0.14em] transition-colors',
         active
           ? 'text-[var(--color-ion-3)]'
           : 'text-[var(--color-fg-subtle)] hover:text-[var(--color-fg)]',
       )}
       style={{
         fontFamily: 'var(--font-mono)',
-        backgroundColor: active ? 'rgba(56,189,248,0.12)' : 'transparent',
+        backgroundColor: active ? 'rgba(34,211,238,0.12)' : 'transparent',
       }}
     >
       <Icon size={12} />
@@ -320,7 +320,7 @@ function TextInput({
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="ds-data w-full rounded-md border px-3.5 py-2.5 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]"
+        className="ds-data w-full rounded-md border px-3.5 py-2.5 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)]"
         style={{
           borderColor: 'var(--color-border)',
           backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -347,7 +347,7 @@ function FileDropzone({
 
   return (
     <label
-      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-12 text-center transition-all duration-300 hover:border-[var(--color-signal)] hover:bg-white/[0.02] hover:shadow-[0_0_30px_rgba(56,189,248,0.18)]"
+      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-12 text-center transition-all duration-300 hover:border-[var(--color-signal)] hover:bg-white/[0.02] hover:shadow-[0_0_30px_rgba(34,211,238,0.18)]"
       style={{ borderColor: 'var(--color-border-strong)' }}
     >
       <UploadCloud size={20} style={{ color: 'var(--color-fg-muted)' }} />
@@ -405,7 +405,7 @@ function TaskProgress({
 
       {/* Enquanto roda, a varredura na barra diz que há trabalho acontecendo
           mesmo quando nenhum evento novo chega. */}
-      {running && <div className="ds-progress mt-5 rounded-full" />}
+      {running && <div className="ds-progress mt-5 rounded-none" />}
 
       {failed && (
         <div className="mt-4 text-[13px] leading-relaxed" style={{ color: 'var(--color-danger)' }}>
@@ -423,7 +423,7 @@ function TaskProgress({
         <button
           type="button"
           onClick={onOpenGallery}
-          className="ds-btn ds-glow mt-5 rounded-full px-5 py-2.5 text-[13px] font-medium"
+          className="ds-btn ds-glow mt-5 rounded-none px-5 py-2.5 text-[13px] font-medium"
           style={{
             backgroundColor: 'var(--color-primary)',
             color: 'var(--color-bone-1)',
@@ -486,7 +486,7 @@ function StatusBadge({ status }: { status: TaskRecord['status'] }) {
   };
   return (
     <span
-      className="ds-tag ds-backdrop rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em]"
+      className="ds-tag ds-backdrop rounded-none border px-3 py-1 text-[11px] uppercase tracking-[0.16em]"
       style={{
         backgroundColor: 'rgba(255, 255, 255, 0.04)',
         borderColor: 'var(--color-border)',

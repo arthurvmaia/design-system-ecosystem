@@ -106,7 +106,7 @@ export function HomePage() {
 
           <Link
             to="/extract"
-            className="ds-btn ds-glow ds-scale-in ds-d4 mt-7 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-medium"
+            className="ds-btn ds-glow ds-scale-in ds-d4 mt-7 inline-flex items-center gap-2 rounded-none px-5 py-2.5 text-[13px] font-medium"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
             Trazer o primeiro site

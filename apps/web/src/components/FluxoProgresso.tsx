@@ -275,7 +275,7 @@ function Bolinha({ feito, emAndamento }: { feito: boolean; emAndamento: boolean 
 function Linha({ ativa, invisivel }: { ativa: boolean; invisivel: boolean }) {
   return (
     <div
-      className="h-[2px] flex-1 rounded-full transition-colors duration-500"
+      className="h-[2px] flex-1 rounded-none transition-colors duration-500"
       style={{
         backgroundColor: invisivel
           ? 'transparent'

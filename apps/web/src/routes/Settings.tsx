@@ -152,10 +152,10 @@ function Opcoes({
           type="button"
           aria-pressed={valor === v}
           onClick={() => aoMudar(v)}
-          className="rounded-full border px-4 py-2 text-[13px] transition-colors"
+          className="rounded-none border px-4 py-2 text-[13px] transition-colors"
           style={{
             borderColor: valor === v ? 'var(--color-primary)' : 'var(--color-border)',
-            backgroundColor: valor === v ? 'rgba(14,165,233,0.18)' : 'transparent',
+            backgroundColor: valor === v ? 'rgba(6,182,212,0.18)' : 'transparent',
             color: valor === v ? 'var(--color-fg)' : 'var(--color-fg-muted)',
           }}
         >

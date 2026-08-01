@@ -178,7 +178,7 @@ export function LibraryPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="buscar por nome ou tag..."
-            className="ds-data w-[240px] rounded-full border px-3.5 py-2 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]"
+            className="ds-data w-[240px] rounded-none border px-3.5 py-2 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)]"
             style={{
               borderColor: 'var(--color-border)',
               backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -247,7 +247,7 @@ export function LibraryPage() {
       {/* Barra contextual — só existe quando há seleção. */}
       {sel.size > 0 && (
         <div
-          className="ds-scale-in fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-full border px-5 py-2.5"
+          className="ds-scale-in fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-none border px-5 py-2.5"
           style={{
             backgroundColor: 'rgba(13, 13, 14, 0.97)',
             borderColor: 'var(--color-border-strong)',
@@ -273,7 +273,7 @@ export function LibraryPage() {
                 ? setConfirmaLote(true)
                 : excluir.mutate({ ids: [...sel], confirmar: false })
             }
-            className="ds-btn flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            className="ds-btn flex items-center gap-1.5 rounded-none px-4 py-1.5 text-[12px] font-medium disabled:opacity-40"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
             {excluir.isPending ? <Mascote tamanho={12} girando /> : <Trash2 size={12} />}
@@ -391,7 +391,7 @@ function LibraryCard({
               {component.tags.slice(0, 3).map((t) => (
                 <span
                   key={t}
-                  className="rounded-full px-1.5 py-px text-[9px]"
+                  className="rounded-none px-1.5 py-px text-[9px]"
                   style={{
                     backgroundColor: 'rgba(255,255,255,0.05)',
                     color: 'var(--color-fg-muted)',
@@ -515,7 +515,7 @@ function LibraryDetail({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]"
+              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)]"
               style={inputStyle}
             />
           </Field>
@@ -535,7 +535,7 @@ function LibraryDetail({
               {tags.map((t) => (
                 <span
                   key={t}
-                  className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]"
+                  className="flex items-center gap-1 rounded-none px-2 py-0.5 text-[11px]"
                   style={{ backgroundColor: 'rgba(255,255,255,0.06)', color: 'var(--color-fg)' }}
                 >
                   {t}
@@ -566,7 +566,7 @@ function LibraryDetail({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)] resize-none"
+              className="w-full rounded-md border px-3 py-2 text-[13px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] resize-none"
               style={inputStyle}
               placeholder="anotações suas sobre esta peça"
             />
@@ -586,7 +586,7 @@ function LibraryDetail({
               type="button"
               onClick={() => save.mutate()}
               disabled={!dirty || name.trim() === '' || save.isPending}
-              className="ds-btn ds-glow flex items-center gap-2 rounded-full px-5 py-2 text-[13px] font-medium disabled:opacity-40"
+              className="ds-btn ds-glow flex items-center gap-2 rounded-none px-5 py-2 text-[13px] font-medium disabled:opacity-40"
               style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
             >
               {save.isPending && <Mascote tamanho={12} girando />}
@@ -633,7 +633,7 @@ function BgToggle({
     <button
       type="button"
       onClick={() => onChange(next)}
-      className="ds-tag flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]"
+      className="ds-tag flex items-center gap-1.5 rounded-none border px-2.5 py-1 text-[11px]"
       style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
       title="Troco o fundo da prévia: auto, claro, escuro."
     >

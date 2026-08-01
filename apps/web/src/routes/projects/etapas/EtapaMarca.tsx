@@ -94,7 +94,7 @@ function StatusDot({ status, resumo }: { status: SecaoStatus; resumo: string }) 
       className="inline-block h-[7px] w-[7px] shrink-0 rounded-full"
       style={{
         backgroundColor: cor,
-        boxShadow: status === 'configurado' ? '0 0 8px rgba(56,189,248,0.6)' : undefined,
+        boxShadow: status === 'configurado' ? '0 0 8px rgba(34,211,238,0.6)' : undefined,
       }}
     />
   );

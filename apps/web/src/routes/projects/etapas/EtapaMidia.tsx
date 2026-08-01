@@ -155,7 +155,7 @@ export function StepMidia({
             Eu decido onde cada uma entra.
           </span>
           <label
-            className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full px-4 py-1.5 text-[12px] font-medium"
+            className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-none px-4 py-1.5 text-[12px] font-medium"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
             {upload.isPending ? <Mascote tamanho={12} girando /> : <Upload size={12} />}
@@ -254,7 +254,7 @@ export function StepMidia({
               </span>
               {contagem.selo !== null && (
                 <span
-                  className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
+                  className="rounded-none px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
                   style={{
                     backgroundColor: 'rgba(255,255,255,0.06)',
                     color: 'var(--color-fg-muted)',
@@ -280,7 +280,7 @@ export function StepMidia({
                 {contagem.porque}
               </span>
               <label
-                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition-colors hover:border-[var(--color-signal)]"
+                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-none border px-3 py-1 text-[11px] transition-colors hover:border-[var(--color-signal)]"
                 style={{
                   borderColor: 'var(--color-border-strong)',
                   color: 'var(--color-fg-muted)',
@@ -389,7 +389,7 @@ function BlocoProdutos({
               { id: `prd_${Date.now().toString(36)}${produtos.length}`, nome: '' },
             ])
           }
-          className="ml-auto flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px]"
+          className="ml-auto flex items-center gap-1.5 rounded-none border px-3 py-1 text-[11px]"
           style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg-muted)' }}
         >
           <Plus size={11} />
@@ -436,7 +436,7 @@ function BlocoProdutos({
                 <button
                   type="button"
                   onClick={() => onProdutos(produtos.filter((x) => x.id !== p.id))}
-                  className="shrink-0 rounded-full p-1 hover:bg-[rgba(239,68,68,0.16)]"
+                  className="shrink-0 rounded-none p-1 hover:bg-[rgba(239,68,68,0.16)]"
                   title="Remover produto"
                   aria-label={`Remover ${p.nome || 'produto'}`}
                 >
@@ -462,7 +462,7 @@ function BlocoProdutos({
                     <button
                       type="button"
                       onClick={() => trocar(p.id, { imagemPath: undefined })}
-                      className="rounded-full border px-2.5 py-1 text-[11px]"
+                      className="rounded-none border px-2.5 py-1 text-[11px]"
                       style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
                     >
                       trocar foto
@@ -581,7 +581,7 @@ function MidiaThumb({
                   por imagem. Decorativo: o nome do arquivo já está logo abaixo. */
               <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
                 <span
-                  className="flex h-6 w-6 items-center justify-center rounded-full"
+                  className="flex h-6 w-6 items-center justify-center rounded-none"
                   style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
                 >
                   <Play
@@ -611,7 +611,7 @@ function MidiaThumb({
         <button
           type="button"
           onClick={onRemover}
-          className="shrink-0 rounded-full p-0.5 hover:bg-[rgba(239,68,68,0.16)]"
+          className="shrink-0 rounded-none p-0.5 hover:bg-[rgba(239,68,68,0.16)]"
           title="Remover"
           aria-label={`Remover ${item.originalName}`}
         >

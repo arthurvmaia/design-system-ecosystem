@@ -101,7 +101,7 @@ export function PainelTipografia({
                   className="rounded-md border px-3 py-2 text-left transition-colors"
                   style={{
                     borderColor: ativo ? 'var(--color-primary)' : 'var(--color-border)',
-                    backgroundColor: ativo ? 'rgba(14,165,233,0.14)' : 'transparent',
+                    backgroundColor: ativo ? 'rgba(6,182,212,0.14)' : 'transparent',
                   }}
                 >
                   <span className="block text-[13px]" style={{ color: 'var(--color-fg)' }}>
@@ -138,7 +138,7 @@ export function PainelTipografia({
                   className="rounded-md border px-3 py-2 text-left transition-colors"
                   style={{
                     borderColor: ativo ? 'var(--color-primary)' : 'var(--color-border)',
-                    backgroundColor: ativo ? 'rgba(14,165,233,0.14)' : 'transparent',
+                    backgroundColor: ativo ? 'rgba(6,182,212,0.14)' : 'transparent',
                   }}
                 >
                   <span className="block text-[13px]" style={{ color: 'var(--color-fg)' }}>
@@ -259,14 +259,14 @@ export function PainelTipografia({
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2 text-[12px]">
           <span
-            className="rounded-full border px-2.5 py-1"
+            className="rounded-none border px-2.5 py-1"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
           >
             Títulos:{' '}
             <strong style={{ color: 'var(--color-fg)' }}>{familyName(branding.fontDisplay)}</strong>
           </span>
           <span
-            className="rounded-full border px-2.5 py-1"
+            className="rounded-none border px-2.5 py-1"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
           >
             Corpo:{' '}

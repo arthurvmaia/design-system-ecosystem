@@ -186,7 +186,7 @@ function FidelityBadge({
     const cor = '#dc2626';
     return (
       <span
-        className="inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+        className="inline-flex items-center gap-1 rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
         style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
         title={`A conferência de pixel mediu ${pct(comparacao.delta)} de diferença (limiar ${pct(comparacao.limiar)})`}
       >
@@ -199,7 +199,7 @@ function FidelityBadge({
     const cor = '#78716c';
     return (
       <span
-        className="inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+        className="inline-flex items-center gap-1 rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
         style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
         title="Ninguém conferiu esta peça: a captura não gerou medição de fidelidade para ela"
       >
@@ -211,7 +211,7 @@ function FidelityBadge({
   const cor = SUPORTE_COR[fidelity.support] ?? '#78716c';
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+      className="inline-flex items-center gap-1 rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
       style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
       title={fidelity.warnings.join(' · ')}
     >
@@ -260,7 +260,7 @@ function FidelityPanel({
     <div className="border-b px-6 py-3" style={{ borderColor: 'var(--color-border)' }}>
       <div className="flex flex-wrap items-center gap-2">
         <span
-          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.1em]"
+          className="inline-flex items-center gap-1 rounded-none px-2 py-0.5 text-[10px] uppercase tracking-[0.1em]"
           style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
         >
           {SUPORTE_LABEL[fidelity.support] ?? fidelity.support}
@@ -268,7 +268,7 @@ function FidelityPanel({
         {fidelity.interactions.map((it) => (
           <span
             key={`${it.kind}-${it.support}`}
-            className="ds-tag rounded-full border px-2 py-0.5 text-[10px]"
+            className="ds-tag rounded-none border px-2 py-0.5 text-[10px]"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
             title={it.description}
           >
@@ -286,7 +286,7 @@ function FidelityPanel({
             return (
               <span
                 key={`${it.kind}-${it.status}`}
-                className="ds-tag rounded-full px-2 py-0.5 text-[10px]"
+                className="ds-tag rounded-none px-2 py-0.5 text-[10px]"
                 style={{ backgroundColor: `${c}18`, color: c, border: `1px solid ${c}44` }}
                 title={it.note ?? (it.runtime ? `depende de ${it.runtime}` : undefined)}
               >
@@ -489,7 +489,7 @@ function DsSidebar({
               <button
                 type="button"
                 onClick={() => setConfirming(ds)}
-                className="mr-2 hidden rounded-full p-1.5 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:block"
+                className="mr-2 hidden rounded-none p-1.5 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:block"
                 title="Excluir extração"
               >
                 <Trash2 size={12} style={{ color: 'var(--color-ion-3)' }} />
@@ -818,11 +818,12 @@ function SegmentsView({
           type="button"
           onClick={() => classify.mutate()}
           disabled={classify.isPending}
-          className="ds-btn ds-glow-border ds-backdrop flex items-center gap-2 rounded-full px-4 py-2 text-[12px] disabled:opacity-50"
+          className="ds-btn ds-glow-border ds-backdrop ml-4 flex shrink-0 items-center gap-2 whitespace-nowrap rounded-none px-4 py-2 text-[12px] uppercase tracking-[0.14em] disabled:opacity-50"
           style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.04)',
-            color: 'var(--color-fg)',
-            fontFamily: 'var(--font-body)',
+            backgroundColor: 'rgb(var(--acento) / 0.08)',
+            borderColor: 'rgb(var(--acento) / 0.4)',
+            color: 'var(--color-ion-3)',
+            fontFamily: 'var(--font-display)',
           }}
         >
           {classify.isPending ? <Mascote tamanho={12} girando /> : <Sparkles size={12} />}
@@ -830,8 +831,12 @@ function SegmentsView({
         </button>
       </div>
 
+      {/* Duas faixas, não uma. Categoria é uma lista que cresce com o acervo;
+          seleção, qualidade e busca são controles de tamanho fixo. Numa linha
+          só, a lista de categorias espremia os outros até quebrar em degraus —
+          e com a display larga do tema isso acontece já em 1440px. */}
       <div
-        className="flex items-center gap-2 border-b px-8 py-3"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-8 py-3"
         style={{ borderColor: 'var(--color-border)' }}
       >
         <label
@@ -849,32 +854,7 @@ function SegmentsView({
           />
           Todos
         </label>
-        <span
-          className="mr-1 h-4 w-px shrink-0"
-          style={{ backgroundColor: 'var(--color-border)' }}
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {categoriasComItem.map((c) => (
-            <button
-              type="button"
-              key={c}
-              onClick={() => onCategoryChange(c)}
-              className={cn(
-                'ds-tag rounded-full border px-3 py-1 text-[11px]',
-                category === c
-                  ? 'ds-glass-static text-[var(--color-fg)]'
-                  : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
-              )}
-              style={{ fontFamily: 'var(--font-body)' }}
-            >
-              {CATEGORY_LABEL[c] ?? c}
-            </button>
-          ))}
-        </div>
-        <span
-          className="mx-1 h-4 w-px shrink-0"
-          style={{ backgroundColor: 'var(--color-border)' }}
-        />
+        <span className="h-4 w-px shrink-0" style={{ backgroundColor: 'var(--color-border)' }} />
         <div className="flex shrink-0 gap-1.5">
           {(
             [
@@ -889,7 +869,7 @@ function SegmentsView({
               key={v}
               onClick={() => setQualidade(v)}
               className={cn(
-                'ds-tag rounded-full border px-3 py-1 text-[11px]',
+                'ds-tag rounded-none border px-3 py-1 text-[11px]',
                 qualidade === v
                   ? 'ds-glass-static text-[var(--color-fg)]'
                   : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
@@ -905,7 +885,7 @@ function SegmentsView({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="buscar..."
-          className="ds-data ml-auto w-[200px] rounded-full border px-3.5 py-1.5 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(56,189,248,0.25)]"
+          className="ds-data ml-auto w-[200px] rounded-none border px-3.5 py-1.5 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)]"
           style={{
             borderColor: 'var(--color-border)',
             backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -914,11 +894,36 @@ function SegmentsView({
         />
       </div>
 
+      {/* Faixa das categorias. Fica na linha de baixo porque a lista cresce com
+          o acervo: um site com muitas dobras produz mais chips, e é a lista que
+          precisa de espaço para quebrar sem empurrar os controles fixos. */}
+      <div
+        className="flex flex-wrap gap-1.5 border-b px-8 py-2.5"
+        style={{ borderColor: 'var(--color-border)' }}
+      >
+        {categoriasComItem.map((c) => (
+          <button
+            type="button"
+            key={c}
+            onClick={() => onCategoryChange(c)}
+            className={cn(
+              'ds-tag rounded-none border px-3 py-1 text-[11px]',
+              category === c
+                ? 'ds-glass-static text-[var(--color-fg)]'
+                : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
+            )}
+            style={{ fontFamily: 'var(--font-body)' }}
+          >
+            {CATEGORY_LABEL[c] ?? c}
+          </button>
+        ))}
+      </div>
+
       {selCount > 0 && (
         <section
           aria-label="Ações em massa"
           className="ds-backdrop flex flex-wrap items-center gap-3 border-b px-8 py-2.5"
-          style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(14,165,233,0.14)' }}
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(6,182,212,0.14)' }}
         >
           <span className="ds-data text-[12px]" style={{ color: 'var(--color-fg)' }}>
             {selCount} selecionado{selCount === 1 ? '' : 's'}
@@ -927,7 +932,7 @@ function SegmentsView({
             type="button"
             onClick={() => curtirLote.mutate()}
             disabled={curtirLote.isPending}
-            className="ds-btn flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
+            className="ds-btn flex items-center gap-1.5 rounded-none px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
             {curtirLote.isPending ? <Mascote tamanho={12} girando /> : <Heart size={12} />}
@@ -945,7 +950,7 @@ function SegmentsView({
                 ? 'Marque 2 ou 3 componentes e eu mostro lado a lado'
                 : 'Ver lado a lado, com interação'
             }
-            className="ds-tag flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] disabled:opacity-40"
+            className="ds-tag flex items-center gap-1.5 rounded-none border px-3.5 py-1.5 text-[12px] disabled:opacity-40"
             style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg)' }}
           >
             <Columns2 size={12} />
@@ -959,7 +964,7 @@ function SegmentsView({
                 : excluirLote.mutate()
             }
             disabled={excluirLote.isPending}
-            className="ds-tag flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] disabled:opacity-50"
+            className="ds-tag flex items-center gap-1.5 rounded-none border px-3.5 py-1.5 text-[12px] disabled:opacity-50"
             style={{ borderColor: 'rgba(239,68,68,0.45)', color: 'var(--color-ion-3)' }}
           >
             <Trash2 size={12} />
@@ -968,7 +973,7 @@ function SegmentsView({
           <button
             type="button"
             onClick={() => setSel(new Set())}
-            className="ds-tag ml-auto flex items-center gap-1.5 rounded-full border border-transparent px-3 py-1.5 text-[12px]"
+            className="ds-tag ml-auto flex items-center gap-1.5 rounded-none border border-transparent px-3 py-1.5 text-[12px]"
             style={{ color: 'var(--color-fg-muted)' }}
           >
             <X size={12} />
@@ -1246,7 +1251,7 @@ function SegmentCard({
               >
                 {CATEGORIAS_DE_SISTEMA.has(segment.category) && (
                   <span
-                    className="rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.12em]"
+                    className="rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.12em]"
                     style={{
                       backgroundColor: 'var(--color-ion-8)',
                       color: 'var(--color-bone-1)',
@@ -1262,7 +1267,7 @@ function SegmentCard({
                 <button
                   type="button"
                   onClick={onAbrirPecas}
-                  className="ds-tag mt-1.5 flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
+                  className="ds-tag mt-1.5 flex items-center gap-1 rounded-none border px-2 py-0.5 text-[10px]"
                   style={{
                     borderColor: 'var(--color-border)',
                     color: 'var(--color-fg-muted)',
@@ -1278,7 +1283,7 @@ function SegmentCard({
               <button
                 type="button"
                 onClick={() => setConfirmDel(true)}
-                className="flex h-8 w-8 items-center justify-center rounded-full opacity-0 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:opacity-100"
+                className="flex h-8 w-8 items-center justify-center rounded-none opacity-0 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:opacity-100"
                 title="Excluir da triagem"
               >
                 <Trash2 size={12} style={{ color: 'var(--color-ion-3)' }} />
@@ -1288,7 +1293,7 @@ function SegmentCard({
                 onClick={() => add.mutate()}
                 disabled={segment.inLibrary || add.isPending}
                 className={cn(
-                  'flex h-9 w-9 items-center justify-center rounded-full transition-all duration-300 disabled:cursor-not-allowed',
+                  'flex h-9 w-9 items-center justify-center rounded-none transition-all duration-300 disabled:cursor-not-allowed',
                   segment.inLibrary ? 'ds-glow' : 'hover:scale-110',
                 )}
                 style={{
@@ -1395,7 +1400,7 @@ function PainelDePecas({
           <button
             type="button"
             onClick={() => onAbrirPeca(secao)}
-            className="ds-tag flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-[12px]"
+            className="ds-tag flex shrink-0 items-center gap-2 rounded-none border px-3.5 py-2 text-[12px]"
             style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg)' }}
             title="Ver a dobra inteira, com os estados e o scroll"
           >
@@ -1413,7 +1418,7 @@ function PainelDePecas({
               >
                 {CATEGORY_LABEL[categoria] ?? categoria}
                 <span
-                  className="rounded-full px-1.5 py-px text-[9px]"
+                  className="rounded-none px-1.5 py-px text-[9px]"
                   style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
                 >
                   {itens.length}
@@ -1521,7 +1526,7 @@ function SegmentCardFilho({
             <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
             {nomeDoPai !== undefined && (
               <span
-                className="truncate rounded-full border px-1.5 py-px"
+                className="truncate rounded-none border px-1.5 py-px"
                 style={{ borderColor: 'var(--color-border)' }}
                 title={`Extraído da seção "${nomeDoPai}"`}
               >
@@ -1534,7 +1539,7 @@ function SegmentCardFilho({
           <button
             type="button"
             onClick={() => setConfirmDel(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-full opacity-0 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:opacity-100"
+            className="flex h-7 w-7 items-center justify-center rounded-none opacity-0 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:opacity-100"
             title="Excluir da triagem"
           >
             <Trash2 size={11} style={{ color: 'var(--color-ion-3)' }} />
@@ -1544,7 +1549,7 @@ function SegmentCardFilho({
             onClick={() => add.mutate()}
             disabled={segment.inLibrary || add.isPending}
             className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-full transition-all duration-300 disabled:cursor-not-allowed',
+              'flex h-7 w-7 items-center justify-center rounded-none transition-all duration-300 disabled:cursor-not-allowed',
               segment.inLibrary ? 'ds-glow' : 'hover:scale-110',
             )}
             style={{
@@ -1643,7 +1648,7 @@ function SegmentDetail({
             >
               {CATEGORIAS_DE_SISTEMA.has(segment.category) && segment.parentId === null && (
                 <span
-                  className="rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.12em]"
+                  className="rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.12em]"
                   style={{
                     backgroundColor: 'var(--color-ion-8)',
                     color: 'var(--color-bone-1)',
@@ -1662,7 +1667,7 @@ function SegmentDetail({
                 onClick={() => setModo((m) => (m === 'estados' ? 'plano' : 'estados'))}
                 aria-pressed={modo === 'estados'}
                 title="Mostro aqui os estados que capturei: hover, clique, modal"
-                className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+                className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'estados' ? 'var(--color-primary)' : 'var(--color-border)',
                   color: modo === 'estados' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
@@ -1678,7 +1683,7 @@ function SegmentDetail({
                 onClick={() => setModo((m) => (m === 'scroll' ? 'plano' : 'scroll'))}
                 aria-pressed={modo === 'scroll'}
                 title="Rolo a prévia de verdade para mostrar o que capturei: revelar, parallax, barra fixa"
-                className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+                className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'scroll' ? 'var(--color-primary)' : 'var(--color-border)',
                   color: modo === 'scroll' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
@@ -1694,7 +1699,7 @@ function SegmentDetail({
                 onClick={() => setModo((m) => (m === 'hover' ? 'plano' : 'hover'))}
                 aria-pressed={modo === 'hover'}
                 title="Passo o mouse sozinho em cada elemento que reage, um de cada vez"
-                className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+                className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'hover' ? 'var(--color-primary)' : 'var(--color-border)',
                   color: modo === 'hover' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
@@ -1710,7 +1715,7 @@ function SegmentDetail({
                 onClick={() => setModo((m) => (m === 'print' ? 'plano' : 'print'))}
                 aria-pressed={modo === 'print'}
                 title="A dobra como eu vi no site, para comparar o componente com o original"
-                className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+                className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
                 style={{
                   borderColor: modo === 'print' ? 'var(--color-primary)' : 'var(--color-border)',
                   color: modo === 'print' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
@@ -1725,7 +1730,7 @@ function SegmentDetail({
               type="button"
               onClick={() => add.mutate()}
               disabled={segment.inLibrary || add.isPending}
-              className="ds-btn flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium disabled:opacity-50"
+              className="ds-btn flex items-center gap-2 rounded-none px-4 py-2 text-[12px] font-medium disabled:opacity-50"
               style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
             >
               {add.isPending ? <Mascote tamanho={12} girando /> : <Heart size={12} />}
@@ -1795,7 +1800,7 @@ function BgToggle({
     <button
       type="button"
       onClick={() => onChange(next)}
-      className="ds-tag flex items-center gap-2 rounded-full border px-3 py-2 text-[11px]"
+      className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
       style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
       title="Alternar o fundo da prévia (auto / claro / escuro)"
     >

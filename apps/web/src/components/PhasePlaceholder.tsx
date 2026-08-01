@@ -85,7 +85,7 @@ function StatusColumn({
               <li key={item} className="flex items-start gap-3">
                 <span
                   aria-hidden
-                  className="mt-[9px] h-[3px] w-[10px] shrink-0 rounded-full"
+                  className="mt-[9px] h-[3px] w-[10px] shrink-0 rounded-none"
                   style={{
                     backgroundColor:
                       tone === 'ready' ? 'var(--color-signal)' : 'var(--color-border-strong)',

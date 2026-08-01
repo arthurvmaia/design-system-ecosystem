@@ -20,7 +20,7 @@ export function SecaoCabecalho({
         </h3>
         {opcional && (
           <span
-            className="rounded-full border px-2 py-0.5 text-[11px] uppercase tracking-[0.12em]"
+            className="rounded-none border px-2 py-0.5 text-[11px] uppercase tracking-[0.12em]"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-subtle)' }}
           >
             Opcional
@@ -108,7 +108,7 @@ export function ChipsInput({
       {valores.map((v) => (
         <span
           key={v}
-          className="ds-tag inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px]"
+          className="ds-tag inline-flex items-center gap-1 rounded-none border px-2 py-0.5 text-[12px]"
           style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
         >
           {v}

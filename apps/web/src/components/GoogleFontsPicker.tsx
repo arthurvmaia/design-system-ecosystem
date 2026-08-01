@@ -91,7 +91,7 @@ export function GoogleFontsPicker({
             key={c.id}
             onClick={() => setCategoria(c.id)}
             aria-pressed={categoria === c.id}
-            className="ds-tag rounded-full border px-2.5 py-1 text-[11px]"
+            className="ds-tag rounded-none border px-2.5 py-1 text-[11px]"
             style={{
               borderColor: categoria === c.id ? 'var(--color-signal)' : 'var(--color-border)',
               color: categoria === c.id ? 'var(--color-fg)' : 'var(--color-fg-muted)',
@@ -167,7 +167,7 @@ function FontOption({
       className="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors"
       style={{
         borderColor: selected ? 'var(--color-signal)' : 'var(--color-border)',
-        backgroundColor: selected ? 'rgba(14,165,233,0.14)' : 'rgba(255,255,255,0.02)',
+        backgroundColor: selected ? 'rgba(6,182,212,0.14)' : 'rgba(255,255,255,0.02)',
       }}
     >
       <span className="min-w-0 flex-1">

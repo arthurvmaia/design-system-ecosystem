@@ -166,7 +166,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                 href={siteUrl(projeto.id, maisRecente.timestamp)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="ds-btn ds-glow-border ds-backdrop flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px]"
+                className="ds-btn ds-glow-border ds-backdrop flex items-center gap-1.5 rounded-none px-3.5 py-1.5 text-[12px]"
                 style={{ backgroundColor: 'rgba(255,255,255,0.04)', color: 'var(--color-fg)' }}
               >
                 <ExternalLink size={12} />
@@ -176,7 +176,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
             {maisRecente && (
               <a
                 href={downloadUrl(projeto.id, maisRecente.timestamp)}
-                className="ds-btn ds-glow flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium"
+                className="ds-btn ds-glow flex items-center gap-1.5 rounded-none px-3.5 py-1.5 text-[12px] font-medium"
                 style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
               >
                 <Download size={12} />
@@ -186,7 +186,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
             <button
               type="button"
               onClick={() => navigate(`/projects?edit=${projeto.id}`)}
-              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
+              className="flex items-center gap-1.5 rounded-none px-3 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               <Pencil size={12} />
@@ -195,7 +195,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
             <button
               type="button"
               onClick={() => abrirPasta.mutate()}
-              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
+              className="flex items-center gap-1.5 rounded-none px-3 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               <FolderOpen size={12} />
@@ -207,7 +207,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                 onClick={() => duplicar.mutate()}
                 disabled={duplicar.isPending}
                 title="Duplicar"
-                className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-white/[0.06]"
+                className="rounded-none p-1.5 transition-all hover:scale-110 hover:bg-white/[0.06]"
                 style={{ color: 'var(--color-fg-muted)' }}
               >
                 {duplicar.isPending ? <Mascote tamanho={13} girando /> : <Copy size={13} />}
@@ -216,7 +216,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                 type="button"
                 onClick={() => setConfirmDel(true)}
                 title="Excluir"
-                className="rounded-full p-1.5 transition-all hover:scale-110 hover:bg-[rgba(239,68,68,0.16)]"
+                className="rounded-none p-1.5 transition-all hover:scale-110 hover:bg-[rgba(239,68,68,0.16)]"
                 style={{ color: 'var(--color-ion-3)' }}
               >
                 <Trash2 size={13} />

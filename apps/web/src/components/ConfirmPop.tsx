@@ -52,7 +52,7 @@ export function ConfirmPop({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="rounded-full px-4 py-2 text-[12px] transition-colors hover:text-[var(--color-fg)] disabled:opacity-40"
+            className="rounded-none px-4 py-2 text-[12px] transition-colors hover:text-[var(--color-fg)] disabled:opacity-40"
             style={{ color: 'var(--color-fg-muted)' }}
           >
             {cancelLabel}
@@ -61,7 +61,7 @@ export function ConfirmPop({
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="ds-btn flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-medium disabled:opacity-50"
+            className="ds-btn flex items-center gap-2 rounded-none px-4 py-2 text-[12px] font-medium disabled:opacity-50"
             style={{
               backgroundColor: danger ? 'var(--color-ion-6)' : 'var(--color-primary)',
               color: 'var(--color-bone-1)',

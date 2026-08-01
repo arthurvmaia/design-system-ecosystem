@@ -83,7 +83,7 @@ export function RevisaoPage() {
                   {grupo.designSystemName}
                 </span>
                 <span
-                  className="ds-data rounded-full px-2 py-0.5 text-[10px]"
+                  className="ds-data rounded-none px-2 py-0.5 text-[10px]"
                   style={{
                     backgroundColor: 'var(--color-ion-8)',
                     color: 'var(--color-bone-1)',
@@ -178,7 +178,7 @@ function CardRejeitado({
             type="button"
             disabled={ocupado}
             onClick={() => recuperar.mutate()}
-            className="ds-btn flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-40"
+            className="ds-btn flex items-center gap-1.5 rounded-none px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-40"
             style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
           >
             {recuperar.isPending ? <Mascote tamanho={12} girando /> : <Sparkles size={12} />}
@@ -193,7 +193,7 @@ function CardRejeitado({
                   ? setConfirmaDescarte(true)
                   : descartar.mutate()
               }
-              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] transition-colors hover:bg-[rgba(239,68,68,0.14)] disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-none px-3 py-1.5 text-[12px] transition-colors hover:bg-[rgba(239,68,68,0.14)] disabled:opacity-40"
               style={{ color: 'var(--color-fg-muted)' }}
             >
               {descartar.isPending ? <Mascote tamanho={12} girando /> : <Trash2 size={12} />}
