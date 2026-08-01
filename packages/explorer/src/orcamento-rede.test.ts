@@ -73,7 +73,15 @@ test('fetcher seguro: download que NÃO responde é cortado pelo timeout individ
     const t0 = Date.now();
     const r = await fetcher(`http://localhost:${porta}/travado.png`);
     assert.equal(r, null, 'download travado devolve null');
-    assert.ok(Date.now() - t0 < 800, 'cortou perto do timeout, não ficou preso');
+    // O que este teste prova é que o download NÃO FICA PRESO — o servidor
+    // pendura para sempre, então sem o corte a espera seria infinita. A margem
+    // é generosa de propósito: o limiar anterior era de 800ms sobre um timeout
+    // de 120ms, e essa folga de 7x não sobrevive à suíte inteira rodando em
+    // paralelo (medido: 1,4s a 2,0s no `pnpm test`, 157ms rodando sozinho).
+    // Um teste que reprova por a máquina estar ocupada não mede o código, mede
+    // a CPU — e ensina a ignorar o vermelho. 30x ainda separa "cortou" de
+    // "ficou pendurado", que é a única distinção que importa aqui.
+    assert.ok(Date.now() - t0 < 4_000, 'cortou pelo timeout, não ficou preso');
     assert.ok((cont.n.timeouts ?? 0) >= 1, 'contou timeout');
     assert.ok((cont.n.downloadsAbortados ?? 0) >= 1, 'contou download abortado');
   } finally {

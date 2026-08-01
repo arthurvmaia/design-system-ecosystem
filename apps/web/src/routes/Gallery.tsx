@@ -14,7 +14,7 @@ import {
   previewSegmentScrollUrl,
   previewSegmentUrl,
 } from '@/lib/api';
-import { oQueFaltou } from '@/lib/captura-parcial';
+import { emMinutos, oQueFaltou, orcamentoSugeridoMs } from '@/lib/captura-parcial';
 import { cn } from '@/lib/cn';
 import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
 import { usePreferencias } from '@/lib/preferencias';
@@ -40,16 +40,19 @@ import {
   Camera,
   Columns2,
   Heart,
+  Info,
   Layers,
+  Monitor,
   MousePointer2,
   MoveVertical,
   Play,
+  Smartphone,
   Sparkles,
   Sun,
   Trash2,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
@@ -764,32 +767,17 @@ function SegmentsView({
             )}
           </div>
           {segments.data?.capturaParcial && (
-            <div
-              className="mt-2 flex items-start gap-2 rounded-md px-3 py-2 text-[11px] leading-relaxed"
-              style={{ backgroundColor: 'rgba(245,158,11,0.14)', color: 'var(--color-fg)' }}
-            >
-              <AlertTriangle
-                size={13}
-                className="mt-0.5 shrink-0"
-                style={{ color: 'var(--color-warn)' }}
-              />
-              <span>
-                <strong>Não terminei esta captura dentro do tempo</strong>, senhor.{' '}
-                {oQueFaltou(segments.data.capturaParcial.fase)} Extraia o site de novo para eu
-                completar.
-              </span>
-            </div>
+            <Aviso resumo="Não terminei esta captura dentro do tempo">
+              <CapturaParcial parcial={segments.data.capturaParcial} dsId={dsId} />
+            </Aviso>
           )}
           {(dsInfo.data?.assetsFaltando.length ?? 0) > 0 && (
-            <div
-              className="mt-2 rounded-md px-3 py-2 text-[11px] leading-relaxed"
-              style={{ backgroundColor: 'rgba(245,158,11,0.14)', color: 'var(--color-fg)' }}
+            <Aviso
+              resumo={`Não consegui baixar ${conta(dsInfo.data?.assetsFaltando.length ?? 0, 'arquivo', 'arquivos')} deste site`}
             >
-              Não consegui baixar{' '}
-              {conta(dsInfo.data?.assetsFaltando.length ?? 0, 'arquivo', 'arquivos')} deste site
-              (imagens, fontes), então algumas prévias aparecem sem estilo. Extraia este site de
-              novo para eu buscar o que faltou.
-            </div>
+              Faltaram imagens ou fontes, então algumas prévias aparecem sem estilo. Extraia este
+              site de novo para eu buscar o que faltou.
+            </Aviso>
           )}
           {rejDoDs > 0 && (
             <button
@@ -1651,6 +1639,15 @@ function SegmentDetail({
 }) {
   const qc = useQueryClient();
   const [bg, setBg] = useState<'claro' | 'escuro' | undefined>(undefined);
+  // O laudo nasce FECHADO. Um clique na peça é para ver a peça: o laudo aberto
+  // por padrão empurrava o componente para baixo e enchia a tela de texto sobre
+  // aquilo que a pessoa veio olhar. Ele continua a um clique de distância, e o
+  // botão avisa quando há ressalva para ler.
+  const [laudo, setLaudo] = useState(false);
+  // A largura em que a prévia é renderizada. 1440 é a viewport da captura;
+  // 390 é o celular. Ver a peça nas duas é o que separa "parece bom" de
+  // "funciona", e não existia lugar nenhum no app para fazer isso.
+  const [largura, setLargura] = useState<1440 | 390>(1440);
   const print = segment.fidelity?.framePath;
   // Camada que atravessa a página (o fundo) e referência visual não têm o que
   // mostrar sozinhas: o preview abriria um retângulo vazio. Quando existe
@@ -1671,6 +1668,14 @@ function SegmentDetail({
   // (loop das amostras) — a miniatura limpa fica só para o card da grade.
   const ehReferenciaVisual = segment.fidelity?.support === 'visual';
   const temScroll = !ehReferenciaVisual && (segment.fidelity?.scroll?.length ?? 0) > 0;
+  // Vale abrir o laudo? É o que decide o ponto de aviso no botão: sem medição,
+  // com selo diferente de completo, com aviso do compilador ou reprovada no
+  // pixel. Peça limpa não pede leitura nenhuma.
+  const temRessalva =
+    !segment.fidelity ||
+    segment.fidelity.support !== 'completo' ||
+    segment.fidelity.warnings.length > 0 ||
+    segment.comparacaoVisual?.passou === false;
 
   const add = useMutation({
     mutationFn: () => api.addToLibrary(segment.id),
@@ -1777,7 +1782,13 @@ function SegmentDetail({
                 {modo === 'print' ? 'Vendo o print' : 'Print da dobra'}
               </button>
             )}
+            <LarguraToggle largura={largura} onChange={setLargura} />
             <BgToggle bg={bg} onChange={setBg} />
+            <BotaoDeLaudo
+              aberto={laudo}
+              temRessalva={temRessalva}
+              onClick={() => setLaudo((v) => !v)}
+            />
             <button
               type="button"
               onClick={() => add.mutate()}
@@ -1790,52 +1801,227 @@ function SegmentDetail({
             </button>
           </div>
         </div>
-        <FidelityPanel
-          fidelity={segment.fidelity}
-          comparacao={segment.comparacaoVisual}
-          limitacoes={segment.limitacoes}
-        />
-        {modo === 'print' && print !== undefined ? (
-          <div className="p-4">
-            {/* Imagem, não iframe: é registro do que a captura viu, não o
-                componente rodando. A distinção importa — misturar os dois é
-                como o "card preto" nasce. */}
-            <img
-              src={frameUrl(dsId, print)}
-              alt={`Print da dobra ${segment.name} no site de origem`}
-              className="w-full rounded-lg"
-              style={{ border: '1px solid var(--color-border)' }}
-            />
-            <p className="mt-3 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-              {abreNoPrint
-                ? 'Esta camada cobre a página toda, então sozinha ela não mostra nada. Esmaeci o conteúdo de propósito: o que importa aqui é o fundo.'
-                : 'A dobra no site de origem, no momento em que capturei. Compare com a prévia para ver o que veio junto e o que ficou pelo caminho.'}
-            </p>
+        {/* A peça e o laudo lado a lado, nunca um em cima do outro. Com o laudo
+            fechado (o padrão) a peça fica com a largura toda. */}
+        <div className="flex min-h-0">
+          <div className="min-w-0 flex-1 p-4">
+            {modo === 'print' && print !== undefined ? (
+              <>
+                {/* Imagem, não iframe: é registro do que a captura viu, não o
+                    componente rodando. A distinção importa — misturar os dois é
+                    como o "card preto" nasce. */}
+                <img
+                  src={frameUrl(dsId, print)}
+                  alt={`Print da dobra ${segment.name} no site de origem`}
+                  className="w-full rounded-none"
+                  style={{ border: '1px solid var(--color-border)' }}
+                />
+                <p className="mt-3 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+                  {abreNoPrint
+                    ? 'Esta camada cobre a página toda, então sozinha ela não mostra nada. Esmaeci o conteúdo de propósito: o que importa aqui é o fundo.'
+                    : 'A dobra no site de origem, no momento em que capturei. Compare com a prévia para ver o que veio junto e o que ficou pelo caminho.'}
+                </p>
+              </>
+            ) : (
+              <div
+                className={cn('mx-auto', largura === 390 && 'max-w-[390px]')}
+                style={largura === 390 ? { border: '1px solid var(--color-border)' } : undefined}
+              >
+                <PreviewFrame
+                  key={`${bg ?? 'auto'}-${ehReferenciaVisual ? 'ref' : modo}-${largura}`}
+                  src={
+                    modo === 'scroll'
+                      ? previewSegmentScrollUrl(segment.id, bg)
+                      : modo === 'hover'
+                        ? previewSegmentHoverUrl(segment.id, bg)
+                        : modo === 'estados' || ehReferenciaVisual
+                          ? previewSegmentReplayUrl(segment.id, bg)
+                          : previewSegmentUrl(segment.id, bg)
+                  }
+                  title={segment.name}
+                  aspect={16 / 11}
+                  virtualWidth={largura}
+                  interactive
+                  // No detalhe a seção aparece inteira; a proporção fixa é da grade.
+                  autoHeight={modo === 'plano' && !ehReferenciaVisual}
+                />
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="p-4">
-            <PreviewFrame
-              key={`${bg ?? 'auto'}-${ehReferenciaVisual ? 'ref' : modo}`}
-              src={
-                modo === 'scroll'
-                  ? previewSegmentScrollUrl(segment.id, bg)
-                  : modo === 'hover'
-                    ? previewSegmentHoverUrl(segment.id, bg)
-                    : modo === 'estados' || ehReferenciaVisual
-                      ? previewSegmentReplayUrl(segment.id, bg)
-                      : previewSegmentUrl(segment.id, bg)
-              }
-              title={segment.name}
-              aspect={16 / 11}
-              interactive
-              // No detalhe a seção aparece inteira; a proporção fixa é da grade.
-              autoHeight={modo === 'plano' && !ehReferenciaVisual}
-              className="rounded-lg"
-            />
-          </div>
-        )}
+          {laudo && (
+            <aside
+              className="w-[340px] shrink-0 overflow-y-auto border-l"
+              style={{ borderColor: 'var(--color-border)', maxHeight: '70vh' }}
+              aria-label="O que eu medi nesta peça"
+            >
+              <FidelityPanel
+                fidelity={segment.fidelity}
+                comparacao={segment.comparacaoVisual}
+                limitacoes={segment.limitacoes}
+              />
+            </aside>
+          )}
+        </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * O detalhe do corte, com a instrução que de fato resolve.
+ *
+ * A versão antiga terminava em "Extraia o site de novo para eu completar", e
+ * essa frase é um conselho que não funciona: repetir sem mudar o orçamento corta
+ * a mesma fase no mesmo lugar. Foi medido nesta própria tela — a segunda
+ * tentativa, com cinco vezes mais tempo, saiu parcial de novo.
+ *
+ * Agora a tela diz quanto a fase chegou a receber, quanto pedir na próxima, e
+ * assume que é estimativa. Quando o motor não gravou o número, ela não inventa:
+ * diz que o que está aqui é bom e o que falta são as dobras de baixo.
+ */
+function CapturaParcial({
+  parcial,
+  dsId,
+}: {
+  parcial: { fase: string; motivo?: string; totalMs: number };
+  dsId: string;
+}) {
+  const sugerido = orcamentoSugeridoMs(parcial.motivo);
+  return (
+    <>
+      <p>{oQueFaltou(parcial.fase)}</p>
+      <p className="mt-2">
+        O que está aqui é bom: os segmentos têm pacote próprio, o CSS veio inteiro e os ícones foram
+        desenhados. O que falta são os comportamentos das dobras de baixo.
+      </p>
+      {sugerido === null ? (
+        <p className="mt-2">
+          Para tentar completar, extraia de novo com mais tempo — a fase que cortou foi a{' '}
+          <code className="ds-data">{parcial.fase}</code>.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2">
+            Repetir do mesmo jeito dá o mesmo resultado. Para ir mais longe, dê mais tempo (cerca de{' '}
+            {emMinutos(sugerido)} minutos, estimados a partir do que esta fase pediu):
+          </p>
+          <pre
+            className="ds-data mt-1.5 overflow-x-auto rounded-none px-2 py-1.5 text-[10px]"
+            style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+          >
+            {`$env:DS_EXPLORER_ORCAMENTO_TOTAL_MS = "${sugerido}"\npnpm reextrair ${dsId}`}
+          </pre>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * Aviso de uma linha, com o detalhe atrás de um clique.
+ *
+ * Os avisos da Galeria ocupavam três linhas cada, empilhados acima da grade, e
+ * empurravam as peças para fora da tela — a informação é útil, o tamanho é que
+ * não era. Aqui fica o essencial visível e o resto a um clique, pela mesma razão
+ * do laudo: quem abriu a Galeria veio ver componente.
+ */
+function Aviso({ resumo, children }: { resumo: string; children: ReactNode }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <div
+      className="mt-2 rounded-none px-3 py-2 text-[11px] leading-relaxed"
+      style={{ backgroundColor: 'rgba(245,158,11,0.14)', color: 'var(--color-fg)' }}
+    >
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        className="flex w-full items-center gap-2 text-left"
+      >
+        <AlertTriangle size={13} className="shrink-0" style={{ color: 'var(--color-warn)' }} />
+        <strong className="min-w-0 flex-1 truncate">{resumo}</strong>
+        <span className="ds-label shrink-0">{aberto ? 'fechar' : 'saiba mais'}</span>
+      </button>
+      {aberto && <div className="mt-2 pl-[21px]">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * O botão que abre o laudo.
+ *
+ * Ele existe porque a medição não pode sumir — a Galeria inteira foi consertada
+ * para parar de esconder o que mediu. Mas medição em modo laudo, aberta em cima
+ * da peça, é o que fazia a lente virar formulário. Aqui ela fica a um clique, e
+ * o ponto âmbar avisa que há ressalva para ler antes de curtir.
+ */
+function BotaoDeLaudo({
+  aberto,
+  temRessalva,
+  onClick,
+}: {
+  aberto: boolean;
+  temRessalva: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={aberto}
+      title={
+        temRessalva
+          ? 'Esta peça tem ressalva na medição. Clique para ler o que eu conferi'
+          : 'O que eu medi nesta peça'
+      }
+      className="ds-tag relative flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
+      style={{
+        borderColor: aberto ? 'var(--color-primary)' : 'var(--color-border)',
+        color: aberto ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+      }}
+    >
+      <Info size={12} />
+      {aberto ? 'Fechar laudo' : 'O que eu medi'}
+      {temRessalva && !aberto && (
+        <span
+          aria-hidden
+          className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: 'var(--color-warn)' }}
+        />
+      )}
+    </button>
+  );
+}
+
+/** Largura da prévia: a da captura (1440) e a do celular (390). */
+function LarguraToggle({
+  largura,
+  onChange,
+}: {
+  largura: 1440 | 390;
+  onChange: (l: 1440 | 390) => void;
+}) {
+  return (
+    <div className="flex shrink-0">
+      {([1440, 390] as const).map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => onChange(l)}
+          aria-pressed={largura === l}
+          title={l === 1440 ? 'Ver como no computador' : 'Ver como no celular'}
+          className="ds-tag ds-data flex items-center gap-1.5 rounded-none border px-3 py-2 text-[11px]"
+          style={{
+            borderColor: largura === l ? 'var(--color-primary)' : 'var(--color-border)',
+            color: largura === l ? 'var(--color-primary)' : 'var(--color-fg-muted)',
+            marginLeft: l === 390 ? -1 : 0,
+          }}
+        >
+          {l === 1440 ? <Monitor size={11} /> : <Smartphone size={11} />}
+          {l}
+        </button>
+      ))}
+    </div>
   );
 }
 

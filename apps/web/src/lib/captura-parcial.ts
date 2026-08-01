@@ -39,3 +39,38 @@ export const oQueFaltou = (fase: string | undefined): string => {
   if (fase === undefined || fase.trim() === '') return GERAL;
   return CONSEQUENCIA[fase] ?? GERAL;
 };
+
+/**
+ * Quanto tempo dar na próxima tentativa, em MILISSEGUNDOS, ou `null` quando não
+ * dá para saber.
+ *
+ * O aviso antigo dizia "extraia o site de novo para eu completar", e essa frase
+ * mandava repetir uma ação que dá o mesmo resultado: sem mudar o orçamento, a
+ * fase é cortada no mesmo lugar. Medido nesta página: a primeira captura cortou
+ * o percurso aos 61s; repetida com 900s de orçamento, a fase recebeu 414s e foi
+ * cortada de novo. Repetir sem número não conserta nada.
+ *
+ * O motor grava no motivo quanto a fase chegou a receber ("orçamento da fase
+ * esgotado (414394ms)"). Isso é o PISO do que ela precisa — ela foi cortada ali,
+ * então precisa de mais. Dobrar esse piso é o palpite honesto, e a tela diz que
+ * é um palpite.
+ *
+ * A conta é sobre a fase, mas o botão controla o TOTAL, e a fase recebe uma
+ * fração dele. Por isso o resultado é multiplicado de volta: pedir 2x o tempo da
+ * fase no total daria à fase bem menos que o dobro.
+ */
+export const orcamentoSugeridoMs = (motivo: string | undefined): number | null => {
+  const m = motivo?.match(/\((\d+)ms\)/);
+  if (!m) return null;
+  const daFase = Number(m[1]);
+  if (!Number.isFinite(daFase) || daFase <= 0) return null;
+  // A fase mais cara (o percurso) recebe cerca de um terço do total, então o
+  // total precisa ser cerca de três vezes o que se quer dar a ela.
+  const total = daFase * 2 * 3;
+  // Arredonda para o minuto de cima: o número vai para a tela e para uma linha
+  // de comando, e "2700000" lê melhor que "2486364".
+  return Math.ceil(total / 60_000) * 60_000;
+};
+
+/** O mesmo número em minutos, para a frase da tela. */
+export const emMinutos = (ms: number): number => Math.round(ms / 60_000);
