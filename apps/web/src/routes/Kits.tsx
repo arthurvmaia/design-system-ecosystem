@@ -24,6 +24,7 @@ import {
   ArrowUp,
   ChevronDown,
   Copy,
+  Eye,
   Layers,
   Package,
   Pencil,
@@ -32,6 +33,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { FormulaDoKit } from './kits/FormulaDoKit';
 
 /** O rótulo da categoria vem da taxonomia única do `@ds/shared`. A cópia que
     morava aqui conhecia 15 das 25 categorias. */
@@ -293,6 +295,7 @@ function KitCard({
 }) {
   const qc = useQueryClient();
   const [confirmDel, setConfirmDel] = useState(false);
+  const [vendoFormula, setVendoFormula] = useState(false);
   const capa = kit.components[0];
 
   // O design system consolidado vira uma faixa de cores no card. `staleTime`
@@ -378,6 +381,11 @@ function KitCard({
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+              {/* A fórmula fica ANTES do editar: a pergunta mais comum diante de
+                  um kit é "o que tem aqui dentro", não "quero mexer". */}
+              <IconBtn title="Ver a fórmula deste kit" onClick={() => setVendoFormula(true)}>
+                <Eye size={13} />
+              </IconBtn>
               <IconBtn title="Editar" onClick={onEdit}>
                 <Pencil size={13} />
               </IconBtn>
@@ -453,6 +461,8 @@ function KitCard({
           )
         }
       />
+
+      {vendoFormula && <FormulaDoKit kit={kit} onClose={() => setVendoFormula(false)} />}
     </div>
   );
 }
