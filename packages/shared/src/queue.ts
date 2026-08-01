@@ -8,10 +8,21 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { queueDoneDir, queueLotePath, queuePendingDir } from './paths.js';
+import { ehJobId, queueDoneDir, queueLotePath, queuePendingDir } from './paths.js';
 import type { QueueJob, QueueJobType } from './schemas/queue.js';
 
 /** Operações de fila. Puro sistema de arquivos — sem processo, sem watcher, sem daemon. */
+
+/**
+ * O id do job vira NOME DE ARQUIVO em `queue/`, e as quatro funções abaixo o
+ * concatenam por conta própria (não passam pelas funções guardadas de
+ * `paths.ts`). Um id que não tem forma de id nunca chega ao disco: sem esta
+ * conferência, `cancelJob('../../x')` lia, sobrescrevia e movia um `.json`
+ * qualquer da máquina, porque `pendente/` e `concluido/` estão na mesma
+ * profundidade e o caminho de leitura e o de escrita resolviam para o MESMO
+ * arquivo.
+ */
+const jobInvalido = (id: string): boolean => !ehJobId(id);
 
 const ensureDirs = (): void => {
   for (const dir of [queuePendingDir(), queueDoneDir()]) {
@@ -215,6 +226,7 @@ export const getProgresso = (): {
 };
 
 export const getJob = (id: string): QueueJob | null => {
+  if (jobInvalido(id)) return null;
   for (const dir of [queuePendingDir(), queueDoneDir()]) {
     const path = join(dir, `${id}.json`);
     if (existsSync(path)) {
@@ -237,6 +249,7 @@ export const getJob = (id: string): QueueJob | null => {
  * fecha.
  */
 export const setJobResult = (id: string, result: Record<string, unknown>): QueueJob | null => {
+  if (jobInvalido(id)) return null;
   const pendingPath = join(queuePendingDir(), `${id}.json`);
   if (!existsSync(pendingPath)) return null;
   const job = JSON.parse(readFileSync(pendingPath, 'utf8')) as QueueJob;
@@ -250,6 +263,7 @@ export const finishJob = (
   id: string,
   outcome: { result?: Record<string, unknown>; error?: string },
 ): QueueJob | null => {
+  if (jobInvalido(id)) return null;
   ensureDirs();
   const pendingPath = join(queuePendingDir(), `${id}.json`);
   if (!existsSync(pendingPath)) return null;
@@ -277,6 +291,7 @@ export const finishJob = (
  * histórico.
  */
 export const cancelJob = (id: string): boolean => {
+  if (jobInvalido(id)) return false;
   const pendingPath = join(queuePendingDir(), `${id}.json`);
   if (!existsSync(pendingPath)) return false;
   const job = JSON.parse(readFileSync(pendingPath, 'utf8')) as QueueJob;

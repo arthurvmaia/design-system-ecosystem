@@ -1,4 +1,4 @@
-import { cancelJob, getProgresso, listDoneJobs, listPendingJobs } from '@ds/shared';
+import { cancelJob, ehJobId, getProgresso, listDoneJobs, listPendingJobs } from '@ds/shared';
 import { Hono } from 'hono';
 import { getExecutionMode } from '../lib/execution-mode.js';
 
@@ -22,7 +22,9 @@ queueRoute.get('/', (c) => {
 });
 
 queueRoute.delete('/:id', (c) => {
-  const ok = cancelJob(c.req.param('id'));
+  const id = c.req.param('id');
+  if (!ehJobId(id)) return c.json({ error: 'invalid_id' }, 400);
+  const ok = cancelJob(id);
   if (!ok) return c.json({ error: 'not_found' }, 404);
   return c.json({ ok: true });
 });

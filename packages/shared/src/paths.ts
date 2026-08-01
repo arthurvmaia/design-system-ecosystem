@@ -16,6 +16,45 @@ export const getRoot = (): string => {
   return process.env.DS_ECOSYSTEM_ROOT ?? DEFAULT_ROOT;
 };
 
+// ── Guarda de id ───────────────────────────────────────────────────────────
+/**
+ * Um id só vira caminho de disco se tiver a FORMA de um id: prefixo do tipo e
+ * miolo alfanumérico, nada mais. `..`, separador de caminho, barra que chegou
+ * codificada na URL e foi decodificada pelo roteador — tudo reprova.
+ *
+ * A regra mora aqui, e não em cada rota, porque cada rota validando do próprio
+ * jeito deixou quatro formatos coexistirem — e dois deles (`startsWith` e cast
+ * puro) não barravam travessia. As funções de caminho abaixo RECUSAM id fora
+ * da regra, então rota nova nasce protegida sem depender de disciplina.
+ *
+ * O comprimento fica livre de propósito: os ids reais são ULID de 26
+ * caracteres, mas os testes usam ids curtos (`ds_A`) e um acervo importado
+ * pode trazer ids de outra geração. O que protege o disco é o alfanumérico
+ * ancorado: separador nenhum passa.
+ */
+export const ehDesignSystemId = (valor: string): valor is DesignSystemId =>
+  /^ds_[A-Za-z0-9]+$/.test(valor);
+export const ehProjectId = (valor: string): valor is ProjectId => /^prj_[A-Za-z0-9]+$/.test(valor);
+export const ehComponentId = (valor: string): valor is ComponentId =>
+  /^cmp_[A-Za-z0-9]+$/.test(valor);
+export const ehTaskId = (valor: string): valor is TaskId => /^task_[A-Za-z0-9]+$/.test(valor);
+/** Id de job da fila (`job_` + base36). Vira nome de arquivo em `queue/`. */
+export const ehJobId = (valor: string): boolean => /^job_[A-Za-z0-9]+$/.test(valor);
+/** Chave de segmento em disco: tanto `seg_<ulid>` quanto a pasta `seg_3` do bundle. */
+export const ehChaveDeSegmento = (valor: string): boolean => /^seg_[A-Za-z0-9]+$/.test(valor);
+/** Nome de versão gerada (`2026-07-29T02-16-11-833Z`): só caracteres de nome simples. */
+export const ehNomeDeVersao = (valor: string): boolean =>
+  /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(valor) && !valor.includes('..');
+
+const conferido = (valor: string, ok: boolean): string => {
+  if (!ok) {
+    throw new Error(
+      `Recusei montar um caminho com "${valor}": não tem a forma de um id do ecossistema.`,
+    );
+  }
+  return valor;
+};
+
 /** Arquivo do índice SQLite. */
 export const dbPath = (): string => join(getRoot(), 'ecosystem.db');
 
@@ -27,7 +66,8 @@ export const lockPath = (): string => join(getRoot(), '.lock');
 
 // ── Vault ──────────────────────────────────────────────────────────────────
 export const vaultDir = (): string => join(getRoot(), 'vault');
-export const vaultDsDir = (id: DesignSystemId): string => join(vaultDir(), id);
+export const vaultDsDir = (id: DesignSystemId): string =>
+  join(vaultDir(), conferido(id, ehDesignSystemId(id)));
 export const vaultSourceDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'source');
 export const vaultExtractedDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'extracted');
 /**
@@ -73,7 +113,7 @@ export const vaultSegmentsDir = (id: DesignSystemId): string => join(vaultDsDir(
 export const vaultSegmentBundlesDir = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'bundles');
 export const vaultSegmentBundleDir = (id: DesignSystemId, segId: string): string =>
-  join(vaultSegmentBundlesDir(id), segId);
+  join(vaultSegmentBundlesDir(id), conferido(segId, ehChaveDeSegmento(segId)));
 export const vaultSegmentsManifest = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'manifest.json');
 /**
@@ -84,12 +124,12 @@ export const vaultSegmentsManifest = (id: DesignSystemId): string =>
 export const vaultSegmentStatesDir = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'states');
 export const vaultSegmentStates = (id: DesignSystemId, segId: string): string =>
-  join(vaultSegmentStatesDir(id), `${segId}.json`);
+  join(vaultSegmentStatesDir(id), `${conferido(segId, ehChaveDeSegmento(segId))}.json`);
 /** Comportamentos de scroll de um segmento (para o preview reproduzir). */
 export const vaultSegmentScrollDir = (id: DesignSystemId): string =>
   join(vaultSegmentsDir(id), 'scroll');
 export const vaultSegmentScroll = (id: DesignSystemId, segId: string): string =>
-  join(vaultSegmentScrollDir(id), `${segId}.json`);
+  join(vaultSegmentScrollDir(id), `${conferido(segId, ehChaveDeSegmento(segId))}.json`);
 /**
  * Registro do que foi validado em navegador (replay executado e conferido).
  * Fica separado dos insights: os insights saem da segmentação; a validação é um
@@ -105,7 +145,8 @@ export const vaultRejeitadosPath = (id: DesignSystemId): string =>
 export const libraryDir = (): string => join(getRoot(), 'library');
 export const librarySharedDir = (): string => join(libraryDir(), '_shared');
 export const librarySharedAssetDir = (sha256: string): string => join(librarySharedDir(), sha256);
-export const libraryComponentDir = (id: ComponentId): string => join(libraryDir(), id);
+export const libraryComponentDir = (id: ComponentId): string =>
+  join(libraryDir(), conferido(id, ehComponentId(id)));
 export const libraryComponentBundleDir = (id: ComponentId): string =>
   join(libraryComponentDir(id), 'bundle');
 export const libraryComponentPreview = (id: ComponentId): string =>
@@ -132,7 +173,7 @@ export const libraryComponentTokens = (id: ComponentId): string =>
  *   separador de caminho reprovam.
  */
 export const podeApagarDesignSystem = (dir: string, raizDoVault: string, id: string): boolean => {
-  if (!/^ds_[A-Za-z0-9]+$/.test(id)) return false;
+  if (!ehDesignSystemId(id)) return false;
   const raiz = resolve(raizDoVault);
   const alvo = resolve(dir);
   return alvo !== raiz && alvo.startsWith(raiz + sep);
@@ -140,13 +181,14 @@ export const podeApagarDesignSystem = (dir: string, raizDoVault: string, id: str
 
 // ── Projects ───────────────────────────────────────────────────────────────
 export const projectsDir = (): string => join(getRoot(), 'projects');
-export const projectDir = (id: ProjectId): string => join(projectsDir(), id);
+export const projectDir = (id: ProjectId): string =>
+  join(projectsDir(), conferido(id, ehProjectId(id)));
 export const projectContentDir = (id: ProjectId): string => join(projectDir(id), 'content');
 export const projectBrandingDir = (id: ProjectId): string => join(projectDir(id), 'branding');
 export const projectMediaDir = (id: ProjectId): string => join(projectDir(id), 'media');
 export const projectGeneratedDir = (id: ProjectId): string => join(projectDir(id), 'generated');
 export const projectGeneratedVersionDir = (id: ProjectId, isoTimestamp: string): string =>
-  join(projectGeneratedDir(id), isoTimestamp);
+  join(projectGeneratedDir(id), conferido(isoTimestamp, ehNomeDeVersao(isoTimestamp)));
 
 // ── Cache ──────────────────────────────────────────────────────────────────
 export const cacheDir = (): string => join(getRoot(), 'cache');
@@ -156,7 +198,8 @@ export const cachePlaywrightDir = (): string => join(cacheDir(), 'playwright');
 
 // ── Workspace ──────────────────────────────────────────────────────────────
 export const workspaceDir = (): string => join(getRoot(), 'workspace');
-export const workspaceTaskDir = (id: TaskId): string => join(workspaceDir(), id);
+export const workspaceTaskDir = (id: TaskId): string =>
+  join(workspaceDir(), conferido(id, ehTaskId(id)));
 export const workspaceTaskInputDir = (id: TaskId): string => join(workspaceTaskDir(id), 'input');
 export const workspaceTaskOutputDir = (id: TaskId): string => join(workspaceTaskDir(id), 'output');
 export const workspaceTaskManifest = (id: TaskId): string =>

@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, relative } from 'node:path';
 import {
+  ehComponentId,
+  ehDesignSystemId,
   libraryComponentBundleDir,
   vaultCaptureAssetsDir,
   vaultCaptureV2AssetsDir,
@@ -124,14 +126,14 @@ const restoDaUrl = (fullUrl: string, base: string, id: string): string => {
 
 assetRoute.get('/:dsId/*', (c) => {
   const dsId = c.req.param('dsId');
-  if (!/^ds_[a-z0-9]+$/i.test(dsId)) return jsonResp(400, 'invalid_id');
+  if (!ehDesignSystemId(dsId)) return jsonResp(400, 'invalid_id');
   const resto = restoDaUrl(c.req.url, '/api/asset', dsId);
   const range = c.req.header('range');
-  const v1 = servirDe(vaultCaptureAssetsDir(dsId as `ds_${string}`), resto, range);
+  const v1 = servirDe(vaultCaptureAssetsDir(dsId), resto, range);
   if (v1.status !== 404) return v1;
   // Extração V2: os assets moram em `capture-v2/assets/`, no mesmo formato
   // content-addressed. Mesmas guardas, outra raiz.
-  return servirDe(vaultCaptureV2AssetsDir(dsId as `ds_${string}`), resto, range);
+  return servirDe(vaultCaptureV2AssetsDir(dsId), resto, range);
 });
 
 /**
@@ -143,9 +145,9 @@ assetRoute.get('/:dsId/*', (c) => {
  */
 frameRoute.get('/:dsId/*', (c) => {
   const dsId = c.req.param('dsId');
-  if (!/^ds_[a-z0-9]+$/i.test(dsId)) return jsonResp(400, 'invalid_id');
+  if (!ehDesignSystemId(dsId)) return jsonResp(400, 'invalid_id');
   return servirDe(
-    vaultCaptureV2FramesDir(dsId as `ds_${string}`),
+    vaultCaptureV2FramesDir(dsId),
     restoDaUrl(c.req.url, '/api/frame', dsId),
     c.req.header('range'),
   );
@@ -153,9 +155,9 @@ frameRoute.get('/:dsId/*', (c) => {
 
 libraryAssetRoute.get('/:cmpId/*', (c) => {
   const cmpId = c.req.param('cmpId');
-  if (!/^cmp_[a-z0-9]+$/i.test(cmpId)) return jsonResp(400, 'invalid_id');
+  if (!ehComponentId(cmpId)) return jsonResp(400, 'invalid_id');
   return servirDe(
-    join(libraryComponentBundleDir(cmpId as `cmp_${string}`), 'assets'),
+    join(libraryComponentBundleDir(cmpId), 'assets'),
     restoDaUrl(c.req.url, '/api/library-asset', cmpId),
     c.req.header('range'),
   );

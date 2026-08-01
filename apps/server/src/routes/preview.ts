@@ -11,6 +11,8 @@ import {
   type StoredState,
   assetRoutePrefix,
   construirIndiceAssets,
+  ehComponentId,
+  ehDesignSystemId,
   libraryComponentBundleDir,
   reescreverParaLocal,
   vaultCaptureAssetsDir,
@@ -946,12 +948,12 @@ const servirArquivoDeBundle = (
 previewRoute.get('/bundle/:dsId/:pasta/:caminho{.+}', (c) => {
   const dsId = c.req.param('dsId');
   const pasta = c.req.param('pasta');
-  if (!dsId.startsWith('ds_') || !/^seg_\d+$/.test(pasta)) {
+  if (!ehDesignSystemId(dsId) || !/^seg_\d+$/.test(pasta)) {
     return new Response(null, { status: 404 });
   }
   return servirArquivoDeBundle(
-    join(vaultSegmentBundlesDir(dsId as `ds_${string}`), pasta),
-    vaultCaptureV2Dir(dsId as `ds_${string}`),
+    join(vaultSegmentBundlesDir(dsId), pasta),
+    vaultCaptureV2Dir(dsId),
     c.req.param('caminho'),
     c.req.query('mini') === '1',
   );
@@ -965,11 +967,11 @@ previewRoute.get('/bundle/:dsId/:pasta/:caminho{.+}', (c) => {
  */
 previewRoute.get('/library-bundle/:cmpId/:caminho{.+}', (c) => {
   const cmpId = c.req.param('cmpId');
-  if (!/^cmp_[a-z0-9]+$/i.test(cmpId)) {
+  if (!ehComponentId(cmpId)) {
     return new Response(null, { status: 404 });
   }
   return servirArquivoDeBundle(
-    libraryComponentBundleDir(cmpId as `cmp_${string}`),
+    libraryComponentBundleDir(cmpId),
     null,
     c.req.param('caminho'),
     c.req.query('mini') === '1',
@@ -1072,9 +1074,9 @@ previewRoute.get('/component/:cmpId', (c) => {
 previewRoute.get('/rejeitado/:dsId/:segId', (c) => {
   const dsId = c.req.param('dsId');
   const segId = c.req.param('segId');
-  if (!dsId.startsWith('ds_')) return responderHtml(fallback('ID inválido', '', ''), 404);
+  if (!ehDesignSystemId(dsId)) return responderHtml(fallback('ID inválido', '', ''), 404);
 
-  const path = vaultRejeitadosPath(dsId as `ds_${string}`);
+  const path = vaultRejeitadosPath(dsId);
   if (!existsSync(path)) {
     return responderHtml(
       fallback('Nada rejeitado aqui', 'Este design system não tem candidatos rejeitados.', ''),

@@ -12,6 +12,7 @@ import {
   type ProjectContent,
   ProjectLayout,
   analisarVideo,
+  ehProjectId,
   enqueueJob,
   jobsAbertosDoProjeto,
   newProjectId,
@@ -114,12 +115,12 @@ projectsRoute.get('/:id', (c) => {
 projectsRoute.get('/:id/media/:name', (c) => {
   const id = c.req.param('id');
   const name = c.req.param('name');
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   // Sem travessia: o nome é sempre um arquivo direto dentro de media/.
   if (name.includes('/') || name.includes('\\') || name.includes('..')) {
     return c.json({ error: 'forbidden' }, 403);
   }
-  const abs = join(projectMediaDir(id as `prj_${string}`), name);
+  const abs = join(projectMediaDir(id), name);
   if (!existsSync(abs) || statSync(abs).isDirectory()) return c.json({ error: 'not_found' }, 404);
   const buf = readFileSync(abs);
   const mime = MIME[extname(abs).toLowerCase()] ?? 'application/octet-stream';
@@ -189,7 +190,7 @@ const PatchProjectInput = z.object({
  */
 projectsRoute.patch('/:id', zValidator('json', PatchProjectInput), (c) => {
   const id = c.req.param('id');
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const input = c.req.valid('json');
   const db = getDb();
 
@@ -211,7 +212,7 @@ projectsRoute.patch('/:id', zValidator('json', PatchProjectInput), (c) => {
   }
 
   if (input.content !== undefined || input.branding !== undefined) {
-    gravarConfig(id as `prj_${string}`, content, branding);
+    gravarConfig(id, content, branding);
   }
 
   db.update(tables.projects)
@@ -233,7 +234,7 @@ projectsRoute.patch('/:id', zValidator('json', PatchProjectInput), (c) => {
 /** Upload de uma mídia. Guarda em media/ e anexa ao manifest com o slotRole. */
 projectsRoute.post('/:id/media', async (c) => {
   const id = c.req.param('id');
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const db = getDb();
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
   if (!row) return c.json({ error: 'not_found' }, 404);
@@ -271,7 +272,7 @@ projectsRoute.post('/:id/media', async (c) => {
   if (kindFinal === 'image' && EXT_VIDEO.has(ext)) kindFinal = 'video';
   else if (kindFinal === 'video' && EXT_IMAGEM.has(ext)) kindFinal = 'image';
 
-  const dir = projectMediaDir(id as `prj_${string}`);
+  const dir = projectMediaDir(id);
   mkdirSync(dir, { recursive: true });
 
   const original = file.name || 'arquivo';
@@ -331,7 +332,7 @@ const PatchMediaInput = z.object({
 
 projectsRoute.patch('/:id/media', zValidator('json', PatchMediaInput), (c) => {
   const id = c.req.param('id');
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const { path, secaoId } = c.req.valid('json');
 
   const db = getDb();
@@ -355,7 +356,7 @@ projectsRoute.patch('/:id/media', zValidator('json', PatchMediaInput), (c) => {
 /** Remove uma mídia do manifest e do disco. */
 projectsRoute.delete('/:id/media', (c) => {
   const id = c.req.param('id');
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const path = c.req.query('path');
   if (!path) return c.json({ error: 'sem_path' }, 400);
 
@@ -366,7 +367,7 @@ projectsRoute.delete('/:id/media', (c) => {
   const media = lerManifest(row.mediaManifestJson).filter((m) => m.path !== path);
   // Só apaga do disco se o nome for um arquivo direto (sem travessia).
   if (!path.includes('/') && !path.includes('\\') && !path.includes('..')) {
-    const abs = join(projectMediaDir(id as `prj_${string}`), path);
+    const abs = join(projectMediaDir(id), path);
     if (existsSync(abs)) rmSync(abs, { force: true });
   }
   db.update(tables.projects)
@@ -386,7 +387,7 @@ projectsRoute.delete('/:id/media', (c) => {
  */
 projectsRoute.post('/:id/generate', async (c) => {
   const id = c.req.param('id');
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const db = getDb();
 
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
@@ -503,7 +504,7 @@ projectsRoute.post('/:id/generate', async (c) => {
 /** Duplica um projeto como novo rascunho: copia config e mídia, deixa os sites gerados para trás. */
 projectsRoute.post('/:id/duplicate', (c) => {
   const id = c.req.param('id');
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const db = getDb();
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
   if (!row) return c.json({ error: 'not_found' }, 404);
@@ -520,7 +521,7 @@ projectsRoute.post('/:id/duplicate', (c) => {
   gravarConfig(novoId, content, branding);
 
   // Copia os arquivos de mídia (o manifest referencia por nome relativo).
-  const origemMedia = projectMediaDir(id as `prj_${string}`);
+  const origemMedia = projectMediaDir(id);
   const media = lerManifest(row.mediaManifestJson);
   if (existsSync(origemMedia)) {
     for (const m of media) {
@@ -566,7 +567,7 @@ projectsRoute.post('/:id/duplicate', (c) => {
  */
 projectsRoute.delete('/:id', (c) => {
   const id = c.req.param('id');
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
 
   const db = getDb();
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
@@ -587,7 +588,7 @@ projectsRoute.delete('/:id', (c) => {
     );
   }
 
-  const dir = projectDir(id as `prj_${string}`);
+  const dir = projectDir(id);
   if (existsSync(dir)) {
     try {
       rmSync(dir, { recursive: true, force: true });

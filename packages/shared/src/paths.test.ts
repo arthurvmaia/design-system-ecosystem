@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { join, sep } from 'node:path';
 import { test } from 'node:test';
-import { podeApagarDesignSystem } from './paths.js';
+import {
+  ehChaveDeSegmento,
+  ehDesignSystemId,
+  ehNomeDeVersao,
+  ehProjectId,
+  podeApagarDesignSystem,
+  projectDir,
+  vaultDsDir,
+  vaultSegmentBundleDir,
+} from './paths.js';
 
 /**
  * A guarda que decide se um diretório do vault some do disco.
@@ -58,4 +67,43 @@ test('id válido com caminho válido é o ÚNICO caso que passa', () => {
   assert.equal(podeApagarDesignSystem(join(RAIZ, 'ds_X'), RAIZ, 'ds_X'), true);
   assert.equal(podeApagarDesignSystem(join(RAIZ, 'ds_X'), RAIZ, '..'), false);
   assert.equal(podeApagarDesignSystem(RAIZ, RAIZ, 'ds_X'), false);
+});
+
+/**
+ * A guarda de id compartilhada. As rotas validam com ela ANTES de tocar em
+ * disco, e as funções de caminho recusam sozinhas — é a segunda linha de
+ * defesa para a rota que esquecer a primeira.
+ */
+
+test('a guarda aceita id real (ULID) e id curto de teste', () => {
+  assert.equal(ehDesignSystemId('ds_01KYQ2P1EJHZN4AF67MYACTDJ7'), true);
+  assert.equal(ehDesignSystemId('ds_A'), true);
+  assert.equal(ehProjectId('prj_01KYNSR6XJF16NDR92PR5Y9E1Q'), true);
+  assert.equal(ehChaveDeSegmento('seg_3'), true);
+});
+
+test('a guarda reprova travessia, separador e prefixo errado', () => {
+  // `ds_../../../etc` é o caso comprovado: o roteador decodifica %2F DEPOIS do
+  // roteamento, então a rota recebe um "id" com barra dentro.
+  const ruins = ['ds_../../../etc', 'ds_a/b', String.raw`ds_a\b`, 'ds_', 'ds_a.b', '', '..'];
+  for (const id of ruins) {
+    assert.equal(ehDesignSystemId(id), false, `passou com o id "${id}"`);
+  }
+  assert.equal(ehProjectId('ds_A'), false);
+  assert.equal(ehDesignSystemId('prj_A'), false);
+});
+
+test('as funções de caminho recusam id fora da regra', () => {
+  assert.throws(() => vaultDsDir('ds_../../../etc' as `ds_${string}`));
+  assert.throws(() => projectDir('prj_..' as `prj_${string}`));
+  assert.throws(() => vaultSegmentBundleDir('ds_A', 'seg_../fora'));
+  // O caso bom continua passando, com o id no fim do caminho.
+  assert.ok(vaultDsDir('ds_A').endsWith(`${sep}ds_A`));
+});
+
+test('nome de versão gerada: só nome simples de pasta', () => {
+  assert.equal(ehNomeDeVersao('2026-07-29T02-16-11-833Z'), true);
+  assert.equal(ehNomeDeVersao('..'), false);
+  assert.equal(ehNomeDeVersao('a/b'), false);
+  assert.equal(ehNomeDeVersao('.oculto'), false);
 });

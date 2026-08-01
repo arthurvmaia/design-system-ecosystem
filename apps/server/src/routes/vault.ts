@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, relative } from 'node:path';
-import { vaultExtractedDir } from '@ds/shared/paths';
+import { ehDesignSystemId, vaultExtractedDir } from '@ds/shared/paths';
 import { Hono } from 'hono';
 
 export const vaultRoute = new Hono();
@@ -32,11 +32,11 @@ const MIME: Record<string, string> = {
  */
 vaultRoute.get('/:dsId/*', (c) => {
   const dsId = c.req.param('dsId');
-  if (!dsId.startsWith('ds_')) {
+  if (!ehDesignSystemId(dsId)) {
     return c.json({ error: 'invalid_id' }, 400);
   }
 
-  const dir = vaultExtractedDir(dsId as `ds_${string}`);
+  const dir = vaultExtractedDir(dsId);
   if (!existsSync(dir)) {
     return c.json({ error: 'not_found' }, 404);
   }

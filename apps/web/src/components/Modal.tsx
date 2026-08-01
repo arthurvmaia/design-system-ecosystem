@@ -71,6 +71,14 @@ export function Modal({
   const idRef = useRef<symbol | null>(null);
   if (idRef.current === null) idRef.current = Symbol('modal');
 
+  // O efeito de foco depende SÓ de `open`. Quase todo call site passa uma arrow
+  // inline em `onClose`, então qualquer render do pai criava identidade nova,
+  // reexecutava o efeito e o foco pulava para o painel — quem digitava no
+  // wizard perdia o cursor a cada autosave. A ref entrega sempre o onClose
+  // atual sem reamarrar o efeito.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
     const id = idRef.current as symbol;
@@ -86,7 +94,7 @@ export function Modal({
       if (e.key === 'Escape') {
         // Um seletor aberto dentro do modal já tratou (preventDefault) — o
         // modal não fecha junto.
-        if (!e.defaultPrevented) onClose();
+        if (!e.defaultPrevented) onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab') return;
@@ -124,7 +132,7 @@ export function Modal({
       destravarFundo();
       anterior?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { getDb, tables } from '@ds/indexer';
-import { type ProjectId, projectGeneratedDir } from '@ds/shared';
+import { type ProjectId, ehNomeDeVersao, ehProjectId, projectGeneratedDir } from '@ds/shared';
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 
@@ -36,14 +36,21 @@ const listarVersoes = (id: ProjectId): Versao[] => {
   const dir = projectGeneratedDir(id);
   if (!existsSync(dir)) return [];
 
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => {
-      const { arquivos, bytes } = medir(join(dir, e.name));
-      return { timestamp: e.name, arquivos, bytes };
-    })
-    .filter((v) => v.arquivos > 0)
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  return (
+    readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      // Só entra o que a prévia consegue servir. Uma pasta criada à mão no
+      // Explorer ("... - Copia", com espaço e acento) aparecia aqui e baixava
+      // como .zip, mas a rota /site a recusava: as telas discordavam sobre o que
+      // é uma versão, e a discordância chegava à pessoa como um botão quebrado.
+      .filter((e) => ehNomeDeVersao(e.name))
+      .map((e) => {
+        const { arquivos, bytes } = medir(join(dir, e.name));
+        return { timestamp: e.name, arquivos, bytes };
+      })
+      .filter((v) => v.arquivos > 0)
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+  );
 };
 
 /**
@@ -82,8 +89,8 @@ meusProjetosRoute.get('/', (c) => {
  * sempre roda na máquina do usuário, nunca num container mínimo.
  */
 meusProjetosRoute.get('/:id/download', async (c) => {
-  const id = c.req.param('id') as ProjectId;
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
 
   const versoes = listarVersoes(id);
   if (versoes.length === 0) return c.json({ error: 'sem_versao_gerada' }, 404);
@@ -136,8 +143,8 @@ meusProjetosRoute.get('/:id/download', async (c) => {
 
 /** Abre a pasta do projeto no explorador de arquivos do sistema. */
 meusProjetosRoute.post('/:id/abrir-pasta', async (c) => {
-  const id = c.req.param('id') as ProjectId;
-  if (!id.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
 
   const dir = projectGeneratedDir(id);
   if (!existsSync(dir)) return c.json({ error: 'not_found' }, 404);
@@ -165,7 +172,8 @@ meusProjetosRoute.get('/contagem', (c) => {
 
 /** Mantido por último para não capturar `/contagem` como se fosse um id. */
 meusProjetosRoute.get('/:id', (c) => {
-  const id = c.req.param('id') as ProjectId;
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const db = getDb();
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
   if (!row) return c.json({ error: 'not_found' }, 404);

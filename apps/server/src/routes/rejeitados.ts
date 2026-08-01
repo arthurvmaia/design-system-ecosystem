@@ -1,6 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { getDb, tables } from '@ds/indexer';
-import { type RejectedSegment, RejeitadosManifest, vaultRejeitadosPath } from '@ds/shared';
+import {
+  type RejectedSegment,
+  RejeitadosManifest,
+  ehDesignSystemId,
+  vaultRejeitadosPath,
+} from '@ds/shared';
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 
@@ -58,7 +63,8 @@ const gravarRejeitados = (dsId: `ds_${string}`, itens: RejectedSegment[]): void 
  * posição) e sai da lista de pendências — deixou de ser um beco sem saída.
  */
 rejeitadosRoute.post('/:dsId/:segId/recuperar', (c) => {
-  const dsId = c.req.param('dsId') as `ds_${string}`;
+  const dsId = c.req.param('dsId');
+  if (!ehDesignSystemId(dsId)) return c.json({ error: 'invalid_id' }, 400);
   const segId = c.req.param('segId');
   const itens = lerRejeitados(dsId);
   const item = itens.find((i) => i.id === segId);
@@ -90,7 +96,8 @@ rejeitadosRoute.post('/:dsId/:segId/recuperar', (c) => {
 
 /** Descartar de vez: a pessoa concordou com o algoritmo. Some da lista. */
 rejeitadosRoute.delete('/:dsId/:segId', (c) => {
-  const dsId = c.req.param('dsId') as `ds_${string}`;
+  const dsId = c.req.param('dsId');
+  if (!ehDesignSystemId(dsId)) return c.json({ error: 'invalid_id' }, 400);
   const segId = c.req.param('segId');
   const itens = lerRejeitados(dsId);
   if (!itens.some((i) => i.id === segId)) return c.json({ error: 'not_found' }, 404);

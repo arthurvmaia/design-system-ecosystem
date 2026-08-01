@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, relative } from 'node:path';
-import { projectGeneratedDir } from '@ds/shared';
+import { ehNomeDeVersao, ehProjectId, projectGeneratedDir } from '@ds/shared';
 import { Hono } from 'hono';
 
 /**
@@ -40,12 +40,12 @@ const MIME: Record<string, string> = {
 siteRoute.get('/:prjId/:versao/*', (c) => {
   const prjId = c.req.param('prjId');
   const versao = c.req.param('versao');
-  if (!prjId.startsWith('prj_')) return c.json({ error: 'invalid_id' }, 400);
-  if (versao.includes('..') || versao.includes('/') || versao.includes('\\')) {
+  if (!ehProjectId(prjId)) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehNomeDeVersao(versao)) {
     return c.json({ error: 'forbidden' }, 403);
   }
 
-  const dir = join(projectGeneratedDir(prjId as `prj_${string}`), versao);
+  const dir = join(projectGeneratedDir(prjId), versao);
   if (!existsSync(dir)) return c.json({ error: 'not_found' }, 404);
 
   const url = new URL(c.req.url);

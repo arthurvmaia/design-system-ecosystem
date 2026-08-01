@@ -11,6 +11,7 @@ import {
   DEBOUNCE_AUTOSAVE_MS,
   type EstadoAutosave,
   ROTULO_AUTOSAVE,
+  deveSalvar,
   reduzirAutosave,
 } from '@/lib/autosave-core';
 import {
@@ -222,27 +223,91 @@ export function ProjectWizard({
   });
   const ultimaSalva = useRef(existing !== null ? assinatura : '');
   const emVoo = useRef(false);
+  // Espelhos para as decisões dentro de timeout lerem o valor ATUAL sem
+  // reamarrar o efeito (o estado fica velho dentro de uma closure de timer).
+  const autosaveRef = useRef(autosave);
+  autosaveRef.current = autosave;
+  const assinaturaRef = useRef(assinatura);
+  assinaturaRef.current = assinatura;
+  const ultimaAlteracao = useRef(0);
+  const montado = useRef(true);
+
+  // O último salvamento ao sair. Fechar o wizard dentro da janela de silêncio
+  // descartava a edição mais recente: o cleanup só fazia clearTimeout e nada
+  // mais tentava. A ref é reescrita a cada render para o flush enxergar o
+  // estado atual mesmo depois do desmonte.
+  const flushRef = useRef(() => {});
+  flushRef.current = () => {
+    if (projectId === null || emVoo.current) return;
+    if (assinatura === ultimaSalva.current) return;
+    emVoo.current = true;
+    const snapshot = assinatura;
+    void salvar()
+      .then(() => {
+        ultimaSalva.current = snapshot;
+      })
+      .catch(() => {
+        // Sem tela para avisar: o rascunho fica como estava e a próxima
+        // abertura do wizard recarrega do servidor.
+      })
+      .finally(() => {
+        emVoo.current = false;
+      });
+  };
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+      flushRef.current();
+    };
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a assinatura serializa todas as dependências de dados; salvar é estável por closure
   useEffect(() => {
     if (projectId === null) return;
     if (assinatura === ultimaSalva.current) return;
+    ultimaAlteracao.current = Date.now();
     setAutosave((e) => reduzirAutosave(e, emVoo.current ? 'alterou-durante-salvar' : 'alterou'));
-    const timer = window.setTimeout(async () => {
-      if (emVoo.current) return;
+    let timer = 0;
+    const tentar = async () => {
+      // A decisão de salvar é do núcleo testado (deveSalvar); o `emVoo`
+      // serializa os PATCH. Quando ainda não dá, REAGENDA: era o return seco
+      // daqui que perdia calado a edição feita durante um salvamento lento.
+      const pronto =
+        !emVoo.current &&
+        deveSalvar({
+          estado: autosaveRef.current,
+          temRascunho: projectId !== null,
+          msDesdeUltimaAlteracao: Date.now() - ultimaAlteracao.current,
+        });
+      if (!pronto) {
+        timer = window.setTimeout(tentar, DEBOUNCE_AUTOSAVE_MS);
+        return;
+      }
       emVoo.current = true;
       const snapshot = assinatura;
       setAutosave((e) => reduzirAutosave(e, 'comecou-salvar'));
       try {
         await salvar();
         ultimaSalva.current = snapshot;
-        setAutosave((e) => reduzirAutosave(e, 'salvou'));
+        // "Salvo" só quando o que está na tela é o que foi gravado. Quem
+        // digitou DURANTE o PATCH tem trabalho pendente: dizer "Salvo" ali
+        // apagava o estado `pendente` e o próprio deveSalvar passava a recusar
+        // o reagendamento para sempre, com o rodapé jurando que estava tudo
+        // gravado.
+        setAutosave((e) =>
+          reduzirAutosave(e, assinaturaRef.current === snapshot ? 'salvou' : 'alterou'),
+        );
       } catch {
         setAutosave((e) => reduzirAutosave(e, 'falhou'));
       } finally {
         emVoo.current = false;
+        // O wizard fechou enquanto ESTE salvamento corria: o flush do desmonte
+        // não viu nada para fazer (emVoo travado), então roda agora.
+        if (!montado.current) flushRef.current();
       }
-    }, DEBOUNCE_AUTOSAVE_MS);
+    };
+    timer = window.setTimeout(tentar, DEBOUNCE_AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
   }, [assinatura, projectId]);
 

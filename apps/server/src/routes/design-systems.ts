@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { runExtraction } from '@ds/extractor';
 import { getDb, tables } from '@ds/indexer';
@@ -9,6 +9,7 @@ import {
   SegmentValidationFile,
   SegmentsManifest,
   aplicarValidacoes,
+  ehDesignSystemId,
   listarAssetsFaltando,
   podeApagarDesignSystem,
   resumirPipeline,
@@ -46,18 +47,16 @@ designSystemsRoute.get('/', (c) => {
 designSystemsRoute.get('/:id', (c) => {
   const db = getDb();
   const id = c.req.param('id');
+  if (!ehDesignSystemId(id)) return c.json({ error: 'invalid_id' }, 400);
   const row = db.select().from(tables.designSystems).where(eq(tables.designSystems.id, id)).get();
   if (!row) return c.json({ error: 'not_found' }, 404);
 
   // Integridade dos assets. Sem isto, uma extração que não gravou o CSS fica
   // idêntica a uma boa na listagem e só se revela nas prévias em branco.
   let assetsFaltando: string[] = [];
-  const htmlPath = join(vaultExtractedDir(id as `ds_${string}`), 'design-system.html');
+  const htmlPath = join(vaultExtractedDir(id), 'design-system.html');
   if (existsSync(htmlPath)) {
-    assetsFaltando = listarAssetsFaltando(
-      vaultExtractedDir(id as `ds_${string}`),
-      readFileSync(htmlPath, 'utf8'),
-    );
+    assetsFaltando = listarAssetsFaltando(vaultExtractedDir(id), readFileSync(htmlPath, 'utf8'));
   }
 
   return c.json({ item: row, assetsFaltando });
@@ -286,6 +285,7 @@ const comValidacoes = (
 designSystemsRoute.get('/:id/segments', (c) => {
   const db = getDb();
   const id = c.req.param('id');
+  if (!ehDesignSystemId(id)) return c.json({ error: 'invalid_id' }, 400);
   const rows = db
     .select()
     .from(tables.segments)
@@ -339,6 +339,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
 designSystemsRoute.get('/:id/impacto', (c) => {
   const db = getDb();
   const id = c.req.param('id');
+  if (!ehDesignSystemId(id)) return c.json({ error: 'invalid_id' }, 400);
   const segs = db
     .select({ id: tables.segments.id })
     .from(tables.segments)
@@ -378,12 +379,12 @@ designSystemsRoute.get('/:id/impacto', (c) => {
 designSystemsRoute.delete('/:id', (c) => {
   const db = getDb();
   const id = c.req.param('id');
-  if (!/^ds_[A-Za-z0-9]+$/.test(id)) return c.json({ error: 'id_invalido' }, 400);
+  if (!ehDesignSystemId(id)) return c.json({ error: 'id_invalido' }, 400);
 
   db.delete(tables.designSystems).where(eq(tables.designSystems.id, id)).run();
 
   let arquivosRemovidos = false;
-  const dir = vaultDsDir(id as `ds_${string}`);
+  const dir = vaultDsDir(id);
   if (podeApagarDesignSystem(dir, vaultDir(), id) && existsSync(dir)) {
     try {
       rmSync(dir, { recursive: true, force: true });
@@ -457,9 +458,9 @@ designSystemsRoute.post(
  */
 designSystemsRoute.post('/:id/validate', async (c) => {
   const id = c.req.param('id');
-  if (!id.startsWith('ds_')) return c.json({ error: 'invalid_id' }, 400);
+  if (!ehDesignSystemId(id)) return c.json({ error: 'invalid_id' }, 400);
   try {
-    const val = await validarPreviews(id as `ds_${string}`);
+    const val = await validarPreviews(id);
     return c.json({
       status: val.status,
       validadas: val.results.filter((r) => r.ok).length,
@@ -473,6 +474,76 @@ designSystemsRoute.post('/:id/validate', async (c) => {
     );
   }
 });
+
+/**
+ * Re-extração: a captura nova nasceu sob um id novo, mas a linha do banco
+ * manteve o id antigo (o upsert conflita no `sourceHash`). Os arquivos trocam
+ * de lugar para o id que sobreviveu.
+ *
+ * A troca tem VOLTA, e a razão é a mesma que o `pnpm reextrair` documenta: o
+ * gesto ingênuo (apagar o antigo e depois renomear) deixa estado misto quando o
+ * disco recusa. No Windows isso não é hipótese — a prévia aberta numa aba
+ * segura os arquivos, e a rota de exclusão deste mesmo arquivo já trata
+ * `EBUSY` como falha esperada. Apagar antes do rename podia deixar a linha do
+ * banco viva apontando para uma pasta pela metade, ou para nada.
+ *
+ * Então: arquiva o antigo, põe o novo no lugar, e só então descarta o
+ * arquivado. Se qualquer passo falhar, o antigo volta e o erro sobe com o
+ * motivo — a captura nova continua no disco sob o id novo, recuperável, em vez
+ * de meio apagada.
+ */
+const trocarVaultMantendoId = (
+  dsId: `ds_${string}`,
+  idNovo: `ds_${string}`,
+  onEvent: (nivel: 'info' | 'warn' | 'error', msg: string) => void,
+): void => {
+  const dirAntigo = vaultDsDir(dsId);
+  const dirNovo = vaultDsDir(idNovo);
+  const arquivado = `${dirAntigo}.anterior`;
+
+  if (!podeApagarDesignSystem(dirAntigo, vaultDir(), dsId)) {
+    throw new Error(`Não troquei os arquivos: ${dirAntigo} não é uma pasta de design system.`);
+  }
+  if (existsSync(arquivado)) rmSync(arquivado, { recursive: true, force: true });
+
+  let arquivou = false;
+  try {
+    if (existsSync(dirAntigo)) {
+      renameSync(dirAntigo, arquivado);
+      arquivou = true;
+    }
+    renameSync(dirNovo, dirAntigo);
+  } catch (err) {
+    if (arquivou && !existsSync(dirAntigo)) renameSync(arquivado, dirAntigo);
+    throw new Error(
+      `Esta página já tinha a extração ${dsId} e não consegui trocar os arquivos ` +
+        `(${err instanceof Error ? err.message : String(err)}). ` +
+        `A captura anterior continua no lugar e a nova ficou em ${dirNovo}.`,
+    );
+  }
+
+  try {
+    if (arquivou) rmSync(arquivado, { recursive: true, force: true });
+  } catch {
+    // A troca já valeu; o que sobrou é a cópia velha. Um arquivo preso aqui não
+    // desfaz nada, e o `pnpm acervo:limpar-orfas` recolhe depois.
+    onEvent('warn', `Não consegui apagar a cópia anterior em ${arquivado}.`);
+  }
+  onEvent('info', `Esta página já tinha extração: mantive o id ${dsId} e troquei os arquivos`);
+};
+
+/**
+ * Extrações em voo, por alvo. O `enqueueTask` não serializa nada — dois cliques
+ * no botão põem duas extrações da mesma página correndo ao mesmo tempo, e a
+ * segunda, ao resolver o id efetivo, troca por baixo os arquivos que a primeira
+ * ainda está segmentando e validando. O resultado é um `validation.json`
+ * descrevendo segmentos que já não existem.
+ *
+ * Uma pessoa não extrai a mesma página duas vezes de propósito: o segundo
+ * clique é engano ou aba esquecida. Então o segundo pedido é recusado com o
+ * motivo, em vez de virar corrida.
+ */
+const extracoesEmVoo = new Set<string>();
 
 /**
  * Inicia uma extração + segmentação. Retorna o task_id imediatamente.
@@ -491,9 +562,38 @@ designSystemsRoute.post('/', zValidator('json', CreateDesignSystemInput), (c) =>
   if (!apiKey) {
     return c.json({ error: 'anthropic_not_configured' }, 500);
   }
-  const models = getModels();
+
+  const alvo = input.kind === 'url' ? input.url : (input.name ?? 'html');
+  if (extracoesEmVoo.has(alvo)) {
+    return c.json(
+      {
+        error: 'extracao_em_andamento',
+        message: 'Já estou extraindo esta página. Espere esta terminar antes de pedir de novo.',
+      },
+      409,
+    );
+  }
+  extracoesEmVoo.add(alvo);
 
   const task = enqueueTask('extract', input, async (payload, onEvent) => {
+    try {
+      return await extrairEIndexar(payload, onEvent);
+    } finally {
+      extracoesEmVoo.delete(alvo);
+    }
+  });
+
+  return c.json({ task }, 202);
+});
+
+/** O trabalho da extração no modo `api`, do fetch à validação de prévia. */
+async function extrairEIndexar(
+  payload: z.infer<typeof CreateDesignSystemInput>,
+  onEvent: (nivel: 'info' | 'warn' | 'error', msg: string) => void,
+) {
+  const apiKey = process.env.ANTHROPIC_API_KEY as string;
+  const models = getModels();
+  {
     onEvent('info', 'Iniciando extração');
     const result = await runExtraction(payload, {
       apiKey,
@@ -546,26 +646,48 @@ designSystemsRoute.post('/', zValidator('json', CreateDesignSystemInput), (c) =>
       })
       .onConflictDoUpdate({
         target: tables.designSystems.sourceHash,
-        set: { status: 'extracted', extractedAt: Date.now() },
+        set: {
+          status: 'extracted',
+          extractedAt: Date.now(),
+          name,
+          stackJson: JSON.stringify(result.stack),
+          errorMessage: null,
+        },
       })
       .run();
 
-    onEvent('info', `Design system salvo: ${result.designSystemId}`);
+    // O id EFETIVO depois do upsert. Extrair a mesma página de novo conflita
+    // no `sourceHash` e a linha mantém o id ANTIGO; seguir com o id novo era o
+    // defeito — os segments apontavam para uma linha que não existe e a
+    // extração morria em FK depois de já ter custado os tokens.
+    const efetivo = db
+      .select({ id: tables.designSystems.id })
+      .from(tables.designSystems)
+      .where(eq(tables.designSystems.sourceHash, result.sourceHash))
+      .get();
+    const dsId = (efetivo?.id ?? result.designSystemId) as `ds_${string}`;
+    if (dsId !== result.designSystemId) {
+      trocarVaultMantendoId(dsId, result.designSystemId, onEvent);
+      db.update(tables.designSystems)
+        .set({ vaultPath: vaultExtractedDir(dsId) })
+        .where(eq(tables.designSystems.id, dsId))
+        .run();
+    }
+
+    onEvent('info', `Design system salvo: ${dsId}`);
 
     // Fase 2: segmentação automática após a extração.
     onEvent('info', 'Iniciando segmentação');
-    const segmentResult = segmentDesignSystem(result.designSystemId);
+    const segmentResult = segmentDesignSystem(dsId);
     db.transaction((tx) => {
       // Limpa segmentos antigos se for re-extração
-      tx.delete(tables.segments)
-        .where(eq(tables.segments.designSystemId, result.designSystemId))
-        .run();
+      tx.delete(tables.segments).where(eq(tables.segments.designSystemId, dsId)).run();
       for (const seg of segmentResult.segments) {
         tx.insert(tables.segments).values(seg).run();
       }
       tx.update(tables.designSystems)
         .set({ status: 'segmented' })
-        .where(eq(tables.designSystems.id, result.designSystemId))
+        .where(eq(tables.designSystems.id, dsId))
         .run();
     });
     onEvent('info', `Segmentação: ${segmentResult.segments.length} candidatos`);
@@ -575,7 +697,7 @@ designSystemsRoute.post('/', zValidator('json', CreateDesignSystemInput), (c) =>
     // derruba a extração se falhar (a Galeria só não mostra `validated`).
     try {
       onEvent('info', 'Validando previews (navegador)');
-      const val = await validarPreviews(result.designSystemId, {
+      const val = await validarPreviews(dsId, {
         log: (m) => onEvent('info', m),
       });
       const validadas = val.results.filter((r) => r.ok).length;
@@ -584,14 +706,18 @@ designSystemsRoute.post('/', zValidator('json', CreateDesignSystemInput), (c) =>
       onEvent('warn', `Validação de preview falhou: ${err instanceof Error ? err.message : err}`);
     }
 
-    return { ...result, segmentCount: segmentResult.segments.length };
-  });
-
-  return c.json({ task }, 202);
-});
+    return {
+      ...result,
+      designSystemId: dsId,
+      vaultPath: vaultExtractedDir(dsId),
+      segmentCount: segmentResult.segments.length,
+    };
+  }
+}
 
 designSystemsRoute.post('/:id/classify', async (c) => {
   const dsId = c.req.param('id');
+  if (!ehDesignSystemId(dsId)) return c.json({ error: 'invalid_id' }, 400);
   const db = getDb();
 
   const rows = db
