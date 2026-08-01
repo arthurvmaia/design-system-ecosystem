@@ -8,6 +8,7 @@ import {
   type Recolorabilidade,
   type SegmentFidelity,
   type SegmentRecord,
+  type Veredito,
   api,
   frameUrl,
   previewSegmentHoverUrl,
@@ -32,6 +33,7 @@ import {
   FAMILIAS,
   FAMILIA_EXPLICA,
   FAMILIA_LABEL,
+  ROTULO_DO_CANAL,
   familiaDe,
   rotuloDaCategoria,
 } from '@ds/shared/schemas';
@@ -239,10 +241,12 @@ function FidelityPanel({
   fidelity,
   comparacao,
   limitacoes,
+  vereditos,
 }: {
   fidelity?: SegmentFidelity | null;
   comparacao?: ConferenciaDePixel;
   limitacoes?: string[];
+  vereditos?: Veredito[];
 }) {
   if (!fidelity) return null;
   const temPipeline = (fidelity.pipeline?.length ?? 0) > 0;
@@ -307,18 +311,7 @@ function FidelityPanel({
           )}
         </div>
       )}
-      {comparacao !== undefined ? (
-        <div
-          className="ds-data mt-2 text-[11px]"
-          style={{ color: comparacao.passou ? 'var(--color-ok)' : 'var(--color-warn)' }}
-        >
-          conferência de pixel: delta {pct(comparacao.delta)} (limiar {pct(comparacao.limiar)})
-        </div>
-      ) : temBundle ? (
-        <div className="mt-2 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          esta peça não passou pela conferência de pixel
-        </div>
-      ) : null}
+      <ComoEuConferi vereditos={vereditos} comparacao={comparacao} temBundle={temBundle} />
       {fidelity.warnings.length > 0 && (
         <ul className="mt-2 space-y-1">
           {fidelity.warnings.map((w) => (
@@ -355,6 +348,85 @@ function FidelityPanel({
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * "Como eu conferi": uma linha por canal, com estado e motivo.
+ *
+ * A versão anterior tinha UMA frase — "esta peça não passou pela conferência de
+ * pixel" — que juntava três coisas diferentes numa só: não rodou, rodou e
+ * falhou, e nem se aplica. Quem lia não sabia se devia desconfiar da peça ou do
+ * app, e a resposta muda tudo.
+ *
+ * Agora os quatro canais respondem sempre, inclusive os que não rodaram. Canal
+ * calado é indistinguível de canal aprovado, e era assim que oito cápsulas
+ * reprovadas chegavam à tela parecendo boas.
+ */
+function ComoEuConferi({
+  vereditos,
+  comparacao,
+  temBundle,
+}: {
+  vereditos?: Veredito[];
+  comparacao?: ConferenciaDePixel;
+  temBundle: boolean;
+}) {
+  // Acervo antigo, sem o canal: cai no que a tela sabia dizer antes.
+  if (vereditos === undefined || vereditos.length === 0) {
+    if (comparacao !== undefined) {
+      return (
+        <div
+          className="ds-data mt-2 text-[11px]"
+          style={{ color: comparacao.passou ? 'var(--color-ok)' : 'var(--color-warn)' }}
+        >
+          conferência de pixel: delta {pct(comparacao.delta)} (limiar {pct(comparacao.limiar)})
+        </div>
+      );
+    }
+    return temBundle ? (
+      <div className="mt-2 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+        esta peça não passou pela conferência de pixel
+      </div>
+    ) : null;
+  }
+
+  const COR: Record<Veredito['estado'], string> = {
+    passou: 'var(--color-ok)',
+    falhou: 'var(--color-warn)',
+    'nao-rodou': 'var(--color-fg-subtle)',
+  };
+  const GLIFO: Record<Veredito['estado'], string> = {
+    passou: '◉',
+    falhou: '✕',
+    'nao-rodou': '◯',
+  };
+
+  return (
+    <div className="mt-3">
+      <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+        como eu conferi:
+      </span>
+      <ul className="mt-1 space-y-1">
+        {vereditos.map((v) => (
+          <li key={v.canal} className="flex items-start gap-1.5 text-[11px] leading-relaxed">
+            <span aria-hidden className="mt-px shrink-0" style={{ color: COR[v.estado] }}>
+              {GLIFO[v.estado]}
+            </span>
+            <span className="min-w-0">
+              <span style={{ color: 'var(--color-fg-muted)' }}>{ROTULO_DO_CANAL[v.canal]}</span>
+              <span style={{ color: 'var(--color-fg-subtle)' }}>
+                {' — '}
+                {v.motivo}
+                {v.delta !== undefined &&
+                  v.limiar !== undefined &&
+                  ` (${pct(v.delta)} de ${pct(v.limiar)})`}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -1895,6 +1967,7 @@ function SegmentDetail({
                 fidelity={segment.fidelity}
                 comparacao={segment.comparacaoVisual}
                 limitacoes={segment.limitacoes}
+                vereditos={segment.vereditos}
               />
             </aside>
           )}

@@ -148,6 +148,11 @@ export type SegmentRecord = {
    * a peça parar de entrar no kit parecendo que vai receber a marca.
    */
   marca?: Recolorabilidade;
+  /**
+   * O que foi conferido nesta peça, por canal. Sempre os quatro, inclusive os
+   * que não rodaram — é o que a Galeria mostra em "Como eu conferi".
+   */
+  vereditos?: Veredito[];
 };
 
 /** O ritmo medido no acervo. Espelha `@ds/composer`. */
@@ -156,6 +161,21 @@ export type TokensDeMovimento = {
   mediaMs: number;
   easing: string;
   amostras: number;
+};
+
+/**
+ * O que foi conferido nesta peça, por canal. Espelha `@ds/shared`.
+ *
+ * Os quatro canais vêm sempre, inclusive os que não rodaram — com o motivo do
+ * que impediu. Canal calado é indistinguível de canal aprovado, e essa confusão
+ * é o defeito que este contrato existe para acabar.
+ */
+export type Veredito = {
+  canal: 'pixel' | 'navegador' | 'scroll' | 'interacao';
+  estado: 'passou' | 'falhou' | 'nao-rodou';
+  motivo: string;
+  delta?: number;
+  limiar?: number;
 };
 
 /** A medida de alcance da marca sobre uma peça. Espelha `@ds/composer`. */

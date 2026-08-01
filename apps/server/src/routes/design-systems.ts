@@ -14,6 +14,7 @@ import {
   listarAssetsFaltando,
   podeApagarDesignSystem,
   resumirPipeline,
+  suporteAposVereditos,
   vaultCaptureV2Manifest,
   vaultDir,
   vaultDsDir,
@@ -22,8 +23,13 @@ import {
   vaultSegmentValidation,
   vaultSegmentsManifest,
 } from '@ds/shared';
-import type { InteracaoNaoAssociada, ResultadoValidacaoSegmento, SegmentInsight } from '@ds/shared';
-import { enqueueJob } from '@ds/shared';
+import type {
+  InteracaoNaoAssociada,
+  ResultadoValidacaoSegmento,
+  SegmentInsight,
+  Veredito,
+} from '@ds/shared';
+import { enqueueJob, vereditosDoSegmento } from '@ds/shared';
 import { zValidator } from '@hono/zod-validator';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -252,14 +258,41 @@ const lerValidacoes = (dsId: string): Map<string, ResultadoValidacaoSegmento[]> 
   }
 };
 
-/** Aplica os registros de validação ao insight, promovendo replayable→validated. */
+/**
+ * Aplica os registros de validação ao insight, promovendo replayable→validated
+ * e REBAIXANDO o que reprovou em navegador.
+ *
+ * O rebaixamento é o que faltava. Um resultado de `capsula` não casava com
+ * nenhum ramo aqui: não virava limitação, não mexia no selo, não chegava à
+ * tela. A peça que abriu num navegador e não pareceu com a captura ficava
+ * indistinguível de uma que passou.
+ */
 const comValidacoes = (
   insight: SegmentInsight,
   resultados: ResultadoValidacaoSegmento[] | undefined,
+  vereditos?: readonly Veredito[],
 ): SegmentInsight => {
-  if (!resultados || resultados.length === 0) return insight;
   let out = insight;
   const limitacoesExtra: string[] = [];
+
+  if (vereditos !== undefined) {
+    const rebaixado = suporteAposVereditos(out.support, vereditos);
+    if (rebaixado !== out.support) {
+      out = { ...out, support: rebaixado };
+      const porQue = vereditos.find((v) => v.canal === 'navegador' && v.estado === 'falhou');
+      limitacoesExtra.push(
+        `Abri esta peça sozinha num navegador e ela não apareceu como na captura${
+          porQue?.motivo ? `: ${porQue.motivo}` : '.'
+        }`,
+      );
+    }
+  }
+
+  if (!resultados || resultados.length === 0) {
+    return limitacoesExtra.length > 0
+      ? { ...out, limitations: [...new Set([...(out.limitations ?? []), ...limitacoesExtra])] }
+      : out;
+  }
 
   // Interações (pipeline): replayable → validated pelo resultado real.
   if (insight.pipeline && insight.pipeline.length > 0) {
@@ -321,9 +354,18 @@ designSystemsRoute.get('/:id/segments', (c) => {
   // o HTML dos estados — só é servido pela rota de preview.
   const items = rows.map((r) => {
     const bruto = insights.get(r.id) ?? null;
-    const insight = bruto ? comValidacoes(bruto, validacoes.get(r.id)) : null;
     const bundle = bundles.get(r.id);
     const conferencia = conferencias.get(r.id);
+    // Os quatro canais, sempre os quatro, com motivo até quando não rodaram.
+    // É o que separa "conferi e está bom" de "ninguém conferiu" — a distinção
+    // que a tela não fazia, e que fazia ausência de medição ler como aprovação.
+    const vereditos = vereditosDoSegmento({
+      resultados: validacoes.get(r.id) ?? [],
+      pixel: conferencia,
+      temBundle: bundle !== undefined,
+      capturaParcial: capturaParcial !== undefined,
+    });
+    const insight = bruto ? comValidacoes(bruto, validacoes.get(r.id), vereditos) : null;
     return {
       ...r,
       fidelity: insight,
@@ -335,6 +377,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
       // Quanto da peça a marca do usuário vai alcançar. Ausente quando não há
       // folha para medir — a tela não promete nem acusa o que não mediu.
       ...(bundle?.marca != null ? { marca: bundle.marca } : {}),
+      vereditos,
     };
   });
   return c.json({ items, naoAssociados, capturaParcial });

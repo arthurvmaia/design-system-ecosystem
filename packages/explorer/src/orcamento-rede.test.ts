@@ -56,39 +56,51 @@ test('corridaComTimeout: rejeição TARDIA do abandonado não vira unhandled', a
   await new Promise((res) => setTimeout(res, 60)); // deixa a rejeição tardia acontecer
 });
 
-test('fetcher seguro: download que NÃO responde é cortado pelo timeout individual', async () => {
-  // Servidor que aceita a conexão e nunca responde.
-  const servidor = createServer(() => {
-    /* pendura de propósito */
-  });
-  await new Promise<void>((r) => servidor.listen(0, r));
-  const porta = (servidor.address() as Any).port;
-  process.env.DS_ASSET_ALLOW_LOCAL = '1';
-  const cont = contadorStub();
-  try {
-    const fetcher = createSecureHttpFetcher(
-      { ...DEFAULT_LIMITS, assetTimeoutMs: 120 },
-      { contador: cont },
-    );
-    const t0 = Date.now();
-    const r = await fetcher(`http://localhost:${porta}/travado.png`);
-    assert.equal(r, null, 'download travado devolve null');
-    // O que este teste prova é que o download NÃO FICA PRESO — o servidor
-    // pendura para sempre, então sem o corte a espera seria infinita. A margem
-    // é generosa de propósito: o limiar anterior era de 800ms sobre um timeout
-    // de 120ms, e essa folga de 7x não sobrevive à suíte inteira rodando em
-    // paralelo (medido: 1,4s a 2,0s no `pnpm test`, 157ms rodando sozinho).
-    // Um teste que reprova por a máquina estar ocupada não mede o código, mede
-    // a CPU — e ensina a ignorar o vermelho. 30x ainda separa "cortou" de
-    // "ficou pendurado", que é a única distinção que importa aqui.
-    assert.ok(Date.now() - t0 < 4_000, 'cortou pelo timeout, não ficou preso');
-    assert.ok((cont.n.timeouts ?? 0) >= 1, 'contou timeout');
-    assert.ok((cont.n.downloadsAbortados ?? 0) >= 1, 'contou download abortado');
-  } finally {
-    process.env.DS_ASSET_ALLOW_LOCAL = undefined;
-    await fecharServidor(servidor);
-  }
-});
+/**
+ * O prazo do TESTE substitui a medição de relógio dentro dele.
+ *
+ * A pergunta que este teste responde é uma só: o download fica preso? O servidor
+ * pendura para sempre, então sem o corte a espera seria infinita — e "infinita"
+ * se prova deixando o próprio runner reprovar por prazo, não cronometrando o
+ * relógio dentro da asserção.
+ *
+ * A medição por dentro já falhou de duas formas: com 800ms de folga sobre um
+ * timeout de 120ms (7x) e depois com 4s (30x). Medido: 157ms rodando sozinho,
+ * 1,4s a 2,0s na suíte inteira, 6,2s com o servidor de desenvolvimento e um
+ * navegador disputando CPU. Não existe número certo aí, porque a grandeza medida
+ * não é o código: é quanto a máquina estava ocupada. Um teste que reprova por
+ * isso não mede nada e ensina a ignorar o vermelho.
+ *
+ * O que continua sendo verificado, e é o que importa: o retorno é `null`, o
+ * timeout foi contado, e o download foi abortado.
+ */
+test(
+  'fetcher seguro: download que NÃO responde é cortado pelo timeout individual',
+  { timeout: 15_000 },
+  async () => {
+    // Servidor que aceita a conexão e nunca responde.
+    const servidor = createServer(() => {
+      /* pendura de propósito */
+    });
+    await new Promise<void>((r) => servidor.listen(0, r));
+    const porta = (servidor.address() as Any).port;
+    process.env.DS_ASSET_ALLOW_LOCAL = '1';
+    const cont = contadorStub();
+    try {
+      const fetcher = createSecureHttpFetcher(
+        { ...DEFAULT_LIMITS, assetTimeoutMs: 120 },
+        { contador: cont },
+      );
+      const r = await fetcher(`http://localhost:${porta}/travado.png`);
+      assert.equal(r, null, 'download travado devolve null');
+      assert.ok((cont.n.timeouts ?? 0) >= 1, 'contou timeout');
+      assert.ok((cont.n.downloadsAbortados ?? 0) >= 1, 'contou download abortado');
+    } finally {
+      process.env.DS_ASSET_ALLOW_LOCAL = undefined;
+      await fecharServidor(servidor);
+    }
+  },
+);
 
 test('fetcher seguro: um travado NÃO bloqueia outro que responde (regra 7)', async () => {
   const travado = createServer(() => {});
