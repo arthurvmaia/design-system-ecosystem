@@ -150,6 +150,14 @@ export type SegmentRecord = {
   marca?: Recolorabilidade;
 };
 
+/** O ritmo medido no acervo. Espelha `@ds/composer`. */
+export type TokensDeMovimento = {
+  rapidaMs: number;
+  mediaMs: number;
+  easing: string;
+  amostras: number;
+};
+
 /** A medida de alcance da marca sobre uma peça. Espelha `@ds/composer`. */
 export type Recolorabilidade = {
   total: number;
@@ -485,6 +493,13 @@ export const api = {
     }),
   classify: (dsId: string) =>
     jsonFetch<StartWorkResponse>(`/api/design-systems/${dsId}/classify`, { method: 'POST' }),
+
+  /**
+   * O ritmo do acervo: a mediana das durações e a curva mais usada nos sites
+   * trazidos. `amostras: 0` significa que não houve o que medir, e aí o app
+   * mantém o próprio padrão em vez de fingir que mediu.
+   */
+  getMovimento: () => jsonFetch<{ tokens: TokensDeMovimento }>('/api/movimento'),
 
   // ── Tasks ───────────────────────────────────────────────────────────────
   getTask: (id: string) => jsonFetch<{ task: TaskRecord }>(`/api/tasks/${id}`),

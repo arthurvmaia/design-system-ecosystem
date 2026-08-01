@@ -113,9 +113,23 @@
   --radius-xl: 0px;
 
   /* Duas curvas, as duas da referência. A padrão para reações; a expo para
-     entradas, que é o que dá a sensação de "assentar" em vez de "chegar". */
-  --ease-ds: cubic-bezier(0.4, 0, 0.2, 1);
+     entradas, que é o que dá a sensação de "assentar" em vez de "chegar".
+
+     `--ease-ds` aceita o que o ACERVO disser: o Shell mede a curva mais usada
+     nos sites trazidos e a escreve em `--orbis-easing`. Sem acervo, ou sem
+     movimento que dê para medir, o fallback aqui é que vale — o app nunca fica
+     esperando o servidor para saber como se mexer.
+
+     O que atravessa essa fronteira é NÚMERO, nunca regra: CSS de terceiro no
+     shell furaria o isolamento do PreviewFrame e quebraria layout de um jeito
+     que ninguém prevê. É a diferença entre inspirado no acervo e contaminado
+     por ele. */
+  --ease-ds: var(--orbis-easing, cubic-bezier(0.4, 0, 0.2, 1));
   --ease-entrada: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* O mesmo para o tempo: o ritmo do acervo, com o do tema como piso. */
+  --duracao-rapida: var(--orbis-duracao-rapida, 150ms);
+  --duracao-media: var(--orbis-duracao-media, 300ms);
 }
 
 @layer base {

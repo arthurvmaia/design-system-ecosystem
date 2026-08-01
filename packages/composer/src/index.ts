@@ -22,6 +22,12 @@ export {
   nivelDeMarca,
 } from './recolorabilidade.js';
 export {
+  type TokensDeMovimento,
+  MOVIMENTO_PADRAO,
+  cssDosTokensDeMovimento,
+  tokensDeMovimento,
+} from './movimento.js';
+export {
   type ContextoDeCor,
   type FonteInventariada,
   type OcorrenciaDeCor,

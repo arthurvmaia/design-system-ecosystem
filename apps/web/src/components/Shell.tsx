@@ -1,3 +1,6 @@
+import { api } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Toaster } from './Toaster';
@@ -17,6 +20,21 @@ import { TopBar } from './TopBar';
  */
 export function Shell() {
   const location = useLocation();
+
+  // O ritmo do app vem do acervo: a mediana das durações e a curva mais comum
+  // dos sites que a pessoa trouxe. O que atravessa a fronteira são NÚMEROS —
+  // três custom properties — e não regra de terceiro, que furaria o isolamento
+  // do PreviewFrame e quebraria layout de um jeito imprevisível. Sem acervo, o
+  // servidor devolve o padrão do tema e nada muda.
+  const movimento = useQuery({ queryKey: ['movimento'], queryFn: api.getMovimento });
+  useEffect(() => {
+    const t = movimento.data?.tokens;
+    if (t === undefined || t.amostras === 0) return;
+    const raiz = document.documentElement;
+    raiz.style.setProperty('--orbis-duracao-rapida', `${t.rapidaMs}ms`);
+    raiz.style.setProperty('--orbis-duracao-media', `${t.mediaMs}ms`);
+    raiz.style.setProperty('--orbis-easing', t.easing);
+  }, [movimento.data]);
 
   return (
     <div className="relative flex h-screen w-screen overflow-hidden">

@@ -25,6 +25,38 @@ import { Link } from 'react-router-dom';
  * E as etapas saem de `primaryNav`, a mesma fonte da barra lateral. Duas listas
  * de etapas em lugares diferentes acabariam discordando na primeira mudança.
  */
+/**
+ * Os três modos de uso do produto.
+ *
+ * O primeiro é o fluxo que a interface já mostrava. Os outros dois existiam no
+ * dado e no motor e não existiam na tela — e o terceiro, o redesign, é o caso
+ * mais vendável do produto: trazer um site antigo, trocar a marca, receber um
+ * novo. Ninguém descobria isso sozinho porque nada dizia.
+ */
+const MODOS: readonly { titulo: string; explica: string; acao: string; para: string }[] = [
+  {
+    titulo: 'Montar com peças',
+    explica:
+      'Traga vários sites, escolha as peças que gostou de cada um e monte um kit só seu. É o caminho completo, e o que faz a biblioteca crescer.',
+    acao: 'começar pela captura',
+    para: '/extract',
+  },
+  {
+    titulo: 'Partir de um kit pronto',
+    explica:
+      'Já tem um kit montado? Vá direto para a estrutura e a sua marca. O visual já está decidido, só falta o seu conteúdo.',
+    acao: 'ver os kits',
+    para: '/design-systems',
+  },
+  {
+    titulo: 'Redesenhar um site antigo',
+    explica:
+      'Traga o site que você já tem, escolha um kit com a cara nova e gere de novo com a sua marca. O conteúdo é seu, o jeito visual é o do kit.',
+    acao: 'trazer o site antigo',
+    para: '/extract',
+  },
+];
+
 export function HomePage() {
   const ds = useQuery({ queryKey: ['design-systems'], queryFn: api.listDesignSystems });
   const lib = useQuery({ queryKey: ['library'], queryFn: api.listLibrary });
@@ -173,6 +205,60 @@ export function HomePage() {
           );
         })}
       </div>
+
+      {/* ── Os três jeitos de usar ────────────────────────────────────────────
+          Dois deles não apareciam em lugar nenhum da interface, e o terceiro é
+          o mais vendável do produto: pegar um site antigo, trocar a marca e
+          receber um novo. Estavam no dado e no motor, não na tela — e o que a
+          tela não diz, ninguém descobre. */}
+      <div className="mt-16 flex items-center gap-3">
+        <span className="ds-label">três jeitos de usar</span>
+        <span className="ds-hairline flex-1" aria-hidden />
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+        {MODOS.map((modo, i) => (
+          <Link
+            key={modo.titulo}
+            to={modo.para}
+            className={`ds-reveal ds-card ds-d${i + 1} group flex flex-col rounded-none p-4`}
+          >
+            <span className="ds-card-content flex min-h-0 flex-1 flex-col">
+              <span
+                className="text-[15px] font-medium"
+                style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
+              >
+                {modo.titulo}
+              </span>
+              <span
+                className="mt-2 block flex-1 text-[13px] leading-relaxed"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                {modo.explica}
+              </span>
+              <span
+                className="ds-data mt-3 flex items-center gap-1.5 text-[11px]"
+                style={{ color: 'var(--color-ion-4)' }}
+              >
+                {modo.acao}
+                <ArrowRight
+                  size={11}
+                  className="transition-transform group-hover:translate-x-0.5"
+                />
+              </span>
+            </span>
+          </Link>
+        ))}
+      </div>
+
+      {/* O argumento do produto, que não estava dito: o acervo é cumulativo. */}
+      <p
+        className="ds-reveal mt-6 text-[13px] leading-relaxed"
+        style={{ color: 'var(--color-fg-subtle)' }}
+      >
+        Cada site que você traz aumenta a sua biblioteca para sempre. O segundo site custa menos que
+        o primeiro, e o décimo custa quase nada: as peças já estão aqui.
+      </p>
 
       {/* A regra que mais confunde quem chega, dita uma vez, no lugar certo. */}
       <div
