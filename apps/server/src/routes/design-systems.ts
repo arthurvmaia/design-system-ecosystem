@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Recolorabilidade } from '@ds/composer';
 import { runExtraction } from '@ds/extractor';
 import { getDb, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
@@ -29,6 +30,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { getModels } from '../lib/anthropic.js';
 import { isQueueMode } from '../lib/execution-mode.js';
+import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
 import { enqueueTask } from '../lib/task-queue.js';
 import { validarPreviews } from '../lib/validate-preview.js';
 
@@ -145,12 +147,9 @@ const lerComparacoesV2 = (dsId: string): ComparacaoBruta[] => {
 const lerBundleParaListagem = (
   dsId: string,
   position: number,
-): { limitacoes: string[]; capsula: boolean } | null => {
-  const path = join(
-    vaultSegmentBundlesDir(dsId as `ds_${string}`),
-    `seg_${position}`,
-    'manifest.json',
-  );
+): { limitacoes: string[]; capsula: boolean; marca: Recolorabilidade | null } | null => {
+  const dir = join(vaultSegmentBundlesDir(dsId as `ds_${string}`), `seg_${position}`);
+  const path = join(dir, 'manifest.json');
   if (!existsSync(path)) return null;
   try {
     const m = JSON.parse(readFileSync(path, 'utf8')) as {
@@ -162,6 +161,9 @@ const lerBundleParaListagem = (
         ? m.limitations.filter((l): l is string => typeof l === 'string')
         : [],
       capsula: m.representation?.type === 'capsula-runtime',
+      // Quanto da peça a marca do usuário alcança. Sai daqui e não do
+      // compilador porque precisa valer para o acervo que já está em disco.
+      marca: recolorabilidadeDoBundle(dir),
     };
   } catch {
     return null;
@@ -299,7 +301,10 @@ designSystemsRoute.get('/:id/segments', (c) => {
   // limitações que cada bundle declarou. O manifesto de captura é lido UMA vez;
   // os manifests de bundle, um por seção (medido no acervo real: 12 a 32 KB
   // cada, 8 a 12 seções por extração — leitura local barata).
-  const bundles = new Map<string, { limitacoes: string[]; capsula: boolean }>();
+  const bundles = new Map<
+    string,
+    { limitacoes: string[]; capsula: boolean; marca: Recolorabilidade | null }
+  >();
   for (const s of segmentos) {
     if (s.parentId !== null) continue; // subcomponente não tem bundle próprio
     const b = lerBundleParaListagem(id, s.position);
@@ -327,6 +332,9 @@ designSystemsRoute.get('/:id/segments', (c) => {
       // vazia); é como o front distingue "não medido" de "não se aplica".
       ...(bundle !== undefined ? { limitacoes: bundle.limitacoes } : {}),
       ...(conferencia !== undefined ? { comparacaoVisual: conferencia } : {}),
+      // Quanto da peça a marca do usuário vai alcançar. Ausente quando não há
+      // folha para medir — a tela não promete nem acusa o que não mediu.
+      ...(bundle?.marca != null ? { marca: bundle.marca } : {}),
     };
   });
   return c.json({ items, naoAssociados, capturaParcial });

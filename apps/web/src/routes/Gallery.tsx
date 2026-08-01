@@ -5,6 +5,7 @@ import { PreviewFrame } from '@/components/PreviewFrame';
 import {
   type ConferenciaDePixel,
   type DesignSystemRecord,
+  type Recolorabilidade,
   type SegmentFidelity,
   type SegmentRecord,
   api,
@@ -45,6 +46,7 @@ import {
   Monitor,
   MousePointer2,
   MoveVertical,
+  Palette,
   Play,
   Smartphone,
   Sparkles,
@@ -138,6 +140,38 @@ const CONFIANCA_LABEL: Record<string, string> = {
 /** Fração 0..1 como percentual pt-BR: 0.032 vira "3,2%"; 0.08 vira "8%". */
 const pct = (v: number): string =>
   `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+
+/**
+ * O selo de alcance da marca.
+ *
+ * A recoloração deixa coisas de fora de propósito — palavra de cor, função
+ * dinâmica, cor dentro de imagem — e cada decisão dessas está certa. O que não
+ * estava certo era o silêncio: a peça entrava no kit parecendo que ia receber a
+ * paleta da pessoa e saía com as cores da origem. Num site Tailwind isso é a
+ * regra, não a exceção (medido no acervo: 46% de alcance, com 232 `var()`).
+ *
+ * "Aplicável" não ganha selo. Dizer que está tudo bem em toda peça boa vira
+ * ruído e ensina a não ler nenhum.
+ */
+function MarcaBadge({ marca }: { marca?: Recolorabilidade }) {
+  if (marca === undefined || marca.total === 0 || marca.taxa >= 0.8) return null;
+  const fixas = marca.taxa < 0.35;
+  const cor = fixas ? '#dc2626' : '#d97706';
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+      style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
+      title={
+        fixas
+          ? `As cores desta peça são fixas: só ${marca.alcancavel} de ${marca.total} aceitam a sua paleta. Ela vai sair com as cores da origem.`
+          : `${marca.alcancavel} de ${marca.total} cores desta peça aceitam a sua paleta. O resto sai como está na origem.`
+      }
+    >
+      <Palette size={9} />
+      {fixas ? 'cores fixas' : `marca ${pct(marca.taxa)}`}
+    </span>
+  );
+}
 
 /**
  * Selo de fidelidade do card, em 4 estados:
@@ -1129,6 +1163,7 @@ function SegmentsView({
                         {CATEGORY_LABEL(s.category)}
                       </span>
                       <FidelityBadge fidelity={s.fidelity} comparacao={s.comparacaoVisual} />
+                      <MarcaBadge marca={s.marca} />
                     </div>
                   </div>
                 </div>
@@ -1302,6 +1337,7 @@ function SegmentCard({
                 )}
                 <span className="truncate">{CATEGORY_LABEL(segment.category)}</span>
                 <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
+                <MarcaBadge marca={segment.marca} />
               </div>
               {subcomponentes > 0 && onAbrirPecas !== undefined && (
                 <button
@@ -1564,6 +1600,7 @@ function SegmentCardFilho({
           >
             <span className="shrink-0">{CATEGORY_LABEL(segment.category)}</span>
             <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
+            <MarcaBadge marca={segment.marca} />
             {nomeDoPai !== undefined && (
               <span
                 className="truncate rounded-none border px-1.5 py-px"

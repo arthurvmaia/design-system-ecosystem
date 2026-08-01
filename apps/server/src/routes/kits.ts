@@ -12,6 +12,7 @@ import { zValidator } from '@hono/zod-validator';
 import { asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
 
 /**
  * CRUD dos kits — os Design Systems finais.
@@ -101,21 +102,29 @@ kitsRoute.get('/:id', (c) => {
 
 /**
  * Resumo do CONTRATO de cada componente do kit: quantos espaços de texto,
- * mídia e link a peça realmente tem. É o que a etapa de mídia usa para mostrar
- * espaços REAIS em vez de um chute — componente sem bundle legível entra com
- * contrato nulo (a UI degrada para o comportamento genérico).
+ * mídia e link a peça realmente tem, e quanto dela a paleta da marca alcança.
+ * É o que a etapa de mídia usa para mostrar espaços REAIS em vez de um chute —
+ * componente sem bundle legível entra com contrato nulo (a UI degrada para o
+ * comportamento genérico).
+ *
+ * O alcance da marca viaja junto porque quem pergunta "o que esta peça aceita"
+ * é a mesma tela que precisa saber "e ela vai vestir a minha cor" — e porque a
+ * resposta tem de chegar ANTES de gerar, não depois.
  */
 kitsRoute.get('/:id/contratos', (c) => {
   const kit = carregarKit(c.req.param('id'));
   if (!kit) return c.json({ error: 'not_found' }, 404);
   const items = kit.components.map((cmp) => {
-    const contrato = lerOuDerivarContrato(libraryComponentBundleDir(cmp.id as `cmp_${string}`));
+    const dir = libraryComponentBundleDir(cmp.id as `cmp_${string}`);
+    const marca = recolorabilidadeDoBundle(dir);
+    const contrato = lerOuDerivarContrato(dir);
+    const base = { id: cmp.id, nome: cmp.name, ...(marca !== null ? { marca } : {}) };
     if (contrato === null) {
-      return { id: cmp.id, disponivel: false, textos: 0, links: 0, logos: 0, midias: [] };
+      return { ...base, disponivel: false, textos: 0, links: 0, logos: 0, midias: [] };
     }
     const midias = contrato.slots.midias.filter((m) => !m.pareceLogo);
     return {
-      id: cmp.id,
+      ...base,
       disponivel: true,
       textos: contrato.slots.textos.length,
       links: contrato.slots.links.length,

@@ -32,6 +32,15 @@ export type DadosDeRevisao = {
   ctaPrincipal: string;
   secoes: readonly { nome: string; componentIds: string[]; instrucao?: string }[];
   nMidias: number;
+  /**
+   * As peças do kit que não aceitam a paleta da marca, com o nome de cada uma.
+   *
+   * A recoloração ignora palavra de cor, função dinâmica e cor dentro de imagem
+   * — decisões certas, todas elas. O que faltava era dizer isso ANTES de gerar:
+   * a pessoa montava o kit, escolhia a paleta, gerava, e só então descobria que
+   * metade do site saiu com as cores do site de origem.
+   */
+  pecasComCoresFixas?: readonly string[];
 };
 
 export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
@@ -94,6 +103,18 @@ export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
   }
   if (d.nMidias === 0) {
     aviso(ETAPA.midia, 'Você não enviou nenhuma mídia. As seções visuais saem só com o estilo.');
+  }
+
+  // Dito antes de gerar, e não descoberto depois: é a diferença entre uma
+  // limitação declarada e uma surpresa.
+  const fixas = d.pecasComCoresFixas ?? [];
+  if (fixas.length > 0) {
+    const nomes = fixas.slice(0, 3).join(', ');
+    const resto = fixas.length > 3 ? ` e mais ${fixas.length - 3}` : '';
+    aviso(
+      ETAPA.projeto,
+      `${fixas.length === 1 ? 'Uma peça deste kit não aceita' : `${fixas.length} peças deste kit não aceitam`} a sua paleta (${nomes}${resto}). ${fixas.length === 1 ? 'Ela vai sair' : 'Elas vão sair'} com as cores do site de origem.`,
+    );
   }
 
   return problemas;

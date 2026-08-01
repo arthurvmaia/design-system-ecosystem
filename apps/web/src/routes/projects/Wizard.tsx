@@ -382,6 +382,12 @@ export function ProjectWizard({
     ctaPrincipal: branding.mainCta.label,
     secoes,
     nMidias: media.filter((m) => m.kind !== 'logo').length,
+    // As peças cuja cor é praticamente toda fixa. O corte de 35% é o mesmo do
+    // selo da Galeria: abaixo dele a peça sai, na prática, com a cara da
+    // origem, e isso precisa ser dito antes de gerar.
+    pecasComCoresFixas: espacosDasPecas
+      .filter((c) => c.marca !== undefined && c.marca.total > 0 && c.marca.taxa < 0.35)
+      .map((c) => c.nome ?? c.id),
   });
   const travadoPorBloqueante = bloqueantes(problemas).length > 0;
 

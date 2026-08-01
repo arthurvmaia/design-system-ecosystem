@@ -15,6 +15,13 @@ export {
 } from './compor.js';
 export { type CorAnalisada, type Oklch, analisarCor, distanciaOk, paraOklch } from './cor.js';
 export {
+  type MotivoInalcancavel,
+  type NivelDeMarca,
+  type Recolorabilidade,
+  medirRecolorabilidade,
+  nivelDeMarca,
+} from './recolorabilidade.js';
+export {
   type ContextoDeCor,
   type FonteInventariada,
   type OcorrenciaDeCor,

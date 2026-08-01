@@ -138,6 +138,24 @@ export type SegmentRecord = {
    * subcomponente, em que a conferência de pixel nem se aplica.
    */
   limitacoes?: string[];
+  /**
+   * Quanto da peça a paleta da marca alcança. Ausente = não deu para medir (sem
+   * folha de estilo), e aí a tela não promete nem acusa.
+   *
+   * A recoloração deixa de fora, de propósito, as palavras de cor (`white`), as
+   * funções dinâmicas (`color-mix`, `var()` como cor inteira) e o que mora
+   * dentro de imagem. Cada exclusão está certa; o que faltava era CONTAR, para
+   * a peça parar de entrar no kit parecendo que vai receber a marca.
+   */
+  marca?: Recolorabilidade;
+};
+
+/** A medida de alcance da marca sobre uma peça. Espelha `@ds/composer`. */
+export type Recolorabilidade = {
+  total: number;
+  alcancavel: number;
+  taxa: number;
+  fora: Partial<Record<'palavra' | 'funcao-dinamica' | 'dentro-de-imagem', number>>;
 };
 
 export type TaskEvent = { timestamp: number; level: 'info' | 'warn' | 'error'; message: string };
@@ -201,11 +219,15 @@ export type KitComponentRef = {
 /** Resumo do contrato de um componente do kit (espaços reais de conteúdo). */
 export type KitContratoResumo = {
   id: string;
+  /** O nome da peça, para o aviso poder dizer QUAL peça não aceita a paleta. */
+  nome?: string;
   disponivel: boolean;
   textos: number;
   links: number;
   logos: number;
   midias: { tipo: string }[];
+  /** Quanto desta peça a paleta da marca alcança. Ausente = não deu para medir. */
+  marca?: Recolorabilidade;
 };
 
 export type KitRecord = {
