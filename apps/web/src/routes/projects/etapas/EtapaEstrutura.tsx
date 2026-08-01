@@ -1,7 +1,8 @@
+import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { Select } from '@/components/seletores';
-import { type KitComponentRef, previewComponentUrl } from '@/lib/api';
+import { type KitComponentRef, type MediaItem, api, previewComponentUrl } from '@/lib/api';
 import {
   type FundoEmUso,
   MOTIVO_DO_PAPEL,
@@ -19,6 +20,7 @@ import {
   tirarFundo,
 } from '@/lib/estrutura-checagens';
 import { ORBIS } from '@/lib/orbis';
+import { toast } from '@/lib/toast';
 import {
   EXPLICA_AIDA,
   type EspacosDaPeca,
@@ -36,9 +38,10 @@ import {
   sugerirMidiaDaSecao,
   sugerirSecoes,
 } from '@ds/shared/schemas';
-import { ChevronDown, ChevronUp, Layers, Plus, RotateCcw, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
-import { INPUT, inputStyle, rotulo } from '../partes';
+import { useMutation } from '@tanstack/react-query';
+import { ChevronDown, ChevronUp, Layers, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { INPUT, inputStyle, mediaUrl, rotulo } from '../partes';
 
 const AUTOMATICO = '__automatico__';
 
@@ -74,6 +77,9 @@ export function StepEstrutura({
   espacos,
   criarSecoesFaltantes,
   onCriarSecoesFaltantes,
+  projectId,
+  media,
+  onMedia,
 }: {
   secoes: SecaoDoSite[];
   onSecoes: (s: SecaoDoSite[]) => void;
@@ -82,6 +88,16 @@ export function StepEstrutura({
   objetivo: ObjetivoDoSite | null;
   /** Os espaços REAIS de imagem de cada peça, do contrato do kit. */
   espacos: readonly EspacosDaPeca[];
+  /**
+   * A mídia do projeto, para o inspetor mostrar e receber a da seção aberta.
+   *
+   * O upload passa a acontecer olhando para a seção que vai receber o arquivo,
+   * que é a diferença entre escolher uma imagem e escolher uma imagem PARA
+   * ALGO. A etapa Mídia continua existindo para as mídias gerais e os produtos.
+   */
+  projectId: string | null;
+  media: MediaItem[];
+  onMedia: (m: MediaItem[]) => void;
   /**
    * A permissão `layout.permissoes.criarSecoesFaltantes`, como boolean solto:
    * o Wizard guarda cada permissão do mesmo jeito (é o desenho que a arte de
@@ -145,7 +161,18 @@ export function StepEstrutura({
   const secaoEscolhendo = escolhendoPara === null ? null : (porId.get(escolhendoPara) ?? null);
 
   return (
-    <div className="gap-6 md:grid md:grid-cols-[minmax(0,1fr)_260px] md:items-start">
+    // TRÊS PAINÉIS, no modelo do editor de tema da Shopify: a árvore que a
+    // pessoa monta, a prévia real no meio, e o inspetor da seção escolhida.
+    //
+    // O que faltava era o terceiro. Os controles de uma seção — qual peça, o
+    // texto, a mídia — estavam espalhados por etapas diferentes do wizard, e
+    // decidir sobre uma seção obrigava a andar entre telas. Aqui eles ficam ao
+    // lado dela, e o upload passa a acontecer olhando para a seção que vai
+    // receber o arquivo.
+    //
+    // Em tela estreita o inspetor some e a lista continua sendo tudo: ela já
+    // expande cada seção com os mesmos controles.
+    <div className="gap-6 md:grid md:grid-cols-[minmax(0,1fr)_260px] md:items-start xl:grid-cols-[minmax(0,1fr)_260px_300px]">
       <div className="space-y-5">
         <div>
           <div className="mb-1 flex items-baseline justify-between gap-3">
@@ -268,6 +295,18 @@ export function StepEstrutura({
         ativa={aberta}
         objetivo={objetivo}
         aoAbrir={(id) => setAberta(id)}
+      />
+
+      <Inspetor
+        secao={aberta === null ? null : (secoes.find((s) => s.id === aberta) ?? null)}
+        resolvida={aberta === null ? null : (porId.get(aberta) ?? null)}
+        objetivo={objetivo}
+        projectId={projectId}
+        media={media}
+        onMedia={onMedia}
+        onMudar={(patch) => aberta !== null && mudar(aberta, patch)}
+        onEscolherPeca={() => aberta !== null && setEscolhendoPara(aberta)}
+        onTirarPeca={(j) => aberta !== null && tirarPeca(aberta, j)}
       />
 
       {escolhendoPara !== null && (
@@ -772,6 +811,231 @@ function BlocoDeFundo({
   );
 }
 
+// ── Inspetor ────────────────────────────────────────────────────────────────
+
+/**
+ * O terceiro painel: tudo que decide UMA seção, ao lado dela.
+ *
+ * Os controles de uma seção estavam espalhados por etapas diferentes do wizard —
+ * a peça na Estrutura, o texto na Estrutura, a mídia na etapa seguinte — e
+ * decidir sobre uma seção obrigava a andar entre telas e lembrar de qual seção
+ * se estava falando. Aqui eles ficam juntos, com o nome da seção no topo.
+ *
+ * O upload é o que mais ganha: escolher uma imagem para "a abertura" é decisão
+ * diferente de escolher uma imagem no meio de uma lista de seis campos iguais.
+ */
+function Inspetor({
+  secao,
+  resolvida,
+  objetivo,
+  projectId,
+  media,
+  onMedia,
+  onMudar,
+  onEscolherPeca,
+  onTirarPeca,
+}: {
+  secao: SecaoDoSite | null;
+  resolvida: SecaoResolvida | null;
+  objetivo: ObjetivoDoSite | null;
+  projectId: string | null;
+  media: MediaItem[];
+  onMedia: (m: MediaItem[]) => void;
+  onMudar: (patch: Partial<SecaoDoSite>) => void;
+  onEscolherPeca: () => void;
+  onTirarPeca: (indice: number) => void;
+}) {
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      if (!projectId) throw new Error('rascunho ainda não criado');
+      if (secao === null) throw new Error('sem seção');
+      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+      const pareceVideo = file.type
+        ? file.type.startsWith('video/')
+        : ['.mp4', '.webm', '.mov', '.ogv', '.m4v'].includes(ext);
+      return api.uploadMedia(projectId, file, {
+        kind: pareceVideo ? 'video' : 'image',
+        secaoId: secao.id,
+      });
+    },
+    onSuccess: (res) => {
+      onMedia(res.media);
+      toast.ok('Mídia enviada para esta seção.');
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha no upload.'),
+  });
+
+  if (secao === null || resolvida === null) {
+    return (
+      <aside className="hidden xl:block">
+        <div className="md:sticky md:top-0">
+          <div className="mb-1.5 text-[11px] uppercase tracking-[0.2em]" style={rotulo}>
+            Detalhes da seção
+          </div>
+          <div
+            className="rounded-none border px-3 py-8 text-center text-[11px] leading-relaxed"
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-subtle)' }}
+          >
+            Escolha uma seção na lista ou na prévia para mexer nela aqui.
+          </div>
+        </div>
+      </aside>
+    );
+  }
+
+  const papel = SectionRole.safeParse(resolvida.slug);
+  const etapa = papel.success ? explicarPapel(papel.data, objetivo) : undefined;
+  const daSecao = media.filter((m) => m.kind !== 'logo' && m.secaoId === secao.id);
+
+  return (
+    <aside className="hidden xl:block">
+      <div className="md:sticky md:top-0">
+        <div className="mb-1.5 text-[11px] uppercase tracking-[0.2em]" style={rotulo}>
+          Detalhes da seção
+        </div>
+        <div
+          className="max-h-[70vh] space-y-4 overflow-y-auto rounded-none border p-3"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0,0,0,0.3)' }}
+        >
+          <div>
+            <div className="truncate text-[14px]" style={{ color: 'var(--color-fg)' }}>
+              {secao.nome.trim() === '' ? 'Seção sem nome' : secao.nome}
+            </div>
+            {etapa !== undefined && (
+              <div
+                className="mt-0.5 text-[11px] leading-snug"
+                style={{ color: 'var(--color-ion-3)' }}
+              >
+                {etapa.faz}
+              </div>
+            )}
+          </div>
+
+          {/* A peça. Sem peça, a seção nasce no estilo do kit — e o painel diz
+              o que vai nascer, em vez de só dizer que está vazia. */}
+          <div>
+            <div className="ds-label mb-1.5">Peça</div>
+            {resolvida.pecas.length === 0 ? (
+              <p
+                className="text-[11px] leading-relaxed"
+                style={{ color: 'var(--color-fg-subtle)' }}
+              >
+                Criada no estilo do kit.
+                {etapa !== undefined && ` ${resumirSugestao(etapa.sugestao)}`}
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {resolvida.pecas.map((p, i) => (
+                  <div
+                    key={`${p.id}-${i}`}
+                    className="flex items-center gap-2 border px-2 py-1.5"
+                    style={{ borderColor: 'var(--color-border)' }}
+                  >
+                    <span
+                      className="min-w-0 flex-1 truncate text-[11px]"
+                      style={{ color: 'var(--color-fg)' }}
+                    >
+                      {p.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onTirarPeca(i)}
+                      title="Tirar esta peça da seção"
+                      className="shrink-0 rounded-none p-1 hover:bg-white/[0.06]"
+                    >
+                      <X size={11} style={{ color: 'var(--color-fg-subtle)' }} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={onEscolherPeca}
+              className="ds-tag mt-2 flex w-full items-center justify-center gap-1.5 rounded-none border px-2 py-1.5 text-[11px]"
+              style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg-muted)' }}
+            >
+              <Plus size={11} />
+              {resolvida.pecas.length === 0 ? 'Escolher uma peça' : 'Trocar ou somar peça'}
+            </button>
+          </div>
+
+          {/* O texto desta seção, no mesmo lugar da peça e da mídia. */}
+          <div>
+            <div className="ds-label mb-1.5">O que dizer aqui</div>
+            <textarea
+              value={secao.instrucao ?? ''}
+              onChange={(e) => onMudar({ instrucao: e.target.value })}
+              rows={3}
+              placeholder="Deixe em branco e eu escrevo no tom da sua marca."
+              className="w-full resize-y rounded-none border px-2 py-1.5 text-[11px] leading-relaxed outline-none focus:border-[var(--color-signal)]"
+              style={{
+                borderColor: 'var(--color-border)',
+                backgroundColor: 'rgba(0,0,0,0.35)',
+                color: 'var(--color-fg)',
+              }}
+            />
+          </div>
+
+          {/* A mídia DESTA seção, enviada olhando para ela. */}
+          <div>
+            <div className="ds-label mb-1.5">Mídia desta seção</div>
+            {daSecao.length > 0 && (
+              <div className="mb-2 grid grid-cols-3 gap-1.5">
+                {daSecao.map((m) => (
+                  <div
+                    key={m.path}
+                    className="aspect-square overflow-hidden border"
+                    style={{ borderColor: 'var(--color-border)' }}
+                  >
+                    {m.kind === 'video' ? (
+                      <div
+                        className="flex h-full w-full items-center justify-center text-[9px]"
+                        style={{ color: 'var(--color-fg-subtle)' }}
+                      >
+                        vídeo
+                      </div>
+                    ) : (
+                      <img
+                        src={mediaUrl(projectId ?? '', m.path)}
+                        alt={m.alt ?? ''}
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <label
+              className="ds-tag flex cursor-pointer items-center justify-center gap-1.5 rounded-none border px-2 py-1.5 text-[11px]"
+              style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg-muted)' }}
+            >
+              {upload.isPending ? <Mascote tamanho={11} girando /> : <Upload size={11} />}
+              enviar para esta seção
+              <input
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                disabled={!projectId || upload.isPending}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) upload.mutate(f);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            {!projectId && (
+              <p className="mt-1.5 text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                O envio abre depois do primeiro avanço, quando o rascunho existe.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 // ── Prévia empilhada ────────────────────────────────────────────────────────
 
 /**
@@ -806,6 +1070,16 @@ function PreviaEmpilhada({
   objetivo: ObjetivoDoSite | null;
   aoAbrir: (id: string) => void;
 }) {
+  // Quando a seção ativa muda por fora (clique na lista), a prévia rola até
+  // ela. Sem isto, escolher a última seção de uma página longa não mudava nada
+  // do que estava à vista, e a prévia deixava de ser o espelho da lista.
+  const caixa = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ativa === null || caixa.current === null) return;
+    const alvo = caixa.current.querySelector(`[data-secao="${ativa}"]`);
+    alvo?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [ativa]);
+
   return (
     <div className="hidden md:block">
       <div className="md:sticky md:top-0">
@@ -818,7 +1092,8 @@ function PreviaEmpilhada({
           </span>
         </div>
         <div
-          className="max-h-[70vh] scroll-smooth overflow-y-auto overscroll-contain rounded-lg border"
+          ref={caixa}
+          className="max-h-[70vh] scroll-smooth overflow-y-auto overscroll-contain rounded-none border"
           style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0,0,0,0.3)' }}
         >
           {secoes.length === 0 && (
@@ -839,9 +1114,14 @@ function PreviaEmpilhada({
               <button
                 key={r.id}
                 type="button"
+                // A seleção é BIDIRECIONAL: clicar aqui abre a seção na lista, e
+                // escolher na lista rola esta prévia até ela. O `data-secao` é o
+                // que liga os dois lados sem cada um guardar uma referência do
+                // outro — é a mesma peça da página vista de dois ângulos.
+                data-secao={r.id}
                 onClick={() => aoAbrir(r.id)}
                 title={`Abrir a seção ${r.nome || 'sem nome'}`}
-                className="block w-full px-1 pb-1.5 text-left"
+                className="block w-full scroll-mt-2 px-1 pb-1.5 text-left"
                 style={{
                   backgroundColor: ativa === r.id ? 'rgba(34,211,238,0.1)' : 'transparent',
                 }}

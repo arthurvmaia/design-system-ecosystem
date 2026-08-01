@@ -443,6 +443,9 @@ export function ProjectWizard({
               espacos={espacosDasPecas}
               criarSecoesFaltantes={criarSecoesFaltantes}
               onCriarSecoesFaltantes={setCriarSecoesFaltantes}
+              projectId={projectId}
+              media={media}
+              onMedia={setMedia}
             />
           )}
           {step === ETAPA.midia && (
