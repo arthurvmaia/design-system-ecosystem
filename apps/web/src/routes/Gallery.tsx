@@ -163,8 +163,51 @@ const CONFIANCA_LABEL: Record<string, string> = {
   nenhuma: 'sem associação',
 };
 
-function FidelityBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
-  if (!fidelity || fidelity.support === 'completo') return null;
+/** Fração 0..1 como percentual pt-BR: 0.032 vira "3,2%"; 0.08 vira "8%". */
+const pct = (v: number): string =>
+  `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+
+/**
+ * Selo de fidelidade do card, em 4 estados:
+ * - medido e completo → sem selo (silêncio é a promessa honesta);
+ * - medido com ressalva → o selo do nível de suporte, como sempre;
+ * - medido e REPROVADO na conferência de pixel → selo vermelho;
+ * - NUNCA medido → selo cinza. Antes as duas pontas devolviam null, e a
+ *   ausência de medição usava a mesma linguagem visual da aprovação.
+ */
+function FidelityBadge({
+  fidelity,
+  comparacao,
+}: {
+  fidelity?: SegmentFidelity | null;
+  comparacao?: ConferenciaDePixel;
+}) {
+  if (comparacao !== undefined && !comparacao.passou) {
+    const cor = '#dc2626';
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+        style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
+        title={`A conferência de pixel mediu ${pct(comparacao.delta)} de diferença (limiar ${pct(comparacao.limiar)})`}
+      >
+        <X size={9} />
+        Reprovado
+      </span>
+    );
+  }
+  if (!fidelity) {
+    const cor = '#78716c';
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+        style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
+        title="Ninguém conferiu esta peça: a captura não gerou medição de fidelidade para ela"
+      >
+        Não medido
+      </span>
+    );
+  }
+  if (fidelity.support === 'completo') return null;
   const cor = SUPORTE_COR[fidelity.support] ?? '#78716c';
   return (
     <span
@@ -177,10 +220,6 @@ function FidelityBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
     </span>
   );
 }
-
-/** Fração 0..1 como percentual pt-BR: 0.032 vira "3,2%"; 0.08 vira "8%". */
-const pct = (v: number): string =>
-  `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
 
 /**
  * Painel de fidelidade no detalhe: diz o nível de suporte, os avisos e as
@@ -513,7 +552,17 @@ function SegmentsView({
   const qc = useQueryClient();
   const classify = useMutation({
     mutationFn: () => api.classify(dsId),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      // Modo fila: nada rodou ainda — o pedido só foi registrado em disco.
+      // Dizer "estou classificando" aqui era prometer trabalho que não ia
+      // acontecer; o refetch em 3s reforçava a promessa.
+      if ('queued' in res) {
+        toast.info(
+          'Guardei o pedido na fila. Eu só classifico quando você rodar o PROCESSAR e escolher este job.',
+        );
+        qc.invalidateQueries({ queryKey: ['queue'] });
+        return;
+      }
       toast.info('Estou classificando. Os nomes e as categorias mudam quando eu terminar.');
       setTimeout(() => qc.invalidateQueries({ queryKey: ['segments', dsId] }), 3000);
     },
@@ -523,9 +572,13 @@ function SegmentsView({
   const [detalhe, setDetalhe] = useState<SegmentRecord | null>(null);
   const [comparando, setComparando] = useState<SegmentRecord[] | null>(null);
 
-  // Qualidade como filtro de curadoria: "prontos" = reproduzem completos;
-  // "ressalvas" = têm selo de atenção. O selo deixou de ser só informativo.
-  const [qualidade, setQualidade] = useState<'todos' | 'prontos' | 'ressalvas'>('todos');
+  // Qualidade como filtro de curadoria, em 4 estados: "prontos" EXIGE medição
+  // completa; "ressalvas" = medido com selo de atenção; "não medidos" = a
+  // captura não conferiu. Antes "prontos" aceitava `!s.fidelity`, e a ausência
+  // de medição era promovida como se fosse aprovação.
+  const [qualidade, setQualidade] = useState<'todos' | 'prontos' | 'ressalvas' | 'nao-medidos'>(
+    'todos',
+  );
 
   const filtered = useMemo(() => {
     const todos = segments.data?.items ?? [];
@@ -536,10 +589,22 @@ function SegmentsView({
       category === 'all'
         ? todos.filter((s) => s.parentId === null)
         : todos.filter((s) => s.category === category);
+    // Reprovar na conferência de pixel conta como ressalva mesmo quando a
+    // análise estática disse "completo": as duas medidas existem porque uma
+    // pega o que a outra não vê. Sem isto a peça aparecia em "Prontos para
+    // usar" exibindo o selo vermelho de reprovada, e sumia das outras abas.
+    const reprovadaNoPixel = (s: SegmentRecord): boolean => s.comparacaoVisual?.passou === false;
     if (qualidade === 'prontos') {
-      items = items.filter((s) => !s.fidelity || s.fidelity.support === 'completo');
+      items = items.filter((s) => s.fidelity?.support === 'completo' && !reprovadaNoPixel(s));
     } else if (qualidade === 'ressalvas') {
-      items = items.filter((s) => s.fidelity && s.fidelity.support !== 'completo');
+      items = items.filter(
+        (s) =>
+          s.fidelity !== null &&
+          s.fidelity !== undefined &&
+          (s.fidelity.support !== 'completo' || reprovadaNoPixel(s)),
+      );
+    } else if (qualidade === 'nao-medidos') {
+      items = items.filter((s) => !s.fidelity);
     }
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -547,6 +612,25 @@ function SegmentsView({
     }
     return items;
   }, [segments.data, category, qualidade, search]);
+
+  // A população da grade ANTES de qualidade e busca: o cabeçalho mostra
+  // numerador e denominador do MESMO conjunto. Antes o numerador contava só
+  // raízes e o denominador contava raízes + filhos, e a tela lia "10 /22" sem
+  // filtro nenhum ligado.
+  const populacao = useMemo(() => {
+    const todos = segments.data?.items ?? [];
+    return category === 'all'
+      ? todos.filter((s) => s.parentId === null).length
+      : todos.filter((s) => s.category === category).length;
+  }, [segments.data, category]);
+
+  // Chips derivados do acervo: categoria sem item algum não vira botão morto.
+  // A categoria selecionada continua visível mesmo que esvazie (excluir o
+  // último item não pode sumir com o chip que desliga o filtro).
+  const categoriasComItem = useMemo(() => {
+    const presentes = new Set((segments.data?.items ?? []).map((s) => s.category));
+    return CATEGORIES.filter((c) => c === 'all' || c === category || presentes.has(c));
+  }, [segments.data, category]);
 
   // Subcomponentes agrupados pela seção de origem + nomes para o selo "de:".
   const filhosPorPai = useMemo(() => {
@@ -608,7 +692,15 @@ function SegmentsView({
         partes.push(`Levei ${conta(r.added.length, 'item', 'itens')} para a Biblioteca`);
       if (r.already.length > 0)
         partes.push(`${conta(r.already.length, 'já estava lá', 'já estavam lá')}`);
-      toast.ok(partes.join(' · ') || 'Não havia nada novo para levar.');
+      // O servidor recusa o que a captura não reproduz. Isso precisa chegar à
+      // pessoa: antes o campo era descartado e o lote parecia inteiro.
+      if (r.recusados.length > 0)
+        partes.push(
+          `recusei ${conta(r.recusados.length, 'peça', 'peças')} que a captura não reproduz`,
+        );
+      const texto = partes.join(' · ') || 'Não havia nada novo para levar.';
+      if (r.recusados.length > 0) toast.info(texto);
+      else toast.ok(texto);
       setSel(new Set());
     },
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui curtir a seleção.'),
@@ -659,11 +751,9 @@ function SegmentsView({
                 {filtered.length}
               </span>
               <span className="ds-data text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                /{segments.data?.items.length ?? 0}
+                /{populacao}
               </span>
-              <span className="ds-label">
-                {(segments.data?.items.length ?? 0) === 1 ? 'componente' : 'componentes'}
-              </span>
+              <span className="ds-label">{populacao === 1 ? 'componente' : 'componentes'}</span>
             </span>
             {totalFilhos > 0 && (
               <span className="flex items-baseline gap-1.5">
@@ -764,7 +854,7 @@ function SegmentsView({
           style={{ backgroundColor: 'var(--color-border)' }}
         />
         <div className="flex flex-wrap gap-1.5">
-          {CATEGORIES.map((c) => (
+          {categoriasComItem.map((c) => (
             <button
               type="button"
               key={c}
@@ -791,6 +881,7 @@ function SegmentsView({
               ['todos', 'Tudo'],
               ['prontos', 'Prontos para usar'],
               ['ressalvas', 'Com ressalvas'],
+              ['nao-medidos', 'Não medidos'],
             ] as const
           ).map(([v, r]) => (
             <button
@@ -992,7 +1083,7 @@ function SegmentsView({
                       <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
                         {CATEGORY_LABEL[s.category] ?? 'Outros'}
                       </span>
-                      <FidelityBadge fidelity={s.fidelity} />
+                      <FidelityBadge fidelity={s.fidelity} comparacao={s.comparacaoVisual} />
                     </div>
                   </div>
                 </div>
@@ -1165,7 +1256,7 @@ function SegmentCard({
                   </span>
                 )}
                 <span className="truncate">{CATEGORY_LABEL[segment.category] ?? 'Outros'}</span>
-                <FidelityBadge fidelity={segment.fidelity} />
+                <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
               </div>
               {subcomponentes > 0 && onAbrirPecas !== undefined && (
                 <button
@@ -1427,6 +1518,7 @@ function SegmentCardFilho({
             style={{ color: 'var(--color-fg-subtle)' }}
           >
             <span className="shrink-0">{CATEGORY_LABEL[segment.category] ?? 'Outros'}</span>
+            <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
             {nomeDoPai !== undefined && (
               <span
                 className="truncate rounded-full border px-1.5 py-px"

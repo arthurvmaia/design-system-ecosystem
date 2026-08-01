@@ -11,8 +11,8 @@ import { useEffect, useRef, useState } from 'react';
  *
  * O documento é uma página inteira; para caber num card, renderizamos num
  * "canvas virtual" de `virtualWidth` px e reduzimos por `scale` até a largura
- * real. Lazy de verdade: o iframe só monta quando entra na viewport, senão uma
- * galeria grande dispararia dezenas de documentos de uma vez.
+ * real. Lazy de verdade: o iframe monta ao entrar na viewport E desmonta ao
+ * sair, senão uma galeria grande acumularia dezenas de documentos vivos.
  */
 export function PreviewFrame({
   src,
@@ -101,21 +101,31 @@ export function PreviewFrame({
     return () => ro.disconnect();
   }, []);
 
+  // O iframe monta ao ENTRAR na viewport e DESMONTA ao sair dela. Antes o
+  // observer se desligava na primeira interseção e a grade nunca soltava os
+  // documentos que abria: rolar uma galeria grande acumulava dezenas de
+  // iframes vivos. A margem de 600px dá folga para o vai e vem do scroll não
+  // ficar montando e desmontando na borda.
   useEffect(() => {
+    // No modal e na comparação o documento é o palco da interação: some da
+    // viewport rolando o próprio modal, e desmontar ali perderia o estado.
+    if (interactive) {
+      setVisible(true);
+      return;
+    }
     const el = wrap.current;
-    if (!el || visible) return;
+    if (!el) return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setVisible(true);
-          io.disconnect();
-        }
+        const dentro = entries.some((e) => e.isIntersecting);
+        setVisible(dentro);
+        if (!dentro) setLoaded(false);
       },
-      { rootMargin: '250px' },
+      { rootMargin: '600px' },
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [visible]);
+  }, [interactive]);
 
   const conter = ajuste === 'conter';
   // Altura do documento: a medida real quando ela chega, senão a proporção.

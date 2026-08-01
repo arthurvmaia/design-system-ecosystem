@@ -477,12 +477,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ segmentId }),
     }),
-  /** Curtir vários de uma vez. Idempotente; devolve o que entrou/já estava/sumiu. */
+  /**
+   * Curtir vários de uma vez. Idempotente; devolve o que entrou, o que já
+   * estava, o que sumiu e o que o servidor RECUSOU (peça que a captura não
+   * reproduz). O campo `recusados` sempre existiu na resposta; era o tipo daqui
+   * que o descartava, e a pessoa via "sucesso" com itens faltando.
+   */
   addToLibraryBatch: (segmentIds: string[]) =>
-    jsonFetch<{ added: string[]; already: string[]; missing: string[] }>('/api/library/batch', {
-      method: 'POST',
-      body: JSON.stringify({ segmentIds }),
-    }),
+    jsonFetch<{ added: string[]; already: string[]; missing: string[]; recusados: string[] }>(
+      '/api/library/batch',
+      {
+        method: 'POST',
+        body: JSON.stringify({ segmentIds }),
+      },
+    ),
   removeFromLibrary: (id: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/library/${id}`, { method: 'DELETE' }),
   patchComponent: (
