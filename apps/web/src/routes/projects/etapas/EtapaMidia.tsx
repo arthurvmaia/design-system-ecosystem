@@ -1,6 +1,7 @@
 import { Mascote } from '@/components/Mascote';
 import { Select } from '@/components/seletores';
 import { type KitComponentRef, type MediaItem, api } from '@/lib/api';
+import { avisoDeMidia, oQueCabe } from '@/lib/cabe-na-secao';
 import { contagemUnificada, contarEspacos } from '@/lib/midia-contagens';
 import { toast } from '@/lib/toast';
 import {
@@ -87,6 +88,15 @@ export function StepMidia({
   // Uma seção aberta por vez. Com todas abertas, o texto que explica o pedido de
   // imagem se repetia em cada uma e a tela virava uma parede de frases iguais.
   const [secaoAberta, setSecaoAberta] = useState<string | null>(null);
+
+  // `file.type` vem VAZIO em alguns sistemas, então a extensão decide — a mesma
+  // regra que o upload e o servidor já aplicam.
+  const ehVideo = (f: File): boolean =>
+    f.type
+      ? f.type.startsWith('video/')
+      : ['.mp4', '.webm', '.mov', '.ogv', '.m4v'].includes(
+          f.name.slice(f.name.lastIndexOf('.')).toLowerCase(),
+        );
 
   const upload = useMutation({
     mutationFn: ({ file, secaoId }: { file: File; secaoId: string | null }) => {
@@ -288,6 +298,11 @@ export function StepMidia({
                   {s.pecas.length === 0
                     ? 'criada no estilo do kit'
                     : s.pecas.map((p) => p.name).join(' + ')}
+                  {/* O que a seção aceita, dito na linha e não escondido no
+                      clique: era a pergunta sem resposta na hora de escolher o
+                      arquivo, e a razão de a mesma tela servir para uma barra de
+                      navegação e para uma abertura com vídeo de fundo. */}
+                  {oQueCabe(contratosDaSecao) !== '' && ` · ${oQueCabe(contratosDaSecao)}`}
                 </span>
               </span>
               {contagem.selo !== null && (
@@ -349,7 +364,18 @@ export function StepMidia({
                     disabled={!projectId || upload.isPending}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
-                      if (f) upload.mutate({ file: f, secaoId: s.id });
+                      if (f) {
+                        // O aviso vem ANTES do envio, e não bloqueia: o
+                        // contrato descreve o que a peça de origem tinha, e a
+                        // peça de origem não é o limite do que a pessoa quer
+                        // fazer. Dito na hora, com a consequência por extenso.
+                        const aviso = avisoDeMidia({
+                          tipo: ehVideo(f) ? 'video' : 'image',
+                          contratos: contratosDaSecao,
+                        });
+                        if (aviso.forte) toast.info(aviso.texto);
+                        upload.mutate({ file: f, secaoId: s.id });
+                      }
                       e.target.value = '';
                     }}
                   />
