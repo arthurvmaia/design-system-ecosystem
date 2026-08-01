@@ -26,6 +26,14 @@ import {
   toggle as toggleSel,
 } from '@/lib/selection';
 import { toast } from '@/lib/toast';
+import {
+  CATEGORIAS_POR_FAMILIA,
+  FAMILIAS,
+  FAMILIA_EXPLICA,
+  FAMILIA_LABEL,
+  familiaDe,
+  rotuloDaCategoria,
+} from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -45,60 +53,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 /**
- * A ordem não é alfabética nem casual: os sistemas vêm primeiro.
+ * O filtro tem DOIS níveis: primeiro a família, depois a categoria dentro dela.
  *
- * Tipografia, botões, cards e interações são o que atravessa o site inteiro e
- * o que mais se reaproveita — é raro querer o rodapé de alguém, e comum querer
- * o jeito que os botões dele são. Deixá-los no fim, atrás de `Pricing` e `FAQ`,
- * escondia justamente o que a Galeria existe para oferecer.
+ * O nível de cima é o que faltava. Vinte e cinco categorias num seletor plano
+ * não são uma lista, são um monte, e elas nem são do mesmo tipo: `typography` é
+ * um fundamento, `button` é uma peça, `interaction` é um efeito, `hero` é uma
+ * dobra inteira. A família separa isso, e a categoria só aparece depois que a
+ * pessoa escolheu de que tipo de coisa está atrás.
+ *
+ * A taxonomia mora no `@ds/shared` porque quatro telas mantinham cópias que já
+ * tinham divergido. Aqui não se declara categoria nenhuma.
  */
-const CATEGORIES = [
-  'all',
-  'typography',
-  'button',
-  'card',
-  'badge',
-  'input',
-  'accordion',
-  'interaction',
-  'background',
-  'overlay',
-  'hero',
-  'header',
-  'nav',
-  'footer',
-  'feature',
-  'pricing',
-  'testimonial',
-  'faq',
-  'cta',
-  'form',
-  'other',
-] as const;
+type Familia = (typeof FAMILIAS)[number];
+type FiltroDeFamilia = 'all' | Familia;
 
-const CATEGORY_LABEL: Record<string, string> = {
-  all: 'Todos',
-  typography: 'Tipografia',
-  button: 'Botões',
-  card: 'Cards',
-  badge: 'Selos',
-  input: 'Campos',
-  accordion: 'Acordeões',
-  interaction: 'Animações',
-  background: 'Fundos',
-  overlay: 'Overlays',
-  hero: 'Hero',
-  header: 'Cabeçalho',
-  nav: 'Navegação',
-  footer: 'Rodapé',
-  feature: 'Features',
-  pricing: 'Pricing',
-  testimonial: 'Depoimentos',
-  faq: 'FAQ',
-  cta: 'CTA',
-  form: 'Forms',
-  other: 'Outros',
-};
+const CATEGORY_LABEL = (c: string): string => (c === 'all' ? 'Todos' : rotuloDaCategoria(c));
 
 /** Selo de fidelidade: só aparece quando o componente NÃO saiu completo. */
 const SUPORTE_LABEL: Record<string, string> = {
@@ -363,10 +332,18 @@ const CATEGORIAS_DE_SISTEMA = new Set(['typography', 'button', 'card', 'interact
 export function GalleryPage() {
   const dsList = useQuery({ queryKey: ['design-systems'], queryFn: api.listDesignSystems });
   const [selectedDs, setSelectedDs] = useState<string | null>(null);
-  const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('all');
+  const [familia, setFamilia] = useState<FiltroDeFamilia>('all');
+  const [category, setCategory] = useState<string>('all');
   const [search, setSearch] = useState('');
 
   const effectiveDs = selectedDs ?? dsList.data?.items[0]?.id ?? null;
+
+  // Trocar de família zera a categoria: manter "Botões" ligado depois de pular
+  // para Dobras devolveria uma grade vazia sem explicar por quê.
+  const trocarFamilia = (f: FiltroDeFamilia) => {
+    setFamilia(f);
+    setCategory('all');
+  };
 
   return (
     <div className="flex h-full">
@@ -381,6 +358,8 @@ export function GalleryPage() {
           <SegmentsView
             key={effectiveDs}
             dsId={effectiveDs}
+            familia={familia}
+            onFamiliaChange={trocarFamilia}
             category={category}
             onCategoryChange={setCategory}
             search={search}
@@ -529,14 +508,18 @@ function DsSidebar({
 
 function SegmentsView({
   dsId,
+  familia,
+  onFamiliaChange,
   category,
   onCategoryChange,
   search,
   onSearchChange,
 }: {
   dsId: string;
-  category: (typeof CATEGORIES)[number];
-  onCategoryChange: (c: (typeof CATEGORIES)[number]) => void;
+  familia: FiltroDeFamilia;
+  onFamiliaChange: (f: FiltroDeFamilia) => void;
+  category: string;
+  onCategoryChange: (c: string) => void;
   search: string;
   onSearchChange: (s: string) => void;
 }) {
@@ -580,15 +563,19 @@ function SegmentsView({
     'todos',
   );
 
-  const filtered = useMemo(() => {
+  // Sem filtro nenhum, a grade é das seções (raízes): os filhos da subdivisão
+  // vivem na expansão do card da seção. Assim que a pessoa escolhe uma família
+  // ou uma categoria, o filho SOBE para o primeiro nível — é o caminho de
+  // "quero só os botões deste site", e é o que a família Peças existe para dar.
+  const escopo = useMemo(() => {
     const todos = segments.data?.items ?? [];
-    // A grade é das seções (raízes). Os filhos da subdivisão vivem na expansão
-    // do card da seção — e só sobem para o primeiro nível quando o filtro de
-    // categoria os alcança, que é o caminho de "quero só os botões deste site".
-    let items =
-      category === 'all'
-        ? todos.filter((s) => s.parentId === null)
-        : todos.filter((s) => s.category === category);
+    if (category !== 'all') return todos.filter((s) => s.category === category);
+    if (familia !== 'all') return todos.filter((s) => familiaDe(s.category) === familia);
+    return todos.filter((s) => s.parentId === null);
+  }, [segments.data, familia, category]);
+
+  const filtered = useMemo(() => {
+    let items = escopo;
     // Reprovar na conferência de pixel conta como ressalva mesmo quando a
     // análise estática disse "completo": as duas medidas existem porque uma
     // pega o que a outra não vê. Sem isto a peça aparecia em "Prontos para
@@ -611,26 +598,36 @@ function SegmentsView({
       items = items.filter((s) => s.name.toLowerCase().includes(q));
     }
     return items;
-  }, [segments.data, category, qualidade, search]);
+  }, [escopo, qualidade, search]);
 
   // A população da grade ANTES de qualidade e busca: o cabeçalho mostra
   // numerador e denominador do MESMO conjunto. Antes o numerador contava só
   // raízes e o denominador contava raízes + filhos, e a tela lia "10 /22" sem
   // filtro nenhum ligado.
-  const populacao = useMemo(() => {
-    const todos = segments.data?.items ?? [];
-    return category === 'all'
-      ? todos.filter((s) => s.parentId === null).length
-      : todos.filter((s) => s.category === category).length;
-  }, [segments.data, category]);
+  const populacao = escopo.length;
 
-  // Chips derivados do acervo: categoria sem item algum não vira botão morto.
-  // A categoria selecionada continua visível mesmo que esvazie (excluir o
-  // último item não pode sumir com o chip que desliga o filtro).
-  const categoriasComItem = useMemo(() => {
-    const presentes = new Set((segments.data?.items ?? []).map((s) => s.category));
-    return CATEGORIES.filter((c) => c === 'all' || c === category || presentes.has(c));
-  }, [segments.data, category]);
+  // Os dois níveis do filtro saem do ACERVO, não da lista completa: família sem
+  // nenhuma peça e categoria sem nenhum item não viram botão morto. O que está
+  // selecionado continua visível mesmo que esvazie — excluir o último item não
+  // pode sumir com o chip que desliga o filtro.
+  const { familiasComItem, categoriasComItem } = useMemo(() => {
+    const itens = segments.data?.items ?? [];
+    const familiasPresentes = new Set(itens.map((s) => familiaDe(s.category)));
+    const categoriasPresentes = new Set(itens.map((s) => s.category));
+    const daFamilia =
+      familia === 'all'
+        ? [...categoriasPresentes]
+        : CATEGORIAS_POR_FAMILIA[familia].filter(
+            (c) => categoriasPresentes.has(c) || c === category,
+          );
+    return {
+      familiasComItem: FAMILIAS.filter((f) => familiasPresentes.has(f) || f === familia),
+      // A categoria só entra no segundo nível quando há uma família escolhida:
+      // no "Todos" a lista voltaria a ser o monte plano de 25 que a família
+      // existe para desfazer.
+      categoriasComItem: familia === 'all' ? [] : daFamilia,
+    };
+  }, [segments.data, familia, category]);
 
   // Subcomponentes agrupados pela seção de origem + nomes para o selo "de:".
   const filhosPorPai = useMemo(() => {
@@ -898,26 +895,81 @@ function SegmentsView({
           o acervo: um site com muitas dobras produz mais chips, e é a lista que
           precisa de espaço para quebrar sem empurrar os controles fixos. */}
       <div
-        className="flex flex-wrap gap-1.5 border-b px-8 py-2.5"
+        className="flex flex-wrap items-center gap-1.5 border-b px-8 py-2.5"
         style={{ borderColor: 'var(--color-border)' }}
       >
-        {categoriasComItem.map((c) => (
+        <button
+          type="button"
+          onClick={() => onFamiliaChange('all')}
+          className={cn(
+            'ds-tag rounded-none border px-3 py-1 text-[11px]',
+            familia === 'all'
+              ? 'ds-glass-static text-[var(--color-fg)]'
+              : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
+          )}
+          style={{ fontFamily: 'var(--font-body)' }}
+        >
+          Tudo
+        </button>
+        {familiasComItem.map((f) => (
           <button
             type="button"
-            key={c}
-            onClick={() => onCategoryChange(c)}
+            key={f}
+            onClick={() => onFamiliaChange(f)}
+            title={FAMILIA_EXPLICA[f]}
             className={cn(
               'ds-tag rounded-none border px-3 py-1 text-[11px]',
-              category === c
+              familia === f
                 ? 'ds-glass-static text-[var(--color-fg)]'
                 : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
             )}
             style={{ fontFamily: 'var(--font-body)' }}
           >
-            {CATEGORY_LABEL[c] ?? c}
+            {FAMILIA_LABEL[f]}
           </button>
         ))}
       </div>
+
+      {/* Segundo nível: só aparece com uma família escolhida, e diz o que aquela
+          família é. Sem a explicação, "Dobras" e "Peças" são palavras nossas
+          que ninguém tem obrigação de conhecer. */}
+      {familia !== 'all' && (
+        <div
+          className="flex flex-wrap items-center gap-1.5 border-b px-8 py-2.5"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <span className="ds-label mr-2 shrink-0">{FAMILIA_EXPLICA[familia]}</span>
+          <button
+            type="button"
+            onClick={() => onCategoryChange('all')}
+            className={cn(
+              'ds-tag rounded-none border px-3 py-1 text-[11px]',
+              category === 'all'
+                ? 'ds-glass-static text-[var(--color-fg)]'
+                : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
+            )}
+            style={{ fontFamily: 'var(--font-body)' }}
+          >
+            Todas
+          </button>
+          {categoriasComItem.map((c) => (
+            <button
+              type="button"
+              key={c}
+              onClick={() => onCategoryChange(c)}
+              className={cn(
+                'ds-tag rounded-none border px-3 py-1 text-[11px]',
+                category === c
+                  ? 'ds-glass-static text-[var(--color-fg)]'
+                  : 'border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]',
+              )}
+              style={{ fontFamily: 'var(--font-body)' }}
+            >
+              {CATEGORY_LABEL(c)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {selCount > 0 && (
         <section
@@ -1086,7 +1138,7 @@ function SegmentsView({
                     </div>
                     <div className="mt-1 flex items-center gap-2">
                       <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                        {CATEGORY_LABEL[s.category] ?? 'Outros'}
+                        {CATEGORY_LABEL(s.category)}
                       </span>
                       <FidelityBadge fidelity={s.fidelity} comparacao={s.comparacaoVisual} />
                     </div>
@@ -1260,7 +1312,7 @@ function SegmentCard({
                     sistema
                   </span>
                 )}
-                <span className="truncate">{CATEGORY_LABEL[segment.category] ?? 'Outros'}</span>
+                <span className="truncate">{CATEGORY_LABEL(segment.category)}</span>
                 <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
               </div>
               {subcomponentes > 0 && onAbrirPecas !== undefined && (
@@ -1416,7 +1468,7 @@ function PainelDePecas({
                 className="mb-3 flex items-center gap-2 text-[10px] uppercase tracking-[0.2em]"
                 style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
               >
-                {CATEGORY_LABEL[categoria] ?? categoria}
+                {CATEGORY_LABEL(categoria)}
                 <span
                   className="rounded-none px-1.5 py-px text-[9px]"
                   style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}
@@ -1522,7 +1574,7 @@ function SegmentCardFilho({
             className="ds-data mt-0.5 flex items-center gap-1.5 text-[9px]"
             style={{ color: 'var(--color-fg-subtle)' }}
           >
-            <span className="shrink-0">{CATEGORY_LABEL[segment.category] ?? 'Outros'}</span>
+            <span className="shrink-0">{CATEGORY_LABEL(segment.category)}</span>
             <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
             {nomeDoPai !== undefined && (
               <span
@@ -1657,7 +1709,7 @@ function SegmentDetail({
                   sistema
                 </span>
               )}
-              {CATEGORY_LABEL[segment.category] ?? segment.category} · {segment.kind}
+              {CATEGORY_LABEL(segment.category)} · {segment.kind}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">

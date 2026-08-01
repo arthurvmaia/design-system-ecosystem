@@ -76,6 +76,21 @@ peça (`button`, `badge`, `input`, `accordion`, `card`, `nav`, `other`), nunca d
 seção: um botão do hero é `button`, não `hero`. No modo `api` o servidor recusa a
 troca sozinho; aqui a regra é sua.
 
+**O nome descreve a FORMA, nunca o assunto do texto de origem.** Quem lê aquele
+nome está escolhendo uma peça para reusar num site completamente diferente: o
+assunto do site capturado é justamente o que não vai junto. Máximo de 40
+caracteres, estrutura primeiro e traço distintivo depois.
+
+```
+certo:  "Grade de 3 cartões com ícone"      "Barra fixa com hover magnético"
+errado: "Recursos — IA por muito tempo…"    "Hero Split 01"
+```
+
+É a mesma regra da origem emprestar a forma e nunca o conteúdo, aplicada ao
+nome. A taxonomia (as famílias e o rótulo de cada categoria em português) mora
+em `packages/shared/src/schemas/taxonomia.ts` e é fonte única: não redigite
+lista de categoria em tela nenhuma.
+
 ### `generate`
 
 O payload é rico e é a fonte da verdade — não vá ler o banco por fora:

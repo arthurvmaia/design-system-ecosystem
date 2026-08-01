@@ -9,51 +9,63 @@ import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
 import { usePreferencias } from '@/lib/preferencias';
 import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
+import {
+  CATEGORIAS_POR_FAMILIA,
+  FAMILIAS,
+  FAMILIA_LABEL,
+  rotuloDaCategoria,
+} from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HeartOff, Sun, Tag, Trash2, X } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 
-const CATEGORIES = [
-  'all',
-  'typography',
-  'button',
-  'card',
-  'interaction',
-  'hero',
-  'header',
-  'nav',
-  'footer',
-  'feature',
-  'pricing',
-  'testimonial',
-  'faq',
-  'cta',
-  'form',
-  'other',
-];
-const LABEL: Record<string, string> = {
-  all: 'Todos',
-  typography: 'Tipografia',
-  button: 'Botões',
-  card: 'Cards',
-  interaction: 'Animações',
-  hero: 'Hero',
-  header: 'Cabeçalho',
-  nav: 'Nav',
-  footer: 'Rodapé',
-  feature: 'Features',
-  pricing: 'Pricing',
-  testimonial: 'Depoimentos',
-  faq: 'FAQ',
-  cta: 'CTA',
-  form: 'Forms',
-  other: 'Outros',
-};
+/**
+ * As categorias vêm do `@ds/shared`, não de uma cópia local.
+ *
+ * A cópia que morava aqui tinha 15 das 25 categorias do schema, e a consequência
+ * era medida: uma peça `badge`, `input`, `stats` ou `timeline` real do acervo
+ * aparecia como "Outros" no card e não tinha chip nenhum que a encontrasse. Pior
+ * no editor, onde o select de categoria não oferecia o valor que a peça já
+ * tinha: abrir e salvar trocava a categoria dela sem ninguém pedir.
+ */
+const LABEL = (c: string): string => (c === 'all' ? 'Todos' : rotuloDaCategoria(c));
 
-/** Categorias editáveis (sem "all"), para o select do editor. */
-const EDIT_CATEGORIES = CATEGORIES.filter((c) => c !== 'all');
+/** Categorias editáveis, na ordem das famílias, para o select do editor. */
+const EDIT_CATEGORIES = FAMILIAS.flatMap((f) => CATEGORIAS_POR_FAMILIA[f]);
 
 type EmUso = { id: string; name: string; kits: string[]; projetos: string[] };
+
+function BotaoDeCategoria({
+  categoria,
+  ativa,
+  total,
+  onClick,
+}: {
+  categoria: string;
+  ativa: boolean;
+  total: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center justify-between rounded-none px-3 py-2 text-left text-[13px]',
+        'transition-all duration-300',
+        ativa
+          ? 'ds-glass-static text-[var(--color-fg)]'
+          : 'text-[var(--color-fg-muted)] hover:translate-x-[2px] hover:bg-white/[0.04] hover:text-[var(--color-fg)]',
+      )}
+      style={{ fontFamily: 'var(--font-body)' }}
+    >
+      <span>{LABEL(categoria)}</span>
+      <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+        {total}
+      </span>
+    </button>
+  );
+}
 
 export function LibraryPage() {
   const qc = useQueryClient();
@@ -127,27 +139,36 @@ export function LibraryPage() {
         >
           Categorias
         </div>
+        {/* Agrupada por família, e só o que existe no acervo. São 25 categorias
+            no vocabulário: listar todas daria uma coluna de zeros, e listar só
+            algumas foi o que escondeu as peças. A família resolve os dois. */}
         <div className="flex-1 overflow-y-auto p-2">
-          {CATEGORIES.map((c) => (
-            <button
-              type="button"
-              key={c}
-              onClick={() => setCategory(c)}
-              className={cn(
-                'flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-[13px]',
-                'transition-all duration-300',
-                category === c
-                  ? 'ds-glass-static text-[var(--color-fg)]'
-                  : 'text-[var(--color-fg-muted)] hover:translate-x-[2px] hover:bg-white/[0.04] hover:text-[var(--color-fg)]',
-              )}
-              style={{ fontFamily: 'var(--font-body)' }}
-            >
-              <span>{LABEL[c] ?? c}</span>
-              <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                {counts.get(c) ?? 0}
-              </span>
-            </button>
-          ))}
+          <BotaoDeCategoria
+            categoria="all"
+            ativa={category === 'all'}
+            total={counts.get('all') ?? 0}
+            onClick={() => setCategory('all')}
+          />
+          {FAMILIAS.map((f) => {
+            const doGrupo = CATEGORIAS_POR_FAMILIA[f].filter(
+              (c) => (counts.get(c) ?? 0) > 0 || c === category,
+            );
+            if (doGrupo.length === 0) return null;
+            return (
+              <div key={f} className="mt-3">
+                <div className="ds-label px-3 pb-1">{FAMILIA_LABEL[f]}</div>
+                {doGrupo.map((c) => (
+                  <BotaoDeCategoria
+                    key={c}
+                    categoria={c}
+                    ativa={category === c}
+                    total={counts.get(c) ?? 0}
+                    onClick={() => setCategory(c)}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </div>
       </aside>
 
@@ -167,7 +188,7 @@ export function LibraryPage() {
               className="ds-interactive-text ds-text-glow mt-1 text-[24px] font-medium"
               style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
             >
-              {LABEL[category]}
+              {LABEL(category)}
             </h1>
             <div className="ds-data mt-1 text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
               {conta(filtered.length, 'peça guardada', 'peças guardadas')}
@@ -386,7 +407,7 @@ function LibraryCard({
             </div>
             <div className="mt-0.5 flex items-center gap-1.5 truncate">
               <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                {LABEL[component.category] ?? 'Outros'}
+                {LABEL(component.category)}
               </span>
               {component.tags.slice(0, 3).map((t) => (
                 <span
@@ -522,7 +543,7 @@ function LibraryDetail({
           <Field label="Categoria">
             <Select
               rotulo="Categoria da peça"
-              opcoes={EDIT_CATEGORIES.map((c) => ({ valor: c, rotulo: LABEL[c] ?? c }))}
+              opcoes={EDIT_CATEGORIES.map((c) => ({ valor: c, rotulo: LABEL(c) }))}
               valor={category}
               aoMudar={setCategory}
             />

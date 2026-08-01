@@ -17,7 +17,7 @@ import { usePreferencias } from '@/lib/preferencias';
 import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
-import { CONFIANCA_MINIMA_PARA_RECOLORIR } from '@ds/shared/schemas';
+import { CONFIANCA_MINIMA_PARA_RECOLORIR, rotuloDaCategoria } from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
@@ -33,23 +33,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
-const CAT_LABEL: Record<string, string> = {
-  typography: 'Tipografia',
-  button: 'Botões',
-  card: 'Cards',
-  interaction: 'Animações',
-  hero: 'Hero',
-  header: 'Cabeçalho',
-  nav: 'Nav',
-  footer: 'Rodapé',
-  feature: 'Features',
-  pricing: 'Pricing',
-  testimonial: 'Depoimentos',
-  faq: 'FAQ',
-  cta: 'CTA',
-  form: 'Forms',
-  other: 'Outros',
-};
+/** O rótulo da categoria vem da taxonomia única do `@ds/shared`. A cópia que
+    morava aqui conhecia 15 das 25 categorias. */
+const CAT_LABEL = (c: string): string => rotuloDaCategoria(c);
 
 // ── Design system consolidado do kit ─────────────────────────────────────────
 
@@ -638,7 +624,7 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                         className="ds-data text-[10px]"
                         style={{ color: 'var(--color-fg-subtle)' }}
                       >
-                        {CAT_LABEL[c?.category ?? ''] ?? c?.category ?? ''}
+                        {CAT_LABEL(c?.category ?? '')}
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-0.5">
@@ -705,7 +691,7 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                         className="ds-data text-[9px]"
                         style={{ color: 'var(--color-fg-subtle)' }}
                       >
-                        {CAT_LABEL[c.category] ?? c.category}
+                        {CAT_LABEL(c.category)}
                       </div>
                     </div>
                     <Plus size={13} className="shrink-0" style={{ color: 'var(--color-signal)' }} />
