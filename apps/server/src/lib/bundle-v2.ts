@@ -8,7 +8,7 @@
  * de runtime (`runtime.html` isolado) ou referência visual (frame + aviso).
  * Sem bundle, o segmento é tratado como portátil: é o comportamento V1.
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { type ImagemRaw, LIMIAR_POR_NATUREZA, decodePng, diffImagens } from '@ds/engine-v2';
 import {
@@ -64,9 +64,88 @@ export const lerRepresentacaoDeDir = (dir: string): RepresentacaoBundle | null =
   }
 };
 
+/**
+ * O índice hash → pasta de bundle, lido dos manifests de um design system.
+ *
+ * É o que faz a resolução por IDENTIDADE funcionar sobre o acervo que já está
+ * em disco, sem migração nenhuma e sem reescrever nada: cada manifest já grava
+ * `evidence.segmentId`, que é o hash do nó de origem daquele bundle. A chave
+ * estava lá desde sempre e era lida e descartada.
+ *
+ * Cacheado por mtime do diretório de bundles: recompilar invalida sozinho.
+ */
+const indices = new Map<string, { mtimeMs: number; porHash: Map<string, string> }>();
+
+const indiceDeHashes = (dsId: DesignSystemId): Map<string, string> => {
+  const raiz = vaultSegmentBundlesDir(dsId);
+  if (!existsSync(raiz)) return new Map();
+  let mtimeMs: number;
+  try {
+    mtimeMs = statSync(raiz).mtimeMs;
+  } catch {
+    return new Map();
+  }
+  const cache = indices.get(raiz);
+  if (cache !== undefined && cache.mtimeMs === mtimeMs) return cache.porHash;
+
+  const porHash = new Map<string, string>();
+  try {
+    for (const pasta of readdirSync(raiz)) {
+      const manifestPath = join(raiz, pasta, 'manifest.json');
+      if (!existsSync(manifestPath)) continue;
+      try {
+        const m = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+          evidence?: { segmentId?: unknown };
+        };
+        const hash = m.evidence?.segmentId;
+        // O PRIMEIRO a reivindicar o hash fica com ele. Duas pastas com o mesmo
+        // hash é estado inconsistente de disco, e escolher pela ordem é
+        // determinístico — melhor que a última leitura vencer por acaso.
+        if (typeof hash === 'string' && hash !== '' && !porHash.has(hash)) {
+          porHash.set(hash, pasta);
+        }
+      } catch {
+        // Manifest ilegível não derruba o índice: as outras pastas continuam.
+      }
+    }
+  } catch {
+    return new Map();
+  }
+  indices.set(raiz, { mtimeMs, porHash });
+  return porHash;
+};
+
+/**
+ * A chave de um bundle: identidade primeiro, posição por último.
+ *
+ * `position` acumulava dois papéis — ordem de exibição na Galeria e identidade
+ * de pasta em disco — e isso tinha consequência medida: um candidato rejeitado
+ * recuperado entra com a `position` de um contador próprio, colide com a de uma
+ * seção existente, e a partir daí a prévia e a promoção servem o bundle de OUTRO
+ * segmento. O acervo tinha um rejeitado esperando esse clique.
+ *
+ * Os três níveis, do mais forte ao mais fraco:
+ *  1. `bundleId` — autoritativo, escrito pelo motor. O(1).
+ *  2. `hash` no índice dos manifests — cobre o acervo atual sem escrita nenhuma.
+ *  3. `seg_<position>` — o comportamento de sempre. O pior caso de um bug nos
+ *     níveis acima é voltar exatamente a ele, e não regredir.
+ */
+export type ChaveDeBundle = {
+  bundleId?: string | null;
+  hash?: string | null;
+  position: number;
+};
+
 /** Lê o manifest.json do bundle de um segmento. `null` = sem bundle (fluxo V1). */
-export const lerBundleInfo = (dsId: DesignSystemId, position: number): BundleInfo | null => {
-  const pasta = `seg_${position}`;
+export const lerBundleInfo = (
+  dsId: DesignSystemId,
+  chave: number | ChaveDeBundle,
+): BundleInfo | null => {
+  const c: ChaveDeBundle = typeof chave === 'number' ? { position: chave } : chave;
+  const doIndice =
+    c.hash != null && c.hash !== '' ? (indiceDeHashes(dsId).get(c.hash) ?? null) : null;
+  const pasta =
+    c.bundleId != null && c.bundleId !== '' ? c.bundleId : (doIndice ?? `seg_${c.position}`);
   const dir = join(vaultSegmentBundlesDir(dsId), pasta);
   const manifestPath = join(dir, 'manifest.json');
   if (!existsSync(manifestPath)) return null;

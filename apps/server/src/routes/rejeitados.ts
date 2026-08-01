@@ -73,6 +73,24 @@ rejeitadosRoute.post('/:dsId/:segId/recuperar', (c) => {
   const db = getDb();
   const existente = db.select().from(tables.segments).where(eq(tables.segments.id, item.id)).get();
   if (existente === undefined) {
+    // A `position` do rejeitado NÃO pode ser reaproveitada.
+    //
+    // Ela vem de um contador próprio que começa em zero, enquanto a `position`
+    // de um segmento também é a identidade da pasta de bundle (`seg_<n>`).
+    // Reusar o número colidia com uma seção existente, e a partir daí a prévia
+    // e a promoção deste bloco serviam o bundle de OUTRO segmento — com o nome
+    // certo e os arquivos errados. O acervo tinha um rejeitado esperando esse
+    // clique.
+    //
+    // Depois do fim da fila ninguém colide, e a ordem de exibição continua
+    // fazendo sentido: o bloco recuperado à mão entra no fim, que é onde ele
+    // realmente está na decisão da pessoa.
+    const ultima = db
+      .select({ position: tables.segments.position })
+      .from(tables.segments)
+      .where(eq(tables.segments.designSystemId, dsId))
+      .orderBy(desc(tables.segments.position))
+      .get();
     db.insert(tables.segments)
       .values({
         id: item.id,
@@ -82,7 +100,7 @@ rejeitadosRoute.post('/:dsId/:segId/recuperar', (c) => {
         name: item.name,
         htmlSnippet: item.htmlSnippet,
         previewPath: null,
-        position: item.position,
+        position: ultima === undefined ? 0 : ultima.position + 1,
         inLibrary: false,
       })
       .run();
