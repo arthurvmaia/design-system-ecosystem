@@ -1,9 +1,12 @@
 import {
+  type MarcaSubId,
   STATUS_LABEL,
   type SecaoInfo,
   type SecaoStatus,
   marcaSectionStatus,
 } from '@/lib/generator-sections';
+import { ChevronRight, X } from 'lucide-react';
+import { useState } from 'react';
 import type { WizardBranding } from '../partes';
 import { PainelContato } from './marca/PainelContato';
 import { PainelMarca } from './marca/PainelMarca';
@@ -13,14 +16,37 @@ import { PainelTipografia } from './marca/PainelTipografia';
 import { PainelVoz } from './marca/PainelVoz';
 
 /**
- * A etapa "Marca" em GRADE: todos os painéis visíveis de uma vez, cada um num
- * cartão de vidro com o próprio título. A navegação interna que abria um
- * formulário por vez fazia sentido no modal estreito; na moldura larga do
- * wizard cabem 2 colunas, e ver tudo lado a lado tira a caça ao painel
- * escondido. Paleta e Tipografia ocupam a linha inteira porque têm preview ao
- * lado dos controles. O pontinho de status de cada cartão continua vindo de
- * `marcaSectionStatus` — nada do estado ou do salvamento mudou, só o arranjo.
+ * A etapa "Marca" como BANCADA: uma coluna de instrumentos fechados, e um
+ * aberto por vez.
+ *
+ * A versão anterior punha os seis painéis abertos numa grade de duas colunas,
+ * com o argumento de que ver tudo de uma vez evita a caça ao painel escondido.
+ * O argumento tem um lado certo e um errado, e o dono nomeou o errado: com tudo
+ * aberto ao mesmo tempo, nada tem peso maior que nada. Três a seis campos por
+ * bloco, seis blocos, nenhum indicando por onde começar nem o que é obrigatório.
+ * Uma tela em que tudo tem a mesma importância não tem hierarquia, e sem
+ * hierarquia até uma paleta vibrante lê como morta — que foi a queixa exata.
+ *
+ * Fechados, os instrumentos mostram só o que importa para decidir onde mexer: o
+ * nome, o estado e o resumo do que já está preenchido. Aberto, o painel tem a
+ * largura toda para o preview conviver com os controles, em vez de disputar
+ * meia coluna.
+ *
+ * Nada do estado, do salvamento ou dos painéis mudou: o que muda é quantos
+ * falam ao mesmo tempo.
  */
+
+type Instrumento = { id: MarcaSubId; nome: string; oQueFaz: string };
+
+const INSTRUMENTOS: readonly Instrumento[] = [
+  { id: 'marca', nome: 'Marca', oQueFaz: 'O nome que vai no site e os logos' },
+  { id: 'voz', nome: 'Voz da marca', oQueFaz: 'Como os textos falam com quem lê' },
+  { id: 'paleta', nome: 'Paleta', oQueFaz: 'As cores que o site inteiro usa' },
+  { id: 'tipografia', nome: 'Tipografia', oQueFaz: 'As fontes de título e de corpo' },
+  { id: 'contato', nome: 'Contato', oQueFaz: 'Email, telefone e a chamada principal' },
+  { id: 'redes', nome: 'Redes', oQueFaz: 'Os perfis que aparecem no rodapé' },
+];
+
 export function StepMarca({
   branding,
   setB,
@@ -31,50 +57,118 @@ export function StepMarca({
   projectId: string | null;
 }) {
   const status = marcaSectionStatus(branding);
+  const [aberto, setAberto] = useState<MarcaSubId | null>(null);
+
+  const painel = (id: MarcaSubId) => {
+    switch (id) {
+      case 'marca':
+        return <PainelMarca branding={branding} setB={setB} projectId={projectId} />;
+      case 'voz':
+        return <PainelVoz branding={branding} setB={setB} />;
+      case 'paleta':
+        return <PainelPaleta branding={branding} setB={setB} />;
+      case 'tipografia':
+        return <PainelTipografia branding={branding} setB={setB} />;
+      case 'contato':
+        return <PainelContato branding={branding} setB={setB} />;
+      case 'redes':
+        return <PainelRedes branding={branding} setB={setB} />;
+    }
+  };
+
+  if (aberto !== null) {
+    const inst = INSTRUMENTOS.find((i) => i.id === aberto) as Instrumento;
+    return (
+      <div className="ds-fade-in">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="ds-label">{inst.oQueFaz}</div>
+            <h2
+              className="mt-0.5 truncate text-[20px] font-medium"
+              style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
+            >
+              {inst.nome}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAberto(null)}
+            className="ds-tag flex shrink-0 items-center gap-2 rounded-none border px-3.5 py-2 text-[12px]"
+            style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg)' }}
+          >
+            <X size={12} />
+            Voltar para a lista
+          </button>
+        </div>
+        <section className="ds-glass-static rounded-none p-5 md:p-6">{painel(aberto)}</section>
+      </div>
+    );
+  }
 
   return (
-    <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
-      <Cartao info={status.marca}>
-        <PainelMarca branding={branding} setB={setB} projectId={projectId} />
-      </Cartao>
-      <Cartao info={status.voz}>
-        <PainelVoz branding={branding} setB={setB} />
-      </Cartao>
-      <Cartao info={status.paleta} largo>
-        <PainelPaleta branding={branding} setB={setB} />
-      </Cartao>
-      <Cartao info={status.tipografia} largo>
-        <PainelTipografia branding={branding} setB={setB} />
-      </Cartao>
-      <Cartao info={status.contato}>
-        <PainelContato branding={branding} setB={setB} />
-      </Cartao>
-      <Cartao info={status.redes}>
-        <PainelRedes branding={branding} setB={setB} />
-      </Cartao>
+    <div className="ds-fade-in mx-auto max-w-[760px]">
+      <p className="mb-4 text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>
+        Abra um de cada vez. O que você deixar em branco eu resolvo com o kit, e a lista diz o que
+        já está definido.
+      </p>
+      <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+        {INSTRUMENTOS.map((inst) => (
+          <LinhaDeInstrumento
+            key={inst.id}
+            instrumento={inst}
+            info={status[inst.id]}
+            onAbrir={() => setAberto(inst.id)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-/** Cartão de vidro de um painel; o ponto no canto diz o status sem roubar espaço. */
-function Cartao({
+/**
+ * Uma linha da bancada: nome, o que o instrumento faz, e o estado da medição.
+ *
+ * O resumo à direita é o que dispensa abrir: "Marca Teste · 2 logos" responde a
+ * pergunta sem clique nenhum. Quando não há nada definido, o texto diz o que
+ * acontece se ficar assim — é a pergunta que trava quem está preenchendo, e
+ * ficar em silêncio sobre ela empurra a pessoa a abrir os seis painéis para
+ * conferir.
+ */
+function LinhaDeInstrumento({
+  instrumento,
   info,
-  largo,
-  children,
+  onAbrir,
 }: {
+  instrumento: Instrumento;
   info: SecaoInfo;
-  largo?: boolean;
-  children: React.ReactNode;
+  onAbrir: () => void;
 }) {
   return (
-    <section
-      className={`ds-glass-static relative rounded-xl p-5 md:p-6 ${largo ? 'xl:col-span-2' : ''}`}
+    <button
+      type="button"
+      onClick={onAbrir}
+      className="flex w-full items-center gap-4 border-b px-4 py-4 text-left transition-colors duration-300 hover:bg-white/[0.03]"
+      style={{ borderColor: 'var(--color-border)' }}
     >
-      <span className="absolute top-5 right-5 md:top-6 md:right-6">
-        <StatusDot status={info.status} resumo={info.resumo} />
+      <StatusDot status={info.status} resumo={info.resumo} />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[14px]" style={{ color: 'var(--color-fg)' }}>
+          {instrumento.nome}
+        </span>
+        <span className="block text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+          {instrumento.oQueFaz}
+        </span>
       </span>
-      {children}
-    </section>
+      <span
+        className="ds-data hidden max-w-[240px] shrink-0 truncate text-[11px] sm:block"
+        style={{
+          color: info.status === 'configurado' ? 'var(--color-ion-3)' : 'var(--color-fg-subtle)',
+        }}
+      >
+        {info.status === 'configurado' ? info.resumo : 'herdado do kit'}
+      </span>
+      <ChevronRight size={14} className="shrink-0" style={{ color: 'var(--color-fg-subtle)' }} />
+    </button>
   );
 }
 

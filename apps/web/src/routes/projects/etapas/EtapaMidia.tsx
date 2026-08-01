@@ -11,7 +11,15 @@ import {
   sugerirMidiaDaSecao,
 } from '@ds/shared/schemas';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Image as ImageIcon, Play, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  Image as ImageIcon,
+  Play,
+  Plus,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { useState } from 'react';
 import { mediaUrl } from '../partes';
 
@@ -75,6 +83,10 @@ export function StepMidia({
   // A lista é a estrutura que a pessoa montou, na ordem dela. Antes vinha dos
   // slots do blueprint, então esta tela mostrava seções que o site não teria.
   const resolvidas = resolverSecoes(secoes, components).secoes;
+
+  // Uma seção aberta por vez. Com todas abertas, o texto que explica o pedido de
+  // imagem se repetia em cada uma e a tela virava uma parede de frases iguais.
+  const [secaoAberta, setSecaoAberta] = useState<string | null>(null);
 
   const upload = useMutation({
     mutationFn: ({ file, secaoId }: { file: File; secaoId: string | null }) => {
@@ -242,19 +254,45 @@ export function StepMidia({
         // `midia-contagens`, testada sem navegador.
         const contagem = contagemUnificada(sugestao, contarEspacos(contratosDaSecao));
         const daSecao = conteudo.filter((m) => m.secaoId === s.id);
+        const aberta = secaoAberta === s.id;
         return (
-          <div
-            key={s.id}
-            className="rounded-lg border p-3"
-            style={{ borderColor: 'var(--color-border)' }}
-          >
-            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
-                {s.nome.trim() || 'Seção sem nome'}
+          <div key={s.id} className="border-b" style={{ borderColor: 'var(--color-border)' }}>
+            {/* A linha compacta: nome, quanto cabe e quanto já tem. O detalhe —
+                a explicação e o envio — só abre quando a pessoa escolhe a seção.
+                Com as seis abertas, a mesma frase de "criada no estilo do kit"
+                aparecia seis vezes na mesma tela e afogava o que era diferente
+                entre elas. */}
+            <button
+              type="button"
+              onClick={() => setSecaoAberta(aberta ? null : s.id)}
+              aria-expanded={aberta}
+              className="flex w-full items-center gap-3 py-3 text-left transition-colors duration-300 hover:bg-white/[0.03]"
+            >
+              <span
+                className="inline-block h-[7px] w-[7px] shrink-0 rounded-full"
+                style={{
+                  backgroundColor:
+                    daSecao.length > 0 ? 'var(--color-signal)' : 'var(--color-border-strong)',
+                  boxShadow: daSecao.length > 0 ? '0 0 8px rgba(34,211,238,0.6)' : undefined,
+                }}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px]" style={{ color: 'var(--color-fg)' }}>
+                  {s.nome.trim() || 'Seção sem nome'}
+                </span>
+                <span
+                  className="ds-data block text-[10px]"
+                  style={{ color: 'var(--color-fg-subtle)' }}
+                >
+                  {s.pecas.length === 0
+                    ? 'criada no estilo do kit'
+                    : s.pecas.map((p) => p.name).join(' + ')}
+                </span>
               </span>
               {contagem.selo !== null && (
                 <span
-                  className="rounded-none px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
+                  className="shrink-0 rounded-none px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
                   style={{
                     backgroundColor: 'rgba(255,255,255,0.06)',
                     color: 'var(--color-fg-muted)',
@@ -263,56 +301,75 @@ export function StepMidia({
                   {contagem.selo}
                 </span>
               )}
-              <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                {s.pecas.length === 0
-                  ? 'criada no estilo do kit: a mídia enviada vira o visual da seção'
-                  : s.pecas.map((p) => p.name).join(' + ')}
-              </span>
-              {/* O PORQUÊ, na linha de baixo e por extenso.
-                  A tela pedia um número de imagens sem dizer para quê, e a
-                  única resposta possível era chutar. A razão vem da etapa de
-                  marketing daquela seção, somada aos espaços reais das peças —
-                  ver `sugerirMidiaDaSecao`. */}
               <span
-                className="w-full text-[11px] leading-relaxed"
-                style={{ color: 'var(--color-fg-subtle)' }}
-              >
-                {contagem.porque}
-              </span>
-              <label
-                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-none border px-3 py-1 text-[11px] transition-colors hover:border-[var(--color-signal)]"
+                className="ds-data shrink-0 text-[11px]"
                 style={{
-                  borderColor: 'var(--color-border-strong)',
-                  color: 'var(--color-fg-muted)',
+                  color: daSecao.length > 0 ? 'var(--color-ion-3)' : 'var(--color-fg-subtle)',
                 }}
               >
-                {upload.isPending ? <Mascote tamanho={11} girando /> : <Upload size={11} />}
-                enviar
-                <input
-                  type="file"
-                  accept="image/*,video/*"
-                  className="hidden"
-                  disabled={!projectId || upload.isPending}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) upload.mutate({ file: f, secaoId: s.id });
-                    e.target.value = '';
+                {daSecao.length > 0
+                  ? `${daSecao.length} enviada${daSecao.length > 1 ? 's' : ''}`
+                  : 'nenhuma'}
+              </span>
+              <ChevronDown
+                size={14}
+                className="shrink-0 transition-transform duration-300"
+                style={{
+                  color: 'var(--color-fg-subtle)',
+                  transform: aberta ? 'rotate(180deg)' : undefined,
+                }}
+              />
+            </button>
+            {aberta && (
+              <div className="ds-fade-in pb-4 pl-[19px]">
+                {/* O PORQUÊ, por extenso e só na seção aberta.
+                    A tela pedia um número de imagens sem dizer para quê, e a
+                    única resposta possível era chutar. A razão vem da etapa de
+                    marketing daquela seção, somada aos espaços reais das peças —
+                    ver `sugerirMidiaDaSecao`. */}
+                <p
+                  className="text-[11px] leading-relaxed"
+                  style={{ color: 'var(--color-fg-muted)' }}
+                >
+                  {contagem.porque}
+                </p>
+                <label
+                  className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-none border px-3 py-1.5 text-[11px] transition-colors hover:border-[var(--color-signal)]"
+                  style={{
+                    borderColor: 'var(--color-border-strong)',
+                    color: 'var(--color-fg-muted)',
                   }}
-                />
-              </label>
-            </div>
-            {daSecao.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-                {daSecao.map((m) => (
-                  <MidiaThumb
-                    key={m.path}
-                    item={m}
-                    projectId={projectId}
-                    opcoes={opcoesDeSecao}
-                    onMover={(v) => mover.mutate({ path: m.path, secaoId: v === '' ? null : v })}
-                    onRemover={() => remover.mutate(m.path)}
+                >
+                  {upload.isPending ? <Mascote tamanho={11} girando /> : <Upload size={11} />}
+                  enviar para esta seção
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    disabled={!projectId || upload.isPending}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) upload.mutate({ file: f, secaoId: s.id });
+                      e.target.value = '';
+                    }}
                   />
-                ))}
+                </label>
+                {daSecao.length > 0 && (
+                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                    {daSecao.map((m) => (
+                      <MidiaThumb
+                        key={m.path}
+                        item={m}
+                        projectId={projectId}
+                        opcoes={opcoesDeSecao}
+                        onMover={(v) =>
+                          mover.mutate({ path: m.path, secaoId: v === '' ? null : v })
+                        }
+                        onRemover={() => remover.mutate(m.path)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

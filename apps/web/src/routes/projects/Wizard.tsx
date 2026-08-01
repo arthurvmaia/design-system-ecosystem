@@ -389,14 +389,21 @@ export function ProjectWizard({
     // A moldura é quase de tela cheia: o wizard é uma tela de TRABALHO, com
     // etapas em grade, e o modal padrão de 1200px espremia tudo numa coluna.
     // O `!` vence a largura do size="xl" e o teto de 88vh do Modal; a altura é
-    // FIXA em 94vh para o rodapé (Voltar/Próximo) não pular de lugar a cada
-    // etapa — só o corpo rola, por isso o bodyScroll do Modal fica desligado.
+    // FIXA para o rodapé (Voltar/Próximo) não pular de lugar a cada etapa — só
+    // o corpo rola, por isso o bodyScroll do Modal fica desligado.
+    //
+    // Ela desconta o respiro do backdrop (`p-6` nos dois lados, 3rem no total).
+    // Com os `94vh` de antes, a soma passava de 100vh em tela de notebook e o
+    // painel ficava mais alto que o espaço: como o modal centraliza, o excesso
+    // era cortado EM CIMA e embaixo, e a barra de etapas sumia atrás da borda
+    // superior sem jeito de alcançá-la. `dvh` em vez de `vh` porque no celular
+    // a barra de endereço entra e sai da conta.
     <Modal
       open
       onClose={onClose}
       size="xl"
       title={existing ? 'Editar projeto' : 'Novo projeto'}
-      className="h-[94vh]! max-h-[94vh]! max-w-[1440px]!"
+      className="h-[calc(100dvh_-_3rem)]! max-h-[calc(100dvh_-_3rem)]! max-w-[1440px]!"
       bodyScroll={false}
     >
       <div className="flex min-h-0 flex-1 flex-col">

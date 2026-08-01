@@ -1,10 +1,22 @@
 import { X } from 'lucide-react';
 import { type ReactNode, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Sobreposição modal genérica.
  *
- * `position: fixed` escapa do `overflow-hidden` do Shell — não precisa de portal.
+ * VAI PARA O BODY, por portal. A versão anterior dizia que `position: fixed`
+ * escapa do `overflow-hidden` do Shell e que portal era desnecessário. A
+ * primeira metade é verdade; a segunda não, e o preço apareceu na tela: `fixed`
+ * escapa do recorte, mas NÃO escapa do contexto de empilhamento.
+ *
+ * O modal nasce dentro do `<main>`, e o `<main>` tem `ds-fade-in` — animação
+ * cria contexto de empilhamento. Preso ali, o `z-[90]` daqui passa a valer só
+ * entre irmãos DENTRO do main, e o `<main>` inteiro (z-index auto) fica abaixo
+ * do `<header>` da TopBar, que tem `z-20`. Resultado medido: a barra de etapas
+ * do wizard aparecia atrás do cabeçalho do app, e a mesma coisa acontecia com a
+ * barra lateral. Subir números não resolve isso — só sair do contexto resolve.
+ *
  * É a base de ConfirmPop, do modal de detalhe e do editor de kit.
  *
  * Decisões de acessibilidade e leitura:
@@ -136,10 +148,14 @@ export function Modal({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
+    // O `overflow-y-auto` é a rede de segurança do centramento: quando o painel
+    // é mais alto que a janela, `items-center` corta os DOIS lados e o topo fica
+    // inalcançável — foi assim que a barra de etapas do wizard sumiu atrás da
+    // borda de cima. Com o scroll aqui, o pior caso vira rolar, não perder.
     // biome-ignore lint/a11y/useKeyWithClickEvents: Esc fecha via listener global; o clique no fundo é só um atalho de mouse, não a única saída.
     <div
-      className="ds-fade-in fixed inset-0 z-[90] flex items-center justify-center p-6"
+      className="ds-fade-in fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-6"
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.78)', backdropFilter: 'blur(10px)' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -175,6 +191,7 @@ export function Modal({
           children
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
