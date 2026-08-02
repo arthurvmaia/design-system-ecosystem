@@ -6,6 +6,7 @@ export * from './scroll.js';
 export * from './design-system.js';
 export * from './segment.js';
 export * from './taxonomia.js';
+export * from './governanca-do-kit.js';
 export * from './midia-posicional.js';
 export * from './veredito.js';
 export * from './library.js';

@@ -1,10 +1,13 @@
 import { getDb, tables } from '@ds/indexer';
 import {
   CreateKitInput,
+  type GovernancaDoKit,
   KitDesignSystem,
   UpdateKitInput,
+  type Violacao,
   lerOuDerivarContrato,
   newKitId,
+  violacoesDoKit,
 } from '@ds/shared';
 import { libraryComponentBundleDir } from '@ds/shared/paths';
 import { zValidator } from '@hono/zod-validator';
@@ -12,6 +15,7 @@ import { asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { consolidarEGravar } from '../lib/consolidar-kit.js';
+import { conferirRegras, governancaDoKit } from '../lib/governanca.js';
 import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
 
 /**
@@ -35,9 +39,24 @@ type KitComComponentes = {
     category: string;
     kind: string;
     position: number;
+    /** De qual captura a peça veio. É por ela que a regra de origem decide. */
+    designSystemId: string | null;
   }>;
   /** Projetos que usam este kit — para a UI avisar antes de excluir. */
   usedByProjects: Array<{ id: string; name: string }>;
+  /**
+   * As regras de mistura: quem dá o ritmo e qual origem manda em cada
+   * categoria de peça. Viaja em toda leitura porque a tela precisa mostrar as
+   * três zonas (base, peças travadas, composição livre) e não faria sentido
+   * pedir num segundo round-trip.
+   */
+  governanca: GovernancaDoKit;
+  /**
+   * O que está fora da regra AGORA. Um kit montado antes desta camada pode ter
+   * violações — elas são mostradas, não corrigidas em silêncio. Só o PATCH
+   * recusa; a leitura declara.
+   */
+  violacoes: Violacao[];
 };
 
 const carregarKit = (kitId: string): KitComComponentes | null => {
@@ -69,6 +88,8 @@ const carregarKit = (kitId: string): KitComComponentes | null => {
     .where(eq(tables.projects.kitId, kitId))
     .all();
 
+  const governanca = governancaDoKit(db, kitId);
+
   return {
     id: kit.id,
     name: kit.name,
@@ -79,9 +100,28 @@ const carregarKit = (kitId: string): KitComComponentes | null => {
       const c = porId.get(l.componentId);
       // Link órfão (componente sumiu entre o cascade e a leitura): ignora.
       if (!c) return [];
-      return [{ id: c.id, name: c.name, category: c.category, kind: c.kind, position: l.position }];
+      return [
+        {
+          id: c.id,
+          name: c.name,
+          category: c.category,
+          kind: c.kind,
+          position: l.position,
+          designSystemId: c.designSystemId,
+        },
+      ];
     }),
     usedByProjects: projetos,
+    governanca,
+    violacoes: violacoesDoKit(
+      componentes.map((c) => ({
+        id: c.id,
+        name: c.name,
+        category: c.category,
+        designSystemId: c.designSystemId,
+      })),
+      governanca,
+    ),
   };
 };
 
@@ -192,15 +232,51 @@ kitsRoute.patch('/:id', zValidator('json', UpdateKitInput), (c) => {
     }
   }
 
+  /**
+   * A regra do kit é RECUSA, não aviso.
+   *
+   * A diferença importa: um aviso que não impede deixa a bagunça entrar e
+   * transfere para a pessoa o trabalho de lembrar. A regra que ela mesma
+   * formulou — botão de uma origem só — não é preferência, é o que separa um
+   * kit de um monte de peças.
+   *
+   * Recusa o PATCH inteiro, e não peça a peça: um kit gravado pela metade
+   * deixaria a pessoa sem saber o que entrou.
+   */
+  if (input.componentIds !== undefined) {
+    const violacoes = conferirRegras(db, id, input.componentIds);
+    if (violacoes.length > 0) {
+      return c.json(
+        {
+          error: 'regra_de_origem',
+          message:
+            violacoes[0]?.motivo ?? 'Este kit mistura origens numa categoria que só aceita uma.',
+          violacoes,
+        },
+        422,
+      );
+    }
+  }
+
   db.transaction((tx) => {
     tx.update(tables.kits)
       .set({
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.origemBase !== undefined ? { origemBase: input.origemBase } : {}),
         updatedAt: Date.now(),
       })
       .where(eq(tables.kits.id, id))
       .run();
+
+    // As regras por categoria: lista completa substitui a anterior, mesmo
+    // contrato de `componentIds`.
+    if (input.origemPorCategoria !== undefined) {
+      tx.delete(tables.kitRegrasDeOrigem).where(eq(tables.kitRegrasDeOrigem.kitId, id)).run();
+      for (const [categoria, designSystemId] of Object.entries(input.origemPorCategoria)) {
+        tx.insert(tables.kitRegrasDeOrigem).values({ kitId: id, categoria, designSystemId }).run();
+      }
+    }
 
     if (input.componentIds !== undefined) {
       // Substituição completa: a ordem que veio é a ordem que vale.

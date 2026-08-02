@@ -1,4 +1,5 @@
 import type {
+  GovernancaDoKit,
   IdentidadeVerbal,
   KitDesignSystem,
   LocalDeLogo,
@@ -7,6 +8,7 @@ import type {
   ProjectLayout,
   RedeSocial,
   TipografiaDoProjeto,
+  Violacao,
 } from '@ds/shared/schemas';
 
 export type { KitDesignSystem, ProjectLayout };
@@ -282,6 +284,8 @@ export type KitComponentRef = {
   category: string;
   kind: string;
   position: number;
+  /** De qual captura a peça veio — a regra de origem decide por ela. */
+  designSystemId: string | null;
 };
 
 /** Resumo do contrato de um componente do kit (espaços reais de conteúdo). */
@@ -307,6 +311,13 @@ export type KitRecord = {
   components: KitComponentRef[];
   /** Projetos que usam este kit — a UI avisa antes de excluir. */
   usedByProjects: Array<{ id: string; name: string }>;
+  /** Quem manda em quê: a origem-base e as origens travadas por categoria. */
+  governanca: GovernancaDoKit;
+  /**
+   * O que está fora da regra AGORA. Kit montado antes desta camada pode ter
+   * violações: elas são mostradas, nunca corrigidas em silêncio.
+   */
+  violacoes: Violacao[];
 };
 
 /**
@@ -326,6 +337,10 @@ export type UpdateKitInput = {
   description?: string | null;
   /** Lista completa, na ordem desejada. Substitui a anterior. */
   componentIds?: string[];
+  /** A captura que dá o ritmo: espaçamento, forma, movimento. `null` limpa. */
+  origemBase?: string | null;
+  /** `categoria → designSystemId`. Lista completa; substitui a anterior. */
+  origemPorCategoria?: Record<string, string>;
 };
 
 // ── Impacto (o que quebra ao apagar) ─────────────────────────────────────────

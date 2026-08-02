@@ -158,11 +158,53 @@ export const kits = sqliteTable(
      * aparência original das peças, nunca para quebrado.
      */
     tokensJson: text('tokens_json'),
+    /**
+     * A origem que dá o RITMO do site: espaçamento, layout, raio, sombra e
+     * movimento. É a família `fundamentos` da taxonomia — "a escala e o ritmo
+     * que valem no site inteiro" — reduzida a uma escolha.
+     *
+     * Cor e tipografia NÃO vêm daqui: essas são da marca do usuário, por
+     * decisão de produto. Da origem vem a forma; a identidade é dele.
+     *
+     * Nula = base em aberto, que é o estado de todo kit criado antes desta
+     * coluna. O app segue funcionando e diz que a base não foi escolhida.
+     * `set null` no delete: perder a captura não pode derrubar o kit.
+     */
+    origemBase: text('origem_base').references(() => designSystems.id, { onDelete: 'set null' }),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => ({
     updatedAtIdx: index('kits_updated_at_idx').on(t.updatedAt),
+  }),
+);
+
+/**
+ * "Neste kit, botão vem desta captura."
+ *
+ * A regra que o usuário formulou: misturar botões de sites diferentes vira
+ * bagunça. Vale para a família `pecas` da taxonomia — botão, card, badge,
+ * input, acordeão, navegação. Dobras e efeitos ficam de fora de propósito: é
+ * ali que a mistura é o produto.
+ *
+ * Uma linha por categoria travada. Categoria sem linha continua livre, então
+ * kit antigo (tabela vazia) se comporta exatamente como antes.
+ */
+export const kitRegrasDeOrigem = sqliteTable(
+  'kit_regras_de_origem',
+  {
+    kitId: text('kit_id')
+      .notNull()
+      .references(() => kits.id, { onDelete: 'cascade' }),
+    /** Categoria da taxonomia. Texto porque o enum vive no Zod, como no resto. */
+    categoria: text('categoria').notNull(),
+    designSystemId: text('design_system_id')
+      .notNull()
+      .references(() => designSystems.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.kitId, t.categoria] }),
+    kitIdx: index('kit_regras_kit_idx').on(t.kitId),
   }),
 );
 
@@ -183,6 +225,16 @@ export const kitComponents = sqliteTable(
       .notNull()
       .references(() => libraryComponents.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(),
+    /**
+     * O papel desta peça no site — `SectionRole` do `layout.ts`, o mesmo
+     * vocabulário que o projeto já usa (`hero`, `pricing`, `footer`…).
+     *
+     * Mora no KIT, e não só no projeto, porque a decisão é do kit: "esta é a
+     * minha peça de preços" vale para todo site que nascer dele. Nulo = o papel
+     * ainda não foi declarado, e a estrutura decide na hora de gerar, como
+     * sempre fez.
+     */
+    papel: text('papel'),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.kitId, t.componentId] }),

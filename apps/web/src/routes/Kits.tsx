@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { FormulaDoKit } from './kits/FormulaDoKit';
+import { Governanca } from './kits/Governanca';
 
 /** O rótulo da categoria vem da taxonomia única do `@ds/shared`. A cópia que
     morava aqui conhecia 15 das 25 categorias. */
@@ -519,6 +520,12 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
     });
   }, [lib.data, selected, search]);
 
+  // As regras de mistura. Só existem em kit já criado: um kit novo nasce sem
+  // peça nenhuma, e sem peça não há origem para governar.
+  const [governanca, setGovernanca] = useState(
+    kit?.governanca ?? { origemBase: null, origemPorCategoria: {} },
+  );
+
   const save = useMutation({
     mutationFn: () => {
       const payload = {
@@ -526,7 +533,13 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
         description: description.trim() === '' ? null : description.trim(),
         componentIds: selected,
       };
-      return kit ? api.updateKit(kit.id, payload) : api.createKit(payload);
+      return kit
+        ? api.updateKit(kit.id, {
+            ...payload,
+            origemBase: governanca.origemBase,
+            origemPorCategoria: governanca.origemPorCategoria,
+          })
+        : api.createKit(payload);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['kits'] });
@@ -587,6 +600,35 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
             style={fieldStyle}
           />
         </div>
+
+        {/* As regras de mistura. Só em kit salvo: um kit novo não tem peça, e
+            sem peça não há origem para governar. */}
+        {kit !== null && (
+          <details
+            className="border-b px-5 py-3"
+            style={{ borderColor: 'var(--color-border)' }}
+            open={kit.violacoes.length > 0}
+          >
+            <summary
+              className="cursor-pointer text-[10px] uppercase tracking-[0.24em]"
+              style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
+            >
+              Quem manda em quê
+              {kit.violacoes.length > 0 && (
+                <span className="ml-2" style={{ color: 'var(--color-warn)' }}>
+                  · {conta(kit.violacoes.length, 'fora da regra', 'fora da regra')}
+                </span>
+              )}
+            </summary>
+            <div className="mt-3">
+              <Governanca
+                kit={kit}
+                salvando={save.isPending}
+                aoMudar={(patch) => setGovernanca((g) => ({ ...g, ...patch }))}
+              />
+            </div>
+          </details>
+        )}
 
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
           {/* Selecionados, na ordem. */}

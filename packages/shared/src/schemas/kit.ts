@@ -39,5 +39,15 @@ export const UpdateKitInput = z.object({
   description: z.string().max(400).nullable().optional(),
   /** Lista completa, na ordem desejada. Substitui a anterior. */
   componentIds: z.array(z.string().startsWith('cmp_')).optional(),
+  /**
+   * A captura que dá o RITMO: espaçamento, layout, raio, sombra, movimento.
+   * `null` limpa a escolha e devolve o kit ao estado de base em aberto.
+   */
+  origemBase: z.string().nullable().optional(),
+  /**
+   * `categoria → designSystemId`. Lista completa; substitui as regras
+   * anteriores, mesmo contrato de `componentIds`.
+   */
+  origemPorCategoria: z.record(z.string(), z.string()).optional(),
 });
 export type UpdateKitInput = z.infer<typeof UpdateKitInput>;
