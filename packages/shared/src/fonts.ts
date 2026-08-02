@@ -197,8 +197,29 @@ export const buildTypographyCss = (
   typography: TypographyChoice,
 ): { importUrl: string | null; css: string } => {
   const importUrl = googleFontsCss2Url(fontFamiliesToLoad(typography));
+  const display = fontStack(typography.display);
+  const body = fontStack(typography.body);
+  const mono = typography.mono ? fontStack(typography.mono) : null;
+
+  /**
+   * Os tokens saem em DOIS namespaces, e não é redundância.
+   *
+   * `--font-*` continua servindo as duas regras de tag nua abaixo, que é o que
+   * o app sempre teve. `--marca-fonte-*` é o que as PEÇAS consomem depois da
+   * retipografia (`@ds/composer`), e existe separado por um motivo medido: as
+   * regras de tag nua valem (0,0,1) e perdem para qualquer classe utilitária da
+   * origem, então elas nunca alcançaram o conteúdo das peças.
+   *
+   * O namespace é `--marca-*` e não `--font-*` porque `--font-*` é literalmente
+   * o namespace de tema do Tailwind v4: a primeira captura de um site v4
+   * declararia o mesmo nome, o proxy da origem interceptaria a herança, e a
+   * marca voltaria a perder — desta vez sem nem a cascata para culpar.
+   */
   const css = [
-    `:root{--font-display:${fontStack(typography.display)};--font-body:${fontStack(typography.body)};${typography.mono ? `--font-mono:${fontStack(typography.mono)};` : ''}}`,
+    `:root{--font-display:${display};--font-body:${body};${mono ? `--font-mono:${mono};` : ''}` +
+      `--marca-fonte-display:${display};--marca-fonte-body:${body};${
+        mono ? `--marca-fonte-mono:${mono};` : ''
+      }}`,
     'body{font-family:var(--font-body)}',
     'h1,h2,h3,h4,h5,h6{font-family:var(--font-display)}',
   ].join('\n');

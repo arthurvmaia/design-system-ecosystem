@@ -61,3 +61,8 @@ export {
  * colide. É isso que este pacote resolve — com escopo de especificidade zero,
  * que isola sem inverter a cascata. Ver `escopo.ts` para o porquê do `:where()`.
  */
+
+export { fontesDaOrigem, placarDasFontes } from './papel-da-fonte.js';
+export type { FontesDaOrigem, PapelDeFonte } from './papel-da-fonte.js';
+export { mapaDeFontes, retipografarCss, TOKEN_DE_FONTE } from './retipografar.js';
+export type { MapaDeFontes, ResultadoRetipografia } from './retipografar.js';

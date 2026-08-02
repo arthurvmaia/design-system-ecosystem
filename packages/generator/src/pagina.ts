@@ -5,9 +5,12 @@ import {
   atributosDeProxy,
   envolverEmProxies,
   escoparCss,
+  fontesDaOrigem,
+  mapaDeFontes,
   mapaDeRecoloracao,
   nomesGlobaisDe,
   recolorirCss,
+  retipografarCss,
 } from '@ds/composer';
 import {
   type KitComponenteDeGeracao,
@@ -107,6 +110,8 @@ export type ResultadoDaPagina = {
   /** Peças pedidas no layout cujo bundle não está em disco. */
   faltando: string[];
   recoloracao: { origens: number; reescritas: number; mantidas: number };
+  /** Quantas declarações de fonte passaram a consumir o token da marca. */
+  retipografia: { reescritas: number };
 };
 
 /** Troca cada chave pelo valor, uma vez; o que não casar vira aviso. */
@@ -190,6 +195,7 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   let concatCss = '';
   const scriptsRemotos: string[] = [];
   const recoloracaoTotais = { origens: 0, reescritas: 0, mantidas: 0 };
+  const retipografiaTotais = { reescritas: 0 };
 
   /**
    * Processa UMA peça: CSS da origem (recolorido → escopado, uma vez), corpo
@@ -237,6 +243,27 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
         recoloracaoTotais.mantidas += rec.mantidas;
         avisos.push(...rec.avisos.map((a) => `[${origemBase}] ${a}`));
       }
+      /**
+       * A retipografia, logo depois da recoloração e ANTES do escopo — pela
+       * mesma razão que a recoloração vem antes: as duas reescrevem VALOR, e o
+       * escopo reescreve SELETOR. Rodando nessa ordem, cada transformação fica
+       * cega para a outra.
+       *
+       * `manterCores` também segura esta: quem pediu a peça pela aparência de
+       * origem quis a aparência inteira, letra incluída.
+       */
+      if (!manterCores && css.trim().length > 0) {
+        const fontes = fontesDaOrigem(css);
+        const ret = retipografarCss(css, mapaDeFontes(fontes));
+        css = ret.css;
+        retipografiaTotais.reescritas += ret.reescritas;
+        if (fontes.display === null && fontes.body === null) {
+          avisos.push(
+            `[${origemBase}] não deu para dizer qual fonte é de título e qual é de texto, então a tipografia desta origem fica como está.`,
+          );
+        }
+      }
+
       if (css.trim().length > 0) {
         const proxies = atributosDeProxy(origem);
         const escopo = escoparCss(css, {
@@ -406,5 +433,12 @@ ${scriptsHtml}
 </html>`;
   escrever('index.html', finalHtml);
 
-  return { outputDir, arquivos, avisos, faltando, recoloracao: recoloracaoTotais };
+  return {
+    outputDir,
+    arquivos,
+    avisos,
+    faltando,
+    recoloracao: recoloracaoTotais,
+    retipografia: retipografiaTotais,
+  };
 };
