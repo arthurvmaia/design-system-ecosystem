@@ -1,4 +1,5 @@
 import { Intro } from '@/components/Intro';
+import { PortaoOrbis } from '@/components/PortaoOrbis';
 import { Shell } from '@/components/Shell';
 import { aplicarMovimento, usePreferencias } from '@/lib/preferencias';
 import { ExtractPage } from '@/routes/Extract';
@@ -40,31 +41,36 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {!introVista && (
-        <Intro
-          onFinish={() => {
-            setIntroVista(true);
-            definir({ jaViuIntro: true });
-          }}
-        />
-      )}
-      <Router>
-        <Routes>
-          <Route element={<Shell />}>
-            <Route index element={<Navigate to="/inicio" replace />} />
-            <Route path="inicio" element={<HomePage />} />
-            <Route path="/extract" element={<ExtractPage />} />
-            <Route path="/gallery" element={<GalleryPage />} />
-            <Route path="/revisao" element={<RevisaoPage />} />
-            <Route path="/library" element={<LibraryPage />} />
-            <Route path="/design-systems" element={<KitsPage />} />
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/meus-projetos" element={<MeusProjetosPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/inicio" replace />} />
-          </Route>
-        </Routes>
-      </Router>
+      {/* O portão vem ANTES da abertura, e é decisão de produto: a abertura é o
+          app se apresentando, e apresentar-se a quem ainda não provou que pode
+          entrar é dar o passeio antes de pedir o convite. */}
+      <PortaoOrbis>
+        {!introVista && (
+          <Intro
+            onFinish={() => {
+              setIntroVista(true);
+              definir({ jaViuIntro: true });
+            }}
+          />
+        )}
+        <Router>
+          <Routes>
+            <Route element={<Shell />}>
+              <Route index element={<Navigate to="/inicio" replace />} />
+              <Route path="inicio" element={<HomePage />} />
+              <Route path="/extract" element={<ExtractPage />} />
+              <Route path="/gallery" element={<GalleryPage />} />
+              <Route path="/revisao" element={<RevisaoPage />} />
+              <Route path="/library" element={<LibraryPage />} />
+              <Route path="/design-systems" element={<KitsPage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/meus-projetos" element={<MeusProjetosPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/inicio" replace />} />
+            </Route>
+          </Routes>
+        </Router>
+      </PortaoOrbis>
     </QueryClientProvider>
   );
 }

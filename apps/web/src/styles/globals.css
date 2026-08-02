@@ -1210,3 +1210,231 @@
   border-color: rgb(var(--acento) / 0.7);
   color: var(--color-bone-1);
 }
+
+/* ── O portao: a credencial antes de tudo ──────────────────────────────────
+   Vem antes da abertura. E a primeira coisa que existe do app, entao carrega
+   sozinha a promessa visual dele: o orbe, o brilho de ion, a fonte de display.
+   Nada de tela de login generica com caixa branca no meio. */
+
+.portao {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--color-bg);
+  overflow-y: auto;
+}
+
+/* O halo que respira atras da caixa. Fica no fundo e nao recebe ponteiro. */
+.portao-brilho {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 60% 45% at 50% 42%,
+    rgb(var(--acento) / 0.13),
+    transparent 70%
+  );
+  animation: portao-respira 6s ease-in-out infinite;
+}
+
+@keyframes portao-respira {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.portao-caixa {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 18px;
+  border: 1px solid var(--color-border);
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(10px);
+  padding: 40px 32px 28px;
+  animation: portao-entra 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.portao-caixa-quieta {
+  gap: 20px;
+  padding: 44px 32px;
+}
+
+@keyframes portao-entra {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* O anel que orbita o nucleo enquanto ele espera. E o mesmo gesto do resto do
+   app: o Orbis nunca fica parado, mas tambem nunca vira spinner generico. */
+.portao-orbe {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+}
+.portao-orbe::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgb(var(--acento) / 0.22);
+  border-top-color: rgb(var(--acento) / 0.75);
+  border-radius: 50%;
+  animation: portao-orbita 4.5s linear infinite;
+}
+.portao-orbe::after {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border: 1px solid rgb(var(--acento) / 0.1);
+  border-radius: 50%;
+  animation: portao-orbita 7s linear infinite reverse;
+}
+
+@keyframes portao-orbita {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.portao-marca {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--color-fg);
+  text-shadow: 0 0 24px rgb(var(--acento) / 0.45);
+}
+
+.portao-fala {
+  max-width: 40ch;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--color-fg-muted);
+}
+
+.portao-form {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.portao-campo {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  background: rgb(0 0 0 / 0.5);
+  padding: 12px 14px;
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-align: center;
+  outline: none;
+  transition: border-color 200ms, box-shadow 200ms;
+}
+.portao-campo::placeholder {
+  letter-spacing: 0.18em;
+  color: var(--color-fg-subtle);
+  text-transform: lowercase;
+}
+.portao-campo:focus {
+  border-color: rgb(var(--acento) / 0.6);
+  box-shadow: 0 0 28px -10px rgb(var(--acento) / 0.7);
+}
+.portao-campo[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+.portao-campo:disabled {
+  opacity: 0.6;
+}
+
+.portao-btn {
+  border: 1px solid rgb(var(--acento) / 0.45);
+  background: rgb(var(--acento) / 0.1);
+  padding: 11px 18px;
+  color: var(--color-bone-1);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 200ms, border-color 200ms, box-shadow 200ms;
+}
+.portao-btn:hover:not(:disabled) {
+  background: rgb(var(--acento) / 0.2);
+  border-color: rgb(var(--acento) / 0.8);
+  box-shadow: 0 0 30px -10px rgb(var(--acento) / 0.8);
+}
+.portao-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.portao-erro {
+  font-size: 12.5px;
+  color: var(--color-danger);
+}
+
+/* O aviso de beta. Discreto, mas nao escondido: quem entra tem de sair daqui
+   sabendo que vai encontrar coisa pela metade. */
+.portao-beta {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+  text-align: left;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--color-fg-subtle);
+}
+
+.portao-beta-selo {
+  flex-shrink: 0;
+  border: 1px solid rgb(var(--acento) / 0.4);
+  padding: 1px 7px;
+  color: var(--color-ion-3);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+:root.reduz-movimento .portao-brilho,
+:root.reduz-movimento .portao-orbe::before,
+:root.reduz-movimento .portao-orbe::after,
+:root.reduz-movimento .portao-caixa {
+  animation: none;
+}
+
+@media (max-width: 420px) {
+  .portao-caixa {
+    padding: 32px 20px 24px;
+  }
+  .portao-marca {
+    font-size: 18px;
+    letter-spacing: 0.28em;
+  }
+}

@@ -114,6 +114,18 @@ export type SegmentFidelity = {
  */
 export type ConferenciaDePixel = { delta: number; limiar: number; passou: boolean };
 
+/**
+ * O que o servidor responde sobre o portão.
+ *
+ * `desligado` é o modo de desenvolvimento (sem `ORBIS_SENHA`, na sua máquina).
+ * `sem-credencial` é o servidor PUBLICADO que esqueceu a variável: ali ninguém
+ * entra, e a tela diz por quê em vez de acusar a senha de quem digitou.
+ */
+export type SessaoDoPortao = {
+  estado: 'ativo' | 'desligado' | 'sem-credencial';
+  dentro: boolean;
+};
+
 export type SegmentRecord = {
   id: string;
   designSystemId: string;
@@ -427,6 +439,10 @@ export type UpdateProjectInput = {
 const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(input, {
     ...init,
+    // O cookie da sessão é `HttpOnly`: o JavaScript não o lê nem o escreve, só
+    // pede que ele viaje. Sem `credentials`, o app publicado num domínio e a
+    // API noutro nunca mandariam a sessão, e toda tela responderia 401.
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   });
   if (!res.ok) {
@@ -499,6 +515,22 @@ export const downloadUrl = (prjId: string, versao: string): string =>
 
 export const api = {
   health: () => jsonFetch<HealthResponse>('/health'),
+
+  // ── O portão ────────────────────────────────────────────────────────────
+  /**
+   * Esta sessão já passou pelo portão?
+   *
+   * A pergunta vai ao SERVIDOR e não ao navegador. Guardar "já entrei" aqui
+   * seria uma tranca com a chave do lado de fora.
+   */
+  sessao: () => jsonFetch<SessaoDoPortao>('/api/orbis/sessao'),
+  /** Manda a credencial. O que volta é um sim ou um não, nunca a senha. */
+  entrar: (senha: string) =>
+    jsonFetch<{ dentro: boolean }>('/api/orbis/entrar', {
+      method: 'POST',
+      body: JSON.stringify({ senha }),
+    }),
+  sair: () => jsonFetch<{ dentro: boolean }>('/api/orbis/sair', { method: 'POST' }),
 
   // ── Design Systems (extrações) ──────────────────────────────────────────
   listDesignSystems: () => jsonFetch<{ items: DesignSystemRecord[] }>('/api/design-systems'),

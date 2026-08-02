@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { getExecutionMode } from './lib/execution-mode.js';
+import { estadoDoPortao, lerCookieDaSessao, sessaoValida } from './lib/portao.js';
 import { assetRoute, frameRoute, libraryAssetRoute } from './routes/asset.js';
 import { designSystemsRoute } from './routes/design-systems.js';
 import { healthRoute } from './routes/health.js';
@@ -14,6 +15,7 @@ import { kitsRoute } from './routes/kits.js';
 import { libraryRoute } from './routes/library.js';
 import { meusProjetosRoute } from './routes/meus-projetos.js';
 import { movimentoRoute } from './routes/movimento.js';
+import { orbisRoute } from './routes/orbis.js';
 import { previewRoute } from './routes/preview.js';
 import { projectsRoute } from './routes/projects.js';
 import { queueRoute } from './routes/queue.js';
@@ -23,6 +25,8 @@ import { tasksRoute } from './routes/tasks.js';
 import { vaultRoute } from './routes/vault.js';
 
 const app = new Hono();
+
+const agoraEmS = (): number => Math.floor(Date.now() / 1000);
 
 app.use('*', logger());
 // Devolver o próprio `origin` liberava qualquer site a chamar esta API com
@@ -37,6 +41,49 @@ app.use(
   }),
 );
 
+/**
+ * O portão. Tudo que serve dado ou arquivo passa por aqui.
+ *
+ * A lista de exceções é curta de propósito e cada uma tem motivo: `/api/orbis`
+ * é a própria porta, e `/health` é o que diz se o servidor está de pé — negar
+ * isso deixaria o app sem como distinguir "servidor caído" de "você não entrou",
+ * que são duas telas diferentes.
+ *
+ * `/vault` e `/site` entram na conta porque servem ARQUIVO. Uma API trancada
+ * com os arquivos abertos não é uma API trancada: o acervo inteiro sairia por
+ * uma URL adivinhada.
+ */
+app.use('*', async (c, next) => {
+  const caminho = c.req.path;
+  const liberado =
+    caminho.startsWith('/api/orbis') ||
+    caminho === '/health' ||
+    caminho.startsWith('/health/') ||
+    c.req.method === 'OPTIONS';
+  if (liberado) return next();
+
+  const protegido =
+    caminho.startsWith('/api/') || caminho.startsWith('/vault') || caminho.startsWith('/site');
+  if (!protegido) return next();
+
+  const estado = estadoDoPortao();
+  if (estado === 'desligado') return next();
+  if (estado === 'ativo' && sessaoValida(lerCookieDaSessao(c.req.header('cookie')), agoraEmS())) {
+    return next();
+  }
+  return c.json(
+    {
+      error: 'sem_sessao',
+      message:
+        estado === 'sem-credencial'
+          ? 'Este servidor foi publicado sem credencial, então eu não deixo ninguém entrar.'
+          : 'Preciso da credencial antes de mostrar qualquer coisa.',
+    },
+    401,
+  );
+});
+
+app.route('/api/orbis', orbisRoute);
 app.route('/health', healthRoute);
 app.route('/api/design-systems', designSystemsRoute);
 app.route('/api/library', libraryRoute);
