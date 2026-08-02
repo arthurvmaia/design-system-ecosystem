@@ -5,6 +5,7 @@ import { PreviewFrame } from '@/components/PreviewFrame';
 import { Select } from '@/components/seletores';
 import { type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { aoMudarPeca } from '@/lib/invalidar';
 import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
 import { useNomeDaOrigem } from '@/lib/origem';
 import { usePreferencias } from '@/lib/preferencias';
@@ -104,8 +105,7 @@ export function LibraryPage() {
     mutationFn: (args: { ids: string[]; confirmar: boolean }) =>
       api.excluirDaBibliotecaEmLote(args.ids, args.confirmar),
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['library'] });
-      qc.invalidateQueries({ queryKey: ['segments'] });
+      aoMudarPeca(qc);
       if (res.excluidos.length > 0) {
         toast.ok(`Excluí ${conta(res.excluidos.length, 'peça', 'peças')}.`);
       }
@@ -515,10 +515,7 @@ function LibraryDetail({
     enabled: confirmDel,
   });
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['library'] });
-    qc.invalidateQueries({ queryKey: ['kits'] });
-  };
+  const invalidate = () => aoMudarPeca(qc);
 
   const save = useMutation({
     mutationFn: () =>
@@ -540,7 +537,6 @@ function LibraryDetail({
     mutationFn: () => api.removeFromLibrary(component.id),
     onSuccess: () => {
       invalidate();
-      qc.invalidateQueries({ queryKey: ['segments'] });
       toast.ok('Tirei a peça da Biblioteca.');
       onClose();
     },

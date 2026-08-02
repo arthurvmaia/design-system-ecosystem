@@ -41,6 +41,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { planBatchLike } from '../lib/batch.js';
 import { lerBundleInfo } from '../lib/bundle-v2.js';
+import { kitsQueUsam, reconsolidarKits } from '../lib/consolidar-kit.js';
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
 
 export const libraryRoute = new Hono();
@@ -680,6 +681,10 @@ libraryRoute.delete('/:id', (c) => {
     .get();
   if (!row) return c.json({ error: 'not_found' }, 404);
 
+  // Quem dependia desta peça tem de ser perguntado ANTES: depois do delete a
+  // cascata já levou o vínculo, e não há mais como saber quais kits eram.
+  const afetados = kitsQueUsam(db, [id]);
+
   db.transaction((tx) => {
     if (row.segmentId) {
       tx.update(tables.segments)
@@ -690,10 +695,15 @@ libraryRoute.delete('/:id', (c) => {
     tx.delete(tables.libraryComponents).where(eq(tables.libraryComponents.id, id)).run();
   });
 
+  // A cascata do SQLite tira a LINHA do kit. O design system derivado dela fica,
+  // e o kit continua prometendo uma paleta que não existe mais. Isto é a outra
+  // metade da exclusão.
+  reconsolidarKits(db, afetados);
+
   const dir = libraryComponentDir(id as `cmp_${string}`);
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
 
-  return c.json({ deleted: true });
+  return c.json({ deleted: true, kitsAtualizados: afetados });
 });
 
 const ExcluirLoteInput = z.object({
@@ -766,6 +776,14 @@ libraryRoute.post('/excluir-lote', zValidator('json', ExcluirLoteInput), (c) => 
   const bloqueados = confirmarEmUso ? new Set<string>() : new Set(emUso.map((u) => u.id));
   const paraExcluir = rows.filter((r) => !bloqueados.has(r.id));
 
+  // Os kits afetados, medidos ANTES do delete — a cascata apaga o vínculo e
+  // depois não há mais como saber quem dependia. Só os que de fato vão perder
+  // peça: o que ficou bloqueado por estar em uso não mudou nada.
+  const afetados = kitsQueUsam(
+    db,
+    paraExcluir.map((r) => r.id),
+  );
+
   db.transaction((tx) => {
     for (const row of paraExcluir) {
       if (row.segmentId) {
@@ -777,6 +795,7 @@ libraryRoute.post('/excluir-lote', zValidator('json', ExcluirLoteInput), (c) => 
       tx.delete(tables.libraryComponents).where(eq(tables.libraryComponents.id, row.id)).run();
     }
   });
+  reconsolidarKits(db, afetados);
   for (const row of paraExcluir) {
     const dir = libraryComponentDir(row.id as `cmp_${string}`);
     if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
@@ -786,5 +805,6 @@ libraryRoute.post('/excluir-lote', zValidator('json', ExcluirLoteInput), (c) => 
     excluidos: paraExcluir.map((r) => r.id),
     emUso,
     faltando: componentIds.filter((id) => !rows.some((r) => r.id === id)),
+    kitsAtualizados: afetados,
   });
 });

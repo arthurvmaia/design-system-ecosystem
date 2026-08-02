@@ -1,4 +1,3 @@
-import { consolidarDesignSystemDoKit } from '@ds/generator';
 import { getDb, tables } from '@ds/indexer';
 import {
   CreateKitInput,
@@ -12,6 +11,7 @@ import { zValidator } from '@hono/zod-validator';
 import { asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { consolidarEGravar } from '../lib/consolidar-kit.js';
 import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
 
 /**
@@ -134,46 +134,6 @@ kitsRoute.get('/:id/contratos', (c) => {
   });
   return c.json({ items });
 });
-
-/**
- * Consolida o design system do kit e grava em `kits.tokensJson`.
- *
- * Roda no POST e em todo PATCH que troca a seleção de peças. FALHA NÃO DERRUBA
- * O CRUD: o kit continua utilizável sem design system (a geração degrada para
- * as cores de origem e diz isso nos avisos), e o GET /design-system tenta o
- * backfill de novo. Um kit que não salva porque um bundle não parseou seria
- * punir a pessoa pelo estado do disco.
- */
-const consolidarEGravar = (db: ReturnType<typeof getDb>, kitId: string): void => {
-  try {
-    const componentes = db
-      .select({
-        componentId: tables.kitComponents.componentId,
-        designSystemId: tables.libraryComponents.designSystemId,
-      })
-      .from(tables.kitComponents)
-      .innerJoin(
-        tables.libraryComponents,
-        eq(tables.kitComponents.componentId, tables.libraryComponents.id),
-      )
-      .where(eq(tables.kitComponents.kitId, kitId))
-      .all();
-    const ds = consolidarDesignSystemDoKit(
-      componentes.map((cmp) => ({
-        id: cmp.componentId,
-        bundlePath: libraryComponentBundleDir(cmp.componentId as `cmp_${string}`),
-        designSystemId: cmp.designSystemId,
-      })),
-    );
-    db.update(tables.kits)
-      .set({ tokensJson: JSON.stringify(ds) })
-      .where(eq(tables.kits.id, kitId))
-      .run();
-  } catch (err) {
-    console.warn(`Consolidação do design system do kit ${kitId} falhou:`, err);
-    db.update(tables.kits).set({ tokensJson: null }).where(eq(tables.kits.id, kitId)).run();
-  }
-};
 
 kitsRoute.post('/', zValidator('json', CreateKitInput), (c) => {
   const input = c.req.valid('json');

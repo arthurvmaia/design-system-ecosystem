@@ -19,6 +19,7 @@ import {
 } from '@/lib/api';
 import { emMinutos, oQueFaltou, orcamentoSugeridoMs } from '@/lib/captura-parcial';
 import { cn } from '@/lib/cn';
+import { aoMudarPeca } from '@/lib/invalidar';
 import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
 import { usePreferencias } from '@/lib/preferencias';
 import {
@@ -898,8 +899,7 @@ function SegmentsView({
   const curtirLote = useMutation({
     mutationFn: () => api.addToLibraryBatch([...sel]),
     onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      qc.invalidateQueries({ queryKey: ['library'] });
+      aoMudarPeca(qc);
       const partes: string[] = [];
       if (r.added.length > 0)
         partes.push(`Levei ${conta(r.added.length, 'item', 'itens')} para a Biblioteca`);
@@ -1408,8 +1408,7 @@ function SegmentCard({
   const add = useMutation({
     mutationFn: () => api.addToLibrary(segment.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      qc.invalidateQueries({ queryKey: ['library'] });
+      aoMudarPeca(qc);
       toast.ok(`Levei "${segment.name}" para a Biblioteca.`);
     },
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui curtir esta peça.'),
@@ -1743,8 +1742,7 @@ function SegmentCardFilho({
   const add = useMutation({
     mutationFn: () => api.addToLibrary(segment.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      qc.invalidateQueries({ queryKey: ['library'] });
+      aoMudarPeca(qc);
       toast.ok(`Levei "${segment.name}" para a Biblioteca.`);
     },
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui curtir esta peça.'),
@@ -1937,8 +1935,7 @@ function SegmentDetail({
   const add = useMutation({
     mutationFn: () => api.addToLibrary(segment.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      qc.invalidateQueries({ queryKey: ['library'] });
+      aoMudarPeca(qc);
       toast.ok(`Levei "${segment.name}" para a Biblioteca.`);
       onClose();
     },
