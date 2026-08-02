@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import { useNivel } from '@/lib/sessao';
 import { useQuery } from '@tanstack/react-query';
 import { Menu } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
@@ -19,6 +20,7 @@ import { useLocation } from 'react-router-dom';
 export function TopBar({ aoAbrirMenu }: { aoAbrirMenu: () => void }) {
   const location = useLocation();
   const label = pageLabel(location.pathname);
+  const nivel = useNivel();
 
   // As mesmas queryKeys que a barra lateral e as telas já usam: o cache é
   // compartilhado, então isto não gera requisição nova nem fica desatualizado.
@@ -43,7 +45,8 @@ export function TopBar({ aoAbrirMenu }: { aoAbrirMenu: () => void }) {
         type="button"
         onClick={aoAbrirMenu}
         aria-label="Abrir o menu"
-        className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center lg:hidden"
+        // 44px: abaixo disso o dedo erra e a pessoa toca duas vezes.
+        className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center lg:hidden"
         style={{ color: 'var(--color-fg-muted)' }}
       >
         <Menu size={18} />
@@ -60,6 +63,23 @@ export function TopBar({ aoAbrirMenu }: { aoAbrirMenu: () => void }) {
           {label.title}
         </span>
       </div>
+
+      {/* O selo do modo visita. Fica visível SEMPRE que a sessão for de visita,
+          inclusive no celular: quem entrou para olhar precisa saber por que o
+          botão de excluir vai recusar, antes de clicar nele. */}
+      {nivel === 'visita' && (
+        <span
+          className="ml-2 shrink-0 rounded-none border px-2 py-0.5 text-[9px] uppercase tracking-[0.16em]"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--color-accent) 40%, transparent)',
+            color: 'var(--color-ion-3)',
+            fontFamily: 'var(--font-mono)',
+          }}
+          title="Esta credencial abre para ver. Navegue tudo; mudar, só com a credencial de administrador."
+        >
+          modo visita
+        </span>
+      )}
 
       <div className="ml-auto hidden items-center gap-5 lg:flex">
         <Leitura rotulo="capturas" valor={ds.data?.items.length} />

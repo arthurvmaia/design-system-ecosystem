@@ -2,6 +2,7 @@ import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { BarraDeFluxo } from './BarraDeFluxo';
 import { Sidebar } from './Sidebar';
 import { Toaster } from './Toaster';
 import { TopBar } from './TopBar';
@@ -52,9 +53,13 @@ export function Shell() {
       <Sidebar aberta={menuAberto} aoFechar={() => setMenuAberto(false)} />
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <TopBar aoAbrirMenu={() => setMenuAberto(true)} />
-        <main key={location.pathname} className="ds-fade-in flex-1 overflow-y-auto">
+        <main key={location.pathname} className="ds-fade-in min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
+        {/* A navegação do polegar. Só existe onde a coluna não cabe, e fica
+            FORA do <main> de propósito: dentro, ela rolaria junto com o
+            conteúdo e sumiria justo quando fosse mais útil. */}
+        <BarraDeFluxo />
       </div>
 
       {/* Pilha de toasts — fica fora do <main> com key de rota para não reiniciar

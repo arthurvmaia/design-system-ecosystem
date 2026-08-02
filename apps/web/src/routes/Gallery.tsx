@@ -933,7 +933,7 @@ function SegmentsView({
   const selCount = sel.size;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-col lg:h-full lg:overflow-hidden">
       {/* No celular o título e o botão de classificar não cabem na mesma linha:
           sem empilhar, o botão passava por cima da contagem. */}
       <div
@@ -1240,7 +1240,7 @@ function SegmentsView({
       {/* Sem `items-start`: o alinhamento padrão do grid estica os cards da
           linha até a altura do mais alto, e o rodapé de cada um encosta embaixo
           (`mt-auto`). É o que deixa a grade regular. */}
-      <div className="grid flex-1 grid-cols-1 content-start gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 content-start gap-5 p-4 sm:p-8 md:grid-cols-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:grid-cols-3">
         {filtered.map((seg, i) => {
           // Filho que casou com o filtro de categoria: card compacto de
           // primeiro nível, com o selo "de:" dizendo a seção de origem.
@@ -1949,10 +1949,12 @@ function SegmentDetail({
     <Modal open onClose={onClose} size="xl" title={segment.name}>
       <div className="flex flex-col">
         <div
-          className="flex items-center justify-between gap-4 border-b px-6 py-4"
+          className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4"
           style={{ borderColor: 'var(--color-border)' }}
         >
-          <div className="min-w-0">
+          {/* `pr-10` abre espaço para o X do modal, que é absoluto no canto e
+              comia a última letra do nome quando o título ia sozinho na linha. */}
+          <div className="min-w-0 pr-10 sm:pr-0">
             <div className="truncate text-[16px] font-medium" style={{ color: 'var(--color-fg)' }}>
               {segment.name}
             </div>
@@ -1974,14 +1976,14 @@ function SegmentDetail({
               {CATEGORY_LABEL(segment.category)} · {segment.kind}
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="-mx-4 flex shrink-0 items-center gap-2 overflow-x-auto px-4 pb-0.5 sm:mx-0 sm:overflow-visible sm:px-0">
             {temEstados && (
               <button
                 type="button"
                 onClick={() => setModo((m) => (m === 'estados' ? 'plano' : 'estados'))}
                 aria-pressed={modo === 'estados'}
                 title="Mostro aqui os estados que capturei: hover, clique, modal"
-                className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
+                className="ds-tag flex shrink-0 items-center gap-2 rounded-none border px-3 py-2 text-[11px] whitespace-nowrap"
                 style={{
                   borderColor: modo === 'estados' ? 'var(--color-primary)' : 'var(--color-border)',
                   color: modo === 'estados' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
@@ -1997,7 +1999,7 @@ function SegmentDetail({
                 onClick={() => setModo((m) => (m === 'scroll' ? 'plano' : 'scroll'))}
                 aria-pressed={modo === 'scroll'}
                 title="Rolo a prévia de verdade para mostrar o que capturei: revelar, parallax, barra fixa"
-                className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
+                className="ds-tag flex shrink-0 items-center gap-2 rounded-none border px-3 py-2 text-[11px] whitespace-nowrap"
                 style={{
                   borderColor: modo === 'scroll' ? 'var(--color-primary)' : 'var(--color-border)',
                   color: modo === 'scroll' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
@@ -2013,7 +2015,7 @@ function SegmentDetail({
                 onClick={() => setModo((m) => (m === 'hover' ? 'plano' : 'hover'))}
                 aria-pressed={modo === 'hover'}
                 title="Passo o mouse sozinho em cada elemento que reage, um de cada vez"
-                className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
+                className="ds-tag flex shrink-0 items-center gap-2 rounded-none border px-3 py-2 text-[11px] whitespace-nowrap"
                 style={{
                   borderColor: modo === 'hover' ? 'var(--color-primary)' : 'var(--color-border)',
                   color: modo === 'hover' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
@@ -2029,7 +2031,7 @@ function SegmentDetail({
                 onClick={() => setModo((m) => (m === 'print' ? 'plano' : 'print'))}
                 aria-pressed={modo === 'print'}
                 title="A dobra como eu vi no site, para comparar o componente com o original"
-                className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
+                className="ds-tag flex shrink-0 items-center gap-2 rounded-none border px-3 py-2 text-[11px] whitespace-nowrap"
                 style={{
                   borderColor: modo === 'print' ? 'var(--color-primary)' : 'var(--color-border)',
                   color: modo === 'print' ? 'var(--color-primary)' : 'var(--color-fg-muted)',
@@ -2307,7 +2309,7 @@ function BgToggle({
     <button
       type="button"
       onClick={() => onChange(next)}
-      className="ds-tag flex items-center gap-2 rounded-none border px-3 py-2 text-[11px]"
+      className="ds-tag flex shrink-0 items-center gap-2 rounded-none border px-3 py-2 text-[11px] whitespace-nowrap"
       style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
       title="Alternar o fundo da prévia (auto / claro / escuro)"
     >

@@ -1438,3 +1438,12 @@
     letter-spacing: 0.28em;
   }
 }
+
+/* A nota das duas credenciais. Menor que a fala, maior que o rodape de beta:
+   e informacao operacional, nao o Orbis falando. */
+.portao-nota {
+  max-width: 40ch;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-fg-subtle);
+}

@@ -126,7 +126,7 @@ export function LibraryPage() {
   }, [lib.data]);
 
   return (
-    <div className="flex h-full flex-col lg:flex-row">
+    <div className="flex flex-col lg:h-full lg:flex-row">
       {/* A mesma decisão da Galeria: coluna em tela larga, faixa rolável no
           celular. Categoria é filtro, e filtro não pode comer metade da tela. */}
       <aside
@@ -176,7 +176,7 @@ export function LibraryPage() {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col lg:overflow-hidden">
         <div
           className="flex items-center justify-between border-b px-4 sm:px-8 py-5"
           style={{ borderColor: 'var(--color-border)' }}
@@ -239,7 +239,7 @@ export function LibraryPage() {
           </div>
         )}
 
-        <div className="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-8 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 p-8 md:grid-cols-2 lg:grid-cols-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
           {filtered.map((c, i) => (
             <LibraryCard
               key={c.id}
