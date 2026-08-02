@@ -178,10 +178,80 @@ test('os passos de @keyframes NÃO são seletores e ficam intactos', () => {
   assert.equal(r.reescritas, 0);
 });
 
-test('@font-face não tem seletor e passa incólume', () => {
+test('@font-face não tem seletor, e sem colisão fica exatamente como estava', () => {
   const r = escopar('@font-face{font-family:"Inter";src:url(a.woff2)}');
   assert.ok(r.css.includes('@font-face'));
+  assert.ok(r.css.includes('"Inter"'), `renomeou sem precisar: ${r.css}`);
   assert.equal(r.reescritas, 0);
+  assert.equal(r.renomeados.length, 0);
+});
+
+// ── @font-face em colisão ────────────────────────────────────────────────────
+//
+// `@font-face` é global e não tem seletor a escopar. Duas origens que declaram
+// `Inter` apontando para arquivos diferentes colidem no documento final, e a
+// última a carregar vence para AS DUAS — uma peça sai com a fonte da outra sem
+// erro nenhum aparecer.
+//
+// Medido no acervo: as duas capturas declaram `Inter`, com `src` diferente.
+
+const comInterJaUsada = (css: string) =>
+  escopar(css, { nomesUsados: { fontFace: new Set(['Inter']) } });
+
+test('família em colisão é renomeada, e o uso acompanha', () => {
+  const r = comInterJaUsada(
+    '@font-face{font-family:"Inter";src:url(a.woff2)}.t{font-family:"Inter"}',
+  );
+  assert.deepEqual(r.renomeados, [{ tipo: 'font-face', de: 'Inter', para: 'Inter--a' }]);
+  assert.ok(r.css.includes('"Inter--a"'), `saiu: ${r.css}`);
+  // O que NÃO pode sobrar: uma declaração pedindo o nome antigo, que agora não
+  // existe mais nesta folha. A peça cairia no fallback, calada.
+  assert.ok(!/font-family:\s*["']?Inter["']?\s*[;}]/.test(r.css), `sobrou uso órfão: ${r.css}`);
+});
+
+test('a PILHA é preservada: só o item que é a família muda', () => {
+  // O erro que uma implementação por replace de texto comete: trocar a folha
+  // inteira atinge `system-ui` de outra origem e o `Inter` dentro de `url()`.
+  const r = comInterJaUsada(
+    '@font-face{font-family:Inter;src:url(Inter.woff2)}.t{font-family:"Inter", system-ui, sans-serif}',
+  );
+  assert.ok(r.css.includes('system-ui'), `perdeu a pilha: ${r.css}`);
+  assert.ok(r.css.includes('sans-serif'), `perdeu a pilha: ${r.css}`);
+  assert.ok(r.css.includes('"Inter--a"'), `não renomeou: ${r.css}`);
+  // O `src` aponta para um ARQUIVO chamado Inter.woff2 — renomear ali quebraria
+  // o download da fonte.
+  assert.ok(r.css.includes('url(Inter.woff2)'), `estragou o src: ${r.css}`);
+});
+
+test('aspas e caixa não impedem o casamento', () => {
+  // A mesma família aparece escrita das três formas na mesma folha, e nome de
+  // fonte não diferencia maiúscula em CSS.
+  const r = escopar(
+    `@font-face{font-family:'inter';src:url(a.woff2)}.a{font-family:Inter}.b{font-family:"INTER"}`,
+    { nomesUsados: { fontFace: new Set(['Inter']) } },
+  );
+  assert.equal(r.renomeados.length, 1);
+  const ocorrencias = r.css.match(/inter--a/gi) ?? [];
+  assert.equal(ocorrencias.length, 3, `casou ${ocorrencias.length} de 3: ${r.css}`);
+});
+
+test('o atalho `font` também é reescrito', () => {
+  const r = comInterJaUsada(
+    '@font-face{font-family:"Inter";src:url(a.woff2)}.t{font:bold 14px "Inter", serif}',
+  );
+  assert.ok(r.css.includes('"Inter--a"'), `o atalho ficou para trás: ${r.css}`);
+  assert.ok(r.css.includes('serif'), `perdeu o fallback: ${r.css}`);
+});
+
+test('família que NÃO colide fica intacta, mesmo com outra colidindo', () => {
+  // Renomear só o que colide é a mesma regra dos keyframes. Sufixar tudo
+  // encheria a folha de nomes feios sem resolver nada a mais.
+  const r = comInterJaUsada(
+    '@font-face{font-family:"Inter";src:url(a.woff2)}@font-face{font-family:"Geist";src:url(b.woff2)}.t{font-family:"Geist"}',
+  );
+  assert.equal(r.renomeados.length, 1);
+  assert.ok(r.css.includes('"Geist"'), `renomeou o que não colidia: ${r.css}`);
+  assert.ok(!r.css.includes('Geist--a'), `renomeou o que não colidia: ${r.css}`);
 });
 
 test('lista de seletores é escopada item a item', () => {

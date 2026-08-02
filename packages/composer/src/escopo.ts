@@ -236,6 +236,37 @@ const trocarNomeDeAnimacao = (valor: string, de: string, para: string): string =
   );
 
 /**
+ * Renomeia uma família dentro de uma PILHA de fontes, preservando o resto.
+ *
+ * `font-family` não é um nome, é uma lista de tentativas:
+ * `"Inter", system-ui, sans-serif`. Trocar a folha inteira por replace de texto
+ * atingiria `system-ui` de outra origem e, pior, o `Inter` que aparece dentro de
+ * `url(...)` num `src`. Aqui a pilha é quebrada por vírgula e só o item que É a
+ * família muda.
+ *
+ * A comparação ignora aspas porque a mesma família aparece escrita das três
+ * formas na mesma folha (`Inter`, `'Inter'`, `"Inter"`), e ignora caixa porque
+ * nome de fonte não diferencia maiúscula em CSS. O item reescrito sai sempre
+ * entre aspas duplas: o sufixo carrega `_`, e nome não citado com caractere
+ * incomum é um convite a bug de parser.
+ */
+const trocarFamilia = (valor: string, mapa: ReadonlyMap<string, string>): string => {
+  if (mapa.size === 0) return valor;
+  const semAspas = (s: string): string => s.trim().replace(/^["']|["']$/g, '');
+  return valor
+    .split(',')
+    .map((parte) => {
+      const nome = semAspas(parte);
+      const novo = mapa.get(nome.toLowerCase());
+      if (novo === undefined) return parte;
+      // O espaço da esquerda é preservado para a lista não colar depois da vírgula.
+      const espacoEsquerda = parte.match(/^\s*/)?.[0] ?? '';
+      return `${espacoEsquerda}"${novo}"`;
+    })
+    .join(',');
+};
+
+/**
  * Escopa uma folha inteira.
  *
  * Não recebe o HTML nem devolve HTML: quem monta os proxies (`data-ds-raiz` e
@@ -266,10 +297,36 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
 
   // ── Nomes globais: renomear só o que colide ──────────────────────────────
   const mapaKeyframes = new Map<string, string>();
+  /** Chave em minúsculas: nome de fonte não diferencia caixa em CSS. */
+  const mapaFontes = new Map<string, string>();
   const usadosKf = opts.nomesUsados?.keyframes ?? new Set<string>();
   const usadosLayer = opts.nomesUsados?.layer ?? new Set<string>();
+  const usadosFonte = new Set(
+    [...(opts.nomesUsados?.fontFace ?? new Set<string>())].map((n) => n.toLowerCase()),
+  );
 
   raizAst.walkAtRules((at: AtRule) => {
+    /**
+     * `@font-face` é global e não tem seletor para escopar — duas origens que
+     * declaram `Inter` apontando para arquivos diferentes colidem no documento
+     * final, e a última a carregar vence para as duas.
+     *
+     * Medido no acervo: as duas capturas declaram `Inter`, com `src` diferente.
+     * Não era hipótese.
+     */
+    if (at.name.toLowerCase() === 'font-face') {
+      const decl = at.nodes?.find(
+        (d) => d.type === 'decl' && d.prop.toLowerCase() === 'font-family',
+      );
+      if (decl === undefined || decl.type !== 'decl') return;
+      const nome = decl.value.trim().replace(/^["']|["']$/g, '');
+      if (nome.length === 0 || !usadosFonte.has(nome.toLowerCase())) return;
+      const novo = `${nome}--${opts.sufixo}`;
+      mapaFontes.set(nome.toLowerCase(), novo);
+      decl.value = `"${novo}"`;
+      renomeados.push({ tipo: 'font-face', de: nome, para: novo });
+      return;
+    }
     if (/^(-\w+-)?keyframes$/i.test(at.name)) {
       const nome = at.params.trim();
       if (nome.length === 0 || !usadosKf.has(nome)) return;
@@ -301,6 +358,25 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       let v = decl.value;
       for (const [de, para] of mapaKeyframes) v = trocarNomeDeAnimacao(v, de, para);
       decl.value = v;
+    });
+  }
+
+  // Os usos da fonte renomeada. O `@font-face` que acabou de mudar de nome
+  // ficaria órfão sem isto: a declaração existiria e ninguém a pediria, e a
+  // peça cairia na fonte de fallback sem erro nenhum aparecer.
+  //
+  // `font-family` e o atalho `font` — e NÃO `src`, que é o outro lugar onde o
+  // nome aparece dentro de `local(...)` mas aponta para a fonte instalada no
+  // computador de quem visita, não para esta declaração.
+  if (mapaFontes.size > 0) {
+    raizAst.walkDecls(/^font(-family)?$/i, (decl) => {
+      // Dentro do próprio `@font-face` o `font-family` É a declaração do nome,
+      // já reescrita acima. Reescrever de novo daria sufixo em cima de sufixo.
+      const pai = decl.parent;
+      if (pai !== undefined && pai.type === 'atrule') {
+        if ((pai as AtRule).name.toLowerCase() === 'font-face') return;
+      }
+      decl.value = trocarFamilia(decl.value, mapaFontes);
     });
   }
 
