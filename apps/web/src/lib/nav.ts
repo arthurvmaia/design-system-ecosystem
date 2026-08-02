@@ -35,9 +35,9 @@ export type NavItemDef = {
 export const primaryNav: NavItemDef[] = [
   { to: '/inicio', label: 'Início', icon: Home, description: 'O que este app faz' },
   { to: '/extract', label: 'Extrair', icon: UploadCloud, description: 'Nova extração' },
-  { to: '/gallery', label: 'Galeria', icon: Compass, description: 'Triagem de candidatos' },
-  { to: '/library', label: 'Biblioteca', icon: Library, description: 'Acervo curado' },
-  { to: '/design-systems', label: 'Design Systems', icon: Layers, description: 'Kits finais' },
+  { to: '/gallery', label: 'Galeria', icon: Compass, description: 'Triagem das capturas' },
+  { to: '/library', label: 'Biblioteca', icon: Library, description: 'As peças que você curtiu' },
+  { to: '/design-systems', label: 'Kits', icon: Layers, description: 'Os conjuntos montados' },
   { to: '/projects', label: 'Gerar site', icon: Wand2, description: 'A partir de um kit' },
   { to: '/meus-projetos', label: 'Meus sites', icon: Package, description: 'Prontos para baixar' },
 ];

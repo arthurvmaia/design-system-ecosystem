@@ -78,7 +78,7 @@ export const conta = (n: number, um: string, varios: string): string =>
  */
 export const TRABALHANDO = {
   extraindo: 'Abrindo a página num navegador de verdade. Isso leva alguns minutos.',
-  carregandoAcervo: 'Buscando o que já capturei.',
+  carregandoCapturas: 'Buscando o que já capturei.',
   carregandoPecas: `Reunindo as peças que o ${TRATAMENTO} guardou.`,
   carregandoKits: 'Conferindo os kits montados.',
   carregandoSites: 'Vendo quais sites já estão prontos em disco.',
@@ -93,7 +93,7 @@ export const TRABALHANDO = {
  * agora). Tela vazia sem saída é beco.
  */
 export const VAZIO = {
-  acervo: {
+  capturas: {
     titulo: 'Ainda não capturei nada.',
     corpo: `Me dê o endereço de um site de que o ${TRATAMENTO} goste e eu trago o visual dele inteiro.`,
   },

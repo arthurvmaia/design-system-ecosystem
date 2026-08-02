@@ -7,7 +7,7 @@ import { Mascote } from './Mascote';
  * O número cru ("0%", "95%") não conta a história e, como o reporte é grosso
  * (pula 15 → 35 → 90), a barra fica parada por minutos e parece travada. Aqui
  * traduzimos o percentual em ETAPAS nomeadas — "Extraindo o visual…", "Montando
- * o design system…" — com um círculo de loading que está sempre em movimento,
+ * a captura…" — com um círculo de loading que está sempre em movimento,
  * para deixar claro que há trabalho acontecendo mesmo entre um salto e outro.
  */
 
@@ -37,19 +37,19 @@ const FLUXOS: Record<string, Etapa[]> = {
     },
     {
       curto: 'Montar',
-      titulo: 'Montando o design system',
+      titulo: 'Montando a captura',
       sub: 'Juntando tudo num lugar só',
       ate: 95,
     },
     {
       curto: 'Organizar',
-      titulo: 'Organizando os componentes',
+      titulo: 'Organizando as peças',
       sub: 'Deixando pronto para você curar',
       ate: 100,
     },
   ],
   classify: [
-    { curto: 'Ler', titulo: 'Lendo os componentes', sub: 'Olhando cada peça encontrada', ate: 40 },
+    { curto: 'Ler', titulo: 'Lendo as peças', sub: 'Olhando cada peça encontrada', ate: 40 },
     {
       curto: 'Nomear',
       titulo: 'Dando nome a cada peça',
@@ -70,7 +70,7 @@ const FLUXOS: Record<string, Etapa[]> = {
     {
       curto: 'Montar',
       titulo: 'Montando as páginas',
-      sub: 'Juntando os componentes do kit',
+      sub: 'Juntando as peças do kit',
       ate: 95,
     },
     { curto: 'Finalizar', titulo: 'Finalizando', sub: 'Últimos ajustes', ate: 100 },

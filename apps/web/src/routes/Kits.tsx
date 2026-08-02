@@ -127,7 +127,7 @@ export function KitsPage() {
             className="ds-slide-up text-[10px] uppercase tracking-[0.28em]"
             style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}
           >
-            Design Systems
+            Kits
           </div>
           <h1
             className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"
@@ -139,8 +139,8 @@ export function KitsPage() {
             className="ds-slide-up ds-d2 mt-3 max-w-[62ch] text-[14px] leading-[1.6]"
             style={{ color: 'var(--color-fg-muted)' }}
           >
-            Um kit não é uma pasta, {TRATAMENTO}: é o design system final. Eu gero o site usando só
-            as peças que estiverem nele.
+            Um kit não é uma pasta, {TRATAMENTO}: é a cara do site que vou montar. Eu uso só as
+            peças que estiverem nele.
           </p>
         </div>
         <div className="ds-scale-in ds-d2">
@@ -796,7 +796,7 @@ function KitDesignSystemPanel({
           className="text-[10px] uppercase tracking-[0.24em]"
           style={{ color: 'var(--color-fg-subtle)', fontFamily: 'var(--font-display)' }}
         >
-          Design System
+          A cara deste kit
         </span>
         {item !== null && (
           <span
@@ -817,7 +817,7 @@ function KitDesignSystemPanel({
         <div className="max-h-[230px] space-y-4 overflow-y-auto px-5 pb-4">
           {ds.isError ? (
             <div className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-              Não consegui ler o design system deste kit agora.
+              Não consegui ler as cores e as fontes deste kit agora.
             </div>
           ) : ds.isPending ? (
             <div

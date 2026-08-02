@@ -97,8 +97,8 @@ export function ProjectsPage() {
           className="ds-glass-static mt-8 rounded-lg p-4 text-[13px]"
           style={{ color: 'var(--color-fg-muted)' }}
         >
-          Você ainda não tem nenhum kit. Monte um Design System final em{' '}
-          <span className="ds-data">Design Systems</span> antes de gerar um site.
+          Você ainda não tem nenhum kit. Monte um em <span className="ds-data">Kits</span> antes de
+          gerar um site.
         </div>
       )}
 

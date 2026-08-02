@@ -633,7 +633,7 @@ function LibraryDetail({
               desses kits também e apago os arquivos do disco.
             </>
           ) : (
-            'Apago o bundle do disco e desfaço o vínculo com o segmento de origem. Nenhum kit usa esta peça.'
+            'Apago o bundle do disco e desfaço o vínculo com a captura de origem. Nenhum kit usa esta peça.'
           )
         }
       />

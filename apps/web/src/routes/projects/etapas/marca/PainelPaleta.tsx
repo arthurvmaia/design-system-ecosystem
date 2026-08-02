@@ -73,7 +73,7 @@ export function PainelPaleta({
       <div className="space-y-5">
         <SecaoCabecalho
           titulo="Paleta de cores"
-          descricao="Esta é a identidade visual do novo site. Ela não é herdada dos componentes da Galeria. Nomeie suas cores; a distribuição pelos papéis do site é automática."
+          descricao="Esta é a identidade visual do novo site. Ela não é herdada das peças da Galeria. Nomeie suas cores; a distribuição pelos papéis do site é automática."
         />
 
         <Campo label={`Cores (${paleta.cores.length} de 12)`}>

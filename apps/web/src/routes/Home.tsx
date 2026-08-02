@@ -74,7 +74,7 @@ export function HomePage() {
   /** O que cada etapa faz, e como ela está agora. */
   const estado: Record<string, string | null> = {
     '/extract': null,
-    '/gallery': conta(ds.data?.items.length, 'extração para triar', 'extrações para triar'),
+    '/gallery': conta(ds.data?.items.length, 'captura para triar', 'capturas para triar'),
     '/library': conta(lib.data?.items.length, 'peça guardada', 'peças guardadas'),
     '/design-systems': conta(kits.data?.items.length, 'kit montado', 'kits montados'),
     '/projects': null,

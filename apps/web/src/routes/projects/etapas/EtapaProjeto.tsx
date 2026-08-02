@@ -53,7 +53,7 @@ export function StepProjeto({
           </div>
           {kits.length === 0 ? (
             <div className="text-[13px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              Nenhum kit disponível. Monte um em Design Systems.
+              Nenhum kit disponível. Monte um em Kits.
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
@@ -72,7 +72,7 @@ export function StepProjeto({
                     className="ds-data mt-1 text-[11px]"
                     style={{ color: 'var(--color-fg-subtle)' }}
                   >
-                    {k.components.length} componentes
+                    {k.components.length} peças
                   </div>
                 </button>
               ))}

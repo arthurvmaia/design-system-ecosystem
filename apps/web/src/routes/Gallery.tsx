@@ -95,7 +95,7 @@ const hostDe = (url: string): string => {
   }
 };
 
-/** Estado da extração em linguagem de gente — o enum interno nunca vaza. */
+/** Estado da captura em linguagem de gente — o enum interno nunca vaza. */
 const STATUS_DA_EXTRACAO: Record<string, string> = {
   pending: 'Na fila',
   extracting: 'Capturando…',
@@ -614,10 +614,10 @@ function DsSidebar({
       qc.invalidateQueries({ queryKey: ['library'] });
       // Apagar uma extração remove os rejeitados dela — o contador de Pendências muda.
       qc.invalidateQueries({ queryKey: ['rejeitados'] });
-      toast.ok('Removi a extração da Galeria.');
+      toast.ok('Removi a captura da Galeria.');
       setConfirming(null);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui remover a extração.'),
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui remover a captura.'),
   });
 
   return (
@@ -633,12 +633,12 @@ function DsSidebar({
           fontFamily: 'var(--font-display)',
         }}
       >
-        Extrações
+        Capturas
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {loading ? (
           <div className="p-4 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            {TRABALHANDO.carregandoAcervo}
+            {TRABALHANDO.carregandoCapturas}
           </div>
         ) : list.length === 0 ? (
           <div className="p-4 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
@@ -680,7 +680,7 @@ function DsSidebar({
                 type="button"
                 onClick={() => setConfirming(ds)}
                 className="mr-2 hidden rounded-none p-1.5 transition-all duration-300 hover:bg-[rgba(239,68,68,0.16)] group-hover:block"
-                title="Excluir extração"
+                title="Excluir esta captura"
               >
                 <Trash2 size={12} style={{ color: 'var(--color-ion-3)' }} />
               </button>
@@ -693,19 +693,19 @@ function DsSidebar({
         open={confirming !== null}
         title={`Excluir "${confirming?.name}"?`}
         busy={del.isPending}
-        confirmLabel="Excluir extração"
+        confirmLabel="Excluir a captura"
         onConfirm={() => confirming && del.mutate(confirming.id)}
         onClose={() => setConfirming(null)}
         description={
           <>
-            Tiro esta extração e os <strong>{impacto.data?.segmentos ?? '…'} segmentos</strong> que
+            Tiro esta captura e as <strong>{impacto.data?.segmentos ?? '…'} peças</strong> que
             separei dela da Galeria.
             {(impacto.data?.componentesDaBiblioteca.length ?? 0) > 0 ? (
               <>
                 {' '}
-                Os <strong>{impacto.data?.componentesDaBiblioteca.length} componentes</strong> que
-                já foram para a Biblioteca continuam lá (são cópias), mas as prévias deles podem
-                perder as fontes e o runtime da origem.
+                As <strong>{impacto.data?.componentesDaBiblioteca.length} peças</strong> que já
+                foram para a Biblioteca continuam lá (são cópias), mas as prévias delas podem perder
+                as fontes e o runtime da origem.
               </>
             ) : (
               ' Nada na Biblioteca depende dela.'
@@ -953,8 +953,10 @@ function SegmentsView({
             {dsInfo.data?.item.name ?? '...'}
           </h1>
           {/* Leitura de instrumento: os números em mono, com o denominador à
-              vista. "12 de 35" diz muito mais que "12 componentes" quando um
-              filtro está ligado. */}
+              vista. "12 de 35" diz muito mais que "12 peças" quando um filtro
+              está ligado. As de dentro contam à parte porque são de outra
+              natureza: uma dobra é um pedaço da página, e o botão de dentro
+              dela é uma peça que se reusa sozinha. */}
           <div className="mt-1.5 flex items-center gap-4">
             <span className="flex items-baseline gap-1.5">
               <span className="ds-data text-[13px]" style={{ color: 'var(--color-ion-3)' }}>
@@ -963,16 +965,14 @@ function SegmentsView({
               <span className="ds-data text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
                 /{populacao}
               </span>
-              <span className="ds-label">{populacao === 1 ? 'componente' : 'componentes'}</span>
+              <span className="ds-label">{populacao === 1 ? 'peça' : 'peças'}</span>
             </span>
             {totalFilhos > 0 && (
               <span className="flex items-baseline gap-1.5">
                 <span className="ds-data text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>
                   {totalFilhos}
                 </span>
-                <span className="ds-label">
-                  {totalFilhos === 1 ? 'subcomponente' : 'subcomponentes'}
-                </span>
+                <span className="ds-label">de dentro delas</span>
               </span>
             )}
           </div>
@@ -1037,14 +1037,14 @@ function SegmentsView({
         <label
           className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[11px]"
           style={{ color: 'var(--color-fg-muted)' }}
-          title="Selecionar todos os segmentos visíveis"
+          title="Selecionar todas as peças visíveis"
         >
           <input
             ref={selTodosRef}
             type="checkbox"
             checked={isAllSelected(sel, visiveis)}
             onChange={() => setSel((s) => toggleAllVisible(s, visiveis))}
-            aria-label={`Selecionar todos os ${visiveis.length} segmentos visíveis`}
+            aria-label={`Selecionar todas as ${visiveis.length} peças visíveis`}
             className="h-4 w-4 accent-[var(--color-ion-4)]"
           />
           Todos
@@ -1197,7 +1197,7 @@ function SegmentsView({
             disabled={selCount < 2}
             title={
               selCount < 2
-                ? 'Marque 2 ou 3 componentes e eu mostro lado a lado'
+                ? 'Marque 2 ou 3 peças e eu mostro lado a lado'
                 : 'Ver lado a lado, com interação'
             }
             className="ds-tag flex items-center gap-1.5 rounded-none border px-3.5 py-1.5 text-[12px] disabled:opacity-40"
@@ -1299,7 +1299,7 @@ function SegmentsView({
           open
           onClose={() => setComparando(null)}
           size="xl"
-          title={`Comparando ${comparando.length} componentes`}
+          title={`Comparando ${comparando.length} peças`}
         >
           <div className="p-6">
             <div
@@ -1414,7 +1414,7 @@ function SegmentCard({
     mutationFn: () => api.deleteSegment(dsId, segment.id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      toast.ok('Tirei este segmento da triagem.');
+      toast.ok('Tirei esta peça da triagem.');
       setConfirmDel(false);
     },
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui excluir.'),
@@ -1588,8 +1588,8 @@ function SegmentCard({
                 subcomponentes === 1
                   ? 'A peça que tirei de dentro dela sai junto'
                   : `As ${subcomponentes} peças que tirei de dentro dela saem junto`
-              }. A Galeria é material de trabalho: se eu segmentar a extração de novo, a lista completa volta. O que já foi para a Biblioteca continua lá.`
-            : 'A Galeria é material de trabalho. Se eu segmentar a extração de novo, a lista completa volta. O que já foi para a Biblioteca continua lá.'
+              }. A Galeria é material de trabalho: se eu segmentar a captura de novo, a lista completa volta. O que já foi para a Biblioteca continua lá.`
+            : 'A Galeria é material de trabalho. Se eu segmentar a captura de novo, a lista completa volta. O que já foi para a Biblioteca continua lá.'
         }
       />
     </div>
@@ -1746,7 +1746,7 @@ function SegmentCardFilho({
     mutationFn: () => api.deleteSegment(dsId, segment.id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['segments', dsId] });
-      toast.ok('Tirei este subcomponente da triagem.');
+      toast.ok('Tirei esta peça da triagem.');
       setConfirmDel(false);
     },
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui excluir.'),
@@ -1870,7 +1870,7 @@ function SegmentCardFilho({
         confirmLabel="Excluir"
         onConfirm={() => del.mutate()}
         onClose={() => setConfirmDel(false)}
-        description="Sai só este subcomponente: a seção de origem continua na Galeria. Se eu segmentar a extração de novo, a lista completa volta."
+        description="Sai só esta peça: a dobra de onde ela veio continua na Galeria. Se eu segmentar a captura de novo, a lista completa volta."
       />
     </div>
   );
@@ -2142,7 +2142,7 @@ function CapturaParcial({
     <>
       <p>{oQueFaltou(parcial.fase)}</p>
       <p className="mt-2">
-        O que está aqui é bom: os segmentos têm pacote próprio, o CSS veio inteiro e os ícones foram
+        O que está aqui é bom: as peças têm pacote próprio, o CSS veio inteiro e os ícones foram
         desenhados. O que falta são os comportamentos das dobras de baixo.
       </p>
       {sugerido === null ? (
@@ -2314,10 +2314,10 @@ function EmptyState() {
           className="ds-text-glow mt-2 text-[24px]"
           style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
         >
-          {VAZIO.acervo.titulo}
+          {VAZIO.capturas.titulo}
         </h2>
         <p className="mt-3 text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>
-          {VAZIO.acervo.corpo}
+          {VAZIO.capturas.corpo}
         </p>
       </div>
     </div>

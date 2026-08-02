@@ -211,7 +211,7 @@ function BadgeBiblioteca() {
   return <BadgeInfo valor={data?.items.length ?? 0} />;
 }
 
-/** Conta os kits (Design Systems finais). Compartilha o cache com a página Kits. */
+/** Conta os kits montados. Compartilha o cache com a página Kits. */
 function BadgeKits() {
   const { data } = useQuery({ queryKey: ['kits'], queryFn: api.listKits });
   return <BadgeInfo valor={data?.items.length ?? 0} />;

@@ -180,12 +180,12 @@ if (paraSegmentar !== null) {
   try {
     const { total, raizes, suspeitoDeSpa } = segmentarEIndexar(paraSegmentar);
     if (total === 0) {
-      console.error('\nA segmentação não encontrou nenhum componente.');
+      console.error('\nA segmentação não encontrou nenhuma peça.');
       console.error('O design-system.html existe, mas o <body> não tem filhos');
-      console.error('diretos que sirvam como segmento. Refaça a extração.\n');
+      console.error('diretos que sirvam como peça. Refaça a captura.\n');
       process.exit(1);
     }
-    console.log(`\n${total} segmento(s) prontos na Galeria.`);
+    console.log(`\n${total} peça(s) prontas na Galeria.`);
     // Aviso, não bloqueio: existe página legítima com poucas seções, e recusar
     // fecharia o job de alguém que sabe o que está fazendo. O número do aviso
     // são as SEÇÕES — contar os filhos da subdivisão inflaria a mensagem.

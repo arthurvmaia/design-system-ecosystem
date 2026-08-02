@@ -37,7 +37,7 @@ const main = async (): Promise<void> => {
   mkdirSync(assetsDir, { recursive: true });
 
   const started = Date.now();
-  console.log(`Explorando ${url}\n  → design system ${dsId}\n`);
+  console.log(`Explorando ${url}\n  → captura ${dsId}\n`);
 
   const extractedDir = vaultExtractedDir(dsId);
   mkdirSync(extractedDir, { recursive: true });

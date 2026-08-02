@@ -83,7 +83,7 @@ export function StepRevisao({
         <Linha rotulo="Projeto" valor={name || 'sem nome ainda'} />
         <Linha
           rotulo="Kit base"
-          valor={kit ? `${kit.name} · ${kit.components.length} componentes` : 'nenhum escolhido'}
+          valor={kit ? `${kit.name} · ${kit.components.length} peças` : 'nenhum escolhido'}
         />
         <Linha rotulo="Marca" valor={branding.brandName || 'não preenchida'} />
         <Linha rotulo="Voz" valor={voz || branding.identidadeVerbal.observacao || 'não definida'} />
@@ -136,9 +136,9 @@ export function StepRevisao({
               para liberar a geração.{' '}
             </>
           ) : null}
-          Ao gerar, o site usa <strong>somente os componentes do kit</strong> como base visual e
-          aplica a sua marca, o seu texto e a sua mídia. Seções sem peça no kit são criadas no
-          estilo dele. Nada de texto ou marca do site de origem é copiado.
+          Ao gerar, o site usa <strong>somente as peças do kit</strong> como base visual e aplica a
+          sua marca, o seu texto e a sua mídia. Seções sem peça no kit são criadas no estilo dele.
+          Nada de texto ou marca do site de origem é copiado.
         </span>
       </div>
     </div>

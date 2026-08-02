@@ -11,9 +11,9 @@ import { useLocation } from 'react-router-dom';
  *
  * A regra que não mudou: nada de infraestrutura na cara do usuário. Chave de
  * API, caminho de disco e afins continuam sendo conversa interna do sistema.
- * O que aparece aqui é o acervo DELE — quantos sistemas trouxe, quantas peças
- * curou — mais um ponto dizendo se o servidor está de pé, porque quando ele cai
- * a tela inteira mente e é justo avisar.
+ * O que aparece aqui é a biblioteca DELE — quantas capturas trouxe, quantas
+ * peças curou — mais um ponto dizendo se o servidor está de pé, porque quando
+ * ele cai a tela inteira mente e é justo avisar.
  */
 export function TopBar() {
   const location = useLocation();
@@ -48,7 +48,7 @@ export function TopBar() {
       </div>
 
       <div className="ml-auto hidden items-center gap-5 lg:flex">
-        <Leitura rotulo="sistemas" valor={ds.data?.items.length} />
+        <Leitura rotulo="capturas" valor={ds.data?.items.length} />
         <Leitura rotulo="peças" valor={lib.data?.items.length} />
         <div className="flex items-center gap-2">
           <span
@@ -90,7 +90,7 @@ function pageLabel(pathname: string): { section: string; title: string } {
   if (pathname.startsWith('/gallery')) return { section: 'O que eu capturei', title: 'Galeria' };
   if (pathname.startsWith('/library')) return { section: 'Peças guardadas', title: 'Biblioteca' };
   if (pathname.startsWith('/design-systems')) {
-    return { section: 'Kits montados', title: 'Design Systems' };
+    return { section: 'O que eu monto com', title: 'Kits' };
   }
   if (pathname.startsWith('/projects')) {
     return { section: 'Monto com o seu kit', title: 'Gerar site' };

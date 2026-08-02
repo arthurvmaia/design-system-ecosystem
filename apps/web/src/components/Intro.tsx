@@ -79,9 +79,9 @@ export function Intro({ onFinish }: { onFinish: () => void }) {
       rotulo: 'orbis',
       valor: saude.isLoading ? undefined : saude.data?.status === 'ok' ? 'no ar' : 'fora do ar',
     },
-    { rotulo: 'acervo', valor: conta(ds.data?.items.length, 'sistema', 'sistemas') },
+    { rotulo: 'galeria', valor: conta(ds.data?.items.length, 'captura', 'capturas') },
     { rotulo: 'biblioteca', valor: conta(lib.data?.items.length, 'peça', 'peças') },
-    { rotulo: 'design systems', valor: conta(kits.data?.items.length, 'kit', 'kits') },
+    { rotulo: 'kits', valor: conta(kits.data?.items.length, 'kit', 'kits') },
   ];
 
   const finalizar = (): void => {

@@ -124,11 +124,11 @@ if (executadoDireto(import.meta.url)) {
   try {
     const { total, raizes, suspeitoDeSpa } = segmentarEIndexar(dsId as `ds_${string}`);
     if (total === 0) {
-      console.log('\n  Nenhum segmento encontrado.');
+      console.log('\n  Nenhuma peça encontrada.');
       console.log('  O design-system.html existe, mas o <body> não tem filhos diretos');
-      console.log('  que sirvam como componente. Confira se a extração saiu completa.\n');
+      console.log('  que sirvam como peça. Confira se a captura saiu completa.\n');
     } else {
-      console.log(`\n  ${total} segmento(s) gravados. Abra a Galeria.`);
+      console.log(`\n  ${total} peça(s) gravadas. Abra a Galeria.`);
       if (suspeitoDeSpa) console.log(avisoSpa(raizes));
       else console.log('');
     }
