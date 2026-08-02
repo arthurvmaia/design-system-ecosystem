@@ -38,3 +38,7 @@ queue/
 # `_tmp-` e não é código do repo: sem esta linha, um script de uma tarefa que já
 # acabou derruba o `pnpm lint` de todo mundo — o biome lê este arquivo.
 scripts/_tmp-*
+
+# Prints e trace do navegador de inspeção (ferramenta de quem desenvolve, não do
+# projeto): a pasta enche a cada sessão e nada no app a lê.
+.playwright-mcp/
