@@ -72,9 +72,6 @@ importers:
       '@ds/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@ds/tokens':
-        specifier: workspace:*
-        version: link:../../packages/tokens
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.30)
@@ -373,22 +370,6 @@ importers:
     devDependencies:
       '@types/node':
         specifier: ^22.20.1
-        version: 22.20.1
-      typescript:
-        specifier: ^5.7.2
-        version: 5.9.3
-
-  packages/tokens:
-    dependencies:
-      '@ds/shared':
-        specifier: workspace:*
-        version: link:../shared
-      postcss:
-        specifier: ^8.4.49
-        version: 8.5.19
-    devDependencies:
-      '@types/node':
-        specifier: ^22.10.2
         version: 22.20.1
       typescript:
         specifier: ^5.7.2

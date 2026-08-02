@@ -156,9 +156,6 @@ Batch classifier via LLM. Envia 8 segmentos por chamada, recebe JSON validado po
 ### @ds/isolator
 Bundle mínimo por componente. Coleta classes/tags/ids do HTML do segmento, parse todo o CSS do vault via PostCSS, para cada regra checa se algum seletor casa com os tokens coletados (usando `postcss-selector-parser`). Remove regras não usadas, mantém as demais. Detecta assets referenciados (url(), src, href).
 
-### @ds/tokens
-Extrai valores repetidos (cores hex/rgb/hsl, spacings em px, radii, font-family, font-size). Substitui por variáveis CSS (`--primary`, `--space-0`, etc). Insere `:root {}` no topo do CSS. Retorna mapa de tokens como "tema default" do componente.
-
 ### @ds/generator
 Agente LLM que compõe site a partir do catálogo da library + conteúdo + branding do usuário. Recebe JSON com `sections: [{componentId, role, substitutions}]`. Post-processing: monta HTML final, mescla CSS dos componentes escolhidos, aplica variáveis CSS da marca via `:root` override. Cada geração escreve em nova pasta timestampada, nunca sobrescreve.
 
