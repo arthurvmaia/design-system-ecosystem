@@ -250,6 +250,33 @@ export const classificarRepresentacao = (ev: EvidenciaRepresentacao): Representa
       );
       continue;
     }
+    /**
+     * O fundo da página PASSA por baixo da peça — ele não a desenha.
+     *
+     * Defeito medido no acervo, e caro: das 12 peças de uma captura, **7
+     * viraram cápsula por causa de um único canvas**. O `fundo-canvas` é
+     * `position: fixed` e cobre a página inteira, então o motor o associa a toda
+     * seção que ele atravessa — corretamente, porque para desenhar aquela dobra
+     * ele conta. Mas nenhuma dessas seções tem `<canvas>` no próprio HTML:
+     * conferido peça a peça, só o segmento que É o fundo tem.
+     *
+     * O preço de tratá-lo como dependência era alto e silencioso: cápsula
+     * significa `editable: false`, prévia da PÁGINA INTEIRA no lugar da peça, e
+     * o print da dobra com a logo da outra empresa dentro. Seis peças de HTML
+     * perfeitamente portátil ficavam assim porque tinham um fundo atrás.
+     *
+     * O sinal que decide já está na evidência: a peça tem mídia de canvas
+     * própria? Se não tem, o fundo é vizinho, não dependência. Ele vira
+     * LIMITAÇÃO declarada — a peça sai sem o fundo animado, e isso é dito —
+     * em vez de rebaixar a forma dela.
+     */
+    if (r === 'fundo-canvas' && !ev.midias.some((m) => MIDIA_DE_RUNTIME.has(m))) {
+      limitations.push(
+        'O fundo animado da página não vem junto: ele é uma camada da página inteira, e não desta peça. O conteúdo dela é HTML e reproduz sozinho.',
+      );
+      continue;
+    }
+
     desenhamPendentes.push(r);
     // A dependência continua existindo — mas de QUÊ mudou, e isso decide o que
     // acontece quando alguém abre o `.zip` sem internet.

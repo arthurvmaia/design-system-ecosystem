@@ -239,8 +239,16 @@ test('Tailwind por CDN com o CSS capturado do CSSOM não impede portátil', () =
 });
 
 test('fundo desenhado em canvas é dependência declarada, com o que ele desenha por extenso', () => {
-  const d = classificarRepresentacao(ev({ runtimes: ['fundo-canvas'] }));
-  assert.equal(d.type, 'capsula-runtime');
+  // A peça que TEM o canvas depende dele de verdade. A que só o tem atrás, não
+  // — ver "fundo-canvas sem canvas na peça" mais abaixo, que é o caso que este
+  // teste afirmava por engano antes de o acervo mostrar o contrário.
+  const d = classificarRepresentacao(ev({ runtimes: ['fundo-canvas'], midias: ['webgl'] }));
+  // Não é portátil: com o canvas dentro, o HTML sozinho não reproduz o que se
+  // vê. Qual das duas formas não-portáteis sai daqui depende de dar para
+  // encapsular — sem bootstrap identificado, é referência visual, e isso é a
+  // resposta honesta.
+  assert.notEqual(d.type, 'componente-portatil');
+  assert.equal(d.editable, false);
   assert.ok(d.limitations.some((l) => l.includes('o fundo da página')));
 });
 
@@ -263,4 +271,54 @@ test('runtime que desenha não é contado como runtime de cena', () => {
   const d = classificarRepresentacao(ev({ runtimes: ['iconify'], iconesNaoDesenhados: 2 }));
   assert.equal(d.type, 'capsula-runtime');
   assert.notEqual(d.type, 'referencia-visual');
+});
+
+// ── O fundo da página que passa por baixo ────────────────────────────────────
+//
+// Defeito medido no acervo, e o mais caro dos encontrados até aqui: das 12
+// peças de uma captura, SETE viraram `capsula-runtime` por causa de um único
+// canvas de fundo. Ele é `position: fixed` e cobre a página inteira, então o
+// motor o associa a toda seção que ele atravessa — corretamente, porque para
+// desenhar aquela dobra ele conta.
+//
+// O preço era alto e silencioso: cápsula significa `editable: false`, prévia da
+// PÁGINA INTEIRA no lugar da peça, e o print da dobra com a logo da outra
+// empresa dentro. Seis peças de HTML perfeitamente portátil ficavam assim.
+
+test('fundo-canvas sem canvas na peça é LIMITAÇÃO, não rebaixamento', () => {
+  const d = classificarRepresentacao(
+    ev({ runtimes: ['fundo-canvas'], midias: ['imagem', 'svg-estatico'] }),
+  );
+  assert.equal(d.type, 'componente-portatil');
+  assert.equal(d.editable, true);
+  // E a perda é DITA: a peça sai sem o fundo animado, e quem lê fica sabendo.
+  assert.ok(
+    d.limitations.some((l) => /fundo animado da página não vem junto/.test(l)),
+    `não declarou a perda: ${d.limitations.join(' | ')}`,
+  );
+});
+
+test('a peça que É o fundo continua cápsula', () => {
+  // O contrapeso do teste acima. Quem tem canvas próprio depende do runtime de
+  // verdade: ali o HTML sozinho não reproduz nada, e chamar de portátil seria
+  // prometer o que não se entrega.
+  const d = classificarRepresentacao(
+    ev({
+      runtimes: ['fundo-canvas', 'webgl-cru'],
+      midias: ['webgl'],
+      bootstrapIdentificado: true,
+      assetsLocais: true,
+    }),
+  );
+  assert.notEqual(d.type, 'componente-portatil');
+  assert.equal(d.editable, false);
+});
+
+test('os outros runtimes que desenham continuam pesando', () => {
+  // A correção é sobre o FUNDO da página, que passa por baixo. Iconify desenha
+  // DENTRO da peça: um ícone que não veio é um buraco no conteúdo dela.
+  const d = classificarRepresentacao(
+    ev({ runtimes: ['iconify'], midias: ['imagem'], iconesNaoDesenhados: 3 }),
+  );
+  assert.notEqual(d.type, 'componente-portatil');
 });
