@@ -19,8 +19,8 @@ import { montarPaginaDoKit } from './pagina.js';
 
 export { cssResponsivoBase } from './responsivo.js';
 export { lerCssDoBundle, type LeituraDeCss } from './cascata.js';
-export { type PecaDoKit, comporPecasDoKit, lerPecaDoBundle } from './pecas.js';
-export { consolidarDesignSystemDoKit } from './design-system-do-kit.js';
+export { removerScriptsQueCompilamCss } from './pecas.js';
+export { type PecaDoKit, consolidarDesignSystemDoKit } from './design-system-do-kit.js';
 export {
   type EntradaDaPagina,
   type ResultadoDaPagina,

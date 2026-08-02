@@ -136,6 +136,30 @@ export const CATEGORIAS_POR_FAMILIA: Record<Familia, readonly ComponentCategory[
 })();
 
 /**
+ * Categorias de PEÇA — o que a subdivisão extrai de dentro de uma seção.
+ *
+ * Um subcomponente (`SegmentRecord.parentId` preenchido) é sempre uma peça: um
+ * botão, um selo, um campo. Classificá-lo como `hero` ou `pricing` seria um
+ * erro de categoria — ele é parte de uma seção dessas, não uma. O classifier
+ * usa esta lista como clamp e a Galeria como filtro de primeiro nível.
+ *
+ * A lista é DERIVADA da família `pecas`, e isso conserta uma divergência que
+ * existia: eram duas listas escritas à mão, em arquivos diferentes, e nada
+ * garantia que combinassem. Uma categoria de peça nova entrava na taxonomia,
+ * a Galeria a mostrava na família certa, e o clamp do classifier continuava
+ * recusando — sem erro em lugar nenhum.
+ *
+ * `other` entra por cima da derivação e é a única exceção. Ele é família
+ * `sem-familia`, não `pecas`, e mesmo assim precisa ser aceito: é a saída de
+ * emergência para o subcomponente que não é nenhuma das seis. Sem ela, o clamp
+ * teria de escolher uma categoria errada para poder gravar.
+ */
+export const CATEGORIAS_DE_PECA: ReadonlySet<string> = new Set<string>([
+  ...CATEGORIAS_POR_FAMILIA.pecas,
+  'other',
+]);
+
+/**
  * A família de uma categoria vinda do banco.
  *
  * Aceita `string` de propósito: a coluna `category` é texto livre no SQLite, e

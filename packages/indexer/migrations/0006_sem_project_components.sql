@@ -1,0 +1,13 @@
+-- A tabela `project_components` sai: ela nunca foi escrita.
+--
+-- Nasceu para dizer "este componente ocupa este papel neste projeto", e a
+-- resposta acabou vindo por outro caminho: o papel de cada seção mora em
+-- `projects.layout_json` (ProjectLayout.secoes[].componentIds), e a decisão que
+-- vale para todo site nascido do kit mora em `kit_components.papel`, da 0005.
+-- Nenhum insert, nenhum select em todo o repositório, e zero linhas no acervo
+-- real conferidas antes desta migração.
+--
+-- Tabela vazia que ninguém lê é pior que tabela que não existe: ela aparece na
+-- leitura do schema como se fosse o lugar certo de gravar o papel de uma peça,
+-- e quem for implementar isso um dia vai gravar ali sem que nada leia de volta.
+DROP TABLE IF EXISTS `project_components`;

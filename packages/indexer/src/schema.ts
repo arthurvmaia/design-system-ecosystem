@@ -271,24 +271,6 @@ export const projects = sqliteTable(
   }),
 );
 
-// ── Relação project → components ───────────────────────────────────────────
-export const projectComponents = sqliteTable(
-  'project_components',
-  {
-    projectId: text('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    componentId: text('component_id')
-      .notNull()
-      .references(() => libraryComponents.id, { onDelete: 'restrict' }),
-    role: text('role').notNull(),
-    position: integer('position').notNull(),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.projectId, t.componentId, t.position] }),
-  }),
-);
-
 // ── LLM cache (regenerável, mas evita custo) ───────────────────────────────
 export const llmCache = sqliteTable('llm_cache', {
   inputHash: text('input_hash').primaryKey(),

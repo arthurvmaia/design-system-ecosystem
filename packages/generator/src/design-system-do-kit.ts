@@ -5,7 +5,6 @@ import {
   type OrigemConsolidada,
 } from '@ds/shared';
 import { lerCssDoBundle } from './cascata.js';
-import type { PecaDoKit } from './pecas.js';
 
 /**
  * A consolidação: o kit deixa de ser uma lista de ponteiros e vira UM design
@@ -25,6 +24,20 @@ import type { PecaDoKit } from './pecas.js';
  * temas. Kit misto declara `tema: 'misto'` em vez de fingir coerência.
  */
 
+/**
+ * O que a consolidação precisa saber de uma peça: onde está o bundle e de qual
+ * origem ela veio. A origem é o que agrupa — duas peças do mesmo site
+ * compartilham a folha, e contá-la duas vezes inflaria o peso das cores dela.
+ */
+export type PecaDoKit = {
+  /** Id do componente (`cmp_...`). */
+  id: string;
+  /** Diretório do bundle em disco. */
+  bundlePath: string;
+  /** O design system de origem. Ausente, a peça responde por si. */
+  designSystemId?: string | null;
+};
+
 /** O timestamp entra por parâmetro para a consolidação ser determinística. */
 export const consolidarDesignSystemDoKit = (
   pecas: readonly PecaDoKit[],
@@ -32,7 +45,7 @@ export const consolidarDesignSystemDoKit = (
 ): KitDesignSystem => {
   const limitacoes: string[] = [];
 
-  // Agrupa por origem com a MESMA regra de `lerPecaDoBundle`: peças do mesmo
+  // Agrupa por origem com a MESMA regra da composição: peças do mesmo
   // design system compartilham o CSS da página; consolidar duas vezes só
   // dobraria os pesos sem mudar papel nenhum.
   const porOrigem = new Map<string, PecaDoKit>();

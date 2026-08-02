@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ComponentCategory } from './segment.js';
 import {
+  CATEGORIAS_DE_PECA,
   CATEGORIAS_POR_FAMILIA,
   CATEGORIA_LABEL,
   FAMILIAS,
@@ -56,4 +57,21 @@ test('subcomponente só recebe categoria de peça', () => {
   for (const categoria of ['button', 'card', 'badge', 'input', 'accordion', 'nav'] as const) {
     assert.equal(familiaDe(categoria), 'pecas');
   }
+});
+
+test('a lista de categorias de peça acompanha a família, com `other` como única exceção', () => {
+  // O defeito que este teste trava: eram duas listas escritas à mão em arquivos
+  // diferentes. Uma categoria de peça nova entrava na taxonomia, a Galeria a
+  // mostrava na família certa, e o clamp do classifier continuava recusando —
+  // sem erro em lugar nenhum, só a peça caindo em `other` para sempre.
+  for (const c of CATEGORIAS_POR_FAMILIA.pecas) {
+    assert.ok(CATEGORIAS_DE_PECA.has(c), `${c} é família peça e não está no clamp`);
+  }
+
+  const extras = [...CATEGORIAS_DE_PECA].filter(
+    (c) => !CATEGORIAS_POR_FAMILIA.pecas.includes(c as never),
+  );
+  // `other` é a saída de emergência do subcomponente que não é nenhuma das
+  // seis. Qualquer outro extra aqui é engano.
+  assert.deepEqual(extras, ['other']);
 });
