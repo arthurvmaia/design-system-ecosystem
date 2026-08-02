@@ -303,6 +303,40 @@ const copiarFramesDoBundle = (dsId: `ds_${string}`, bundleDir: string): void => 
  */
 const concatenarCssDoBundle = (bundleDir: string): string => lerCssDoBundle(bundleDir).css;
 
+/**
+ * O documento de uma PEÇA extraída de dentro de uma seção.
+ *
+ * Um subcomponente não tem bundle próprio: os bundles são das seções, e a
+ * `position` do filho começa depois de todas elas. `lerBundleInfo` devolvia
+ * null, o código caía no ramo de extração V1 e chamava o podador de CSS contra
+ * `extracted/assets/css` — uma pasta que a extração V2 NUNCA cria. O resultado
+ * era um `styles.css` de zero byte, com fidelidade inventada por
+ * `assessFidelity(html, '', …)`, e um `.zip` que abria em branco. Estava a um
+ * clique de acontecer: 9 peças no acervo, nenhuma promovida ainda.
+ *
+ * A peça é um pedaço do HTML do PAI, e o bundle do pai tem o CSS inteiro e os
+ * assets. Então o documento da peça é o documento do pai com o corpo trocado:
+ * mesmo `<head>`, mesmos atributos de `<body>`, mesmas classes — que é
+ * exatamente o que faz o CSS casar. Nada é podado.
+ *
+ * `null` quando não dá para montar (pai sem bundle, documento ilegível): aí quem
+ * chama decide, e decidir é melhor que produzir lixo em silêncio.
+ */
+export const documentoDaPeca = (bundleDoPai: string, snippetDaPeca: string): string | null => {
+  const indexPath = join(bundleDoPai, 'index.html');
+  if (!existsSync(indexPath)) return null;
+  try {
+    const doc = readFileSync(indexPath, 'utf8');
+    const abre = doc.match(/<body([^>]*)>/i);
+    const fecha = doc.lastIndexOf('</body>');
+    if (abre === null || fecha === -1) return null;
+    const inicioDoCorpo = (abre.index ?? 0) + abre[0].length;
+    return doc.slice(0, inicioDoCorpo) + snippetDaPeca + doc.slice(fecha);
+  } catch {
+    return null;
+  }
+};
+
 const montarComponente = (seg: SegmentRow) => {
   const componentId = newComponentId();
   const bundleHash = createHash('sha256').update(seg.htmlSnippet).digest('hex');
@@ -322,8 +356,23 @@ const montarComponente = (seg: SegmentRow) => {
   }));
 
   // O bundle do segmento (motor V2) carrega a decisão de representação.
-  const bundleV2 = lerBundleInfo(dsId, seg.position);
-  const representation = bundleV2?.representation ?? 'componente-portatil';
+  //
+  // Para um SUBCOMPONENTE, o bundle é o do pai: a peça foi recortada de dentro
+  // dele e vive do mesmo CSS. Sem isto o filho caía no ramo V1 e saía com o
+  // `styles.css` vazio.
+  const bundleProprio = lerBundleInfo(dsId, seg.position);
+  const pai =
+    seg.parentId === null
+      ? null
+      : (getDb().select().from(tables.segments).where(eq(tables.segments.id, seg.parentId)).get() ??
+        null);
+  const bundleDoPai = pai === null ? null : lerBundleInfo(dsId, pai.position);
+  const bundleV2 = bundleProprio ?? bundleDoPai;
+  // A peça herda o CSS do pai, mas não a representação dele: uma seção pode ser
+  // cápsula de runtime enquanto o botão de dentro é HTML comum. Prometer
+  // `capsula-runtime` num recorte faria a prévia procurar um `runtime.html` que
+  // descreve a seção inteira.
+  const representation = bundleProprio?.representation ?? 'componente-portatil';
 
   let isolation: ReturnType<typeof isolateComponent> | null = null;
   let local: (t: string) => string;
@@ -349,6 +398,23 @@ const montarComponente = (seg: SegmentRow) => {
     copiarFramesDoBundle(dsId, bundleDir);
     // `styles.css` para o gerador, que concatena index.html + styles.css.
     writeFileSync(join(bundleDir, 'styles.css'), concatenarCssDoBundle(bundleDir), 'utf8');
+
+    // Peça extraída de dentro da seção: o bundle copiado é o do PAI, então o
+    // `index.html` descreve a seção inteira. Trocar o corpo pelo recorte é o que
+    // faz o componente ser a peça, e não a seção onde ela estava — mantendo o
+    // head, o CSS e os assets que fazem a peça aparecer certa.
+    if (seg.parentId !== null) {
+      const doc = documentoDaPeca(bundleDir, seg.htmlSnippet);
+      if (doc !== null) writeFileSync(join(bundleDir, 'index.html'), doc, 'utf8');
+      // Cápsula e referência do pai não descrevem a peça: o `runtime.html` toca
+      // a seção inteira e o frame é o print dela. Sair com eles faria a prévia
+      // da peça mostrar o vizinho.
+      for (const sobra of ['runtime.html', 'frames']) {
+        const p = join(bundleDir, sobra);
+        if (existsSync(p)) rmSync(p, { recursive: true, force: true });
+      }
+    }
+
     // O HTML CRU também: a prévia do componente mira as classes originais, e o
     // index.html do bundle é um documento completo (com <html>/<head>).
     writeFileSync(join(bundleDir, 'raw.html'), seg.htmlSnippet, 'utf8');
