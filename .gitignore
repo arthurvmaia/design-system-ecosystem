@@ -22,14 +22,18 @@ apps/web/vite.config.js
 
 # Dados de runtime. Ficam em ~/design-system-ecosystem, mas se alguém apontar
 # o DS_ECOSYSTEM_ROOT para dentro do repo, não vão junto.
-ecosystem-data/
-vault/
-library/
-projects/
-queue/
-# A rota modular de código em apps/web/src/routes/projects/ NÃO é dado de
-# runtime — re-inclui a pasta que o padrão `projects/` acima pegaria junto.
-!apps/web/src/routes/projects/
+#
+# Os padrões são ANCORADOS na raiz (`/vault/`) de propósito. Sem a barra da
+# frente, o git aplica o nome em qualquer profundidade — e foi assim que
+# `library/` engoliu `apps/web/src/routes/library/`, deixando a compilação
+# quebrada no CI por dias enquanto passava na máquina de quem escreveu, porque
+# lá o arquivo existe. Já havia uma re-inclusão remendando o mesmo problema com
+# `projects/`; ancorar mata a classe inteira em vez de remendar caso a caso.
+/ecosystem-data/
+/vault/
+/library/
+/projects/
+/queue/
 *.db
 *.db-shm
 *.db-wal
