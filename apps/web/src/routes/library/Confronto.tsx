@@ -1,8 +1,8 @@
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type LibraryComponentRecord, previewComponentUrl } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { origensDe, useNomeDaOrigem } from '@/lib/origem';
 import { TRATAMENTO, conta } from '@/lib/orbis';
+import { origensDe, useNomeDaOrigem } from '@/lib/origem';
 import { FAMILIA_DA_CATEGORIA, rotuloDaCategoria } from '@ds/shared/schemas';
 import { Compass } from 'lucide-react';
 
@@ -59,7 +59,8 @@ export function Confronto({
   if (daCategoria.length === 0) {
     return (
       <Aviso>
-        Não guardei nenhuma peça de {rotuloDaCategoria(categoria).toLowerCase()} ainda, {TRATAMENTO}.
+        {TRATAMENTO}, não guardei nenhuma peça de {rotuloDaCategoria(categoria).toLowerCase()}{' '}
+        ainda.
       </Aviso>
     );
   }
@@ -84,8 +85,8 @@ export function Confronto({
           className="mb-5 max-w-[70ch] text-[13px] leading-relaxed"
           style={{ color: 'var(--color-fg-muted)' }}
         >
-          {rotuloDaCategoria(categoria)} é peça, e peça vem de uma origem só no kit. O que se compara
-          aqui é o CONJUNTO de cada site, não uma peça contra a outra.
+          {rotuloDaCategoria(categoria)} é peça, e peça vem de uma origem só no kit. O que se
+          compara aqui é o CONJUNTO de cada site, não uma peça contra a outra.
         </p>
       )}
 
@@ -184,9 +185,9 @@ function OndeHaDecisao({
   if (disputadas.length === 0) {
     return (
       <Aviso>
-        Cada categoria da sua Biblioteca vem de uma origem só, {TRATAMENTO}. Não há nada em disputa —
-        quando o senhor trouxer um segundo site com botões, cards ou navegação, as escolhas aparecem
-        aqui.
+        Cada categoria da sua Biblioteca vem de uma origem só, {TRATAMENTO}. Não há nada em disputa
+        — quando o senhor trouxer um segundo site com botões, cards ou navegação, as escolhas
+        aparecem aqui.
       </Aviso>
     );
   }
