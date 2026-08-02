@@ -155,7 +155,7 @@ export function Modal({
     // borda de cima. Com o scroll aqui, o pior caso vira rolar, não perder.
     // biome-ignore lint/a11y/useKeyWithClickEvents: Esc fecha via listener global; o clique no fundo é só um atalho de mouse, não a única saída.
     <div
-      className="ds-fade-in fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-6"
+      className="ds-fade-in fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-3 sm:p-6"
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.78)', backdropFilter: 'blur(10px)' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -169,7 +169,9 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`ds-scale-in relative flex max-h-[88vh] w-full flex-col overflow-hidden rounded-xl border outline-none ${LARGURA[size]} ${className ?? ''}`}
+        // `dvh` e não `vh`: no celular a barra de endereço entra e sai, e `vh`
+        // conta a altura SEM ela. O rodapé do modal ficava embaixo do navegador.
+        className={`ds-scale-in relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-xl border outline-none sm:max-h-[88vh] ${LARGURA[size]} ${className ?? ''}`}
         style={{
           // Superfície SÓLIDA: a leitura não depende do que está atrás.
           backgroundColor: 'rgba(13, 13, 14, 0.99)',

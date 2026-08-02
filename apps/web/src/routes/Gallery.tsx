@@ -557,7 +557,7 @@ export function GalleryPage() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col lg:flex-row">
       <DsSidebar
         list={dsList.data?.items ?? []}
         loading={dsList.isLoading}
@@ -621,12 +621,15 @@ function DsSidebar({
   });
 
   return (
+    // Em tela larga é a coluna de sempre. No celular vira uma FAIXA horizontal
+    // no topo: 260px de coluna deixariam 130px para os cards, o que não é uma
+    // versão apertada da Galeria, é uma Galeria que não dá para usar.
     <aside
-      className="ds-backdrop flex w-[260px] shrink-0 flex-col border-r"
+      className="ds-backdrop flex shrink-0 flex-row border-b lg:w-[260px] lg:flex-col lg:border-r lg:border-b-0"
       style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(6, 6, 6, 0.4)' }}
     >
       <div
-        className="border-b px-5 py-4 text-[10px] uppercase tracking-[0.28em]"
+        className="hidden border-b px-5 py-4 text-[10px] uppercase tracking-[0.28em] lg:block"
         style={{
           borderColor: 'var(--color-border)',
           color: 'var(--color-fg-subtle)',
@@ -635,7 +638,7 @@ function DsSidebar({
       >
         Capturas
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex flex-1 gap-2 overflow-x-auto p-2 lg:flex-col lg:gap-0 lg:overflow-x-visible lg:overflow-y-auto">
         {loading ? (
           <div className="p-4 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
             {TRABALHANDO.carregandoCapturas}
@@ -649,7 +652,7 @@ function DsSidebar({
             <div
               key={ds.id}
               className={cn(
-                'group relative flex items-center rounded-md transition-all duration-300',
+                'group relative flex shrink-0 items-center rounded-md transition-all duration-300 lg:shrink',
                 selected === ds.id
                   ? 'ds-glass-static'
                   : 'hover:translate-x-[2px] hover:bg-white/[0.04]',
@@ -931,8 +934,10 @@ function SegmentsView({
 
   return (
     <div className="flex h-full flex-col">
+      {/* No celular o título e o botão de classificar não cabem na mesma linha:
+          sem empilhar, o botão passava por cima da contagem. */}
       <div
-        className="flex items-center justify-between border-b px-8 py-5"
+        className="flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8 sm:py-5"
         style={{ borderColor: 'var(--color-border)' }}
       >
         <div className="min-w-0">
@@ -957,7 +962,7 @@ function SegmentsView({
               está ligado. As de dentro contam à parte porque são de outra
               natureza: uma dobra é um pedaço da página, e o botão de dentro
               dela é uma peça que se reusa sozinha. */}
-          <div className="mt-1.5 flex items-center gap-4">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="flex items-baseline gap-1.5">
               <span className="ds-data text-[13px]" style={{ color: 'var(--color-ion-3)' }}>
                 {filtered.length}
@@ -1031,7 +1036,7 @@ function SegmentsView({
           só, a lista de categorias espremia os outros até quebrar em degraus —
           e com a display larga do tema isso acontece já em 1440px. */}
       <div
-        className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-8 py-3"
+        className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 sm:px-8 py-3"
         style={{ borderColor: 'var(--color-border)' }}
       >
         <label
@@ -1080,7 +1085,7 @@ function SegmentsView({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="buscar..."
-          className="ds-data ml-auto w-[200px] rounded-none border px-3.5 py-1.5 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)]"
+          className="ds-data w-full rounded-none border px-3.5 py-1.5 sm:ml-auto sm:w-[200px] text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)]"
           style={{
             borderColor: 'var(--color-border)',
             backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -1093,7 +1098,7 @@ function SegmentsView({
           o acervo: um site com muitas dobras produz mais chips, e é a lista que
           precisa de espaço para quebrar sem empurrar os controles fixos. */}
       <div
-        className="flex flex-wrap items-center gap-1.5 border-b px-8 py-2.5"
+        className="flex flex-wrap items-center gap-1.5 border-b px-4 sm:px-8 py-2.5"
         style={{ borderColor: 'var(--color-border)' }}
       >
         <button
@@ -1133,7 +1138,7 @@ function SegmentsView({
           que ninguém tem obrigação de conhecer. */}
       {familia !== 'all' && (
         <div
-          className="flex flex-wrap items-center gap-1.5 border-b px-8 py-2.5"
+          className="flex flex-wrap items-center gap-1.5 border-b px-4 sm:px-8 py-2.5"
           style={{ borderColor: 'var(--color-border)' }}
         >
           <span className="ds-label mr-2 shrink-0">{FAMILIA_EXPLICA[familia]}</span>
@@ -1172,7 +1177,7 @@ function SegmentsView({
       {selCount > 0 && (
         <section
           aria-label="Ações em massa"
-          className="ds-backdrop flex flex-wrap items-center gap-3 border-b px-8 py-2.5"
+          className="ds-backdrop flex flex-wrap items-center gap-3 border-b px-4 sm:px-8 py-2.5"
           style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(6,182,212,0.14)' }}
         >
           <span className="ds-data text-[12px]" style={{ color: 'var(--color-fg)' }}>
@@ -1499,7 +1504,10 @@ function SegmentCard({
                 {segment.name}
               </div>
               <div
-                className="ds-data mt-0.5 flex items-center gap-1.5 truncate text-[10px]"
+                // Quebra só no celular. No desktop os selos voltam a caber numa
+                // linha, e sem isso cards da mesma fileira ganhavam alturas
+                // diferentes conforme quantos selos cada peça tinha.
+                className="ds-data mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] sm:flex-nowrap sm:truncate"
                 style={{ color: 'var(--color-fg-subtle)' }}
               >
                 {CATEGORIAS_DE_SISTEMA.has(segment.category) && (
@@ -1694,7 +1702,7 @@ function PainelDePecas({
           ))}
           {pecas.length === 0 && (
             <div
-              className="py-14 text-center text-[13px]"
+              className="py-8 sm:py-14 text-center text-[13px]"
               style={{ color: 'var(--color-fg-subtle)' }}
             >
               Não tirei nenhuma peça desta dobra.
@@ -2051,9 +2059,12 @@ function SegmentDetail({
           </div>
         </div>
         {/* A peça e o laudo lado a lado, nunca um em cima do outro. Com o laudo
-            fechado (o padrão) a peça fica com a largura toda. */}
-        <div className="flex min-h-0">
-          <div className="min-w-0 flex-1 p-4">
+            fechado (o padrão) a peça fica com a largura toda.
+            No celular não há "lado a lado" possível: 340px de laudo ao lado de
+            um preview deixariam os dois ilegíveis, então ali eles empilham e o
+            laudo vem depois da peça, que é a ordem de leitura. */}
+        <div className="flex min-h-0 flex-col lg:flex-row">
+          <div className="min-w-0 flex-1 p-3 sm:p-4">
             {modo === 'print' && print !== undefined ? (
               <>
                 {/* Imagem, não iframe: é registro do que a captura viu, não o
@@ -2099,7 +2110,7 @@ function SegmentDetail({
           </div>
           {laudo && (
             <aside
-              className="w-[340px] shrink-0 overflow-y-auto border-l"
+              className="w-full shrink-0 overflow-y-auto border-t lg:w-[340px] lg:border-t-0 lg:border-l"
               style={{ borderColor: 'var(--color-border)', maxHeight: '70vh' }}
               aria-label="O que eu medi nesta peça"
             >
@@ -2187,11 +2198,18 @@ function Aviso({ resumo, children }: { resumo: string; children: ReactNode }) {
         type="button"
         onClick={() => setAberto((v) => !v)}
         aria-expanded={aberto}
-        className="flex w-full items-center gap-2 text-left"
+        className="flex w-full items-start gap-2 text-left"
       >
-        <AlertTriangle size={13} className="shrink-0" style={{ color: 'var(--color-warn)' }} />
-        <strong className="min-w-0 flex-1 truncate">{resumo}</strong>
-        <span className="ds-label shrink-0">{aberto ? 'fechar' : 'saiba mais'}</span>
+        <AlertTriangle
+          size={13}
+          className="mt-0.5 shrink-0"
+          style={{ color: 'var(--color-warn)' }}
+        />
+        {/* Sem `truncate`: num celular o resumo cabia em quatro palavras e o
+            aviso virava um triângulo com "saiba mais" ao lado, que não avisa
+            nada. Quebrar em duas linhas custa 14px e diz o que houve. */}
+        <strong className="min-w-0 flex-1">{resumo}</strong>
+        <span className="ds-label mt-0.5 shrink-0">{aberto ? 'fechar' : 'saiba mais'}</span>
       </button>
       {aberto && <div className="mt-2 pl-[21px]">{children}</div>}
     </div>

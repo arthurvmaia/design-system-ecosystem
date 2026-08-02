@@ -1,6 +1,6 @@
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Toaster } from './Toaster';
@@ -20,6 +20,14 @@ import { TopBar } from './TopBar';
  */
 export function Shell() {
   const location = useLocation();
+
+  // A gaveta da navegação. Só existe abaixo de `lg`; acima, a coluna é fixa e
+  // este estado não pinta nada. Fecha a cada troca de rota: gaveta que fica
+  // aberta em cima da tela recém-pedida é a falha clássica do padrão.
+  const [menuAberto, setMenuAberto] = useState(false);
+  const rota = location.pathname;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fechar a gaveta é o efeito de MUDAR de rota; `rota` é a dependência, e o setter é estável.
+  useEffect(() => setMenuAberto(false), [rota]);
 
   // O ritmo do app vem do acervo: a mediana das durações e a curva mais comum
   // dos sites que a pessoa trouxe. O que atravessa a fronteira são NÚMEROS —
@@ -41,9 +49,9 @@ export function Shell() {
       <div className="ds-halo" aria-hidden="true" />
       <div className="ds-grid" aria-hidden="true" />
 
-      <Sidebar />
+      <Sidebar aberta={menuAberto} aoFechar={() => setMenuAberto(false)} />
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        <TopBar />
+        <TopBar aoAbrirMenu={() => setMenuAberto(true)} />
         <main key={location.pathname} className="ds-fade-in flex-1 overflow-y-auto">
           <Outlet />
         </main>

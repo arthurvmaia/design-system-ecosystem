@@ -16,9 +16,9 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[720px] px-8 py-16">
+    <div className="mx-auto max-w-[720px] px-4 sm:px-8 py-16">
       <h1
-        className="ds-slide-up ds-text-glow text-[36px] font-medium leading-[1.1] tracking-tight"
+        className="ds-slide-up ds-text-glow text-[24px] sm:text-[36px] font-medium leading-[1.1] tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
         Do jeito que o {TRATAMENTO} preferir.

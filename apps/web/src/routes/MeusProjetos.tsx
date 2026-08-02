@@ -35,7 +35,7 @@ export function MeusProjetosPage() {
   useReveal([items.length]);
 
   return (
-    <div className="mx-auto max-w-[1080px] px-8 py-12">
+    <div className="mx-auto max-w-[1080px] px-4 sm:px-8 py-8 sm:py-12">
       <div
         className="ds-slide-up text-[10px] uppercase tracking-[0.28em]"
         style={{ color: 'var(--color-primary)', fontFamily: 'var(--font-display)' }}
@@ -43,7 +43,7 @@ export function MeusProjetosPage() {
         Meus sites
       </div>
       <h1
-        className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"
+        className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[24px] sm:text-[36px] font-medium tracking-tight"
         style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
       >
         O que eu montei está pronto para sair daqui.

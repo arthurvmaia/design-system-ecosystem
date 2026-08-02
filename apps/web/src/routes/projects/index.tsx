@@ -51,7 +51,7 @@ export function ProjectsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1080px] px-8 py-12">
+    <div className="mx-auto max-w-[1080px] px-4 sm:px-8 py-8 sm:py-12">
       <div className="flex items-end justify-between">
         <div>
           <div
@@ -61,7 +61,7 @@ export function ProjectsPage() {
             Gerar site
           </div>
           <h1
-            className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[36px] font-medium tracking-tight"
+            className="ds-slide-up ds-d1 ds-text-glow mt-2 text-[24px] sm:text-[36px] font-medium tracking-tight"
             style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
           >
             Um site novo com a sua marca.

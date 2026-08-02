@@ -8,6 +8,7 @@ import {
   secondaryNav,
 } from '@/lib/nav';
 import { useQuery } from '@tanstack/react-query';
+import { X } from 'lucide-react';
 import type React from 'react';
 import { NavLink } from 'react-router-dom';
 import { BrandMark } from './BrandMark';
@@ -34,51 +35,90 @@ const ITEM_ATIVO = 'ds-glass-static text-[var(--color-fg)]';
  * montar, gerar — e a numeração torna essa ordem visível sem uma linha de texto
  * explicando.
  */
-export function Sidebar() {
+/**
+ * A mesma coluna, dois comportamentos.
+ *
+ * Em tela larga ela é o que sempre foi: uma coluna de 260px que ocupa lugar no
+ * layout. Abaixo de `lg` ela vira gaveta — sai do fluxo, desliza por cima e
+ * fecha ao escolher um destino. Num celular de 390px, 260px de coluna fixa
+ * deixariam 130px para o conteúdo, que não é uma versão apertada do app: é
+ * outro app, inutilizável.
+ *
+ * A gaveta fecha sozinha ao navegar. Uma gaveta que fica aberta em cima da tela
+ * que a pessoa acabou de pedir é a falha clássica desse padrão.
+ */
+export function Sidebar({ aberta, aoFechar }: { aberta: boolean; aoFechar: () => void }) {
   return (
-    <aside
-      className="ds-backdrop relative z-20 flex h-full w-[260px] shrink-0 flex-col border-r"
-      style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
-    >
-      {/* Cabeçalho da marca. */}
-      <div
-        className="flex h-[64px] shrink-0 items-center border-b px-6"
-        style={{ borderColor: 'var(--color-border)' }}
-      >
-        <BrandMark />
-      </div>
+    <>
+      {/* O véu só existe na gaveta. Fora dela seria um clique morto na tela. */}
+      {aberta && (
+        <button
+          type="button"
+          aria-label="Fechar o menu"
+          onClick={aoFechar}
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-[2px] lg:hidden"
+        />
+      )}
 
-      {/* Nav primária — as funcionalidades principais. */}
-      <nav className="flex-1 overflow-y-auto py-6">
-        <div className="px-3">
-          <SectionLabel>Fluxo</SectionLabel>
-          <ul className="mt-3 flex flex-col gap-1">
-            {primaryNav.map((item, i) => (
+      <aside
+        className={cn(
+          'ds-backdrop z-40 flex h-full w-[260px] shrink-0 flex-col border-r transition-transform duration-300',
+          // Gaveta abaixo de lg; coluna do layout a partir dali.
+          'fixed inset-y-0 left-0 lg:relative lg:z-20 lg:translate-x-0',
+          aberta ? 'translate-x-0' : '-translate-x-full',
+        )}
+        style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0, 0, 0, 0.86)' }}
+        aria-hidden={!aberta ? undefined : undefined}
+      >
+        {/* Cabeçalho da marca. */}
+        <div
+          className="flex h-[64px] shrink-0 items-center justify-between border-b px-6"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <BrandMark />
+          <button
+            type="button"
+            onClick={aoFechar}
+            aria-label="Fechar o menu"
+            className="-mr-2 flex h-9 w-9 items-center justify-center lg:hidden"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Nav primária — as funcionalidades principais. */}
+        <nav className="flex-1 overflow-y-auto py-6">
+          <div className="px-3">
+            <SectionLabel>Fluxo</SectionLabel>
+            <ul className="mt-3 flex flex-col gap-1">
+              {primaryNav.map((item, i) => (
+                <li key={item.to}>
+                  <NavItem item={item} passo={i + 1} aoEscolher={aoFechar} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        </nav>
+
+        {/* Nav auxiliar — exceção e operação. Separada por divisor, com menos peso. */}
+        <div className="px-3 pb-3">
+          <div className="mx-3 mb-2 border-t" style={{ borderColor: 'var(--color-border)' }} />
+          <SectionLabel>Auxiliar</SectionLabel>
+          <ul className="mt-2 flex flex-col gap-1">
+            {secondaryNav.map((item) => (
               <li key={item.to}>
-                <NavItem item={item} passo={i + 1} />
+                {item.to === PENDENCIAS_ROUTE ? (
+                  <PendenciasNavItem item={item} aoEscolher={aoFechar} />
+                ) : (
+                  <NavItem item={item} aoEscolher={aoFechar} />
+                )}
               </li>
             ))}
           </ul>
         </div>
-      </nav>
-
-      {/* Nav auxiliar — exceção e operação. Separada por divisor, com menos peso. */}
-      <div className="px-3 pb-3">
-        <div className="mx-3 mb-2 border-t" style={{ borderColor: 'var(--color-border)' }} />
-        <SectionLabel>Auxiliar</SectionLabel>
-        <ul className="mt-2 flex flex-col gap-1">
-          {secondaryNav.map((item) => (
-            <li key={item.to}>
-              {item.to === PENDENCIAS_ROUTE ? (
-                <PendenciasNavItem item={item} />
-              ) : (
-                <NavItem item={item} />
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
@@ -95,12 +135,17 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
  * Os itens auxiliares não recebem, porque não são etapa de nada — e numerá-los
  * sugeriria uma ordem que não existe.
  */
-function NavItem({ item, passo }: { item: NavItemDef; passo?: number }) {
+function NavItem({
+  item,
+  passo,
+  aoEscolher,
+}: { item: NavItemDef; passo?: number; aoEscolher?: () => void }) {
   const Icon = item.icon;
   return (
     <NavLink
       to={item.to}
       title={item.description ?? item.label}
+      onClick={aoEscolher}
       className={({ isActive }) => cn(ITEM_BASE, isActive ? ITEM_ATIVO : ITEM_INATIVO)}
     >
       {({ isActive }) => (
@@ -131,7 +176,7 @@ function NavItem({ item, passo }: { item: NavItemDef; passo?: number }) {
  * de destaque moderado (crimson) e ícone aceso quando há itens aguardando. O
  * `aria-label` anuncia a quantidade para o leitor de tela — não depende de cor.
  */
-function PendenciasNavItem({ item }: { item: NavItemDef }) {
+function PendenciasNavItem({ item, aoEscolher }: { item: NavItemDef; aoEscolher?: () => void }) {
   const q = useQuery({ queryKey: ['rejeitados'], queryFn: api.listRejeitados });
   const badge = pendenciasBadge({
     total: q.data?.total,
@@ -145,6 +190,7 @@ function PendenciasNavItem({ item }: { item: NavItemDef }) {
       to={item.to}
       title={item.description ?? item.label}
       aria-label={badge.rotuloAcessivel}
+      onClick={aoEscolher}
       className={({ isActive }) => cn(ITEM_BASE, isActive ? ITEM_ATIVO : ITEM_INATIVO)}
     >
       {({ isActive }) => (

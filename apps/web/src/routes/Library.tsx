@@ -51,11 +51,13 @@ function BotaoDeCategoria({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center justify-between rounded-none px-3 py-2 text-left text-[13px]',
+        // No celular são chips que quebram em linhas; na coluna, itens de lista.
+        'flex items-center justify-between gap-2 rounded-none border px-3 py-2 text-left text-[13px]',
+        'lg:w-full lg:border-0',
         'transition-all duration-300',
         ativa
-          ? 'ds-glass-static text-[var(--color-fg)]'
-          : 'text-[var(--color-fg-muted)] hover:translate-x-[2px] hover:bg-white/[0.04] hover:text-[var(--color-fg)]',
+          ? 'ds-glass-static border-[var(--color-border-strong)] text-[var(--color-fg)]'
+          : 'border-transparent text-[var(--color-fg-muted)] hover:bg-white/[0.04] hover:text-[var(--color-fg)] lg:hover:translate-x-[2px]',
       )}
       style={{ fontFamily: 'var(--font-body)' }}
     >
@@ -124,13 +126,15 @@ export function LibraryPage() {
   }, [lib.data]);
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col lg:flex-row">
+      {/* A mesma decisão da Galeria: coluna em tela larga, faixa rolável no
+          celular. Categoria é filtro, e filtro não pode comer metade da tela. */}
       <aside
-        className="ds-backdrop flex w-[240px] shrink-0 flex-col border-r"
+        className="ds-backdrop flex shrink-0 flex-col border-b lg:w-[240px] lg:border-r lg:border-b-0"
         style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(6, 6, 6, 0.4)' }}
       >
         <div
-          className="border-b px-5 py-4 text-[10px] uppercase tracking-[0.28em]"
+          className="hidden border-b px-5 py-4 text-[10px] uppercase tracking-[0.28em] lg:block"
           style={{
             borderColor: 'var(--color-border)',
             color: 'var(--color-fg-subtle)',
@@ -142,7 +146,7 @@ export function LibraryPage() {
         {/* Agrupada por família, e só o que existe no acervo. São 25 categorias
             no vocabulário: listar todas daria uma coluna de zeros, e listar só
             algumas foi o que escondeu as peças. A família resolve os dois. */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex max-h-[132px] flex-wrap gap-1 overflow-y-auto p-2 lg:max-h-none lg:flex-1 lg:flex-col lg:flex-nowrap lg:gap-0">
           <BotaoDeCategoria
             categoria="all"
             ativa={category === 'all'}
@@ -155,8 +159,8 @@ export function LibraryPage() {
             );
             if (doGrupo.length === 0) return null;
             return (
-              <div key={f} className="mt-3">
-                <div className="ds-label px-3 pb-1">{FAMILIA_LABEL[f]}</div>
+              <div key={f} className="contents lg:mt-3 lg:block">
+                <div className="ds-label hidden px-3 pb-1 lg:block">{FAMILIA_LABEL[f]}</div>
                 {doGrupo.map((c) => (
                   <BotaoDeCategoria
                     key={c}
@@ -174,7 +178,7 @@ export function LibraryPage() {
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div
-          className="flex items-center justify-between border-b px-8 py-5"
+          className="flex items-center justify-between border-b px-4 sm:px-8 py-5"
           style={{ borderColor: 'var(--color-border)' }}
         >
           <div>
@@ -210,7 +214,7 @@ export function LibraryPage() {
 
         {filtered.length > 0 && (
           <div
-            className="flex items-center gap-2 border-b px-8 py-2 text-[12px]"
+            className="flex items-center gap-2 border-b px-4 sm:px-8 py-2 text-[12px]"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
           >
             <label className="flex cursor-pointer items-center gap-2">

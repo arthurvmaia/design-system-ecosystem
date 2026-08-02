@@ -130,7 +130,7 @@ export function FormulaDoKit({ kit, onClose }: { kit: KitRecord; onClose: () => 
                       uma fonte do que qualquer descrição dela. */}
                   <div style={{ fontFamily: familia }}>
                     <div
-                      className="mt-2 text-[28px] leading-tight"
+                      className="mt-2 text-[21px] sm:text-[28px] leading-tight"
                       style={{ color: 'var(--color-fg)' }}
                     >
                       Um título como sairia aqui

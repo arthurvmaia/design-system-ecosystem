@@ -1,5 +1,6 @@
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
+import { Menu } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
 /**
@@ -15,7 +16,7 @@ import { useLocation } from 'react-router-dom';
  * peças curou — mais um ponto dizendo se o servidor está de pé, porque quando
  * ele cai a tela inteira mente e é justo avisar.
  */
-export function TopBar() {
+export function TopBar({ aoAbrirMenu }: { aoAbrirMenu: () => void }) {
   const location = useLocation();
   const label = pageLabel(location.pathname);
 
@@ -34,13 +35,26 @@ export function TopBar() {
 
   return (
     <header
-      className="ds-backdrop relative z-20 flex h-[64px] shrink-0 items-center gap-6 border-b px-8"
+      className="ds-backdrop relative z-20 flex h-[64px] shrink-0 items-center gap-3 border-b px-4 sm:gap-6 sm:px-8"
       style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(0, 0, 0, 0.66)' }}
     >
+      {/* A porta da gaveta. Só existe onde a coluna não cabe. */}
+      <button
+        type="button"
+        onClick={aoAbrirMenu}
+        aria-label="Abrir o menu"
+        className="-ml-1 flex h-9 w-9 shrink-0 items-center justify-center lg:hidden"
+        style={{ color: 'var(--color-fg-muted)' }}
+      >
+        <Menu size={18} />
+      </button>
+
       <div className="flex min-w-0 items-baseline gap-3">
-        <span className="ds-label shrink-0">{label.section}</span>
+        {/* O rótulo da seção some no celular: dois textos disputando 200px viram
+            um só ilegível, e o título é o que localiza. */}
+        <span className="ds-label hidden shrink-0 sm:inline">{label.section}</span>
         <span
-          className="ds-interactive-text truncate text-[20px] font-medium"
+          className="ds-interactive-text truncate text-[17px] font-medium sm:text-[20px]"
           style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
         >
           {label.title}

@@ -107,7 +107,7 @@ export function ExtractPage() {
   const failed = activeTask.data?.status === 'failed';
 
   return (
-    <div className="mx-auto max-w-[880px] px-8 py-14">
+    <div className="mx-auto max-w-[880px] px-4 sm:px-8 py-8 sm:py-14">
       <div className="ds-slide-up flex items-center gap-3">
         <span className="ds-label" style={{ color: 'var(--color-ion-4)' }}>
           entrada · 01
@@ -347,7 +347,7 @@ function FileDropzone({
 
   return (
     <label
-      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-12 text-center transition-all duration-300 hover:border-[var(--color-signal)] hover:bg-white/[0.02] hover:shadow-[0_0_30px_rgba(34,211,238,0.18)]"
+      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 sm:py-12 text-center transition-all duration-300 hover:border-[var(--color-signal)] hover:bg-white/[0.02] hover:shadow-[0_0_30px_rgba(34,211,238,0.18)]"
       style={{ borderColor: 'var(--color-border-strong)' }}
     >
       <UploadCloud size={20} style={{ color: 'var(--color-fg-muted)' }} />

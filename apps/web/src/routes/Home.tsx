@@ -1,7 +1,7 @@
 import { Mascote } from '@/components/Mascote';
 import { api } from '@/lib/api';
 import { primaryNav } from '@/lib/nav';
-import { ORBIS, saudacaoCompleta } from '@/lib/orbis';
+import { ORBIS, TRATAMENTO, saudacaoCompleta } from '@/lib/orbis';
 import { useReveal } from '@/lib/use-reveal';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
@@ -33,6 +33,32 @@ import { Link } from 'react-router-dom';
  * mais vendável do produto: trazer um site antigo, trocar a marca, receber um
  * novo. Ninguém descobria isso sozinho porque nada dizia.
  */
+/**
+ * As três palavras do app, ditas antes de serem usadas.
+ *
+ * Quem chega de fora encontra "captura", "peça" e "kit" em toda tela e tem de
+ * adivinhar o que significam pelo contexto. Adivinhar dá certo na terceira
+ * tela, e até lá a pessoa acha que o app é confuso quando o confuso era só o
+ * vocabulário. São três linhas, e elas economizam a terceira tela.
+ */
+const PALAVRAS: readonly { palavra: string; e: string; exemplo: string }[] = [
+  {
+    palavra: 'captura',
+    e: 'um site inteiro que eu trouxe de fora, do jeito que ele aparece no navegador.',
+    exemplo: 'você me dá um endereço, eu devolvo uma captura',
+  },
+  {
+    palavra: 'peça',
+    e: 'um pedaço reusável de uma captura: uma dobra da página, ou um botão de dentro dela.',
+    exemplo: 'de uma captura saem 10 a 30 peças',
+  },
+  {
+    palavra: 'kit',
+    e: 'o conjunto de peças que você escolheu. É dele que eu tiro a cara do site novo.',
+    exemplo: 'um kit pode misturar peças de capturas diferentes',
+  },
+];
+
 const MODOS: readonly { titulo: string; explica: string; acao: string; para: string }[] = [
   {
     titulo: 'Montar com peças',
@@ -94,7 +120,7 @@ export function HomePage() {
   const etapas = primaryNav.filter((n) => n.to !== '/inicio');
 
   return (
-    <div className="mx-auto max-w-[980px] px-8 py-14">
+    <div className="mx-auto max-w-[980px] px-4 sm:px-8 py-8 sm:py-14">
       {/* Abertura: o mascote e a ideia, em uma frase que cabe na cabeça. */}
       <div className="ds-slide-up flex items-center gap-3">
         <span className="ds-label" style={{ color: 'var(--color-ion-4)' }}>
@@ -115,7 +141,7 @@ export function HomePage() {
 
         <div className="min-w-0">
           <h1
-            className="ds-slide-up ds-d1 ds-text-glow text-[40px] leading-[1.05] font-medium tracking-tight"
+            className="ds-slide-up ds-d1 ds-text-glow text-[26px] sm:text-[40px] leading-[1.05] font-medium tracking-tight"
             style={{ color: 'var(--color-fg)', fontFamily: 'var(--font-display)' }}
           >
             {saudacaoCompleta()} Por onde começamos?
@@ -124,8 +150,10 @@ export function HomePage() {
             className="ds-slide-up ds-d2 mt-4 max-w-[60ch] text-[15px] leading-[1.7]"
             style={{ color: 'var(--color-fg-muted)' }}
           >
-            Sou o {ORBIS}. Traga os sites de que gosta, que eu capturo o visual deles, guardo as
-            peças que passarem na sua triagem e monto o site em cima do kit, com a{' '}
+            Sou o {ORBIS}, e faço uma coisa só: transformo sites que já existem em material para
+            você montar o seu. Me dê o endereço de um site de que goste, que eu abro num navegador
+            de verdade, capturo como ele é e recorto em peças. Você escolhe as que servem, junta num
+            kit, e eu monto um site novo em cima dele com a{' '}
             <strong style={{ color: 'var(--color-fg)' }}>sua</strong> marca e o{' '}
             <strong style={{ color: 'var(--color-fg)' }}>seu</strong> texto.
           </p>
@@ -133,7 +161,9 @@ export function HomePage() {
             className="ds-slide-up ds-d3 mt-3 max-w-[60ch] text-[14px] leading-[1.7]"
             style={{ color: 'var(--color-fg-subtle)' }}
           >
-            Do site de origem eu tiro só o jeito visual. Nome, texto e identidade eu nunca copio.
+            Do site de origem eu empresto só o jeito visual: o espaçamento, a cor, o movimento, o
+            jeito de a coisa se comportar. Nome, texto, logo e identidade eu nunca copio,{' '}
+            {TRATAMENTO}. Isso vem de você, e é o que separa inspiração de cópia.
           </p>
 
           <Link
@@ -147,9 +177,44 @@ export function HomePage() {
         </div>
       </div>
 
+      {/* ── O vocabulário, antes do fluxo ────────────────────────────────────
+          Três palavras aparecem em toda tela do app. Quem não as tem fica
+          adivinhando por três telas e conclui que o app é confuso, quando o
+          confuso era só o vocabulário. */}
+      <div className="mt-16 flex items-center gap-3">
+        <span className="ds-label">as três palavras que eu uso</span>
+        <span className="ds-hairline flex-1" aria-hidden />
+      </div>
+
+      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {PALAVRAS.map((p, i) => (
+          <div
+            key={p.palavra}
+            className={`ds-reveal ds-d${i + 1} rounded-none border p-4`}
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            <span
+              className="ds-data text-[12px] uppercase tracking-[0.2em]"
+              style={{ color: 'var(--color-ion-3)' }}
+            >
+              {p.palavra}
+            </span>
+            <p className="mt-2 text-[13px] leading-relaxed" style={{ color: 'var(--color-fg)' }}>
+              {p.e}
+            </p>
+            <p
+              className="mt-2 text-[12px] leading-relaxed"
+              style={{ color: 'var(--color-fg-subtle)' }}
+            >
+              {p.exemplo}
+            </p>
+          </div>
+        ))}
+      </div>
+
       {/* O caminho. Numerado, como a barra lateral — a mesma leitura nos dois. */}
       <div className="mt-16 flex items-center gap-3">
-        <span className="ds-label">como funciona</span>
+        <span className="ds-label">como funciona, do começo ao fim</span>
         <span className="ds-hairline flex-1" aria-hidden />
       </div>
 
@@ -267,14 +332,29 @@ export function HomePage() {
       >
         <Mascote tamanho={30} esmaecido className="mt-0.5" />
         <span>
-          Trabalho pesado, extrair um site ou gerar outro, eu não faço sozinho: o pedido fica na
-          fila até alguém abrir o{' '}
+          <strong style={{ color: 'var(--color-fg)' }}>
+            O trabalho pesado não acontece na hora, e isso é de propósito.
+          </strong>{' '}
+          Capturar um site ou gerar outro custa dinheiro por uso. Então, quando o senhor pede, eu
+          anoto o pedido numa fila e paro ali. Ele só roda quando alguém abre o{' '}
           <span className="ds-data" style={{ color: 'var(--color-fg)' }}>
             PROCESSAR
           </span>{' '}
-          na pasta do aplicativo e escolher o que rodar. A conta continua no seu controle.
+          na máquina onde eu moro e escolhe o que rodar. Ninguém gasta a conta de ninguém por
+          engano, e nada dispara sozinho no meio da noite.
         </span>
       </div>
+
+      {/* O que um visitante conclui errado se ninguém disser. Fica no fim porque
+          é a última coisa a saber, não a primeira. */}
+      <p
+        className="ds-reveal mt-4 text-[13px] leading-relaxed"
+        style={{ color: 'var(--color-fg-subtle)' }}
+      >
+        Na prática: navegar, ver as capturas, abrir as peças, montar e editar kits, desenhar a
+        estrutura de um site e baixar o que já ficou pronto, tudo isso funciona agora. Pedir uma
+        captura nova ou mandar gerar um site entra na fila e espera.
+      </p>
     </div>
   );
 }

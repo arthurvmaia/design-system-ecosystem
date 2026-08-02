@@ -25,7 +25,7 @@ export function PhasePlaceholder({
   children?: ReactNode;
 }) {
   return (
-    <div className="mx-auto max-w-[880px] px-8 py-16">
+    <div className="mx-auto max-w-[880px] px-4 sm:px-8 py-16">
       <div
         className="ds-slide-up text-[11px] uppercase tracking-[0.32em]"
         style={{ color: 'var(--color-signal)', fontFamily: 'var(--font-display)' }}
