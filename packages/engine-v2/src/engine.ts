@@ -70,6 +70,7 @@ import {
   construirMidias,
   construirRuntimes,
 } from './mapper/build-maps.js';
+import { derivarRampas } from './mapper/rampas.js';
 import type {
   BoxPx,
   RawAssinaturaEstado,
@@ -546,6 +547,23 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     let backgroundDetections = construirBackgrounds(coletaFinal, porRef, visualLayers);
     let mediaDetections = construirMidias(coletaFinal, porRef, visualLayers);
     const runtimeDetections = construirRuntimes(instrumentacao);
+
+    // As rampas do site: escala de letra, respiro e raio. Derivadas da PÁGINA
+    // inteira, e não por dobra — a escala é o que vale no site todo, e medi-la
+    // por segmento daria uma rampa diferente para cada pedaço.
+    const rampas = derivarRampas(coletaFinal.nos);
+    // Do `ref` do nó cru para o hash do mapa: é por hash que o segmento conhece
+    // os membros dele.
+    const tokensPorHash = new Map<string, readonly string[]>();
+    for (const [ref, ids] of rampas.porRef) {
+      const no = porRef.get(ref);
+      if (no !== undefined) tokensPorHash.set(no.fingerprint.hash, ids);
+    }
+    log('rampas', {
+      tipografia: rampas.tokens.filter((t) => t.eixo === 'tipografia').length,
+      espaco: rampas.tokens.filter((t) => t.eixo === 'espaco').length,
+      raio: rampas.tokens.filter((t) => t.eixo === 'raio').length,
+    });
 
     log('mapas', {
       nos: structuralMap.length,
@@ -1063,6 +1081,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       async () =>
         segmentarPorEvidencia({
           structuralMap,
+          tokensPorHash,
           visualLayers,
           backgroundDetections,
           mediaDetections,
@@ -1364,6 +1383,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       backgroundDetections,
       mediaDetections,
       runtimeDetections,
+      designTokens: rampas.tokens,
       temporalObservations: temporais,
       pointerPaths: caminhos,
       pointerResponses: respostasPonteiro,

@@ -37,6 +37,7 @@ const segmentoFixture = (over: Partial<SegmentoV2> = {}): SegmentoV2 => ({
     pointerResponseIds: [],
     scrollIds: [],
     assetKeys: [],
+    tokenIds: [],
     nameEvidence: [],
     confidence: 'alta',
   },

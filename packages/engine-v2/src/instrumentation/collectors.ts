@@ -326,6 +326,14 @@ export const COLETAR_MAPA_FN = `
   var midias = [];
   var idx = 0;
 
+  // Comprimento computado em numero de px. O computado sempre volta em px
+  // ("16px", "0px"), entao parseFloat basta; o que nao for numero vira 0, que
+  // e o que "sem respiro" significa.
+  var px = function (v) {
+    var n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
+  };
+
   /** Enfileira os realms a percorrer: documento, shadow roots abertos, iframes. */
   var raizes = [{ raiz: document.documentElement || document.body, realm: 'document', host: null }];
   try {
@@ -473,7 +481,21 @@ export const COLETAR_MAPA_FN = `
         animationName: cs.animationName,
         animationDuration: cs.animationDuration,
         transitionProperty: cs.transitionProperty,
-        transitionDuration: cs.transitionDuration
+        transitionDuration: cs.transitionDuration,
+        // Linguagem visual: escala, ritmo e forma. Sai do MESMO objeto de
+        // computadas ja lido acima, entao nao custa layout nenhum.
+        visual: {
+          fontSize: px(cs.fontSize),
+          fontWeight: (function () { var w = parseInt(cs.fontWeight, 10); return isNaN(w) ? 400 : w; })(),
+          // computado 'normal' vira null: o site nao escolheu, e inventar o
+          // fator do navegador poluiria a rampa com valor que ninguem declarou.
+          lineHeight: cs.lineHeight === 'normal' ? null : px(cs.lineHeight),
+          letterSpacing: cs.letterSpacing === 'normal' ? 0 : px(cs.letterSpacing),
+          radius: Math.max(px(cs.borderTopLeftRadius), px(cs.borderBottomRightRadius)),
+          padY: Math.max(px(cs.paddingTop), px(cs.paddingBottom)),
+          padX: Math.max(px(cs.paddingLeft), px(cs.paddingRight)),
+          gap: Math.max(px(cs.rowGap), px(cs.columnGap))
+        }
       });
 
       // ── Backgrounds deste elemento ──────────────────────────────────────

@@ -36,7 +36,13 @@ import { TelemetriaRelatorio } from './telemetria.js';
 export const ENGINE_VERSION_V2 = 2;
 
 /** Forma deste contrato. Sobe quando um campo muda de significado. */
-export const CAPTURE_V2_SCHEMA_VERSION = 1;
+/**
+ * `2` — a captura passou a medir linguagem visual (`designTokens` e o
+ * `tokenIds` de cada segmento). Manifesto `1` continua válido e lido: os dois
+ * campos têm default vazio, e um acervo antigo simplesmente não tem rampa
+ * declarada até ser recapturado.
+ */
+export const CAPTURE_V2_SCHEMA_VERSION = 2;
 
 // ── Geometria e identidade ───────────────────────────────────────────────────
 
@@ -859,11 +865,81 @@ export const SegmentEvidence = z.object({
   scrollIds: z.array(z.string()).default([]),
   /** Assets de que o segmento depende (chaves do índice de assets). */
   assetKeys: z.array(z.string()).default([]),
+  /**
+   * Os degraus de rampa que aparecem DENTRO deste segmento.
+   *
+   * É o que faz "quero a tipografia daqui" ter endereço: sem isto, a rampa
+   * existe no nível da página e ninguém sabe qual peça usa qual degrau.
+   */
+  tokenIds: z.array(z.string()).default([]),
   /** Por que este nome (para o nome não ser "Seção"). */
   nameEvidence: z.array(z.string()).default([]),
   confidence: Confidence.default('media'),
 });
 export type SegmentEvidence = z.infer<typeof SegmentEvidence>;
+
+// ── LINGUAGEM VISUAL ─────────────────────────────────────────────────────────
+
+/**
+ * Um DEGRAU de uma rampa do site: um tamanho de letra, um respiro, um raio.
+ *
+ * ## O buraco que isto fecha
+ *
+ * O motor media composição, comportamento e portabilidade com rigor, e não
+ * media LINGUAGEM VISUAL. `RawNode` guardava empilhamento, animação e
+ * transição, e não guardava um único `font-size`. O efeito prático aparecia na
+ * ponta: "quero a tipografia deste site" entregava uma lista de nomes de fonte,
+ * porque nome de fonte era tudo que existia. Escala, ritmo e forma — o que
+ * separa um site bem desenhado de um mal desenhado — não eram medidos.
+ *
+ * ## Por que rampa, e não a lista de valores
+ *
+ * Uma página tem dezenas de tamanhos de letra medidos, e a maioria é ruído: o
+ * mesmo degrau aparece como 15.99px e 16px em nós diferentes, e um `<sup>`
+ * perdido não é um degrau da escala. O que interessa é o conjunto pequeno de
+ * degraus que o site de fato usa, cada um com o peso da evidência.
+ *
+ * ## A regra que vale para tudo aqui
+ *
+ * `papel` é `null` quando a evidência não separa — a mesma regra do
+ * `clusters.ts` na cor. Chutar que o segundo maior tamanho é "título" produz um
+ * site com hierarquia inventada, e inventar aqui é pior que não dizer.
+ */
+export const EixoDeToken = z.enum(['tipografia', 'espaco', 'raio']);
+export type EixoDeToken = z.infer<typeof EixoDeToken>;
+
+/**
+ * Papel de um degrau de TIPOGRAFIA. Só dois são afirmáveis sem chute:
+ *
+ * - `corpo`: o degrau em que está a maior parte do texto. É medição direta.
+ * - `display`: o maior degrau, quando ele se destaca do corpo o bastante para
+ *   não ser confundível com um título comum.
+ *
+ * O resto fica `null`. Um site pode ter cinco degraus entre o corpo e o
+ * display, e nomear cada um seria inventar uma hierarquia que ninguém mediu.
+ */
+export const PapelDeToken = z.enum(['corpo', 'display']);
+export type PapelDeToken = z.infer<typeof PapelDeToken>;
+
+export const DesignToken = z.object({
+  /** `tipo-3`, `espaco-1`, `raio-2` — estável dentro de uma captura. */
+  id: z.string(),
+  eixo: EixoDeToken,
+  /** O valor do degrau em px, já consolidado a partir das amostras. */
+  valor: z.number().nonnegative(),
+  /** Quantos nós usam este degrau. É o peso da evidência. */
+  ocorrencias: z.number().int().nonnegative().default(0),
+  /**
+   * Quanto texto (em caracteres) está neste degrau. Só faz sentido em
+   * tipografia, e é o que elege `corpo` — o degrau em que se lê, não o que
+   * aparece em mais lugares.
+   */
+  caracteres: z.number().int().nonnegative().default(0),
+  papel: PapelDeToken.nullable().default(null),
+  /** Os valores crus que caíram neste degrau, para auditar a fusão. */
+  amostra: z.array(z.number()).default([]),
+});
+export type DesignToken = z.infer<typeof DesignToken>;
 
 // ── STACK ────────────────────────────────────────────────────────────────────
 
@@ -1072,6 +1148,9 @@ export const CaptureManifestV2 = z.object({
   safeActions: z.array(ExecutedAction).default([]),
   blockedActions: z.array(BlockedAction).default([]),
   stateGraph: StateGraph.optional(),
+
+  /** As rampas do site: tamanho de letra, respiro e raio, com peso e papel. */
+  designTokens: z.array(DesignToken).default([]),
 
   // Segmentação e compilação
   segmentEvidence: z.array(SegmentEvidence).default([]),

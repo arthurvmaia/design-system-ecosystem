@@ -29,6 +29,33 @@ export type RawStacking = {
   pointerEvents: string;
 };
 
+/**
+ * A LINGUAGEM VISUAL de um nó, em números.
+ *
+ * Tudo em px, já resolvido pelo `getComputedStyle` — a página pode declarar
+ * `rem`, `clamp()` ou variável, e o que vale é o que o navegador pintou. Número
+ * e não string porque quem consome isto agrupa em rampas, e agrupar exige
+ * medida; guardar `"1.5rem"` deixaria a conta para depois, com menos contexto.
+ *
+ * `lineHeight` vem `null` quando o computado é `normal`: é a única forma de
+ * dizer "o site não escolheu" sem inventar o fator do navegador.
+ *
+ * O custo marginal é quase zero: `getComputedStyle` já é chamado uma vez por nó
+ * para empilhamento e animação, e estes campos saem do MESMO objeto.
+ */
+export type RawVisual = {
+  fontSize: number;
+  fontWeight: number;
+  lineHeight: number | null;
+  letterSpacing: number;
+  radius: number;
+  /** Respiro vertical e horizontal: o maior dos dois lados de cada eixo. */
+  padY: number;
+  padX: number;
+  /** `gap` de flex/grid. 0 quando não há. */
+  gap: number;
+};
+
 /** Um nó emitido pelo percurso. */
 export type RawNode = {
   ref: number;
@@ -78,6 +105,11 @@ export type RawNode = {
   animationDuration: string;
   transitionProperty: string;
   transitionDuration: string;
+  /**
+   * Ausente em coleta antiga (fixture gravado antes desta versão) — por isso
+   * opcional. Quem consome trata a ausência como "não medido", não como zero.
+   */
+  visual?: RawVisual;
 };
 
 export type RawBackground = {

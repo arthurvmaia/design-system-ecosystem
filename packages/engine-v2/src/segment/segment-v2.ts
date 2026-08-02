@@ -395,6 +395,14 @@ export type EntradaSegmentacao = {
    * site, não de uma seção só.
    */
   comportamentos?: readonly ComportamentoCandidato[];
+  /**
+   * Os degraus de rampa que cada elemento usa, por hash.
+   *
+   * Vem pronto do mapeador porque a rampa é da PÁGINA: derivá-la por segmento
+   * daria escalas diferentes para cada dobra, e a escala é justamente o que
+   * vale no site inteiro.
+   */
+  tokensPorHash?: ReadonlyMap<string, readonly string[]>;
   /** URLs de asset que têm cópia local. */
   assetsLocais: ReadonlySet<string>;
   /** Scripts de que a página depende e que NÃO foram obtidos. */
@@ -652,6 +660,15 @@ const confiancaPorPeso = (total: number): Confidence =>
 export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSegmentacaoV2 => {
   const secoes = escolherSecoes(entrada.structuralMap);
   const porHash = new Map(entrada.structuralMap.map((n) => [n.fingerprint.hash, n]));
+
+  /** Os degraus que aparecem dentro de um conjunto de membros, sem repetir. */
+  const tokensDe = (hashes: Iterable<string>): string[] => {
+    const mapa = entrada.tokensPorHash;
+    if (mapa === undefined) return [];
+    const ids = new Set<string>();
+    for (const h of hashes) for (const id of mapa.get(h) ?? []) ids.add(id);
+    return [...ids].sort();
+  };
   const camadasPorSecao = new Map<string, VisualLayer[]>();
   for (const c of entrada.visualLayers) {
     if (c.ownerSection === null) continue;
@@ -945,6 +962,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       pointerResponseIds: ponteiro.map((p) => p.id),
       scrollIds: scroll.map((s) => s.id),
       assetKeys: [...assetsDoSegmento],
+      tokenIds: tokensDe(hashesMembros),
       nameEvidence: evidenciasDoNome,
       confidence: confiancaPorPeso(pesoTotal),
     };
@@ -1140,6 +1158,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
         pointerResponseIds: [],
         scrollIds: scrollDoFundo.map((s) => s.id),
         assetKeys: [],
+        tokenIds: tokensDe(hashes),
         nameEvidence: ['camada fixa que cobre a viewport em toda a página'],
         confidence: 'alta',
       },
@@ -1242,6 +1261,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
         pointerResponseIds: [],
         scrollIds: comp.scrollIds,
         assetKeys: [],
+        tokenIds: tokensDe(comHtml),
         nameEvidence: [comp.explicacao],
         confidence: 'alta',
       },

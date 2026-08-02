@@ -79,3 +79,19 @@ test('o timestamp vem de fora: a consolidação é determinística', () => {
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+test('a escala da origem vem da CAPTURA; sem manifesto, ela não é inventada', () => {
+  // A ausência precisa ser distinguível de uma escala vazia: "ninguém mediu"
+  // e "este site não tem escala" são respostas diferentes.
+  const raiz = mkdtempSync(join(tmpdir(), 'ds-escala-'));
+  const bundle = join(raiz, 'b');
+  mkdirSync(join(bundle, 'assets', 'css'), { recursive: true });
+  writeFileSync(join(bundle, 'assets', 'css', 'x.css'), 'body{color:#111;background:#fff}');
+  writeFileSync(
+    join(bundle, 'index.html'),
+    '<html><head><link rel="stylesheet" href="assets/css/x.css"></head><body>oi</body></html>',
+  );
+
+  const ds = consolidarDesignSystemDoKit([{ id: 'cmp_a', bundlePath: bundle }], 1);
+  assert.equal(ds.origens[0]?.escala, undefined, 'sem captura, sem escala');
+});

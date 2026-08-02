@@ -148,6 +148,92 @@ export function FormulaDoKit({ kit, onClose }: { kit: KitRecord; onClose: () => 
           </section>
         )}
 
+        {/* ── A escala ───────────────────────────────────────────────────── */}
+        {(item?.origens ?? []).length > 0 && (
+          <section className="mt-9">
+            <Titulo>A escala</Titulo>
+            <p
+              className="mt-1 max-w-[70ch] text-[12.5px] leading-relaxed"
+              style={{ color: 'var(--color-fg-muted)' }}
+            >
+              Os degraus de tamanho, respiro e canto que cada origem usa. Medidos no navegador, na
+              captura: é o tamanho que a página de fato pintou, não o que a folha declarou.
+            </p>
+            <div className="mt-3 space-y-3">
+              {(item?.origens ?? []).map((o) => (
+                <div
+                  key={o.designSystemId}
+                  className="border p-4"
+                  style={{ borderColor: 'var(--color-border)' }}
+                >
+                  <div className="ds-data text-[11px]" style={{ color: 'var(--color-ion-3)' }}>
+                    {nomeDaOrigem(o.designSystemId)}
+                  </div>
+
+                  {o.escala === undefined || o.escala.degraus.length === 0 ? (
+                    // A ausência tem de aparecer como ausência. Uma rampa vazia
+                    // desenhada como se fosse rampa diria que o site não tem
+                    // escala, e o que houve foi que ninguém mediu.
+                    <p className="mt-2 text-[12.5px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                      Esta origem foi capturada antes de eu medir escala. Extraia o site de novo e
+                      eu meço.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-2">
+                        {o.escala.degraus.map((d) => (
+                          <span
+                            key={d}
+                            title={`${d}px${
+                              d === o.escala?.corpo
+                                ? ' — o tamanho em que está a maior parte do texto'
+                                : d === o.escala?.display
+                                  ? ' — o degrau de destaque'
+                                  : ''
+                            }`}
+                            style={{
+                              // O degrau mostrado NO tamanho dele, com teto: uma
+                              // escala vista em números não é uma escala vista.
+                              fontSize: Math.min(d, 44),
+                              lineHeight: 1,
+                              color:
+                                d === o.escala?.corpo || d === o.escala?.display
+                                  ? 'var(--color-fg)'
+                                  : 'var(--color-fg-subtle)',
+                            }}
+                          >
+                            Aa
+                          </span>
+                        ))}
+                      </div>
+                      <div
+                        className="ds-data mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px]"
+                        style={{ color: 'var(--color-fg-subtle)' }}
+                      >
+                        <span>
+                          texto {o.escala.corpo === null ? 'não medido' : `${o.escala.corpo}px`}
+                        </span>
+                        <span>
+                          destaque{' '}
+                          {o.escala.display === null
+                            ? 'sem degrau próprio'
+                            : `${o.escala.display}px`}
+                        </span>
+                        {o.escala.espacos.length > 0 && (
+                          <span>respiros {o.escala.espacos.join(' · ')}</span>
+                        )}
+                        {o.escala.raios.length > 0 && (
+                          <span>cantos {o.escala.raios.join(' · ')}</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* ── Cores ──────────────────────────────────────────────────────── */}
         {clusters.length > 0 && (
           <section className="mt-9">

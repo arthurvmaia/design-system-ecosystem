@@ -118,12 +118,40 @@ export const FonteDoKit = z.object({
 });
 export type FonteDoKit = z.infer<typeof FonteDoKit>;
 
+/**
+ * A ESCALA de uma origem: os degraus de tamanho de letra que ela usa, do menor
+ * ao maior, em px.
+ *
+ * Vem da captura (`designTokens` do manifesto), não do CSS dos bundles. O CSS
+ * declara `1.5rem`, `clamp()` e variável; o que interessa é o que o navegador
+ * pintou, e só a captura viu isso.
+ *
+ * Origem capturada antes desta medição vem com a lista vazia — e é o certo:
+ * "este site tem 8 degraus" e "ninguém mediu os degraus deste site" são
+ * respostas diferentes, e a segunda não deve se disfarçar da primeira.
+ */
+export const EscalaDaOrigem = z.object({
+  /** Os degraus em px, crescendo. */
+  degraus: z.array(z.number().positive()).default([]),
+  /** O degrau em que está a maior parte do texto. */
+  corpo: z.number().positive().nullable().default(null),
+  /** O degrau de destaque, quando a medição separou um. */
+  display: z.number().positive().nullable().default(null),
+  /** Os respiros que a origem usa, em px. */
+  espacos: z.array(z.number().nonnegative()).default([]),
+  /** Os raios de canto, em px. */
+  raios: z.array(z.number().nonnegative()).default([]),
+});
+export type EscalaDaOrigem = z.infer<typeof EscalaDaOrigem>;
+
 export const OrigemConsolidada = z.object({
   /** `ds_...`, ou o id da peça quando a origem é desconhecida. */
   designSystemId: z.string().min(1),
   tema: z.enum(['claro', 'escuro']),
   clusters: z.array(ClusterDeCor),
   fontes: z.array(FonteDoKit).default([]),
+  /** A escala medida na captura. Ausente = origem capturada antes da medição. */
+  escala: EscalaDaOrigem.optional(),
 });
 export type OrigemConsolidada = z.infer<typeof OrigemConsolidada>;
 
