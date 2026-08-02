@@ -549,6 +549,25 @@ export const previewSegmentReplayUrl = (segId: string, bg?: 'claro' | 'escuro'):
  */
 export const previewSegmentScrollUrl = (segId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/segment/${segId}?scroll=1${bg ? `&bg=${bg}` : ''}`;
+/**
+ * A prévia do kit MONTADO: as peças juntas, já vestidas com a marca.
+ *
+ * `componentes` permite prever uma seleção que ainda NÃO foi salva — quem está
+ * escolhendo precisa ver o efeito da escolha, não o da escolha anterior. E
+ * `versao` força o iframe a recarregar: sem ela, o navegador serve a montagem
+ * passada e a tela parece congelada.
+ */
+export const previewKitUrl = (
+  kitId: string,
+  opts: { componentes?: readonly string[]; projectId?: string; versao?: number } = {},
+): string => {
+  const q = new URLSearchParams();
+  if (opts.componentes !== undefined) q.set('componentes', opts.componentes.join(','));
+  if (opts.projectId !== undefined) q.set('projectId', opts.projectId);
+  q.set('v', String(opts.versao ?? 0));
+  return `/api/preview/kit/${kitId}?${q.toString()}`;
+};
+
 export const previewComponentUrl = (cmpId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/component/${cmpId}${bg ? `?bg=${bg}` : ''}`;
 export const previewRejeitadoUrl = (dsId: string, segId: string, bg?: 'claro' | 'escuro'): string =>

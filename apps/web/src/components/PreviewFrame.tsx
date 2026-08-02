@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from 'react';
  * Prévia fiel de um segmento ou componente.
  *
  * O documento vem pronto do server (`/api/preview/...`): head real com scripts,
- * atributos do body, base para o vault. Aqui só o exibimos, e a segurança está
- * no `sandbox="allow-scripts"` SEM `allow-same-origin` — o Tailwind CDN compila,
- * o Lucide desenha, as animações rodam, mas o documento tem origem opaca e não
- * alcança o app.
+ * atributos do body, base para o vault. Aqui só o exibimos; a segurança está na
+ * CSP que o servidor manda na resposta (`connect-src 'none'` e companhia) — o
+ * Tailwind CDN compila, o Lucide desenha, as animações rodam, e nada sai por
+ * fetch.
  *
  * O documento é uma página inteira; para caber num card, renderizamos num
  * "canvas virtual" de `virtualWidth` px e reduzimos por `scale` até a largura
@@ -173,7 +173,11 @@ export function PreviewFrame({
           src={src}
           loading="lazy"
           onLoad={() => setLoaded(true)}
-          sandbox="allow-scripts"
+          // `allow-same-origin` não é descuido: sem ele o documento tem origem
+          // opaca, o cookie do portão não acompanha os pedidos de CSS/JS dele, e
+          // a prévia chega crua. O motivo completo está em `CSP_PREVIA`, no
+          // servidor; o isolamento agora vem da CSP da resposta.
+          sandbox="allow-scripts allow-same-origin"
           className="absolute top-0 left-0 origin-top-left border-0"
           style={{
             width: virtualWidth,

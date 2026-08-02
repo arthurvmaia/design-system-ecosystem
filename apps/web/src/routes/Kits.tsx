@@ -33,6 +33,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { Bancada } from './kits/Bancada';
 import { FormulaDoKit } from './kits/FormulaDoKit';
 import { Governanca } from './kits/Governanca';
 
@@ -504,6 +505,9 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
   const [description, setDescription] = useState(kit?.description ?? '');
   const [selected, setSelected] = useState<string[]>(kit?.components.map((c) => c.id) ?? []);
   const [search, setSearch] = useState('');
+  // Qual painel ocupa a coluna direita. Começa na Biblioteca: quem abre o
+  // editor veio escolher peça, e a prévia é a conferência que vem depois.
+  const [painel, setPainel] = useState<'biblioteca' | 'previa'>('biblioteca');
 
   const porId = useMemo(() => {
     const m = new Map<string, LibraryComponentRecord>();
@@ -713,54 +717,111 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
             </div>
           </div>
 
-          {/* Disponíveis na Biblioteca. */}
+          {/* Do lado direito, duas coisas que nunca são precisas ao mesmo
+              tempo: de onde tirar peça, e como ficou. Alternar em vez de
+              dividir em três colunas é o que dá tamanho de verdade à prévia —
+              um terço de modal mostraria a montagem grande demais para caber e
+              pequena demais para julgar. A coluna da esquerda fica: dá para
+              remover e reordenar olhando o resultado. */}
           <div className="flex min-h-0 flex-col">
-            <div className="px-5 py-3">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="buscar na Biblioteca..."
-                className="ds-data w-full rounded-none border px-3.5 py-1.5 text-[12px] outline-none focus:border-[var(--color-signal)]"
-                style={fieldStyle}
-              />
-            </div>
-            <div className="grid min-h-[220px] flex-1 grid-cols-2 content-start gap-2 overflow-y-auto px-4 pb-4">
-              {disponiveis.map((c) => (
+            <div className="flex items-center gap-1 px-5 pt-3">
+              {(
+                [
+                  ['biblioteca', 'Biblioteca'],
+                  ['previa', 'Como vai ficar'],
+                ] as const
+              ).map(([id, rotulo]) => (
                 <button
-                  key={c.id}
+                  key={id}
                   type="button"
-                  onClick={() => setSelected([...selected, c.id])}
-                  className="group ds-glass overflow-hidden rounded-lg text-left"
+                  onClick={() => setPainel(id)}
+                  aria-pressed={painel === id}
+                  disabled={id === 'previa' && kit === null}
+                  title={
+                    id === 'previa' && kit === null
+                      ? 'Crie o kit primeiro; depois monto a prévia dele.'
+                      : undefined
+                  }
+                  className="border-b px-2 pb-2 text-[10px] uppercase tracking-[0.24em] disabled:opacity-30"
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    borderColor: painel === id ? 'var(--color-primary)' : 'transparent',
+                    color: painel === id ? 'var(--color-fg)' : 'var(--color-fg-subtle)',
+                  }}
                 >
-                  <PreviewFrame src={previewComponentUrl(c.id)} title={c.name} aspect={16 / 10} />
-                  <div className="flex items-center justify-between gap-1 p-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-[11px]" style={{ color: 'var(--color-fg)' }}>
-                        {c.name}
-                      </div>
-                      <div
-                        className="ds-data text-[9px]"
-                        style={{ color: 'var(--color-fg-subtle)' }}
-                      >
-                        {CAT_LABEL(c.category)}
-                      </div>
-                    </div>
-                    <Plus size={13} className="shrink-0" style={{ color: 'var(--color-signal)' }} />
-                  </div>
+                  {rotulo}
                 </button>
               ))}
-              {lib.data && disponiveis.length === 0 && (
-                <div
-                  className="col-span-2 px-2 py-10 text-center text-[12px]"
-                  style={{ color: 'var(--color-fg-subtle)' }}
-                >
-                  {(lib.data.items.length ?? 0) === 0
-                    ? 'A Biblioteca está vazia. Guarde peças na Galeria e elas aparecem aqui.'
-                    : 'Ou já está tudo no kit, ou nada aqui bate com a busca.'}
-                </div>
-              )}
             </div>
+
+            {painel === 'previa' && kit !== null ? (
+              <Bancada
+                kitId={kit.id}
+                kitNome={name.trim() === '' ? kit.name : name.trim()}
+                selecionados={selected}
+                origemDe={(id) => porId.get(id)?.designSystemId ?? null}
+              />
+            ) : (
+              <>
+                <div className="px-5 py-3">
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="buscar na Biblioteca..."
+                    className="ds-data w-full rounded-none border px-3.5 py-1.5 text-[12px] outline-none focus:border-[var(--color-signal)]"
+                    style={fieldStyle}
+                  />
+                </div>
+                <div className="grid min-h-[220px] flex-1 grid-cols-2 content-start gap-2 overflow-y-auto px-4 pb-4">
+                  {disponiveis.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setSelected([...selected, c.id])}
+                      className="group ds-glass overflow-hidden rounded-lg text-left"
+                    >
+                      <PreviewFrame
+                        src={previewComponentUrl(c.id)}
+                        title={c.name}
+                        aspect={16 / 10}
+                      />
+                      <div className="flex items-center justify-between gap-1 p-2">
+                        <div className="min-w-0">
+                          <div
+                            className="truncate text-[11px]"
+                            style={{ color: 'var(--color-fg)' }}
+                          >
+                            {c.name}
+                          </div>
+                          <div
+                            className="ds-data text-[9px]"
+                            style={{ color: 'var(--color-fg-subtle)' }}
+                          >
+                            {CAT_LABEL(c.category)}
+                          </div>
+                        </div>
+                        <Plus
+                          size={13}
+                          className="shrink-0"
+                          style={{ color: 'var(--color-signal)' }}
+                        />
+                      </div>
+                    </button>
+                  ))}
+                  {lib.data && disponiveis.length === 0 && (
+                    <div
+                      className="col-span-2 px-2 py-10 text-center text-[12px]"
+                      style={{ color: 'var(--color-fg-subtle)' }}
+                    >
+                      {(lib.data.items.length ?? 0) === 0
+                        ? 'A Biblioteca está vazia. Guarde peças na Galeria e elas aparecem aqui.'
+                        : 'Ou já está tudo no kit, ou nada aqui bate com a busca.'}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
 

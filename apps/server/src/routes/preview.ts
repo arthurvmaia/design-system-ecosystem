@@ -13,6 +13,7 @@ import {
   construirIndiceAssets,
   ehComponentId,
   ehDesignSystemId,
+  ehProjectId,
   libraryComponentBundleDir,
   reescreverParaLocal,
   vaultCaptureAssetsDir,
@@ -37,6 +38,7 @@ import {
 } from '../lib/bundle-v2.js';
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
 import { montarDemoDeHover } from '../lib/hover-demo.js';
+import { dirDaPrevia, montarPrevia } from '../lib/previa-do-kit.js';
 
 /**
  * Parse TOLERANTE do manifesto V2: daqui só interessa o campo `assets`. O schema
@@ -97,26 +99,25 @@ const lerReescritor = (dsId: string): ((t: string) => string) | null => {
  *
  * Aqui o documento é montado completo — head real COM scripts, atributos reais
  * do body, `<base>` apontando para o vault — e a segurança muda de lugar: em
- * vez de mutilar o documento, o iframe que o exibe roda com
- * `sandbox="allow-scripts"` SEM `allow-same-origin`. Origem opaca: o script do
- * site extraído roda (o Tailwind CDN compila, o Lucide desenha os ícones, as
- * animações acontecem) mas não alcança o app, os cookies ou o localStorage.
- * Como reforço, a resposta declara `Content-Security-Policy: sandbox` — se
- * alguém abrir a URL da prévia direto numa aba, as mesmas regras valem.
+ * vez de mutilar o documento, ela vem da CSP da resposta (`CSP_PREVIA`, logo
+ * abaixo) e do portão. O script do site extraído roda (o Tailwind CDN compila,
+ * o Lucide desenha os ícones, as animações acontecem) e não tem por onde mandar
+ * nada para fora: `connect-src 'none'`.
  *
- * As mutações da API ficam protegidas pelo próprio CORS: requisições de origem
- * opaca não passam no preflight (JSON e DELETE não são "simple requests" e o
- * servidor só aceita a origem do app).
+ * O documento é servido na MESMA origem do app, e isso é obrigatório desde que
+ * o portão passou a exigir credencial: um documento de origem opaca pede os
+ * próprios arquivos como se fosse outro site, o cookie `SameSite=Lax` não vai
+ * junto, e a prévia inteira chega sem CSS. O porquê está por extenso no
+ * `CSP_PREVIA`.
+ *
+ * As mutações da API seguem protegidas pelo CORS: JSON e DELETE não são "simple
+ * requests" e o servidor só aceita a origem do app no preflight.
  */
 
 export const previewRoute = new Hono();
 
 /**
- * CSP do preview. O `sandbox allow-scripts` (sem `allow-same-origin`,
- * `allow-forms`, `allow-popups`, `allow-top-navigation`, `allow-downloads`) já
- * bloqueia acesso ao app/cookies, envio de formulário, popup, navegação superior
- * e download — a lista de AÇÕES perigosas. Somamos diretivas explícitas que
- * fecham o vetor de exfiltração e o conteúdo ativo indesejado:
+ * CSP do preview. Fecha exfiltração e conteúdo ativo indesejado:
  *
  * - `connect-src 'none'`  → sem fetch/XHR/WebSocket (o replay não faz nenhum).
  * - `form-action 'none'`  → nenhum destino de formulário.
@@ -124,14 +125,32 @@ export const previewRoute = new Hono();
  * - `object-src 'none'`   → sem plugins/objetos.
  * - `frame-src 'none'`    → sem frames externos aninhados.
  *
- * Não restringimos `img/font/style/media/script` por origem: sob a origem OPACA
- * do sandbox, `'self'` não casa com os próprios assets locais (servidos pela rota
- * do vault, que para o documento opaco é outra origem), e travar por origem
- * quebraria os assets locais, o fallback externo declarado e o CSS/JS inline do
- * replay. O bloqueio de exfiltração real é o `connect-src 'none'`.
+ * Não restringimos `img/font/style/media/script` por origem: quebraria o
+ * fallback externo declarado (Tailwind CDN, Iconify) que muitos bundles usam.
+ * O bloqueio de exfiltração real é o `connect-src 'none'`.
+ *
+ * ## Por que NÃO tem mais `sandbox allow-scripts`
+ *
+ * Tinha, e isso quebrou TODA prévia do app no dia em que o portão entrou.
+ * A conta é esta, e vale escrita por extenso porque o sintoma não aponta para a
+ * causa:
+ *
+ * `sandbox` sem `allow-same-origin` dá ao documento uma origem OPACA. Para o
+ * navegador, cada `assets/styles.css` que esse documento pede é uma requisição
+ * **cross-site** — e o cookie da sessão é `SameSite=Lax`, que em cross-site não
+ * viaja. O servidor então respondia 401 em JSON, e o Chrome bloqueava a
+ * resposta (`ERR_BLOCKED_BY_ORB`). O documento carregava; o CSS, o JS e as
+ * imagens dele, não. O que aparecia na tela era HTML cru: caixa branca com
+ * texto preto miúdo, em toda peça da Galeria, da Biblioteca e do kit.
+ *
+ * O que o sandbox de fato impedia era o JS do site capturado alcançar o DOM do
+ * app. Isso se perde aqui, e é uma perda real — o app abre HTML de terceiro.
+ * Continuam de pé as duas coisas que importam mais: o portão (ninguém entra sem
+ * credencial) e o `connect-src 'none'` (nada sai por fetch). A alternativa era
+ * abrir os arquivos do acervo para quem não entrou, e essa é pior.
  */
-const CSP_SANDBOX =
-  "sandbox allow-scripts; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'";
+const CSP_PREVIA =
+  "connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'";
 
 /**
  * Estilo neutro que entra ANTES do head do site, para perder de qualquer regra
@@ -593,7 +612,7 @@ const responderHtml = (html: string, status: 200 | 404 = 200): Response =>
     status,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Content-Security-Policy': CSP_SANDBOX,
+      'Content-Security-Policy': CSP_PREVIA,
       'X-Content-Type-Options': 'nosniff',
       // Curto: re-segmentar ou reclassificar muda o conteúdo do mesmo id.
       'Cache-Control': 'private, max-age=60',
@@ -910,10 +929,9 @@ const servirArquivoDeBundle = (
 
   if (ext === '.html') {
     // A CSP embutida (`<meta http-equiv>`) existe para o uso STANDALONE do
-    // bundle (zip, disco). Servido aqui, o isolamento vem do header
-    // CSP_SANDBOX + iframe sandbox — e sob a origem opaca do sandbox o
-    // `'self'` do meta não casa com nada, o que mataria o css/js do próprio
-    // bundle (o mesmo motivo documentado no CSP_SANDBOX acima).
+    // bundle (zip, disco). Servido aqui, o isolamento vem do header CSP_PREVIA,
+    // e o meta sai porque a política mais restritiva de duas sempre vence: o
+    // meta de um bundle antigo derrubaria o css/js do próprio bundle.
     let html = readFileSync(alvo, 'utf8').replace(
       /<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]*>\s*/i,
       '',
@@ -934,7 +952,7 @@ const servirArquivoDeBundle = (
     status: 200,
     headers: {
       'Content-Type': MIME_BUNDLE[ext] ?? 'application/octet-stream',
-      'Content-Security-Policy': CSP_SANDBOX,
+      'Content-Security-Policy': CSP_PREVIA,
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, max-age=60',
     },
@@ -1125,4 +1143,47 @@ previewRoute.get('/rejeitado/:dsId/:segId', (c) => {
       bg: c.req.query('bg'),
     }),
   );
+});
+
+// ── A prévia do kit MONTADO ─────────────────────────────────────────────────
+//
+// Mostrar as peças juntas, já vestidas com a marca. É a única coisa que decide
+// se um kit presta e a única que o app não sabia mostrar: cada peça sozinha ele
+// já mostrava, o consolidado ele já resumia, mas duas origens brigando lado a
+// lado só apareciam depois de gerar o site inteiro.
+//
+// Reusa `montarPaginaDoKit`, o mesmo caminho da geração final. Uma prévia
+// aproximada mentiria exatamente onde mais dói.
+
+/** Monta e redireciona para o `index.html` da prévia. */
+previewRoute.get('/kit/:kitId', (c) => {
+  const kitId = c.req.param('kitId');
+  if (!/^kit_[A-Za-z0-9]+$/.test(kitId)) return new Response(null, { status: 404 });
+
+  const cru = c.req.query('componentes');
+  const componentIds =
+    cru === undefined || cru.trim() === ''
+      ? undefined
+      : cru.split(',').filter((id) => /^cmp_[A-Za-z0-9]+$/.test(id));
+
+  const projectId = c.req.query('projectId');
+  const r = montarPrevia({
+    kitId,
+    componentIds,
+    projectId: projectId !== undefined && ehProjectId(projectId) ? projectId : undefined,
+  });
+
+  if (!r.ok) {
+    return responderHtml(fallback('Sem prévia', r.motivo, 'Ajuste o kit e tente de novo.'), 200);
+  }
+  // `Cache-Control` de zero no redirecionamento: a prévia é remontada a cada
+  // pedido, e um 302 guardado devolveria o HTML da seleção anterior.
+  return c.redirect(`/api/preview/kit-arquivo/${kitId}/index.html?v=${Date.now()}`, 302);
+});
+
+/** Arquivos da prévia montada. Mesma disciplina de caminho dos bundles. */
+previewRoute.get('/kit-arquivo/:kitId/:caminho{.+}', (c) => {
+  const kitId = c.req.param('kitId');
+  if (!/^kit_[A-Za-z0-9]+$/.test(kitId)) return new Response(null, { status: 404 });
+  return servirArquivoDeBundle(dirDaPrevia(kitId), null, c.req.param('caminho'), false);
 });
