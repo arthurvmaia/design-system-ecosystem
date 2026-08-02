@@ -764,11 +764,13 @@ function SegmentsView({
   const [pecasDe, setPecasDe] = useState<SegmentRecord | null>(null);
 
   // ── Seleção em massa ───────────────────────────────────────────────────────
-  // Só as seções entram na seleção: o filho tem curtir/excluir próprios no card.
-  const visiveis = useMemo(
-    () => filtered.filter((s) => s.parentId === null).map((s) => s.id),
-    [filtered],
-  );
+  //
+  // Tudo que está NA GRADE entra na seleção, peça inclusive. Antes só as seções
+  // entravam, com o argumento de que o filho tem curtir próprio no card — e o
+  // argumento ignorava a escala: as peças são a maioria dos segmentos de uma
+  // captura, e triá-las uma a uma é o trabalho que ninguém faz. Quem filtra por
+  // "Peças" quer decidir sobre um conjunto.
+  const visiveis = useMemo(() => filtered.map((s) => s.id), [filtered]);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [confirmExcluir, setConfirmExcluir] = useState(false);
   const selTodosRef = useRef<HTMLInputElement>(null);
@@ -1143,6 +1145,8 @@ function SegmentsView({
                 dsId={dsId}
                 nomeDoPai={nomePorId.get(seg.parentId)}
                 onOpen={setDetalhe}
+                selected={sel.has(seg.id)}
+                onToggle={() => setSel((s) => toggleSel(s, seg.id))}
               />
             );
           }
@@ -1611,11 +1615,16 @@ function SegmentCardFilho({
   dsId,
   nomeDoPai,
   onOpen,
+  selected,
+  onToggle,
 }: {
   segment: SegmentRecord;
   dsId: string;
   nomeDoPai: string | undefined;
   onOpen: (s: SegmentRecord) => void;
+  /** Ausentes no painel de peças de uma dobra, onde não há seleção em massa. */
+  selected?: boolean;
+  onToggle?: () => void;
 }) {
   const qc = useQueryClient();
   const [confirmDel, setConfirmDel] = useState(false);
@@ -1641,7 +1650,34 @@ function SegmentCardFilho({
   });
 
   return (
-    <div className="ds-glass-static group relative overflow-hidden rounded-lg">
+    // SEM `overflow-hidden` aqui, e a razão é específica: num item de grid,
+    // `overflow: hidden` faz o `min-height: auto` resolver para ZERO. A altura
+    // deste card vem do `aspect-ratio` do preview, e com o mínimo em zero a
+    // grid dimensionava a linha só pelo rodapé — 39px em vez de 274px. O card
+    // virava uma tira e o componente sumia, cortado pelo próprio overflow.
+    //
+    // Aparecia só quando vários filhos caíam na grade de uma vez (o filtro por
+    // família "Peças"), porque a primeira linha era medida com os cards de
+    // dobra, que têm altura intrínseca. O recorte que o overflow dava já é
+    // feito pelo PreviewFrame, que tem o seu.
+    <div
+      className="ds-glass-static group relative rounded-none"
+      style={selected === true ? { outline: '2px solid var(--color-ion-5)' } : undefined}
+    >
+      {onToggle !== undefined && (
+        <label
+          className="absolute top-2 left-2 z-10 cursor-pointer p-1"
+          title={`Selecionar ${segment.name}`}
+        >
+          <input
+            type="checkbox"
+            checked={selected === true}
+            onChange={onToggle}
+            aria-label={`Selecionar ${segment.name}`}
+            className="h-4 w-4 accent-[var(--color-ion-4)]"
+          />
+        </label>
+      )}
       <button
         type="button"
         onClick={() => onOpen(segment)}
