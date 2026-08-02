@@ -24,12 +24,15 @@ import {
   vaultSegmentsManifest,
 } from '@ds/shared';
 import type {
+  AncoraDeMidia,
+  ComportamentoParaAncora,
   InteracaoNaoAssociada,
+  MidiaParaAncora,
   ResultadoValidacaoSegmento,
   SegmentInsight,
   Veredito,
 } from '@ds/shared';
-import { enqueueJob, vereditosDoSegmento } from '@ds/shared';
+import { ancorasDeMidia, enqueueJob, explicarAncora, vereditosDoSegmento } from '@ds/shared';
 import { zValidator } from '@hono/zod-validator';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -142,6 +145,97 @@ const lerComparacoesV2 = (dsId: string): ComparacaoBruta[] => {
   } catch {
     return [];
   }
+};
+
+/**
+ * As mídias detectadas na captura, lidas UMA vez por design system.
+ *
+ * Parse cru pelo mesmo motivo das comparações: o manifesto passa de 1 MB e daqui
+ * só interessa a identidade de cada mídia (id e classes estáveis) — é por ela
+ * que a âncora de rolagem casa, e não pela seção dona.
+ */
+const lerMidiasV2 = (dsId: string): MidiaParaAncora[] => {
+  const path = vaultCaptureV2Manifest(dsId as `ds_${string}`);
+  if (!existsSync(path)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as { mediaDetections?: unknown };
+    if (!Array.isArray(raw.mediaDetections)) return [];
+    return raw.mediaDetections
+      .filter(
+        (m): m is { id: string; kind: string; fingerprint?: MidiaParaAncora['fingerprint'] } =>
+          typeof m === 'object' &&
+          m !== null &&
+          typeof (m as { id?: unknown }).id === 'string' &&
+          typeof (m as { kind?: unknown }).kind === 'string',
+      )
+      .map((m) => ({ id: m.id, kind: m.kind, fingerprint: m.fingerprint ?? null }));
+  } catch {
+    return [];
+  }
+};
+
+/** Uma âncora como a Galeria mostra: a medida, mais a frase e o tipo da mídia. */
+type AncoraNaTela = AncoraDeMidia & { midiaKind: string; frase: string };
+
+/** Os conjuntos de classes de cada `class="..."` do HTML. */
+const classesDoHtml = (html: string): Set<string>[] => {
+  const out: Set<string>[] = [];
+  for (const m of html.matchAll(/class="([^"]*)"/g)) {
+    const lista = (m[1] ?? '').split(/\s+/).filter((c) => c !== '');
+    if (lista.length > 0) out.push(new Set(lista));
+  }
+  return out;
+};
+
+/**
+ * A mídia está DENTRO desta peça, ou só passa por baixo dela?
+ *
+ * A pergunta não é acadêmica. Medido no acervo: o canvas WebGL de fundo da
+ * página apareceu como âncora de SEIS peças — hero, cards, galeria, CTA, rodapé
+ * e o próprio fundo. Ele é `position: fixed` e cobre a página inteira, então o
+ * motor o associou a toda seção que ele atravessa, corretamente: para desenhar
+ * aquela dobra, ele conta. Mas quem lê "esta peça tem mídia presa à rolagem"
+ * entende que vai poder trocar o arquivo — e no hero não há arquivo nenhum para
+ * trocar. Cinco das seis seriam âncoras de dono errado.
+ *
+ * O corte é o HTML da própria peça: o elemento está no recorte, ou não está.
+ */
+export const midiaEstaNoHtml = (midia: MidiaParaAncora, html: string): boolean => {
+  const id = midia.fingerprint?.id ?? null;
+  if (id !== null && id !== '') return html.includes(`id="${id}"`) || html.includes(`id='${id}'`);
+  const classes = midia.fingerprint?.stableClasses ?? [];
+  // Sem id e sem classe não há como afirmar identidade — e afirmar por palpite
+  // é justamente o que produz a âncora inventada.
+  if (classes.length === 0) return false;
+  return classesDoHtml(html).some((conjunto) => classes.every((c) => conjunto.has(c)));
+};
+
+/**
+ * As mídias deste segmento que estão presas a um ponto da rolagem.
+ *
+ * Dois filtros, e os dois são necessários:
+ *
+ * 1. O cruzamento usa os comportamentos que o motor JÁ associou a este segmento
+ *    (`insight.scroll`), e não a lista da página inteira.
+ * 2. A mídia tem de estar no HTML DESTA peça — ver `midiaEstaNoHtml`.
+ *
+ * Só o primeiro deixava passar o fundo fixo em cinco peças que não o contêm.
+ */
+export const ancorasDoSegmento = (
+  midias: readonly MidiaParaAncora[],
+  insight: { scroll?: readonly ComportamentoParaAncora[] } | null,
+  html: string,
+): AncoraNaTela[] => {
+  const comportamentos = insight?.scroll ?? [];
+  if (midias.length === 0 || comportamentos.length === 0) return [];
+  const proprias = midias.filter((m) => midiaEstaNoHtml(m, html));
+  if (proprias.length === 0) return [];
+  const porId = new Map(proprias.map((m) => [m.id, m]));
+  return ancorasDeMidia(proprias, comportamentos).map((a) => ({
+    ...a,
+    midiaKind: porId.get(a.midiaId)?.kind ?? 'midia',
+    frase: explicarAncora(a),
+  }));
 };
 
 /**
@@ -343,6 +437,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
     const b = lerBundleParaListagem(id, s.position);
     if (b !== null) bundles.set(s.id, b);
   }
+  const midias = lerMidiasV2(id);
   const ordenados = [...segmentos].sort((a, b) => a.position - b.position);
   const conferencias = associarConferencias({
     comparacoes: lerComparacoesV2(id),
@@ -366,6 +461,10 @@ designSystemsRoute.get('/:id/segments', (c) => {
       capturaParcial: capturaParcial !== undefined,
     });
     const insight = bruto ? comValidacoes(bruto, validacoes.get(r.id), vereditos) : null;
+    // Mídia presa à rolagem: nesta peça a imagem não é "uma imagem", é "esta
+    // imagem neste ponto da página". Quem for trocar o arquivo precisa saber o
+    // enquadramento antes, não depois de o site sair estranho.
+    const ancoras = ancorasDoSegmento(midias, bruto, r.htmlSnippet);
     return {
       ...r,
       fidelity: insight,
@@ -377,6 +476,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
       // Quanto da peça a marca do usuário vai alcançar. Ausente quando não há
       // folha para medir — a tela não promete nem acusa o que não mediu.
       ...(bundle?.marca != null ? { marca: bundle.marca } : {}),
+      ...(ancoras.length > 0 ? { ancoras } : {}),
       vereditos,
     };
   });

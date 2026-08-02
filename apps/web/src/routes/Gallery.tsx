@@ -3,6 +3,7 @@ import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import {
+  type AncoraNaTela,
   type ConferenciaDePixel,
   type DesignSystemRecord,
   type Recolorabilidade,
@@ -176,6 +177,38 @@ function MarcaBadge({ marca }: { marca?: Recolorabilidade }) {
 }
 
 /**
+ * Selo de mídia posicional no card.
+ *
+ * Só aparece quando a mídia ACOMPANHA a rolagem quadro a quadro. Um `reveal`
+ * que só dispara ao chegar não muda a decisão de ninguém, e selo que aparece
+ * sempre não é aviso, é decoração.
+ */
+function RolagemBadge({ ancoras }: { ancoras?: AncoraNaTela[] }) {
+  const presas = (ancoras ?? []).filter((a) => a.acompanhaRolagem);
+  const primeira = presas[0];
+  if (primeira === undefined) return null;
+  const cor = 'var(--color-accent)';
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+      style={{
+        backgroundColor: 'color-mix(in srgb, var(--color-accent) 13%, transparent)',
+        color: cor,
+        border: '1px solid color-mix(in srgb, var(--color-accent) 33%, transparent)',
+      }}
+      title={
+        presas.length === 1
+          ? primeira.frase
+          : `${presas.length} mídias desta peça se movem com a rolagem. ${primeira.frase}`
+      }
+    >
+      <MoveVertical size={9} />
+      {presas.length === 1 ? 'na rolagem' : `${presas.length} na rolagem`}
+    </span>
+  );
+}
+
+/**
  * Selo de fidelidade do card, em 4 estados:
  * - medido e completo → sem selo (silêncio é a promessa honesta);
  * - medido com ressalva → o selo do nível de suporte, como sempre;
@@ -242,11 +275,13 @@ function FidelityPanel({
   comparacao,
   limitacoes,
   vereditos,
+  ancoras,
 }: {
   fidelity?: SegmentFidelity | null;
   comparacao?: ConferenciaDePixel;
   limitacoes?: string[];
   vereditos?: Veredito[];
+  ancoras?: AncoraNaTela[];
 }) {
   if (!fidelity) return null;
   const temPipeline = (fidelity.pipeline?.length ?? 0) > 0;
@@ -256,12 +291,14 @@ function FidelityPanel({
   // O que o compilador declarou e os avisos acima ainda não disseram — repetir
   // a mesma frase em duas listas só ensinaria a pessoa a não ler nenhuma.
   const declaracoes = (limitacoes ?? []).filter((l) => !fidelity.warnings.includes(l));
+  const temAncora = (ancoras?.length ?? 0) > 0;
   const semRessalva =
     fidelity.support === 'completo' &&
     fidelity.warnings.length === 0 &&
     fidelity.interactions.length === 0 &&
     !temPipeline &&
     !temBundle &&
+    !temAncora &&
     comparacao === undefined;
   if (semRessalva) return null;
   const cor = SUPORTE_COR[fidelity.support] ?? '#78716c';
@@ -312,6 +349,7 @@ function FidelityPanel({
         </div>
       )}
       <ComoEuConferi vereditos={vereditos} comparacao={comparacao} temBundle={temBundle} />
+      <MidiaPresaARolagem ancoras={ancoras} />
       {fidelity.warnings.length > 0 && (
         <ul className="mt-2 space-y-1">
           {fidelity.warnings.map((w) => (
@@ -422,6 +460,70 @@ function ComoEuConferi({
                 {v.delta !== undefined &&
                   v.limiar !== undefined &&
                   ` (${pct(v.delta)} de ${pct(v.limiar)})`}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** O tipo da mídia em palavra de gente. Cai no próprio nome quando é novo. */
+const MIDIA_LABEL: Record<string, string> = {
+  video: 'vídeo',
+  gif: 'gif',
+  'webp-animado': 'imagem animada',
+  'avif-animado': 'imagem animada',
+  apng: 'imagem animada',
+  'svg-animado': 'desenho animado',
+  'svg-estatico': 'desenho',
+  imagem: 'imagem',
+  lottie: 'animação Lottie',
+  'canvas-2d': 'desenho por script',
+  webgl: 'cena 3D',
+  webgl2: 'cena 3D',
+  iframe: 'página embutida',
+  audio: 'áudio',
+};
+
+/**
+ * Mídia presa à rolagem.
+ *
+ * Numa peça com efeito guiado por scroll, a mídia não é "uma imagem": é esta
+ * imagem NESTE ponto da página, andando neste ritmo. Quem troca o arquivo sem
+ * saber disso recebe um site que parece quebrado sem entender por quê — e a
+ * medida já existia, calada, dentro do manifesto.
+ *
+ * A tela declara o enquadramento. Ela ainda NÃO oferece a troca: enquanto a
+ * peça não puder ser trocada com o movimento garantido, prometer isso seria
+ * vender o que não se entrega.
+ */
+function MidiaPresaARolagem({ ancoras }: { ancoras?: AncoraNaTela[] }) {
+  if (ancoras === undefined || ancoras.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+        mídia presa à rolagem:
+      </span>
+      <ul className="mt-1 space-y-1">
+        {ancoras.map((a) => (
+          <li
+            key={`${a.midiaId}-${a.efeito}-${a.de}`}
+            className="flex items-start gap-1.5 text-[11px] leading-relaxed"
+          >
+            <MoveVertical
+              size={11}
+              className="mt-0.5 shrink-0"
+              style={{ color: 'var(--color-accent)' }}
+            />
+            <span className="min-w-0">
+              <span style={{ color: 'var(--color-fg-muted)' }}>
+                {MIDIA_LABEL[a.midiaKind] ?? a.midiaKind}
+              </span>
+              <span style={{ color: 'var(--color-fg-subtle)' }}>
+                {' — '}
+                {a.frase}
               </span>
             </span>
           </li>
@@ -1414,6 +1516,7 @@ function SegmentCard({
                 <span className="truncate">{CATEGORY_LABEL(segment.category)}</span>
                 <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
                 <MarcaBadge marca={segment.marca} />
+                <RolagemBadge ancoras={segment.ancoras} />
               </div>
               {subcomponentes > 0 && onAbrirPecas !== undefined && (
                 <button
@@ -1709,6 +1812,7 @@ function SegmentCardFilho({
             <span className="shrink-0">{CATEGORY_LABEL(segment.category)}</span>
             <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
             <MarcaBadge marca={segment.marca} />
+            <RolagemBadge ancoras={segment.ancoras} />
             {nomeDoPai !== undefined && (
               <span
                 className="truncate rounded-none border px-1.5 py-px"
@@ -2004,6 +2108,7 @@ function SegmentDetail({
                 comparacao={segment.comparacaoVisual}
                 limitacoes={segment.limitacoes}
                 vereditos={segment.vereditos}
+                ancoras={segment.ancoras}
               />
             </aside>
           )}

@@ -153,6 +153,27 @@ export type SegmentRecord = {
    * que não rodaram — é o que a Galeria mostra em "Como eu conferi".
    */
   vereditos?: Veredito[];
+  /**
+   * As mídias desta peça que estão presas a um ponto da rolagem. Ausente = a
+   * captura não achou nenhuma, e não que não haja: a medida vem dos
+   * comportamentos que o motor associou a este segmento.
+   */
+  ancoras?: AncoraNaTela[];
+};
+
+/**
+ * Uma mídia posicional: não é "uma imagem na seção", é "esta imagem neste ponto
+ * da rolagem". Trocar o arquivo sem saber disso produz um site que parece
+ * quebrado sem ninguém entender por quê — por isso a tela declara antes.
+ */
+export type AncoraNaTela = {
+  midiaId: string;
+  midiaKind: string;
+  efeito: string;
+  de: number;
+  ate: number;
+  acompanhaRolagem: boolean;
+  frase: string;
 };
 
 /** O ritmo medido no acervo. Espelha `@ds/composer`. */
