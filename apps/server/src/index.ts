@@ -7,7 +7,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { getExecutionMode } from './lib/execution-mode.js';
-import { estadoDoPortao, lerCookieDaSessao, sessaoValida } from './lib/portao.js';
+import { ehLeitura, estadoDoPortao, lerCookieDaSessao, nivelDaSessao } from './lib/portao.js';
+import { appCompiladoExiste, appWebRoute } from './routes/app-web.js';
 import { assetRoute, frameRoute, libraryAssetRoute } from './routes/asset.js';
 import { designSystemsRoute } from './routes/design-systems.js';
 import { healthRoute } from './routes/health.js';
@@ -68,19 +69,40 @@ app.use('*', async (c, next) => {
 
   const estado = estadoDoPortao();
   if (estado === 'desligado') return next();
-  if (estado === 'ativo' && sessaoValida(lerCookieDaSessao(c.req.header('cookie')), agoraEmS())) {
-    return next();
+
+  const nivel =
+    estado === 'ativo'
+      ? nivelDaSessao(lerCookieDaSessao(c.req.header('cookie')), agoraEmS())
+      : null;
+
+  if (nivel === null) {
+    return c.json(
+      {
+        error: 'sem_sessao',
+        message:
+          estado === 'sem-credencial'
+            ? 'Este servidor foi publicado sem credencial, então eu não deixo ninguém entrar.'
+            : 'Preciso da credencial antes de mostrar qualquer coisa.',
+      },
+      401,
+    );
   }
-  return c.json(
-    {
-      error: 'sem_sessao',
-      message:
-        estado === 'sem-credencial'
-          ? 'Este servidor foi publicado sem credencial, então eu não deixo ninguém entrar.'
-          : 'Preciso da credencial antes de mostrar qualquer coisa.',
-    },
-    401,
-  );
+
+  // A tranca da visita fica AQUI, e não na interface. Esconder o botão não
+  // impede ninguém de chamar a rota, e tranca que só existe na tela não é
+  // tranca. Quem entrou para olhar lê tudo e não muda nada.
+  if (nivel === 'visita' && !ehLeitura(c.req.method)) {
+    return c.json(
+      {
+        error: 'somente_leitura',
+        message:
+          'Esta credencial abre para ver, não para mudar. Deixo o senhor navegar tudo, mas não mexo no acervo por aqui.',
+      },
+      403,
+    );
+  }
+
+  return next();
 });
 
 app.route('/api/orbis', orbisRoute);
@@ -100,6 +122,11 @@ app.route('/api/movimento', movimentoRoute);
 app.route('/api/tasks', tasksRoute);
 app.route('/vault', vaultRoute);
 app.route('/site', siteRoute);
+
+// O app compilado, por último: ele é o coringa que responde tudo que sobrou, e
+// só entra quando existe build. Em desenvolvimento não existe, e o Vite continua
+// servindo o app em 5173 como sempre.
+if (appCompiladoExiste()) app.route('/', appWebRoute);
 
 app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404));
 app.onError((err, c) => {

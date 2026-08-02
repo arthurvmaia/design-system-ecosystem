@@ -124,6 +124,13 @@ export type ConferenciaDePixel = { delta: number; limiar: number; passou: boolea
 export type SessaoDoPortao = {
   estado: 'ativo' | 'desligado' | 'sem-credencial';
   dentro: boolean;
+  /**
+   * `admin` faz tudo; `visita` vê tudo e não muda nada. Quem impõe é o
+   * SERVIDOR: a interface usa isto só para não oferecer o que vai ser recusado.
+   */
+  nivel: 'admin' | 'visita' | null;
+  /** Este servidor tem credencial de visita configurada. */
+  temVisita?: boolean;
 };
 
 export type SegmentRecord = {
@@ -436,6 +443,23 @@ export type UpdateProjectInput = {
   layout?: ProjectLayout;
 };
 
+/**
+ * O cabeçalho onde a credencial das ações caras viaja.
+ *
+ * Nunca na URL: URL entra em log de servidor, em histórico de navegador e no
+ * `Referer` de qualquer requisição seguinte.
+ */
+export const CABECALHO_DA_ACAO = 'x-orbis-acao';
+
+/**
+ * O servidor pediu a credencial desta ação (HTTP 428).
+ *
+ * É um erro à parte porque significa uma coisa diferente de "você não pode": a
+ * sessão está válida, só falta confirmar ESTE gasto. Quem chama distingue os
+ * dois e abre a caixa de confirmação em vez de mandar entrar de novo.
+ */
+export class PrecisaDaSenhaDeAcao extends Error {}
+
 const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(input, {
     ...init,
@@ -449,6 +473,16 @@ const jsonFetch = async <T>(input: string, init?: RequestInit): Promise<T> => {
     // O erro que chega ao toast é o que a PESSOA lê: preferir a mensagem
     // humana que o servidor mandou; nunca despejar status/JSON cru na tela.
     const body = await res.text();
+    if (res.status === 428) {
+      let msg = 'Preciso da credencial antes de pôr a máquina para trabalhar.';
+      try {
+        const p = JSON.parse(body) as { message?: string };
+        if (typeof p.message === 'string' && p.message.trim() !== '') msg = p.message;
+      } catch {
+        // corpo não-JSON: fica a mensagem padrão
+      }
+      throw new PrecisaDaSenhaDeAcao(msg);
+    }
     let mensagem = 'Não deu para concluir agora. Tente de novo em instantes.';
     try {
       const parsed = JSON.parse(body) as { message?: string };
@@ -526,7 +560,7 @@ export const api = {
   sessao: () => jsonFetch<SessaoDoPortao>('/api/orbis/sessao'),
   /** Manda a credencial. O que volta é um sim ou um não, nunca a senha. */
   entrar: (senha: string) =>
-    jsonFetch<{ dentro: boolean }>('/api/orbis/entrar', {
+    jsonFetch<{ dentro: boolean; nivel: 'admin' | 'visita' }>('/api/orbis/entrar', {
       method: 'POST',
       body: JSON.stringify({ senha }),
     }),
@@ -559,10 +593,13 @@ export const api = {
     input:
       | { kind: 'url'; url: string; name?: string }
       | { kind: 'html'; html: string; name: string },
+    /** A credencial desta ação. Ausente = o servidor responde 428 e a tela pede. */
+    senhaDeAcao?: string,
   ) =>
     jsonFetch<StartWorkResponse>('/api/design-systems', {
       method: 'POST',
       body: JSON.stringify(input),
+      headers: senhaDeAcao === undefined ? undefined : { [CABECALHO_DA_ACAO]: senhaDeAcao },
     }),
   classify: (dsId: string) =>
     jsonFetch<StartWorkResponse>(`/api/design-systems/${dsId}/classify`, { method: 'POST' }),
@@ -685,9 +722,10 @@ export const api = {
   deleteProject: (id: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
   /** Dispara a geração do site a partir do rascunho já salvo. */
-  generateProject: (id: string) =>
+  generateProject: (id: string, senhaDeAcao?: string) =>
     jsonFetch<StartWorkResponse & { projectId?: string }>(`/api/projects/${id}/generate`, {
       method: 'POST',
+      headers: senhaDeAcao === undefined ? undefined : { [CABECALHO_DA_ACAO]: senhaDeAcao },
     }),
   /** Upload de mídia (multipart). Não passa por jsonFetch: o corpo é FormData. */
   uploadMedia: async (

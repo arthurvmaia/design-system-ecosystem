@@ -55,6 +55,38 @@ export function PortaoOrbis({ children }: { children: React.ReactNode }) {
     if (sessao.data?.dentro === false) campo.current?.focus();
   }, [sessao.data?.dentro]);
 
+  /**
+   * Sair de vista encerra a sessão.
+   *
+   * Minimizar, trocar de aba ou fechar: em todos, a próxima volta pede a
+   * credencial de novo. É deliberadamente severo — o link está aberto no mundo,
+   * e um aparelho emprestado ou uma aba esquecida num computador alheio não
+   * devem virar acesso permanente ao acervo.
+   *
+   * O cookie já morre ao fechar a aba (o servidor o emite sem `Max-Age`), então
+   * isto cobre o outro caso: a aba que continua viva enquanto a pessoa está
+   * noutro lugar.
+   *
+   * `keepalive` é o detalhe que faz funcionar: sem ele, a requisição disparada
+   * durante `pagehide` é cancelada com a página, e a sessão sobreviveria.
+   */
+  useEffect(() => {
+    const encerrar = (): void => {
+      if (sessao.data?.dentro !== true || sessao.data.estado !== 'ativo') return;
+      void fetch('/api/orbis/sair', { method: 'POST', credentials: 'include', keepalive: true });
+      void qc.invalidateQueries({ queryKey: ['orbis-sessao'] });
+    };
+    const aoEsconder = (): void => {
+      if (document.visibilityState === 'hidden') encerrar();
+    };
+    document.addEventListener('visibilitychange', aoEsconder);
+    window.addEventListener('pagehide', encerrar);
+    return () => {
+      document.removeEventListener('visibilitychange', aoEsconder);
+      window.removeEventListener('pagehide', encerrar);
+    };
+  }, [sessao.data?.dentro, sessao.data?.estado, qc]);
+
   // Enquanto pergunto ao servidor, não mostro nem o app nem o portão: piscar a
   // tela de senha para quem já entrou é ruído, e piscar o app para quem não
   // entrou é vazamento.
@@ -130,6 +162,16 @@ export function PortaoOrbis({ children }: { children: React.ReactNode }) {
         {erro !== null && (
           <p className="portao-erro" role="alert">
             {erro}
+          </p>
+        )}
+
+        {/* Duas credenciais, e a tela diz isso antes de a pessoa digitar. Quem
+            recebeu a de visita precisa saber que o "não" que vai encontrar num
+            botão é intencional, e não defeito. */}
+        {sessao.data?.temVisita === true && !semCredencial && (
+          <p className="portao-nota">
+            Há duas credenciais. Uma abre o app inteiro; a outra abre para ver, e recusa mudanças no
+            acervo.
           </p>
         )}
 

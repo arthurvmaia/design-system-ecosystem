@@ -1,7 +1,9 @@
+import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import {
   type MediaItem,
+  PrecisaDaSenhaDeAcao,
   type ProjectBranding,
   type ProjectRecord,
   type StartWorkResponse,
@@ -311,17 +313,34 @@ export function ProjectWizard({
     return () => window.clearTimeout(timer);
   }, [assinatura, projectId]);
 
+  // A credencial desta ação. A primeira tentativa vai sem: o servidor responde
+  // 428 e a tela abre a caixa. Assim a confirmação só aparece onde a tranca
+  // está ligada, e não em toda instalação.
+  const [pedindoSenha, setPedindoSenha] = useState(false);
+  const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
+
   const gerar = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (senhaDeAcao?: string) => {
       const id = await salvar();
-      return api.generateProject(id);
+      return api.generateProject(id, senhaDeAcao);
     },
     onSuccess: (res) => {
+      setPedindoSenha(false);
+      setErroDaSenha(null);
       qc.invalidateQueries({ queryKey: ['queue'] });
       qc.invalidateQueries({ queryKey: ['projects'] });
       onGenerated(res);
     },
-    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao gerar o site.'),
+    onError: (e) => {
+      // 428 é o servidor pedindo a confirmação do gasto, não uma falha.
+      if (e instanceof PrecisaDaSenhaDeAcao) {
+        setErroDaSenha(pedindoSenha ? e.message : null);
+        setPedindoSenha(true);
+        return;
+      }
+      setPedindoSenha(false);
+      toast.erro(e instanceof Error ? e.message : 'Falha ao gerar o site.');
+    },
   });
 
   const componentesDoKit = kit.data?.item.components ?? [];
@@ -508,7 +527,7 @@ export function ProjectWizard({
           {ultima ? (
             <button
               type="button"
-              onClick={() => gerar.mutate()}
+              onClick={() => gerar.mutate(undefined)}
               disabled={gerar.isPending || travadoPorBloqueante}
               title={
                 travadoPorBloqueante ? 'Resolva os itens bloqueantes listados acima' : undefined
@@ -546,6 +565,18 @@ export function ProjectWizard({
           )}
         </div>
       </div>
+
+      <ConfirmarAcaoCara
+        aberto={pedindoSenha}
+        oQueVaiFazer="Vou montar o site inteiro a partir do seu kit, o que leva minutos."
+        ocupado={gerar.isPending}
+        erro={erroDaSenha}
+        aoConfirmar={(senha) => gerar.mutate(senha)}
+        aoFechar={() => {
+          setPedindoSenha(false);
+          setErroDaSenha(null);
+        }}
+      />
     </Modal>
   );
 }

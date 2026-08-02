@@ -29,6 +29,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { getModels } from '../lib/anthropic.js';
 import { isQueueMode } from '../lib/execution-mode.js';
+import { exigeSenhaDeAcao } from '../lib/exige-senha-de-acao.js';
 import { montarContextoDeGeracao } from '../lib/generate-context.js';
 import { enqueueTask } from '../lib/task-queue.js';
 
@@ -386,6 +387,10 @@ projectsRoute.delete('/:id/media', (c) => {
  * traria peças de origens que não conversam.
  */
 projectsRoute.post('/:id/generate', async (c) => {
+  // A outra ação cara. Mesma tranca da extração, e pelo mesmo motivo.
+  const recusa = exigeSenhaDeAcao(c);
+  if (recusa !== null) return recusa;
+
   const id = c.req.param('id');
   if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const db = getDb();

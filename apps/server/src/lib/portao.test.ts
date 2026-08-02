@@ -3,10 +3,14 @@ import { afterEach, test } from 'node:test';
 import {
   assinarSessao,
   cookieDeSessao,
+  ehLeitura,
   estadoDoPortao,
   lerCookieDaSessao,
+  nivelDaSenha,
+  nivelDaSessao,
   senhaConfere,
   sessaoValida,
+  temNivelDeVisita,
 } from './portao.js';
 
 /**
@@ -20,6 +24,7 @@ import {
 const ambienteOriginal = { ...process.env };
 afterEach(() => {
   process.env.ORBIS_SENHA = ambienteOriginal.ORBIS_SENHA;
+  process.env.ORBIS_SENHA_VISITA = ambienteOriginal.ORBIS_SENHA_VISITA;
   process.env.ORBIS_SEGREDO = ambienteOriginal.ORBIS_SEGREDO;
   process.env.NODE_ENV = ambienteOriginal.NODE_ENV;
 });
@@ -60,13 +65,13 @@ test('a senha certa entra, a errada não, e quase-certa também não', () => {
 test('a sessão vale até expirar, e a validade é assinada', () => {
   process.env.ORBIS_SEGREDO = 'segredo-de-teste';
   const agora = 1_000_000;
-  const cookie = assinarSessao(agora + 60);
+  const cookie = assinarSessao(agora + 60, 'admin');
   assert.equal(sessaoValida(cookie, agora), true);
   assert.equal(sessaoValida(cookie, agora + 61), false);
 
   // Esticar o prazo à mão quebra a assinatura — sem isso um cookie roubado
   // valeria para sempre.
-  const esticado = `${agora + 99999}.${cookie.split('.')[1]}`;
+  const esticado = `${agora + 99999}.admin.${cookie.split('.')[2]}`;
   assert.equal(sessaoValida(esticado, agora), false);
 });
 
@@ -77,14 +82,72 @@ test('cookie forjado ou lixo não vira sessão', () => {
   assert.equal(sessaoValida('', agora), false);
   assert.equal(sessaoValida('sem-ponto', agora), false);
   assert.equal(sessaoValida('.assinatura', agora), false);
-  assert.equal(sessaoValida(`${agora + 60}.assinatura-inventada`, agora), false);
+  assert.equal(sessaoValida(`${agora + 60}.admin.assinatura-inventada`, agora), false);
 });
 
 test('trocar o segredo invalida as sessões abertas', () => {
   process.env.ORBIS_SEGREDO = 'primeiro';
-  const cookie = assinarSessao(2_000_000);
+  const cookie = assinarSessao(2_000_000, 'admin');
   process.env.ORBIS_SEGREDO = 'segundo';
   assert.equal(sessaoValida(cookie, 1_000_000), false);
+});
+
+// ── Os dois níveis ──────────────────────────────────────────────────────────
+
+test('cada senha abre o seu nível, e a de admin vence quando as duas coincidem', () => {
+  process.env.ORBIS_SENHA = 'a-do-dono';
+  process.env.ORBIS_SENHA_VISITA = 'a-do-convidado';
+  assert.equal(nivelDaSenha('a-do-dono'), 'admin');
+  assert.equal(nivelDaSenha('a-do-convidado'), 'visita');
+  assert.equal(nivelDaSenha('nenhuma-das-duas'), null);
+
+  // Configurar as duas iguais é descuido, e o acesso MAIOR vence: o contrário
+  // daria ao dono uma sessão capada sem explicação nenhuma.
+  process.env.ORBIS_SENHA_VISITA = 'a-do-dono';
+  assert.equal(nivelDaSenha('a-do-dono'), 'admin');
+});
+
+test('sem ORBIS_SENHA_VISITA existe só o nível admin', () => {
+  process.env.ORBIS_SENHA = 'a-do-dono';
+  process.env.ORBIS_SENHA_VISITA = '';
+  assert.equal(temNivelDeVisita(), false);
+  assert.equal(nivelDaSenha('a-do-dono'), 'admin');
+  assert.equal(nivelDaSenha(''), null);
+});
+
+test('o nível viaja assinado: não dá para se promover editando o cookie', () => {
+  process.env.ORBIS_SEGREDO = 'segredo-de-teste';
+  const agora = 1_000_000;
+  const visita = assinarSessao(agora + 60, 'visita');
+  assert.equal(nivelDaSessao(visita, agora), 'visita');
+
+  // A fraude óbvia: trocar a palavra no cookie e continuar com a assinatura.
+  const promovido = visita.replace('.visita.', '.admin.');
+  assert.equal(nivelDaSessao(promovido, agora), null);
+});
+
+test('leitura e escrita: a dúvida cai para o lado que não estraga nada', () => {
+  assert.equal(ehLeitura('GET'), true);
+  assert.equal(ehLeitura('HEAD'), true);
+  assert.equal(ehLeitura('OPTIONS'), true);
+  assert.equal(ehLeitura('POST'), false);
+  assert.equal(ehLeitura('PATCH'), false);
+  assert.equal(ehLeitura('DELETE'), false);
+  // Método que ninguém previu conta como escrita.
+  assert.equal(ehLeitura('PROPFIND'), false);
+  assert.equal(ehLeitura('get'), false);
+});
+
+test('em HTTPS de mesma origem o cookie sai Lax e Secure', () => {
+  // O caso do túnel: a Cloudflare termina o TLS, o app e a API vêm do mesmo
+  // endereço. `Lax` basta (é o modo restrito) e `Secure` entra porque é HTTPS.
+  const tunel = cookieDeSessao({ valor: 'v', maxAgeS: 60, origemCruzada: false, seguro: true });
+  assert.match(tunel, /SameSite=Lax/);
+  assert.match(tunel, /Secure/);
+
+  // Em localhost, `Secure` faria o navegador descartar o cookie.
+  const local = cookieDeSessao({ valor: 'v', maxAgeS: 60, origemCruzada: false, seguro: false });
+  assert.doesNotMatch(local, /Secure/);
 });
 
 test('em origem cruzada o cookie sai com SameSite=None e Secure', () => {

@@ -39,6 +39,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { getModels } from '../lib/anthropic.js';
 import { isQueueMode } from '../lib/execution-mode.js';
+import { exigeSenhaDeAcao } from '../lib/exige-senha-de-acao.js';
 import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
 import { enqueueTask } from '../lib/task-queue.js';
 import { validarPreviews } from '../lib/validate-preview.js';
@@ -700,6 +701,12 @@ const extracoesEmVoo = new Set<string>();
  * Inicia uma extração + segmentação. Retorna o task_id imediatamente.
  */
 designSystemsRoute.post('/', zValidator('json', CreateDesignSystemInput), (c) => {
+  // Abrir um navegador de verdade e varrer um site inteiro leva minutos e, no
+  // modo `api`, gasta crédito. A credencial é pedida na hora, e não herdada da
+  // sessão: entrar no app e mandar gastar são decisões de peso diferente.
+  const recusa = exigeSenhaDeAcao(c);
+  if (recusa !== null) return recusa;
+
   const input = c.req.valid('json');
 
   // Modo fila: registra o pedido e devolve na hora. Nada é executado aqui.

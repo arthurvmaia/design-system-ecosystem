@@ -1,8 +1,10 @@
+import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
 import { QueuePanel } from '@/components/QueuePanel';
-import { type QueueJobRef, type TaskRecord, api } from '@/lib/api';
+import { PrecisaDaSenhaDeAcao, type QueueJobRef, type TaskRecord, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { TRABALHANDO, saudacaoCompleta } from '@/lib/orbis';
+import { toast } from '@/lib/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Link as LinkIcon, MousePointerClick, UploadCloud } from 'lucide-react';
 import { type ChangeEvent, useState } from 'react';
@@ -71,23 +73,33 @@ export function ExtractPage() {
     enabled: activeTaskId !== null,
   });
 
+  // A credencial desta ação. Vazia na primeira tentativa: o servidor responde
+  // 428 e a tela abre a caixa. Assim a confirmação só aparece onde ela é
+  // exigida, e não em toda instalação — nem todo servidor liga essa tranca.
+  const [pedindoSenha, setPedindoSenha] = useState(false);
+  const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
+
   const start = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (senhaDeAcao?: string) => {
       if (mode === 'url') {
-        return api.createDesignSystem({
-          kind: 'url',
-          url,
-          name: urlName || undefined,
-        });
+        return api.createDesignSystem(
+          { kind: 'url', url, name: urlName || undefined },
+          senhaDeAcao,
+        );
       }
       if (!htmlFile) throw new Error('Preciso de um arquivo HTML para começar.');
-      return api.createDesignSystem({
-        kind: 'html',
-        html: htmlFile.content,
-        name: htmlFile.name.replace(/\.html?$/i, ''),
-      });
+      return api.createDesignSystem(
+        {
+          kind: 'html',
+          html: htmlFile.content,
+          name: htmlFile.name.replace(/\.html?$/i, ''),
+        },
+        senhaDeAcao,
+      );
     },
     onSuccess: (res) => {
+      setPedindoSenha(false);
+      setErroDaSenha(null);
       // Modo `api`: veio uma task, dá para acompanhar o progresso aqui.
       if ('task' in res) {
         setQueuedJob(null);
@@ -100,6 +112,17 @@ export function ExtractPage() {
       setActiveTaskId(null);
       setQueuedJob(res.job);
       qc.invalidateQueries({ queryKey: ['queue'] });
+    },
+    onError: (e) => {
+      // 428 não é falha: é o servidor pedindo a confirmação do gasto. Tratar
+      // como erro mandaria um toast vermelho para quem não errou nada.
+      if (e instanceof PrecisaDaSenhaDeAcao) {
+        setErroDaSenha(pedindoSenha ? e.message : null);
+        setPedindoSenha(true);
+        return;
+      }
+      setPedindoSenha(false);
+      toast.erro(e instanceof Error ? e.message : 'Não consegui começar a captura.');
     },
   });
 
@@ -191,7 +214,7 @@ export function ExtractPage() {
 
         <button
           type="button"
-          onClick={() => start.mutate()}
+          onClick={() => start.mutate(undefined)}
           disabled={
             start.isPending ||
             (mode === 'url' && !url) ||
@@ -259,6 +282,18 @@ export function ExtractPage() {
           failed={failed}
         />
       )}
+
+      <ConfirmarAcaoCara
+        aberto={pedindoSenha}
+        oQueVaiFazer="Vou abrir este endereço num navegador de verdade e varrer a página inteira, o que leva minutos."
+        ocupado={start.isPending}
+        erro={erroDaSenha}
+        aoConfirmar={(senha) => start.mutate(senha)}
+        aoFechar={() => {
+          setPedindoSenha(false);
+          setErroDaSenha(null);
+        }}
+      />
     </div>
   );
 }
