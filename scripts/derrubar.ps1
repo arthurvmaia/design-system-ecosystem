@@ -52,7 +52,7 @@ if ($fechou) {
   Write-Host '  Ninguem de fora acessa mais, nem com a senha certa.'
   Write-Host ''
   Write-Host '  Para trabalhar aqui, abra o INICIAR.'
-  Write-Host '  Para abrir de novo para os socios, rode `pnpm publicar`'
+  Write-Host '  Para abrir de novo para os socios, abra o LEVANTAR-TUNEL'
   Write-Host '  (o endereco vai ser outro).'
 } else {
   Write-Host '  Nao havia nada no ar. Voce ja estava so.' -ForegroundColor DarkGray
