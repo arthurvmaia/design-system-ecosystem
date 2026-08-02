@@ -6,6 +6,7 @@ import { Select } from '@/components/seletores';
 import { type LibraryComponentRecord, api, previewComponentUrl } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
+import { useNomeDaOrigem } from '@/lib/origem';
 import { usePreferencias } from '@/lib/preferencias';
 import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
@@ -16,8 +17,9 @@ import {
   rotuloDaCategoria,
 } from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HeartOff, Sun, Tag, Trash2, X } from 'lucide-react';
+import { Compass, HeartOff, Sun, Tag, Trash2, X } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { Confronto } from './library/Confronto';
 
 /**
  * As categorias vêm do `@ds/shared`, não de uma cópia local.
@@ -75,6 +77,14 @@ export function LibraryPage() {
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
   const [detalhe, setDetalhe] = useState<LibraryComponentRecord | null>(null);
+  /**
+   * Duas perguntas diferentes, duas telas.
+   *
+   * `grade` responde "o que eu guardei" — é a Biblioteca de sempre. `confronto`
+   * responde "de qual site vêm os meus botões", que é a pergunta que decide um
+   * kit e que a grade misturada não sabe responder.
+   */
+  const [modo, setModo] = useState<'grade' | 'confronto'>('grade');
 
   // ── Seleção múltipla + exclusão em lote ────────────────────────────────────
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -198,21 +208,50 @@ export function LibraryPage() {
               {conta(filtered.length, 'peça guardada', 'peças guardadas')}
             </div>
           </div>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="buscar por nome ou tag..."
-            className="ds-data w-[240px] rounded-none border px-3.5 py-2 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)]"
-            style={{
-              borderColor: 'var(--color-border)',
-              backgroundColor: 'rgba(0, 0, 0, 0.35)',
-              color: 'var(--color-fg)',
-            }}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="flex shrink-0 rounded-none border"
+              style={{ borderColor: 'var(--color-border)' }}
+            >
+              {(['grade', 'confronto'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setModo(m)}
+                  aria-pressed={modo === m}
+                  title={
+                    m === 'grade'
+                      ? 'O que eu guardei'
+                      : 'De qual site vem cada peça, com as origens lado a lado'
+                  }
+                  className="px-3 py-2 text-[12px] transition-colors"
+                  style={{
+                    backgroundColor: modo === m ? 'var(--color-ion-8)' : 'transparent',
+                    color: modo === m ? 'var(--color-bone-1)' : 'var(--color-fg-muted)',
+                  }}
+                >
+                  {m === 'grade' ? 'Grade' : 'Confronto'}
+                </button>
+              ))}
+            </div>
+            {modo === 'grade' && (
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="buscar por nome ou tag..."
+                className="ds-data w-full rounded-none border px-3.5 py-2 text-[12px] outline-none transition-all duration-300 focus:border-[var(--color-signal)] focus:shadow-[0_0_20px_rgba(34,211,238,0.25)] sm:w-[240px]"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  backgroundColor: 'rgba(0, 0, 0, 0.35)',
+                  color: 'var(--color-fg)',
+                }}
+              />
+            )}
+          </div>
         </div>
 
-        {filtered.length > 0 && (
+        {modo === 'grade' && filtered.length > 0 && (
           <div
             className="flex items-center gap-2 border-b px-4 sm:px-8 py-2 text-[12px]"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
@@ -239,30 +278,39 @@ export function LibraryPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-5 p-8 md:grid-cols-2 lg:grid-cols-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
-          {filtered.map((c, i) => (
-            <LibraryCard
-              key={c.id}
-              component={c}
-              index={i}
-              onOpen={setDetalhe}
-              selected={sel.has(c.id)}
-              onToggle={() => setSel((s) => toggleSel(s, c.id))}
-            />
-          ))}
-          {filtered.length === 0 && (
-            <div
-              className="col-span-full py-16 text-center text-[13px]"
-              style={{ color: 'var(--color-fg-subtle)' }}
-            >
-              {lib.isPending
-                ? TRABALHANDO.carregandoPecas
-                : (lib.data?.items.length ?? 0) === 0
-                  ? `${VAZIO.biblioteca.titulo} ${VAZIO.biblioteca.corpo}`
-                  : 'Nenhuma peça com esse filtro. Guardei as outras nas demais categorias.'}
-            </div>
-          )}
-        </div>
+        {modo === 'confronto' ? (
+          <Confronto
+            itens={lib.data?.items ?? []}
+            categoria={category}
+            onEscolherCategoria={setCategory}
+            onAbrir={setDetalhe}
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-5 p-8 md:grid-cols-2 lg:grid-cols-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {filtered.map((c, i) => (
+              <LibraryCard
+                key={c.id}
+                component={c}
+                index={i}
+                onOpen={setDetalhe}
+                selected={sel.has(c.id)}
+                onToggle={() => setSel((s) => toggleSel(s, c.id))}
+              />
+            ))}
+            {filtered.length === 0 && (
+              <div
+                className="col-span-full py-16 text-center text-[13px]"
+                style={{ color: 'var(--color-fg-subtle)' }}
+              >
+                {lib.isPending
+                  ? TRABALHANDO.carregandoPecas
+                  : (lib.data?.items.length ?? 0) === 0
+                    ? `${VAZIO.biblioteca.titulo} ${VAZIO.biblioteca.corpo}`
+                    : 'Nenhuma peça com esse filtro. Guardei as outras nas demais categorias.'}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {detalhe && (
@@ -365,6 +413,7 @@ function LibraryCard({
   onToggle: () => void;
 }) {
   const delay = index < 6 ? `ds-d${index + 1}` : '';
+  const nomeDaOrigem = useNomeDaOrigem();
 
   return (
     <div className={`ds-scale-in ${delay}`}>
@@ -409,7 +458,17 @@ function LibraryCard({
             >
               {component.name}
             </div>
-            <div className="mt-0.5 flex items-center gap-1.5 truncate">
+            {/* A procedência. Sem ela a Biblioteca é um monte de peças sem
+                dono, e não dá para decidir "todos os botões vêm daqui". */}
+            <div
+              className="ds-data mt-1 flex items-center gap-1 truncate text-[10px]"
+              style={{ color: 'var(--color-ion-4)' }}
+              title={`Veio da captura ${nomeDaOrigem(component.designSystemId)}`}
+            >
+              <Compass size={9} className="shrink-0" />
+              <span className="truncate">{nomeDaOrigem(component.designSystemId)}</span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
                 {LABEL(component.category)}
               </span>
