@@ -22,6 +22,19 @@ import { config as carregarEnv } from 'dotenv';
  * sempre. Quem abrir o link vê o app inteiro e pede o que quiser; o pedido
  * espera você.
  *
+ * **E não publica a suíte inteira, só o app de design system.** Isto precisa
+ * ficar dito em voz alta, porque a suíte agora tem três frentes e o nome do
+ * comando não diferencia. Um túnel da Cloudflare aponta para UM endereço, e as
+ * três frentes moram em portas diferentes: o portal na 4000, esta tela na 5173
+ * com a API na 8787, e o app de lojas na 3000. O que sai por este link é o que
+ * este servidor serve, e ele serve o design system.
+ *
+ * Para as três saírem por um link só, este servidor precisaria servir o portal
+ * na raiz e encaminhar as outras duas por caminho (`/design-system`, `/lojas`),
+ * o que exige ensinar cada app a viver debaixo de um sub-caminho: hoje os dois
+ * assumem que moram em `/`, e o endereço de cada arquivo deles quebraria. É
+ * trabalho de verdade, e fica anotado como pendência em vez de meio-feito.
+ *
  * O túnel vive enquanto este comando estiver rodando. Fechou a janela, o
  * endereço morre — e isso é uma característica, não um defeito: o que está no ar
  * é o SEU computador, e você decide quando.
@@ -153,6 +166,10 @@ const olhar = (b: Buffer): void => {
   console.log(`
   ┌────────────────────────────────────────────────────────────────
   │  No ar: ${url}
+  │
+  │  Este link abre o app de DESIGN SYSTEM, e só ele. O portal e o
+  │  app de lojas Shopify ficam de fora: um túnel aponta para um
+  │  endereço, e as três frentes moram em portas diferentes.
   │
   │  Mande este endereço para quem vai testar. O Orbis pede a
   │  credencial antes de mostrar qualquer coisa.
