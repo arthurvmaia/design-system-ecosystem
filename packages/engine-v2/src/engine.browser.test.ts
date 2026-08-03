@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { CaptureManifestV2 } from '@ds/shared';
 import { carregarPlaywright } from './browser/page.js';
 import { type ResultadoCaptura, capturarComV2 } from './engine.js';
@@ -19,7 +20,23 @@ import { type ServidorFixture, iniciarServidorFixture } from './testing/fixture-
  * ambiente sem ele não deve reprovar a suíte.
  */
 
-const RAIZ_FIXTURES = join(process.cwd(), 'fixtures');
+/**
+ * As fixtures moram na RAIZ do repositório, e o caminho até elas sai deste
+ * arquivo — nunca de `process.cwd()`.
+ *
+ * Com `cwd`, o teste media de qual pasta alguém digitou o comando. Chamado da
+ * raiz, `fixtures/` existia e tudo passava; chamado de `packages/engine-v2/`
+ * — que é de onde o turbo roda a tarefa do pacote — o caminho apontava para
+ * uma pasta inexistente. O servidor de fixture não reclamava: respondia 404
+ * para tudo, a captura rodava contra uma página vazia e o primeiro teste
+ * passava. Os 28 seguintes, que afirmam sobre o CONTEÚDO capturado, falhavam
+ * em décimos de milissegundo. Parecia defeito do motor V2 e era o diretório
+ * de trabalho.
+ *
+ * É o mesmo padrão dos outros arquivos de navegador (ver
+ * `packages/explorer/src/scroll-capture.browser.test.ts`).
+ */
+const RAIZ_FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '../../..', 'fixtures');
 
 /**
  * Ter o pacote não é ter o navegador, e a diferença reprovava a suíte inteira.

@@ -99,6 +99,17 @@ export type ServidorFixture = {
 
 export const iniciarServidorFixture = async (raiz: string): Promise<ServidorFixture> => {
   const base = resolve(raiz);
+  // Raiz inexistente falha AQUI, alto, e não como 28 asserções de conteúdo.
+  //
+  // Sem esta guarda o servidor subia e respondia 404 para tudo. Quem chamou com
+  // o caminho errado não recebia erro nenhum: a captura rodava contra uma
+  // página vazia, o primeiro teste passava e os seguintes falhavam por conteúdo
+  // ausente — o sintoma apontava para o motor, e a causa era o caminho.
+  if (!existsSync(base)) {
+    throw new Error(
+      `Raiz de fixtures não existe: ${base}. O caminho deve sair de import.meta.url, não de process.cwd().`,
+    );
+  }
   const pedidos = new Map<string, number>();
   /** Conexões penduradas, para fechar todas no `fechar()` e não vazar o processo. */
   const penduradas = new Set<import('node:http').ServerResponse>();

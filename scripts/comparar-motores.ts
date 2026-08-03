@@ -22,7 +22,8 @@
  */
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { capturarComV2, iniciarServidorFixture } from '@ds/engine-v2';
 import { PlaywrightUnavailableError, assessFidelity, explorePage, renderPage } from '@ds/explorer';
 import { parse } from 'node-html-parser';
@@ -517,7 +518,11 @@ const main = async (): Promise<void> => {
   if (args.length > 0) {
     alvos.push(...args);
   } else {
-    servidor = await iniciarServidorFixture(join(process.cwd(), 'fixtures'));
+    // O caminho sai deste arquivo, não do diretório de trabalho: rodar de dentro
+    // de um pacote apontaria para uma pasta de fixtures que não existe.
+    servidor = await iniciarServidorFixture(
+      join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures'),
+    );
     const disponiveis = ['composicao', 'convencional'].filter(
       (n) => filtro === undefined || n === filtro,
     );
