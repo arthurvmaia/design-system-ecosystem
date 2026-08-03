@@ -1,5 +1,10 @@
 # HANDOFF — estado do trabalho
 
+> **Este arquivo é histórico.** Ele registra a reforma de julho de 2026
+> (previews + entidades + fluxo). O estado ATUAL do trabalho — o que está
+> pronto, o que falta e as armadilhas conhecidas — está no `HANDOFF.md` da raiz.
+
+
 > Atualizado em: 2026-07-21. A grande reforma (previews + entidades + fluxo) foi **CONCLUÍDA**
 > nesta sessão. Este arquivo registra o que foi feito, como validar e o que sobra de ressalva.
 
