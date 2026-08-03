@@ -101,29 +101,55 @@ const porta = process.env.PORT ?? '8787';
 
 let tunel: ReturnType<typeof spawn> | null = null;
 
-console.log(`  Subindo o servidor na porta ${porta}…`);
-const servidor = spawn('pnpm', ['--filter', '@ds/server', 'start'], {
-  cwd: raiz,
-  stdio: ['ignore', 'pipe', 'inherit'],
-  shell: ehWindows,
-});
-servidor.stdout?.on('data', (b: Buffer) => process.stdout.write(`  [servidor] ${b}`));
+/**
+ * A suíte já está de pé?
+ *
+ * Este comando nasceu quando o app era um só e ele mesmo subia o servidor. Com
+ * três frentes, o normal é a pessoa já ter clicado no INICIAR: subir um segundo
+ * servidor na mesma porta morre em EADDRINUSE, e as outras duas frentes não
+ * seriam publicadas de jeito nenhum, porque este script nunca soube subi-las.
+ *
+ * Então: se a 8787 já responde, aproveitamos o que está rodando; se não,
+ * subimos o servidor como sempre.
+ */
+const responde = async (p: number, caminho = '/'): Promise<boolean> => {
+  try {
+    const r = await fetch(`http://localhost:${p}${caminho}`);
+    return r.ok || r.status === 401 || r.status === 404;
+  } catch {
+    return false;
+  }
+};
 
-// Se o servidor cair, o túnel tem de cair junto. Sem isto o comando seguia e
-// imprimia um endereço público apontando para o nada — ou, pior, para OUTRO
-// servidor que já estivesse na mesma porta. Um endereço que responde a coisa
-// errada é mais perigoso que um endereço que não responde.
-servidor.on('exit', (codigo) => {
-  if (codigo === 0) return;
-  console.error(`\n  O servidor encerrou com código ${codigo}. Não vou publicar nada.`);
-  console.error('  Se o erro acima for EADDRINUSE, já existe algo na porta');
-  console.error(`  ${porta} (um \`pnpm dev\` aberto noutra janela, provavelmente).\n`);
-  tunel?.kill();
-  process.exit(1);
-});
+let servidor: ReturnType<typeof spawn> | null = null;
+
+const subirServidorSePreciso = async (): Promise<void> => {
+  if (await responde(Number(porta), '/health')) {
+    console.log('  Servidor já estava de pé; vou usar o que está rodando.');
+    return;
+  }
+  console.log(`  Subindo o servidor na porta ${porta}…`);
+  servidor = spawn('pnpm', ['--filter', '@ds/server', 'start'], {
+    cwd: raiz,
+    stdio: ['ignore', 'pipe', 'inherit'],
+    shell: ehWindows,
+  });
+  servidor.stdout?.on('data', (b: Buffer) => process.stdout.write(`  [servidor] ${b}`));
+
+  // Se o servidor cair, os túneis têm de cair junto. Sem isto o comando seguia
+  // e imprimia um endereço público apontando para o nada, ou pior, para OUTRO
+  // servidor que já estivesse na mesma porta. Um endereço que responde a coisa
+  // errada é mais perigoso que um endereço que não responde.
+  servidor.on('exit', (codigo) => {
+    if (codigo === 0) return;
+    console.error(`\n  O servidor encerrou com código ${codigo}. Não vou publicar nada.`);
+    tunel?.kill();
+    process.exit(1);
+  });
+};
 
 const encerrar = (): void => {
-  servidor.kill();
+  servidor?.kill();
   tunel?.kill();
 };
 process.on('SIGINT', () => {
@@ -244,8 +270,28 @@ const mostrarQuadro = (): void => {
 // `main` existe por um motivo chato e concreto: o `tsx` compila este script
 // para CJS, e CJS não aceita `await` no topo do arquivo.
 const main = async (): Promise<void> => {
+  await subirServidorSePreciso();
   await esperarServidor();
-  console.log('  Servidor de pé. Abrindo o túnel…\n');
+
+  /*
+   * As outras duas frentes precisam estar de pé ANTES de abrir os túneis.
+   *
+   * Este script só sabe subir o servidor, e é assim desde quando o app era um
+   * só. Abrir um túnel para uma porta morta produz o pior resultado possível:
+   * um endereço público bonito que devolve erro, e a pessoa que recebeu o link
+   * conclui que o app está quebrado. Melhor recusar e dizer o que fazer.
+   */
+  const faltando: string[] = [];
+  if (!(await responde(PORTA_DA_FRENTE.portal))) faltando.push('portal (4000)');
+  if (!(await responde(PORTA_DA_FRENTE.lojas))) faltando.push('lojas shopify (3000)');
+  if (faltando.length > 0) {
+    console.error(`\n  Não vou publicar: ${faltando.join(' e ')} não está de pé.`);
+    console.error('  Clique no INICIAR primeiro, deixe a suíte subir, e rode isto de novo.\n');
+    encerrar();
+    process.exit(1);
+  }
+
+  console.log('  As três frentes responderam. Abrindo os túneis…\n');
 
   // `--protocol http2` em vez do QUIC padrão.
   //

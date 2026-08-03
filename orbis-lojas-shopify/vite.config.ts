@@ -46,6 +46,9 @@ export default defineConfig(async () => {
 
   return {
     server: {
+    // Mesmo motivo do portal: pelo túnel o Host é um nome sorteado em
+    // trycloudflare.com, e sem isto o Vite responde "Blocked request".
+    allowedHosts: [".trycloudflare.com"],
       watch: {
         ignored: ["**/work/**", "**/outputs/**"],
         ...(isCodexSeatbeltSandbox

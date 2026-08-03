@@ -20,6 +20,12 @@ export default defineConfig({
   },
   server: {
     port: 4000,
+    // O Vite recusa um pedido cujo Host ele não conhece, e essa proteção contra
+    // rebind de DNS é boa. Pelo túnel, porém, o Host é um nome sorteado em
+    // `trycloudflare.com`, e o que a pessoa vê é "Blocked request", que parece
+    // defeito do túnel. Liberamos o domínio do túnel, e só ele: o ponto na
+    // frente casa qualquer subdomínio dele e nada além.
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
       // `/api` inteiro, e não só `/api/orbis`: o portal também desliga a suíte,
       // e essa rota fica atrás do portão de propósito.
