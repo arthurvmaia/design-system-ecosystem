@@ -1,6 +1,6 @@
 # HANDOFF — onde o trabalho está
 
-*Atualizado em 2026-08-02. Main em `1cfa5ea`, CI verde, 1.086 testes passando.*
+*Atualizado em 2026-08-03. Main em `544b472`+, CI verde, 1.144 testes passando.*
 
 Este arquivo é para quem senta amanhã: o que está pronto, o que ficou pelo
 caminho e **por que** cada coisa que falta foi deixada para depois. O registro
@@ -24,7 +24,35 @@ outra para as ações que gastam (Extrair e Gerar site).
 
 ---
 
-## 2. O que esta sessão entregou
+## 1.1 Onde mora o roteiro (leia antes de procurar)
+
+O `DIAGNOSTICO.md` **não está no git, e isso é a decisão, não descuido.** Ele é a
+única fonte que descreve as fatias pendentes, mas são 123 KB de diagnóstico de
+produto, estratégia e conversa sobre sócios — e este repositório é **público**.
+
+Ele mora em duas cópias: uma na raiz do projeto, para trabalhar, e outra em
+`..\_privado\`, que é o que o protege de sumir. As duas linhas no `.gitignore`
+impedem que um `git add .` distraído o publique. O mesmo vale para `_auditoria/`.
+
+Se você clonou este repositório e não achou o `DIAGNOSTICO.md`, é isso: peça a
+cópia a quem tem, não procure no histórico.
+
+## 2. O que a sessão de 2026-08-03 entregou
+
+Faxina e quatro frentes fechadas. A faxina tirou 28 símbolos sem consumidor
+(quase todos resíduo da migração 0006, que apagou `project_components` e deixou
+os schemas para trás), três módulos órfãos da web e 13 MB de artefato
+regenerável, e corrigiu três documentos que descreviam um sistema que não existe
+mais — o `ARCHITECTURE.md` ainda chamava o `@ds/generator` de "agente LLM que
+compõe site".
+
+As quatro frentes: **4.1 e 4.4** (a marca rege tamanho e respiro), **4.3** (o
+teste do motor media o diretório de trabalho), **fatia 5** (a etapa Marca parou
+de dizer "herdado do kit" para o que não se herda — e nada é herdado do kit
+hoje, `buildBrandingCss` recebe só o branding) e **fatia 11** (o acervo passou a
+governar o ritmo do app, não só a curva).
+
+## 2.1 O que a sessão anterior entregou
 
 Doze commits, de `66706c8` a `1cfa5ea`. Em ordem de importância, não de data.
 
@@ -85,21 +113,25 @@ metade. O que segue abaixo é escolha do dono, não pendência de execução.
 
 ## 4. O que falta, em ordem de retorno
 
-### 4.1 A marca governar TAMANHO, não só família
+### 4.1 e 4.4 — FEITAS em 2026-08-03
 
-**O passo natural depois da fatia 6, e o mais valioso.**
+A marca rege TAMANHO e RESPIRO, não só a família da fonte. O decidido: a escala
+é **da marca por padrão** (`ProjectBranding.escalaDoSite`), porque a família da
+fonte já se comportava assim e tamanho seguir outra regra seria surpresa sem
+motivo. `de-cada-origem` desliga.
 
-Hoje `retipografar.ts` reescreve apenas `font-family` — a fonte da marca vale
-dentro das peças, o tamanho não. A rampa que a fatia 6 passou a medir é
-exatamente o insumo que faltava: com `designTokens` no manifesto e
-`OrigemConsolidada.escala` no kit, dá para emitir `--marca-passo-N` e reescrever
-`font-size: var(--marca-passo-5, 3rem)` no ponto de uso, com o literal original
-como reserva.
+A âncora é o **corpo**: o degrau onde está a maior parte do texto de uma origem
+cai no degrau de corpo da referência, e a hierarquia em volta vem por
+deslocamento. Réguas de comprimentos diferentes alinhadas por posição relativa
+deslocariam justamente o texto de leitura.
 
-O que decidir antes de codar: **de quem é a escala do site gerado.** Se for a da
-marca, duas origens misturadas passam a alinhar. Se for a de cada origem, cada
-peça mantém a proporção que tinha. A segunda é mais fiel e a primeira é mais
-coesa, e o app não tem hoje onde a pessoa dizer qual quer.
+Ligar o padrão não mexe em projeto que já existe: sem régua medida, a reescrita
+não acontece e o literal continua valendo. O que a régua não alcança (`em`, `%`,
+`calc`, `clamp`) sai declarado em `reescala.mantidas`, não escondido.
+
+Fica em aberto um terceiro eixo: `EscalaDaOrigem.raios` é medido e ninguém
+consome. A decisão de desenho não foi tomada — raio escala junto com o tamanho,
+ou é constante da marca?
 
 ### 4.2 A captura é PARCIAL nas duas origens
 
@@ -117,18 +149,25 @@ $env:DS_EXPLORER_ORCAMENTO_TOTAL_MS = "900000"; pnpm extrair <job_id>
 Não vale subir por padrão: a maioria dos sites termina bem dentro dos 180 s e o
 custo cairia sobre todos.
 
-### 4.3 `engine.browser.test.ts` reprova 28 de 37 nesta máquina
+### 4.3 — FEITA em 2026-08-03
 
-**Anterior a esta sessão** — confirmado com `git stash`. O primeiro teste passa
-(a captura roda e o manifesto valida em 17 s) e os 28 seguintes falham em 0,1 ms
-cada, o que tem cara de estado compartilhado vazio e não de 28 defeitos. O job
-de navegador não bloqueia o CI. Ninguém investigou.
+Não era defeito do motor. `engine.browser.test.ts` era o único dos 11 arquivos
+de navegador que montava a raiz das fixtures com `process.cwd()`, e o pacote
+declara um `test:navegador` próprio que roda com o cwd dentro dele, onde não
+existe `fixtures/`. O servidor de fixture subia calado e respondia 404 para
+tudo: a captura rodava contra página vazia, o manifesto saía **válido e vazio**,
+e só as asserções de conteúdo quebravam.
 
-### 4.4 Escala de espaçamento entre origens
+Agora o caminho sai de `import.meta.url` e `iniciarServidorFixture` lança quando
+a raiz não existe. **37 de 37 passam.** O job de navegador do CI está em
+condição de deixar de ser `continue-on-error` — essa mudança no `ci.yml` não foi
+feita e é a próxima da frente.
 
-Duas origens com respiros diferentes continuam desalinhadas acima do breakpoint
-móvel. O plano já declarava isto como não resolvido e dependente da fatia 6 —
-que agora existe. É o mesmo problema do 4.1, no eixo do espaço.
+### 4.4 — FEITA junto com a 4.1
+
+Ver acima. Mesma mecânica, régua própria (`EscalaDaOrigem.espacos`) e sem
+âncora: respiro não tem "corpo", e nomear um degrau de espaço como o principal
+exigiria saber a intenção de quem desenhou.
 
 ### 4.5 Herdado do diagnóstico anterior, ainda de pé
 
