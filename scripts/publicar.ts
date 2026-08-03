@@ -173,23 +173,44 @@ const esperarServidor = async (): Promise<void> => {
   erro('O servidor não respondeu em 30 segundos. Veja o log acima.');
 };
 
+/** As três frentes que saem por túnel. Criativos ainda não existe. */
+type Frente = 'portal' | 'designSystem' | 'lojas';
+
+const NOME_DA_FRENTE: Record<Frente, string> = {
+  portal: 'portal',
+  designSystem: 'design system',
+  lojas: 'lojas shopify',
+};
+
+/**
+ * Qual porta local cada frente atende.
+ *
+ * O design system sai pela 8787, e não pela 5173: em produção o próprio
+ * servidor entrega o app compilado na mesma porta da API, uma origem só, sem
+ * CORS para acertar e com o cookie da sessão no modo restrito.
+ */
+const PORTA_DA_FRENTE: Record<Frente, number> = { portal: 4000, designSystem: 8787, lojas: 3000 };
+
 /** O cloudflared imprime o endereço no meio de um bloco decorado. Extrai. */
 const ENDERECO = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
-const jaMostrou = false;
-const olhar = (b: Buffer): void => {
-  const texto = b.toString();
+const olhar =
+  (qual: Frente) =>
+  (b: Buffer): void => {
+    const texto = b.toString();
 
-  // Os erros do cloudflared PASSAM. A versão anterior engolia tudo que não
-  // fosse o endereço, e quando o túnel falhava a janela ficava com um endereço
-  // bonito e nenhuma pista — o log estava lá e ninguém via.
-  for (const linha of texto.split('\n')) {
-    if (/\bERR\b|\bWRN\b/.test(linha)) console.error(`  [${NOME_DA_FRENTE[qual]}] ${linha.trim()}`);
-  }
+    // Os erros do cloudflared PASSAM. A versão anterior engolia tudo que não
+    // fosse o endereço, e quando o túnel falhava a janela ficava com um
+    // endereço bonito e nenhuma pista: o log estava lá e ninguém via.
+    for (const linha of texto.split('\n')) {
+      if (/\bERR\b|\bWRN\b/.test(linha)) {
+        console.error(`  [${NOME_DA_FRENTE[qual]}] ${linha.trim()}`);
+      }
+    }
 
-  const achado = texto.match(ENDERECO);
-  if (achado === null) return;
-  registrarEndereco(qual, achado[0]);
-};
+    const achado = texto.match(ENDERECO);
+    if (achado === null) return;
+    registrarEndereco(qual, achado[0]);
+  };
 
 /**
  * Um túnel por frente, e o portal costurando as três.
