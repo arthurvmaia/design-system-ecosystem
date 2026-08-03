@@ -38,6 +38,38 @@ impedem que um `git add .` distraído o publique. O mesmo vale para `_auditoria/
 Se você clonou este repositório e não achou o `DIAGNOSTICO.md`, é isso: peça a
 cópia a quem tem, não procure no histórico.
 
+## 1.2 A suíte: três portas, dois apps independentes
+
+Este repositório deixou de ser um app só. O `INICIAR.bat` agora abre um
+**portal** — a credencial de sempre e três cartões:
+
+| Porta | O que é | Onde vive | Porta TCP |
+|---|---|---|---|
+| Orbis · Criação de Design System | o app deste repositório, intocado | `apps/web` + `apps/server` | 5173 + 8787 |
+| Orbis · Criação de Lojas Shopify | estúdio de temas Shopify (era "Tempera") | `orbis-lojas-shopify/` | 3000 |
+| Orbis · Criativos | ainda não existe; o cartão abre um modal | — | — |
+| *o portal* | as três portas e o portão | `apps/portal` | 4000 |
+
+**Os dois apps são independentes de verdade.** O de lojas usa npm, vinext
+(Next-on-Vite), Cloudflare Workers com D1 e R2 — nada disso combina com o pnpm +
+Turborepo daqui. Por isso ele fica **fora** dos globs do workspace (`apps/*`,
+`packages/*`) e **fora** do Biome (`files.ignore` no `biome.json`): sem essa
+exclusão o `pnpm lint`, que bloqueia o CI, tentaria formatar um projeto que usa
+ESLint e outro estilo. Ele tem o próprio lockfile, os próprios testes
+(`node --test tests/*.test.mjs`) e o próprio `iniciar.bat` para subir sozinho.
+
+**A senha é uma só, e continua morando no servidor.** O portal desenha o campo e
+pergunta ao `/api/orbis/entrar` pelo proxy do Vite; a credencial nunca chega ao
+navegador. Como cookie ignora porta, entrar no portal já vale para o app de
+design system — a pessoa digita uma vez. O caminho de volta é que cobra pedágio:
+o `PortaoOrbis` encerra a sessão quando a aba sai de vista, então voltar do
+design system para o portal pede a credencial de novo. Isso foi **mantido de
+propósito**; afrouxar protegeria menos o link público do túnel.
+
+**O app de lojas não tem portão nenhum.** Localmente tudo bem. Se um dia a suíte
+for publicada pelo túnel, a porta 3000 estaria aberta — está registrado aqui
+para não ser descoberto no pior momento.
+
 ## 2. O que a sessão de 2026-08-03 entregou
 
 Faxina e quatro frentes fechadas. A faxina tirou 28 símbolos sem consumidor

@@ -26,7 +26,7 @@ Clear-Host
 Write-Host ''
 Write-Host '  ===========================================' -ForegroundColor Cyan
 Write-Host '     O R B I S' -ForegroundColor Cyan
-Write-Host '     design system ecosystem' -ForegroundColor DarkGray
+Write-Host '     design system  .  lojas shopify  .  criativos' -ForegroundColor DarkGray
 Write-Host '  ===========================================' -ForegroundColor Cyan
 
 # --- 1. Node.js -------------------------------------------------------------
@@ -293,29 +293,47 @@ function Abrir-App {
     }
 }
 
-# --- 6. As portas estao livres? ---------------------------------------------
+# --- 6. As dependencias do app de lojas Shopify -----------------------------
 #
-# O app sao DOIS processos: a tela na 5173 e o servidor na 8787. Este bloco so
-# olhava a 5173, e o resultado era ruim de um jeito especifico: com a 5173 livre
-# e a 8787 ocupada, o INICIAR seguia normalmente, a tela subia e o servidor
-# morria cuspindo um stack trace de Node no meio da janela
-# (`EADDRINUSE: address already in use :::8787`). Quem le aquilo nao tem como
-# saber que o problema e "ja tem um servidor rodando".
+# Ele nao esta no workspace do pnpm de proposito: usa npm, lockfile proprio e
+# uma pilha inteiramente diferente (vinext + Cloudflare Workers). E o preco da
+# independencia que os dois apps tem entre si, e o preco e este bloco.
+$lojas = Join-Path $raiz 'orbis-lojas-shopify'
+if (Test-Path -LiteralPath $lojas) {
+    if (-not (Test-Path -LiteralPath (Join-Path $lojas 'node_modules\vinext'))) {
+        Passo 'Preparando o app de lojas Shopify (primeira vez, 1-2 min)'
+        Push-Location $lojas
+        npm install --no-audit --no-fund
+        $falhou = $LASTEXITCODE -ne 0
+        Pop-Location
+        if ($falhou) { Parar 'Falha ao instalar as dependencias do app de lojas. Me mande print do erro acima.' }
+    }
+    Ok 'App de lojas Shopify pronto'
+}
+
+# --- 7. As portas estao livres? ---------------------------------------------
 #
-# Aconteceu de verdade, e por isso as duas portas passaram a ser conferidas
-# antes de qualquer coisa subir.
+# A suite sao QUATRO processos: o portal na 4000, a tela do design system na
+# 5173, o servidor na 8787 e o app de lojas na 3000. Conferir todas antes de
+# subir qualquer coisa evita o pior sintoma possivel: metade da suite no ar e a
+# outra metade morrendo com `EADDRINUSE` no meio da janela, sem que a pessoa
+# tenha como saber que o problema e "ja tem um pedaco rodando".
 function PortaOcupada($porta) {
     $null -ne (Get-NetTCPConnection -LocalPort $porta -State Listen -ErrorAction SilentlyContinue)
 }
+function DonoDaPorta($porta) {
+    (Get-NetTCPConnection -LocalPort $porta -State Listen -ErrorAction SilentlyContinue |
+     Select-Object -First 1).OwningProcess
+}
 
-$tela = PortaOcupada 5173
-$servidor = PortaOcupada 8787
+$portas = @{ 4000 = 'o portal'; 5173 = 'a tela do design system'; 8787 = 'o servidor'; 3000 = 'o app de lojas' }
+$ocupadas = @($portas.Keys | Where-Object { PortaOcupada $_ })
 
-if ($tela -and $servidor) {
-    # O app inteiro ja esta no ar: e so trazer a janela.
+if ($ocupadas.Count -eq $portas.Count) {
+    # A suite inteira ja esta no ar: e so trazer a janela.
     Write-Host ''
-    Write-Host '  O app ja esta rodando em outra janela.' -ForegroundColor Yellow
-    Abrir-App 'http://localhost:5173'
+    Write-Host '  A suite ja esta rodando em outra janela.' -ForegroundColor Yellow
+    Abrir-App 'http://localhost:4000'
     Write-Host '  Abri no navegador. Pode fechar esta janela.' -ForegroundColor Gray
     Write-Host ''
     Write-Host '  Pressione ENTER para fechar.' -ForegroundColor DarkGray
@@ -323,72 +341,97 @@ if ($tela -and $servidor) {
     exit 0
 }
 
-if ($tela -or $servidor) {
+if ($ocupadas.Count -gt 0) {
     # Meio no ar: subir por cima faria a metade que falta morrer com stack trace.
-    $qual = if ($servidor) { '8787 (o servidor)' } else { '5173 (a tela)' }
-    $pid8787 = (Get-NetTCPConnection -LocalPort 8787 -State Listen -ErrorAction SilentlyContinue |
-                Select-Object -First 1).OwningProcess
-    $pid5173 = (Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue |
-                Select-Object -First 1).OwningProcess
-    $processo = if ($servidor) { $pid8787 } else { $pid5173 }
-
     Write-Host ''
-    Erro "Sobrou um pedaco do app rodando na porta $qual."
+    Erro "Sobrou um pedaco da suite rodando."
+    foreach ($porta in $ocupadas) {
+        Write-Host "     porta $porta - $($portas[$porta])" -ForegroundColor Gray
+    }
     Write-Host ''
     Write-Host '  Isso acontece quando a janela anterior foi fechada pela metade,' -ForegroundColor Gray
-    Write-Host '  ou quando alguem subiu o app pelo terminal e esqueceu.' -ForegroundColor Gray
+    Write-Host '  ou quando alguem subiu um dos apps pelo terminal e esqueceu.' -ForegroundColor Gray
     Write-Host ''
-    Write-Host '  Posso encerrar esse processo e continuar.' -ForegroundColor White
+    Write-Host '  Posso encerrar esses processos e continuar.' -ForegroundColor White
     $resposta = Read-Host '  Encerrar e continuar? (S/n)'
     if ($resposta -eq '' -or $resposta -match '^[sSyY]') {
-        foreach ($alvo in @($pid8787, $pid5173)) {
+        foreach ($porta in $ocupadas) {
+            $alvo = DonoDaPorta $porta
             if ($alvo) { Stop-Process -Id $alvo -Force -ErrorAction SilentlyContinue }
         }
         Start-Sleep -Seconds 2
-        if ((PortaOcupada 5173) -or (PortaOcupada 8787)) {
-            Parar 'Nao consegui liberar a porta. Reinicie o computador ou feche o terminal que esta rodando o app.'
+        $teimosas = @($portas.Keys | Where-Object { PortaOcupada $_ })
+        if ($teimosas.Count -gt 0) {
+            Parar "Nao consegui liberar a porta $($teimosas -join ', '). Reinicie o computador ou feche o terminal que esta rodando o app."
         }
-        Ok 'Porta liberada'
+        Ok 'Portas liberadas'
     } else {
         Parar 'Feche a janela que esta usando a porta e clique no INICIAR de novo.'
     }
 }
 
-# --- 7. Abre o navegador assim que o app subir ------------------------------
+# --- 8. Abre o navegador assim que o portal subir ---------------------------
 # A funcao viaja como texto de propriedade: Start-Job roda noutro processo e
 # NAO herda funcoes da sessao. Sem isto, o job falharia calado e o navegador
 # nunca abriria sozinho.
+#
+# Quem manda abrir e a porta 4000, e nao a 5173: o vestibulo e a primeira tela
+# da suite, e e dele que saem as tres portas.
 $abrir = ${function:Abrir-App}.ToString()
 Start-Job -ArgumentList $abrir -ScriptBlock {
     param($corpoDaFuncao)
     Set-Item -Path function:Abrir-App -Value $corpoDaFuncao
     for ($i = 0; $i -lt 90; $i++) {
         Start-Sleep -Seconds 1
-        $pronto = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
+        $pronto = Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue
         if ($pronto) {
             Start-Sleep -Seconds 2
-            Abrir-App 'http://localhost:5173'
+            Abrir-App 'http://localhost:4000'
             return
         }
     }
 } | Out-Null
 
-# --- 8. Sobe o app ----------------------------------------------------------
-Titulo 'Iniciando o app'
-Write-Host '  O navegador abre sozinho em alguns segundos.' -ForegroundColor Gray
-Write-Host '  Endereco: http://localhost:5173' -ForegroundColor White
+# --- 9. Sobe a suite --------------------------------------------------------
+#
+# O app de lojas sobe em processo proprio porque a pilha dele e outra (npm,
+# vinext, workerd) e ele nao pertence ao workspace do pnpm. O `finally` derruba
+# esse processo junto: sem isso, fechar esta janela deixaria a porta 3000
+# ocupada por um orfao, e o proximo INICIAR reclamaria de uma sobra que a pessoa
+# nao consegue ver.
+Titulo 'Iniciando a suite'
+Write-Host '  O navegador abre sozinho em alguns segundos, no portal.' -ForegroundColor Gray
+Write-Host '  Endereco: http://localhost:4000' -ForegroundColor White
 Write-Host ''
-Write-Host '  NAO FECHE ESTA JANELA enquanto estiver usando o app.' -ForegroundColor Yellow
+Write-Host '     portal ............. 4000' -ForegroundColor DarkGray
+Write-Host '     design system ...... 5173' -ForegroundColor DarkGray
+Write-Host '     servidor ........... 8787' -ForegroundColor DarkGray
+Write-Host '     lojas shopify ...... 3000' -ForegroundColor DarkGray
+Write-Host ''
+Write-Host '  NAO FECHE ESTA JANELA enquanto estiver usando a suite.' -ForegroundColor Yellow
 Write-Host '  Para parar: aperte Ctrl+C ou feche a janela.' -ForegroundColor Gray
 Write-Host ''
 Write-Host '  -------------------------------------------' -ForegroundColor DarkGray
 
+$processoDasLojas = $null
 try {
+    if (Test-Path -LiteralPath $lojas) {
+        $processoDasLojas = Start-Process -FilePath 'cmd.exe' `
+            -ArgumentList '/c', 'npm run dev' -WorkingDirectory $lojas `
+            -WindowStyle Minimized -PassThru
+    }
     pnpm dev
 } finally {
     Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+    if ($null -ne $processoDasLojas) {
+        # `taskkill /T` porque o `npm run dev` e um cmd que gera netos (node,
+        # workerd): matar so o pai deixaria a porta 3000 presa.
+        cmd /c "taskkill /PID $($processoDasLojas.Id) /T /F" 2>&1 | Out-Null
+    }
+    $sobrou = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
+    if ($sobrou) { Stop-Process -Id $sobrou.OwningProcess -Force -ErrorAction SilentlyContinue }
     Write-Host ''
-    Write-Host '  App encerrado.' -ForegroundColor Gray
+    Write-Host '  Suite encerrada.' -ForegroundColor Gray
     Write-Host '  Pressione ENTER para fechar.' -ForegroundColor DarkGray
     Read-Host | Out-Null
 }
