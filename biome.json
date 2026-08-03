@@ -7,7 +7,16 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["dist", "node_modules", ".turbo", "*.md", "migrations", "*.d.ts", "*.tsbuildinfo"]
+    "ignore": [
+      "dist",
+      "node_modules",
+      ".turbo",
+      "*.md",
+      "migrations",
+      "*.d.ts",
+      "*.tsbuildinfo",
+      "orbis-lojas-shopify"
+    ]
   },
   "formatter": {
     "enabled": true,

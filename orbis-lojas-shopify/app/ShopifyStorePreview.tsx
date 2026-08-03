@@ -1,0 +1,305 @@
+"use client";
+/* eslint-disable @next/next/no-img-element -- as imagens do tema importado são servidas por uma rota local autenticada */
+
+import { ArrowRight, Check, Plus, Search, ShieldCheck, ShoppingBag, X, Zap } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
+import type { ShopifyPage, ShopifySectionInstance, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
+
+/**
+ * Prévia ao vivo: renderiza o Liquid REAL do tema no servidor (igual à Shopify)
+ * e exibe o HTML em um iframe. Cai para a simulação (children) se o render falhar.
+ */
+export function ShopifyLiveRender({ shopify, pageId, onSelectSection, fallback }: { shopify: ShopifyThemeImport; pageId: string; onSelectSection?: (id: string) => void; fallback: ReactNode }) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [status, setStatus] = useState<"loading" | "live" | "fallback">("loading");
+  const requestRef = useRef(0);
+  const canRender = Boolean(shopify.compatibility?.preservedSource);
+
+  useEffect(() => {
+    if (!canRender) return;
+    const requestId = ++requestRef.current;
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/theme-render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ shopify, page: pageId }),
+        });
+        if (requestId !== requestRef.current) return;
+        if (!response.ok) { setStatus("fallback"); return; }
+        setHtml(await response.text());
+        setStatus("live");
+      } catch {
+        if (requestId === requestRef.current) setStatus("fallback");
+      }
+    }, 450);
+    return () => window.clearTimeout(timeout);
+  }, [shopify, pageId, canRender]);
+
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      const sectionId = (event.data as { orbisSection?: string } | null)?.orbisSection;
+      if (sectionId) onSelectSection?.(sectionId);
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [onSelectSection]);
+
+  if (!canRender || status === "fallback") return <>{fallback}</>;
+  return (
+    <div className="live-render-wrap">
+      {status === "loading" && !html && <div className="live-render-loading"><span>ORBIS · RENDERIZANDO O TEMA REAL…</span></div>}
+      {html && <iframe className="live-render-frame" title="Prévia real do tema" sandbox="allow-scripts allow-same-origin allow-forms" srcDoc={html} />}
+      {html && <span className="live-render-badge">RENDER REAL · LIQUID</span>}
+    </div>
+  );
+}
+
+type Device = "desktop" | "tablet" | "mobile";
+type DemoProduct = { id: string; name: string; category: string; price: number; compareAt?: number; rating: number; tone: string; description: string };
+type Runtime = {
+  products: DemoProduct[];
+  product: DemoProduct;
+  productQuantity: number;
+  cart: Record<string, number>;
+  searchQuery: string;
+  newsletterSent: boolean;
+  addToCart: (id: string, quantity?: number) => void;
+  changeCart: (id: string, delta: number) => void;
+  openProduct: (id: string) => void;
+  goTo: (base: string) => void;
+  openCart: () => void;
+  setSearchQuery: (value: string) => void;
+  setProductQuantity: (value: number) => void;
+  sendNewsletter: () => void;
+  checkout: () => void;
+};
+
+const PRODUCTS: DemoProduct[] = [
+  { id: "ritual", name: "Daily Ritual", category: "Essenciais", price: 129.9, compareAt: 159.9, rating: 4.9, tone: "#a7d8cf", description: "Fórmula completa para transformar sua rotina todos os dias." },
+  { id: "balance", name: "Balance", category: "Bem-estar", price: 149.9, rating: 4.8, tone: "#cbb7e8", description: "Equilíbrio, leveza e cuidado em uma experiência simples." },
+  { id: "pure", name: "Pure Form", category: "Favoritos", price: 179.9, compareAt: 199.9, rating: 4.9, tone: "#f2bf8f", description: "O favorito da comunidade, criado para resultados consistentes." },
+  { id: "focus", name: "Focus+", category: "Performance", price: 119.9, rating: 4.7, tone: "#9fc2e9", description: "Mais clareza e foco para acompanhar o ritmo da sua semana." },
+  { id: "restore", name: "Restore", category: "Recuperação", price: 139.9, rating: 4.8, tone: "#d2d9a0", description: "Uma pausa completa para recuperar corpo e mente." },
+  { id: "starter", name: "Starter Kit", category: "Kits", price: 239.9, compareAt: 289.9, rating: 5, tone: "#e8b5bb", description: "Três essenciais reunidos em um kit com melhor custo-benefício." },
+];
+
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+export function ShopifyStorePreview({ theme, page, device, selectedSectionId, onSelectSection, onNavigatePage }: { theme: ShopifyThemeImport; page: ShopifyPage; device: Device; selectedSectionId: string; onSelectSection: (id: string, ownerPageId?: string) => void; onNavigatePage?: (id: string) => void }) {
+  const palette = themePalette(theme.globalValues);
+  const background = palette.background;
+  const textColor = palette.text;
+  const accent = palette.accent;
+  const radius = typeof theme.globalValues.buttons_radius === "number" ? theme.globalValues.buttons_radius : 6;
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeProductId, setActiveProductId] = useState(PRODUCTS[0].id);
+  const [productQuantity, setProductQuantity] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [newsletterSent, setNewsletterSent] = useState(false);
+  const [checkoutMessage, setCheckoutMessage] = useState("");
+  const product = PRODUCTS.find((item) => item.id === activeProductId) ?? PRODUCTS[0];
+  const cartCount = Object.values(cart).reduce((total, quantity) => total + quantity, 0);
+  const cartTotal = PRODUCTS.reduce((total, item) => total + item.price * (cart[item.id] ?? 0), 0);
+  const style = { "--shopify-bg": background, "--shopify-text": textColor, "--shopify-accent": accent, "--store-radius": `${radius}px` } as CSSProperties;
+
+  function goTo(base: string) { const target = findPage(theme, base); if (target) onNavigatePage?.(target.id); }
+  function addToCart(id: string, quantity = 1) { setCart((current) => ({ ...current, [id]: (current[id] ?? 0) + Math.max(1, quantity) })); setDrawerOpen(true); }
+  function changeCart(id: string, delta: number) { setCart((current) => { const next = { ...current }; const quantity = (next[id] ?? 0) + delta; if (quantity <= 0) delete next[id]; else next[id] = quantity; return next; }); }
+  function openProduct(id: string) { setActiveProductId(id); setProductQuantity(1); goTo("product"); }
+  function checkout() { setCheckoutMessage("Checkout de demonstração aberto com sucesso."); setDrawerOpen(false); }
+
+  const runtime: Runtime = {
+    products: PRODUCTS, product, productQuantity, cart, searchQuery, newsletterSent, addToCart, changeCart, openProduct, goTo,
+    openCart: () => setDrawerOpen(true), setSearchQuery, setProductQuantity: (value) => setProductQuantity(Math.max(1, Math.min(10, value))),
+    sendNewsletter: () => setNewsletterSent(true), checkout,
+  };
+  const headerPage = theme.pages.find((item) => item.id === "header-group");
+  const footerPage = theme.pages.find((item) => item.id === "footer-group");
+  const isGroup = page.id.startsWith("header-group") || page.id.startsWith("footer-group");
+  const renderSections = (owner: ShopifyPage) => owner.sections.filter((section) => !section.disabled).map((section) => (
+    <SectionPreview key={`${owner.id}-${section.id}`} theme={theme} pageId={owner.id} section={section} accent={accent} background={background} textColor={textColor} selected={selectedSectionId === section.id} onSelect={() => onSelectSection(section.id, owner.id)} runtime={runtime} />
+  ));
+  const previewPages = ["index", "collection", "product", "search", "cart", "blog"].map((base) => findPage(theme, base)).filter((item): item is ShopifyPage => Boolean(item));
+
+  return <div className={`storefront storefront-${device} shopify-storefront shopify-live-store`} style={style}>
+    <div className="shopify-preview-label"><span><i /> LOJA CARREGADA</span><div>{previewPages.map((item) => <button key={item.id} className={item.id === page.id ? "active" : ""} onClick={() => onNavigatePage?.(item.id)}>{item.name}</button>)}</div><b>{page.name}</b></div>
+    {!isGroup && headerPage && renderSections(headerPage)}
+    {renderSections(page)}
+    {!isGroup && footerPage && renderSections(footerPage)}
+    <CartDrawer open={drawerOpen} cart={cart} total={cartTotal} accent={accent} onClose={() => setDrawerOpen(false)} onChange={changeCart} onViewCart={() => { setDrawerOpen(false); goTo("cart"); }} onCheckout={checkout} />
+    {checkoutMessage && <div className="shopify-store-toast"><Check size={14} /> {checkoutMessage}<button onClick={() => setCheckoutMessage("")} aria-label="Fechar aviso"><X size={12} /></button></div>}
+    <button className="shopify-floating-cart" onClick={() => setDrawerOpen(true)} aria-label={`Abrir carrinho com ${cartCount} itens`}><ShoppingBag size={15} /><span>{cartCount}</span></button>
+  </div>;
+}
+
+function SectionPreview({ theme, pageId, section: source, accent: themeAccent, background: themeBackground, textColor: themeTextColor, selected, onSelect, runtime }: { theme: ShopifyThemeImport; pageId: string; section: ShopifySectionInstance; accent: string; background: string; textColor: string; selected: boolean; onSelect: () => void; runtime: Runtime }) {
+  const section = resolveSection(theme, source);
+  const sectionPalette = paletteFromSettings(section.settings, { accent: themeAccent, background: themeBackground, text: themeTextColor });
+  const accent = sectionPalette.accent;
+  const background = sectionPalette.background;
+  const textColor = sectionPalette.text;
+  const type = section.type.toLowerCase().replace(/_/g, "-");
+  const media = sectionImages(theme, section);
+  const strings = sectionStrings(section);
+  const heading = findSectionText(section, ["heading", "title", "label", "headline"]) ?? strings[0] ?? fallbackHeading(type, section.name);
+  const body = findSectionText(section, ["text", "description", "subheading", "subtext", "caption"]) ?? strings.find((value) => value !== heading) ?? fallbackBody(type);
+  const buttonLabel = findSectionText(section, ["button_label", "atc_button_label"]) ?? "Saiba mais";
+  const className = `shopify-extracted-section ${selected ? "preview-section-selected" : ""}`;
+  const stop = (event: SyntheticEvent) => event.stopPropagation();
+
+  if (type.includes("announcement") || type.includes("ticker")) {
+    const items = section.blocks.map((block) => findText(block.settings, ["text", "title", "heading"]) ?? "").filter(Boolean);
+    return <section className={`${className} extracted-announcement`} style={{ background: accent, color: "#fff" }} onClick={onSelect}><small>{items.join("   •   ") || heading}</small></section>;
+  }
+  if (type === "header" || type.startsWith("header-") || type.endsWith("-header")) { const brandName = theme.themeName.replace(/\s*\(.*\)$/, ""); const logoUrl = sectionImageByKey(theme, section, /logo/i) ?? themeLogo(theme); return <section className={`${className} extracted-header shopify-live-header`} style={{ background, color: textColor }} onClick={onSelect}><button className="shopify-live-brand" onClick={(event) => { stop(event); runtime.goTo("index"); }}>{logoUrl ? <img className="shopify-logo-img" src={logoUrl} alt={brandName} /> : brandName}</button><nav><button onClick={(event) => { stop(event); runtime.goTo("index"); }}>Início</button><button onClick={(event) => { stop(event); runtime.goTo("collection"); }}>Produtos</button><button onClick={(event) => { stop(event); runtime.goTo("blog"); }}>Conteúdo</button></nav><div><button aria-label="Pesquisar" onClick={(event) => { stop(event); runtime.goTo("search"); }}><Search size={15} /></button><button aria-label="Abrir carrinho" onClick={(event) => { stop(event); runtime.openCart(); }}><ShoppingBag size={15} /><span>{Object.values(runtime.cart).reduce((total, quantity) => total + quantity, 0)}</span></button></div></section>; }
+  if (type === "footer" || type.startsWith("footer-") || type.endsWith("-footer")) return <section className={`${className} extracted-footer`} style={{ background: textColor, color: background }} onClick={onSelect}><div><strong>{theme.themeName}</strong><p>Produtos essenciais, selecionados com cuidado e enviados para todo o Brasil.</p></div><div><b>Loja</b><button onClick={(event) => { stop(event); runtime.goTo("collection"); }}>Todos os produtos</button><button onClick={(event) => { stop(event); runtime.goTo("product"); }}>Mais vendidos</button><button onClick={(event) => { stop(event); runtime.goTo("cart"); }}>Meu carrinho</button></div><div><b>Ajuda</b><span>Envios e entregas</span><span>Trocas e devoluções</span><span>Contato</span></div></section>;
+  if (type === "main-cart-items") return <section className={`${className} shopify-cart-page`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow="CARRINHO" title="Seu carrinho" /><CartItems cart={runtime.cart} onChange={runtime.changeCart} emptyAction={() => runtime.goTo("collection")} /></section>;
+  if (type === "main-cart-footer") { const total = runtime.products.reduce((sum, item) => sum + item.price * (runtime.cart[item.id] ?? 0), 0); return <section className={`${className} shopify-cart-summary`} style={{ background, color: textColor }} onClick={onSelect}><div><span>Subtotal</span><strong>{BRL.format(total)}</strong></div><p>Frete e descontos calculados no checkout.</p><button style={{ background: accent }} disabled={!total} onClick={(event) => { stop(event); runtime.checkout(); }}>Finalizar compra com segurança</button></section>; }
+  if (type === "main-product" || type === "featured-product") return <section className={`${className} shopify-product-page`} style={{ background, color: textColor }} onClick={onSelect}>{media[0] ? <img className="shopify-product-photo" src={media[0]} alt={runtime.product.name} /> : <ProductArt product={runtime.product} large />}<div className="shopify-product-info"><small>{runtime.product.category}</small><div className="shopify-rating">★★★★★ <span>{runtime.product.rating} (128 avaliações)</span></div><h1>{runtime.product.name}</h1><div className="shopify-price"><strong>{BRL.format(runtime.product.price)}</strong>{runtime.product.compareAt && <del>{BRL.format(runtime.product.compareAt)}</del>}</div><p>{runtime.product.description}</p><div className="shopify-variant-row"><span>Escolha uma opção</span><div><button className="active">Original</button><button>Intenso</button><button>Suave</button></div></div><div className="shopify-buy-row"><div><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity - 1); }}>−</button><span>{runtime.productQuantity}</span><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity + 1); }}>+</button></div><button style={{ background: accent }} onClick={(event) => { stop(event); runtime.addToCart(runtime.product.id, runtime.productQuantity); }}>Adicionar ao carrinho</button></div><ul><li><Check size={11} /> Compra protegida</li><li><Zap size={11} /> Envio rápido</li><li><ShieldCheck size={11} /> Garantia de 30 dias</li></ul></div></section>;
+  if (type === "main-search" || type.includes("predictive-search")) {
+    const results = runtime.products.filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(runtime.searchQuery.toLowerCase()));
+    return <section className={`${className} shopify-search-page`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow="PESQUISA" title="O que você está procurando?" /><label><Search size={16} /><input value={runtime.searchQuery} onClick={stop} onChange={(event) => runtime.setSearchQuery(event.target.value)} placeholder="Buscar produtos" /></label><p>{runtime.searchQuery ? `${results.length} resultado(s) para “${runtime.searchQuery}”` : "Produtos populares"}</p>{results.length || !runtime.searchQuery ? <ProductGrid products={results} onProduct={runtime.openProduct} onAdd={runtime.addToCart} /> : <div className="shopify-no-results"><Search size={23} /><b>Nenhum resultado encontrado</b><span>Tente buscar por outro nome ou categoria.</span></div>}</section>;
+  }
+  if (type === "main-collection-banner") { if (media.length) return <section className={`${className} shopify-collection-banner shopify-image-hero shopify-image-banner-short`} onClick={onSelect}><img className="shopify-image-hero-bg" src={media[0]} alt="" /><div className="shopify-image-hero-overlay" /><div className="shopify-image-hero-copy"><small>COLEÇÃO</small><h1>Essenciais para a sua rotina</h1><p>Descubra os produtos mais escolhidos pela nossa comunidade.</p></div></section>; return <section className={`${className} shopify-collection-banner`} style={{ background: `color-mix(in srgb, ${accent} 13%, ${background})`, color: textColor }} onClick={onSelect}><small>COLEÇÃO</small><h1>Essenciais para a sua rotina</h1><p>Descubra os produtos mais escolhidos pela nossa comunidade.</p></section>; }
+  if (type.includes("collection-product-grid") || type.startsWith("featured-collection") || type === "related-products" || type === "collection-list" || type === "collage" || type.includes("instagram") || type.includes("instafeed") || type.includes("gallery") || type.includes("lookbook")) {
+    const mosaic = (type === "collage" || type.includes("instagram") || type.includes("instafeed") || type.includes("gallery") || type.includes("lookbook") || type === "collection-list") && media.length >= 2;
+    return <section className={`${className} shopify-collection-section`} style={{ background, color: textColor }} onClick={onSelect}><div className="shopify-collection-head"><div><small>{section.name}</small><h2>{heading}</h2></div>{type.includes("product-grid") && <select onClick={stop} aria-label="Ordenar produtos"><option>Mais vendidos</option><option>Menor preço</option><option>Maior preço</option></select>}</div>{mosaic ? <div className="shopify-media-mosaic">{media.slice(0, 6).map((url) => <img key={url} src={url} alt="" />)}</div> : <ProductGrid products={runtime.products.slice(0, type === "collage" ? 4 : 6)} onProduct={runtime.openProduct} onAdd={runtime.addToCart} />}</section>;
+  }
+  if (type.includes("hero") || type.includes("slideshow") || type.includes("banner") || type.includes("image-with-text") || type.includes("parallax")) {
+    if (media.length && type.includes("image-with-text")) return <section className={`${className} shopify-image-split`} style={{ background, color: textColor }} onClick={onSelect}><div className="shopify-image-split-copy"><small style={{ color: accent }}>{section.name}</small><h2>{heading}</h2><p>{body}</p><button style={{ background: accent }} onClick={(event) => { stop(event); runtime.goTo("collection"); }}>{buttonLabel}</button></div><img className="shopify-side-image" src={media[0]} alt={heading} /></section>;
+    if (media.length) return <section className={`${className} shopify-image-hero`} onClick={onSelect}><img className="shopify-image-hero-bg" src={media[0]} alt="" /><div className="shopify-image-hero-overlay" /><div className="shopify-image-hero-copy"><small>{section.name}</small><h2>{heading}</h2><p>{body}</p><button style={{ background: accent }} onClick={(event) => { stop(event); runtime.goTo("collection"); }}>{buttonLabel}</button><div className="shopify-hero-trust"><span><Check size={10} /> Compra segura</span><span><Zap size={10} /> Troca simples</span></div></div>{media.length > 1 && <div className="shopify-hero-dots">{media.slice(0, 5).map((url, index) => <i key={url} className={index === 0 ? "active" : ""} />)}</div>}</section>;
+    return <section className={`${className} extracted-hero shopify-live-hero`} style={{ background: `color-mix(in srgb, ${accent} 14%, ${background})`, color: textColor }} onClick={onSelect}><div><small>{section.name}</small><h2>{heading}</h2><p>{body}</p><button style={{ background: accent }} onClick={(event) => { stop(event); runtime.goTo("collection"); }}>{buttonLabel}</button><div className="shopify-hero-trust"><span><Check size={10} /> Compra segura</span><span><Zap size={10} /> Troca simples</span></div></div><ProductArt product={runtime.products[2]} hero /></section>;
+  }
+  if (type.includes("newsletter") || type.includes("email")) return <section className={`${className} extracted-newsletter`} style={{ background: accent, color: "#fff" }} onClick={onSelect}><div><h3>{heading}</h3><p>{body}</p></div>{runtime.newsletterSent ? <div className="shopify-newsletter-success"><Check size={17} /> E-mail cadastrado!</div> : <form onSubmit={(event) => { event.preventDefault(); stop(event); runtime.sendNewsletter(); }}><input aria-label="Seu e-mail" type="email" required placeholder="Seu melhor e-mail" onClick={stop} /><button type="submit">Inscrever</button></form>}</section>;
+  if (type.includes("comparison-table") || type.includes("comparison-slider")) return <section className={`${className} shopify-comparison`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow="POR QUE ESCOLHER" title={heading} body={body} /><div><span /><b>{theme.themeName}</b><b>Outros</b>{section.blocks.slice(0, 5).flatMap((block) => { const label = findText(block.settings, ["benefit", "title", "text"]) ?? humanize(block.type); return [<span key={`${block.id}-label`}>{label}</span>, <strong key={`${block.id}-yes`}><Check size={12} /></strong>, <i key={`${block.id}-no`}>—</i>]; })}</div></section>;
+  if (type === "results") return <section className={`${className} shopify-results`} style={{ background: `color-mix(in srgb, ${accent} 9%, ${background})`, color: textColor }} onClick={onSelect}><div><small>RESULTADOS REAIS</small><h2>{heading}</h2><p>{body}</p></div><div>{section.blocks.slice(0, 4).map((block) => <article key={block.id}><strong>{Number(block.settings.percentage ?? 90)}%</strong><p>{findText(block.settings, ["text", "row_text"]) ?? "Perceberam melhora na rotina."}</p></article>)}</div></section>;
+  if (type.includes("testimonial") || type.includes("review")) return <section className={`${className} shopify-testimonials`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow="AVALIAÇÕES" title={heading} /><div>{section.blocks.slice(0, 4).map((block, index) => <article key={block.id}><span>★★★★★</span><p>{findText(block.settings, ["text"]) ?? "Produto excelente e entrega muito rápida. Recomendo!"}</p><b>{findText(block.settings, ["author"]) ?? `Cliente verificado ${index + 1}`}</b></article>)}</div></section>;
+  if (type === "shipping" || type.includes("icon-bar") || type.includes("icons-with-content") || type.includes("text-with-icons") || type.includes("multicolumn") || type.includes("multi-column") || type.includes("custom-columns") || type.includes("product-features")) return <section className={`${className} shopify-icon-grid`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow={section.name} title={heading} /><div>{section.blocks.slice(0, 6).map((block, index) => { const blockImage = imagesFromSettings(theme, block.settings)[0]; return <article key={block.id}><span style={{ color: accent }}>{blockImage ? <img className="shopify-block-img" src={blockImage} alt="" /> : index % 3 === 0 ? <Zap size={17} /> : index % 3 === 1 ? <ShieldCheck size={17} /> : <Check size={17} />}</span><b>{findText(block.settings, ["title", "heading"]) ?? humanize(block.type)}</b><p>{findText(block.settings, ["text", "description"]) ?? "Benefício pensado para tornar sua experiência melhor."}</p></article>; })}</div></section>;
+  if (type.includes("contact") || type.includes("track-order")) return <section className={`${className} shopify-form-section`} style={{ background, color: textColor }} onClick={onSelect}><div><small>{section.name}</small><h2>{heading}</h2><p>{body}</p></div><form onSubmit={(event) => event.preventDefault()} onClick={stop}><input placeholder={type.includes("track") ? "Número do pedido" : "Seu nome"} /><input placeholder={type.includes("track") ? "E-mail da compra" : "Seu e-mail"} /><textarea placeholder="Como podemos ajudar?" rows={3} /><button style={{ background: accent }}>{type.includes("track") ? "Rastrear pedido" : "Enviar mensagem"}</button></form></section>;
+  if (type.includes("collapsible") || type.includes("content-tabs") || type.includes("faq")) return <section className={`${className} shopify-faq`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow="DÚVIDAS" title={heading} /><div>{section.blocks.slice(0, 6).map((block) => <details key={block.id} onClick={stop}><summary>{findText(block.settings, ["heading", "title", "question"]) ?? humanize(block.type)}<Plus size={13} /></summary><p>{findText(block.settings, ["text", "answer", "content"]) ?? "Todas as informações desta seção podem ser editadas no painel ao lado."}</p></details>)}</div></section>;
+  if (type.includes("section-divider")) return <section className={`${className} shopify-divider`} style={{ background, color: accent }} onClick={onSelect}><span /><span /><span /></section>;
+  if (type.includes("main-article") || pageId.startsWith("article")) return <section className={`${className} shopify-article`} style={{ background, color: textColor }} onClick={onSelect}><small>GUIA SHRINE • 5 MIN DE LEITURA</small><h1>{heading}</h1><p>{body}</p>{media[0] ? <img className="shopify-article-img" src={media[0]} alt={heading} /> : <div style={{ background: `color-mix(in srgb, ${accent} 14%, white)` }} />}<p>Este é o visual completo do artigo carregado pelo tema. Títulos, textos, imagens e cores permanecem editáveis.</p></section>;
+  if (type.includes("blog")) return <section className={`${className} shopify-blog-section`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow="CONTEÚDO" title={heading} /><div>{["Como criar uma rotina que funciona", "5 escolhas simples para o seu bem-estar", "Por dentro dos nossos ingredientes"].map((title, index) => <article key={title}>{media[index] ? <img className="shopify-blog-img" src={media[index]} alt={title} /> : <div style={{ background: `color-mix(in srgb, ${accent} ${12 + index * 7}%, white)` }} />}<small>GUIA • 5 MIN</small><h3>{title}</h3><button onClick={(event) => { stop(event); runtime.goTo("article"); }}>Ler artigo <ArrowRight size={11} /></button></article>)}</div></section>;
+  return <section className={`${className} extracted-generic shopify-content-section`} style={{ background, color: textColor }} onClick={onSelect}><small>{section.type}</small><h3>{heading}</h3><p>{body}</p>{media[0] && <img className="shopify-generic-img" src={media[0]} alt={heading} />}{section.blocks.length > 0 && <div>{section.blocks.slice(0, 8).map((block) => <article key={block.id}><b>{findText(block.settings, ["heading", "title"]) ?? humanize(block.type)}</b><span>{findText(block.settings, ["text", "description"]) ?? "Conteúdo editável do tema"}</span></article>)}</div>}</section>;
+}
+
+function ProductGrid({ products, onProduct, onAdd }: { products: DemoProduct[]; onProduct: (id: string) => void; onAdd: (id: string) => void }) {
+  return <div className="shopify-product-grid">{products.map((product) => <article className="shopify-product-card" key={product.id}><button className="shopify-product-link" onClick={() => onProduct(product.id)}><ProductArt product={product} /><span>{product.category}</span><h3>{product.name}</h3><div><strong>{BRL.format(product.price)}</strong>{product.compareAt && <del>{BRL.format(product.compareAt)}</del>}</div></button><button className="shopify-quick-add" onClick={() => onAdd(product.id)} aria-label={`Adicionar ${product.name} ao carrinho`}><Plus size={14} /></button></article>)}</div>;
+}
+
+function ProductArt({ product, large, hero }: { product: DemoProduct; large?: boolean; hero?: boolean }) { return <div className={`shopify-product-art ${large ? "large" : ""} ${hero ? "hero" : ""}`} style={{ "--product-tone": product.tone } as CSSProperties}><span /><span /><b>{product.name.slice(0, 1)}</b>{product.compareAt && <i>OFERTA</i>}</div>; }
+
+function CartItems({ cart, onChange, emptyAction }: { cart: Record<string, number>; onChange: (id: string, delta: number) => void; emptyAction: () => void }) {
+  const items = PRODUCTS.filter((item) => cart[item.id]);
+  if (!items.length) return <div className="shopify-empty-cart"><ShoppingBag size={25} /><b>Seu carrinho está vazio</b><span>Adicione seus favoritos para continuar.</span><button onClick={emptyAction}>Ver produtos</button></div>;
+  return <div className="shopify-cart-items">{items.map((item) => <article key={item.id}><ProductArt product={item} /><div><b>{item.name}</b><span>{item.category}</span><strong>{BRL.format(item.price)}</strong></div><div className="shopify-cart-quantity"><button onClick={() => onChange(item.id, -1)}>−</button><span>{cart[item.id]}</span><button onClick={() => onChange(item.id, 1)}>+</button></div></article>)}</div>;
+}
+
+function CartDrawer({ open, cart, total, accent, onClose, onChange, onViewCart, onCheckout }: { open: boolean; cart: Record<string, number>; total: number; accent: string; onClose: () => void; onChange: (id: string, delta: number) => void; onViewCart: () => void; onCheckout: () => void }) {
+  if (!open) return null;
+  const count = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
+  return <div className="shopify-cart-overlay" onClick={onClose}><aside className="shopify-cart-drawer" onClick={(event) => event.stopPropagation()}><header><div><small>SEU CARRINHO</small><h3>{count} item(ns)</h3></div><button onClick={onClose} aria-label="Fechar carrinho"><X size={16} /></button></header><div className="shopify-shipping-progress"><span style={{ width: total >= 199 ? "100%" : `${Math.min(100, total / 1.99)}%`, background: accent }} />{total >= 199 ? <b><Check size={11} /> Você ganhou frete grátis!</b> : <b>Faltam {BRL.format(Math.max(0, 199 - total))} para o frete grátis</b>}</div><CartItems cart={cart} onChange={onChange} emptyAction={onClose} /><footer><div><span>Subtotal</span><strong>{BRL.format(total)}</strong></div><button style={{ background: accent }} disabled={!total} onClick={onCheckout}>Finalizar compra</button><button onClick={onViewCart}>Ver carrinho completo</button></footer></aside></div>;
+}
+
+function SectionTitle({ eyebrow, title, body }: { eyebrow: string; title: string; body?: string }) { return <div className="shopify-section-title"><small>{eyebrow}</small><h2>{title}</h2>{body && <p>{body}</p>}</div>; }
+
+function findPage(theme: ShopifyThemeImport, base: string) { return theme.pages.find((item) => item.id === base) ?? theme.pages.find((item) => item.id.startsWith(`${base}.`) && !item.id.includes(".context.")); }
+function color(value: ShopifyValue | undefined, fallback: string) { return typeof value === "string" && /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value) ? value : fallback; }
+function valueRecord(value: ShopifyValue | undefined) { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, ShopifyValue> : {}; }
+function themePalette(values: Record<string, ShopifyValue>) {
+  const schemes = valueRecord(values.color_schemes);
+  const firstScheme = valueRecord(Object.values(schemes)[0]);
+  const settings = valueRecord(firstScheme.settings);
+  const background = firstNamedColor(values, ["colors_background_1", "background", "body_bg", "color_body_background", "checkout_body_background_color"], color(settings.background, "#ffffff"));
+  const text = firstNamedColor(values, ["colors_text", "text_color", "color_body_text", "heading_color", "cl_bd_text", "clnav"], color(settings.text, "#121212"));
+  const accent = firstNamedColor(values, ["colors_accent_1", "primary_button_background", "color_primary", "accent_color", "color_btn_add", "bgatc_pg", "fonte_exclusividade"], color(settings.button, color(settings.secondary_button, "#008060")));
+  return { background, text, accent };
+}
+function paletteFromSettings(values: Record<string, ShopifyValue>, fallback: { background: string; text: string; accent: string }) {
+  return {
+    background: firstNamedColor(values, ["background", "background_color", "color_background", "color_bg", "cl_bg", "bg_color"], fallback.background),
+    text: firstNamedColor(values, ["text_color", "color_text", "heading_color", "title_color", "cl_txt", "cl_tit"], fallback.text),
+    accent: firstNamedColor(values, ["accent_color", "button_background", "button_color", "primary_color", "cl_ic", "cl_btn"], fallback.accent),
+  };
+}
+function firstNamedColor(values: Record<string, ShopifyValue>, keys: string[], fallback: string) {
+  for (const key of keys) {
+    const found = Object.entries(values).find(([id]) => id.toLowerCase() === key);
+    if (found) {
+      const parsed = color(found[1], "");
+      if (parsed) return parsed;
+    }
+  }
+  return fallback;
+}
+function resolveSection(theme: ShopifyThemeImport, section: ShopifySectionInstance): ShopifySectionInstance {
+  const schema = theme.sectionSchemas.find((item) => item.type === section.type);
+  const settings = Object.fromEntries((schema?.settings ?? []).filter((setting) => setting.default !== undefined).map((setting) => [setting.id, setting.default])) as Record<string, ShopifyValue>;
+  return { ...section, settings: { ...settings, ...section.settings }, blocks: section.blocks.map((block) => { const blockSchema = schema?.blocks.find((item) => item.type === block.type); const defaults = Object.fromEntries((blockSchema?.settings ?? []).filter((setting) => setting.default !== undefined).map((setting) => [setting.id, setting.default])) as Record<string, ShopifyValue>; return { ...block, settings: { ...defaults, ...block.settings } }; }) };
+}
+const IMAGE_VALUE = /\.(png|jpe?g|webp|gif|svg|avif)(\?.*)?$/i;
+
+/** Resolve um valor de configuração para a URL de imagem instalada a partir do ZIP do tema. */
+function assetUrlFor(theme: ShopifyThemeImport, value: ShopifyValue | undefined): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const source = value as Record<string, ShopifyValue>;
+    return assetUrlFor(theme, source.src ?? source.url ?? source.image);
+  }
+  if (typeof value !== "string") return undefined;
+  const raw = value.trim();
+  if (!raw) return undefined;
+  if (raw.startsWith("data:image/") || raw.startsWith("/api/media/")) return raw;
+  if (!IMAGE_VALUE.test(raw)) return undefined;
+  const name = raw.split("?")[0].split("/").at(-1)?.toLowerCase() ?? "";
+  const installed = theme.assetUrls?.[name];
+  if (installed) return installed;
+  if (/^https:\/\//.test(raw)) return raw;
+  return undefined;
+}
+
+function imagesFromSettings(theme: ShopifyThemeImport, settings: Record<string, ShopifyValue>) {
+  const found: string[] = [];
+  for (const value of Object.values(settings)) {
+    const url = assetUrlFor(theme, value);
+    if (url) found.push(url);
+  }
+  return found;
+}
+
+function sectionImages(theme: ShopifyThemeImport, section: ShopifySectionInstance) {
+  return Array.from(new Set([
+    ...imagesFromSettings(theme, section.settings),
+    ...section.blocks.flatMap((block) => imagesFromSettings(theme, block.settings)),
+  ]));
+}
+
+function sectionImageByKey(theme: ShopifyThemeImport, section: ShopifySectionInstance, key: RegExp) {
+  for (const [id, value] of Object.entries(section.settings)) {
+    if (!key.test(id)) continue;
+    const url = assetUrlFor(theme, value);
+    if (url) return url;
+  }
+  return undefined;
+}
+
+function themeLogo(theme: ShopifyThemeImport) {
+  for (const [id, value] of Object.entries(theme.globalValues)) {
+    if (!/logo/i.test(id) || /width|height|size/i.test(id)) continue;
+    const url = assetUrlFor(theme, value);
+    if (url) return url;
+  }
+  const named = Object.entries(theme.assetUrls ?? {}).find(([name]) => /(^|[^a-z])logo/.test(name) && !/favicon/.test(name));
+  return named?.[1];
+}
+
+function stripHtml(value: string) { return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(); }
+function isUseful(value: string) { return value.length > 1 && !value.startsWith("shopify://") && !IMAGE_VALUE.test(value) && !/^#[0-9a-f]{6}$/i.test(value) && !/^(always-display|full_bleed|background-\d|accent-\d|inverse|h[0-6]|left|right|center|true|false)$/i.test(value); }
+function sectionStrings(section: ShopifySectionInstance) { return [...Object.values(section.settings), ...section.blocks.flatMap((block) => Object.values(block.settings))].filter((value): value is string => typeof value === "string").map(stripHtml).filter(isUseful); }
+function findText(settings: Record<string, ShopifyValue>, keys: string[]) { for (const [id, value] of Object.entries(settings)) { if (typeof value === "string" && keys.some((key) => id.toLowerCase().includes(key)) && isUseful(stripHtml(value))) return stripHtml(value); } return undefined; }
+function findSectionText(section: ShopifySectionInstance, keys: string[]) { return findText(section.settings, keys) ?? section.blocks.map((block) => findText(block.settings, keys)).find(Boolean); }
+function humanize(value: string) { return value.replace(/^t:/, "").split(".").at(-1)?.replace(/[._-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) ?? value; }
+function fallbackHeading(type: string, name: string) { if (type.includes("search")) return "Pesquisa"; if (type.includes("cart")) return "Seu carrinho"; if (type.includes("product")) return "Produto em destaque"; if (type.includes("collection")) return "Favoritos da comunidade"; return name; }
+function fallbackBody(type: string) { if (type.includes("hero") || type.includes("slideshow")) return "Produtos essenciais, selecionados com cuidado e enviados para todo o Brasil."; if (type.includes("collection")) return "Conheça os produtos mais escolhidos da loja."; return "Conteúdo e configurações carregados diretamente do tema Shopify."; }
