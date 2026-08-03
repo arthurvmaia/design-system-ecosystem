@@ -127,9 +127,20 @@
   --ease-ds: var(--orbis-easing, cubic-bezier(0.4, 0, 0.2, 1));
   --ease-entrada: cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* O mesmo para o tempo: o ritmo do acervo, com o do tema como piso. */
-  --duracao-rapida: var(--orbis-duracao-rapida, 150ms);
-  --duracao-media: var(--orbis-duracao-media, 300ms);
+  /* O mesmo para o tempo: o ritmo do acervo, com o do tema como piso.
+
+     Os dois números são o que o tema JÁ praticava antes de as declarações
+     passarem a consumir a variável — 250ms era a duração dominante das reações
+     (hover, foco, troca de estado) e 350ms a das entradas. Deixá-los em
+     150/300, que era o valor declarado enquanto ninguém lia a variável,
+     encurtaria o app inteiro na primeira vez que alguém o abrisse sem acervo:
+     o piso teria mudado o tema em vez de sustentá-lo.
+
+     Reação usa a rápida, entrada usa a média. Animação infinita de enfeite
+     (as varreduras, os orbes, o pulso) fica de fora das duas: ela marca
+     presença e não responde a nada, então o ritmo do acervo não a governa. */
+  --duracao-rapida: var(--orbis-duracao-rapida, 250ms);
+  --duracao-media: var(--orbis-duracao-media, 350ms);
 }
 
 @layer base {
@@ -265,8 +276,8 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgb(255 255 255 / 0.08);
-  transition: background 0.3s var(--ease-ds), border-color 0.3s var(--ease-ds), box-shadow 0.3s
-    var(--ease-ds);
+  transition: background var(--duracao-rapida) var(--ease-ds), border-color var(--duracao-rapida)
+    var(--ease-ds), box-shadow var(--duracao-rapida) var(--ease-ds);
 }
 
 .ds-glass:hover {
@@ -298,8 +309,8 @@
   position: relative;
   border: 1px solid rgb(255 255 255 / 0.07);
   background: rgb(255 255 255 / 0.02);
-  transition: background 0.35s var(--ease-ds), border-color 0.35s var(--ease-ds), box-shadow 0.35s
-    var(--ease-ds);
+  transition: background var(--duracao-media) var(--ease-ds), border-color var(--duracao-media)
+    var(--ease-ds), box-shadow var(--duracao-media) var(--ease-ds);
 }
 
 .ds-card:hover {
@@ -309,7 +320,7 @@
 }
 
 .ds-card-content {
-  transition: transform 0.35s var(--ease-ds);
+  transition: transform var(--duracao-media) var(--ease-ds);
 }
 
 .ds-card:hover .ds-card-content {
@@ -324,7 +335,8 @@
 .ds-glow-border {
   position: relative;
   border: 1px solid rgb(255 255 255 / 0.1);
-  transition: border-color 0.3s var(--ease-ds), box-shadow 0.3s var(--ease-ds);
+  transition: border-color var(--duracao-rapida) var(--ease-ds), box-shadow var(--duracao-rapida)
+    var(--ease-ds);
 }
 
 .ds-glow-border::before {
@@ -345,7 +357,7 @@
   mask-composite: exclude;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.3s var(--ease-ds);
+  transition: opacity var(--duracao-rapida) var(--ease-ds);
 }
 
 .ds-glow-border:hover::before {
@@ -474,8 +486,8 @@
 /* Etiqueta que acende sob o cursor. Sem crescer: uma grade de etiquetas que
    escalam faz a linha inteira dançar quando o cursor atravessa. */
 .ds-tag {
-  transition: background 0.25s var(--ease-ds), border-color 0.25s var(--ease-ds), color 0.25s
-    var(--ease-ds);
+  transition: background var(--duracao-rapida) var(--ease-ds), border-color var(--duracao-rapida)
+    var(--ease-ds), color var(--duracao-rapida) var(--ease-ds);
 }
 
 .ds-tag:hover {
@@ -486,7 +498,8 @@
 
 /* Texto que acende sob o cursor. */
 .ds-interactive-text {
-  transition: color 0.25s var(--ease-ds), text-shadow 0.25s var(--ease-ds);
+  transition: color var(--duracao-rapida) var(--ease-ds), text-shadow var(--duracao-rapida)
+    var(--ease-ds);
 }
 
 .ds-interactive-text:hover {
@@ -576,7 +589,8 @@
 .ds-btn {
   position: relative;
   overflow: hidden;
-  transition: transform 0.25s var(--ease-ds), box-shadow 0.25s var(--ease-ds);
+  transition: transform var(--duracao-rapida) var(--ease-ds), box-shadow var(--duracao-rapida)
+    var(--ease-ds);
 }
 
 .ds-btn::before {
@@ -725,7 +739,8 @@
 .ds-reveal {
   opacity: 0;
   transform: translateY(18px);
-  transition: opacity 0.65s var(--ease-entrada), transform 0.65s var(--ease-entrada);
+  transition: opacity var(--duracao-media) var(--ease-entrada), transform var(--duracao-media)
+    var(--ease-entrada);
 }
 
 .ds-reveal.ds-visible {
@@ -1075,8 +1090,8 @@
   background: rgb(255 255 255 / 0.04);
   border: 1px solid rgb(255 255 255 / 0.1);
   cursor: pointer;
-  transition: color 0.25s var(--ease-ds), border-color 0.25s var(--ease-ds), box-shadow 0.25s
-    var(--ease-ds);
+  transition: color var(--duracao-rapida) var(--ease-ds), border-color var(--duracao-rapida)
+    var(--ease-ds), box-shadow var(--duracao-rapida) var(--ease-ds);
 }
 
 .intro-btn:hover {
@@ -1350,7 +1365,7 @@
   letter-spacing: 0.18em;
   text-align: center;
   outline: none;
-  transition: border-color 200ms, box-shadow 200ms;
+  transition: border-color var(--duracao-rapida), box-shadow var(--duracao-rapida);
 }
 .portao-campo::placeholder {
   letter-spacing: 0.18em;
@@ -1378,7 +1393,8 @@
   letter-spacing: 0.22em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background-color 200ms, border-color 200ms, box-shadow 200ms;
+  transition: background-color var(--duracao-rapida), border-color var(--duracao-rapida), box-shadow
+    var(--duracao-rapida);
 }
 .portao-btn:hover:not(:disabled) {
   background: rgb(var(--acento) / 0.2);
