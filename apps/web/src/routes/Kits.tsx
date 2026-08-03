@@ -33,6 +33,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { AvisoDeAlcance, SeloDeAlcance, useAlcanceDoKit } from './kits/AlcanceDaMarca';
 import { Bancada } from './kits/Bancada';
 import { FormulaDoKit } from './kits/FormulaDoKit';
 import { Governanca } from './kits/Governanca';
@@ -530,6 +531,12 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
     kit?.governanca ?? { origemBase: null, origemPorCategoria: {} },
   );
 
+  // Quanto da paleta da marca alcança cada peça escolhida. É a informação que
+  // faltava JUSTO aqui: a mistura de origens é decidida nesta tela, e até então
+  // o aviso só aparecia na Galeria (peça a peça, longe da montagem) e na revisão
+  // do wizard (depois de cinco etapas, quando trocar uma peça já custa caro).
+  const alcance = useAlcanceDoKit(kit?.id ?? null, selected);
+
   const save = useMutation({
     mutationFn: () => {
       const payload = {
@@ -634,6 +641,18 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
           </details>
         )}
 
+        {/* O que a paleta da marca NÃO alcança nas peças escolhidas, com o nome
+            de cada peça e o botão que resolve. Fica logo abaixo das regras de
+            mistura porque é a mesma pergunta: o que este kit vai virar quando o
+            site for gerado. */}
+        {kit !== null && (
+          <AvisoDeAlcance
+            alcance={alcance}
+            aoTirar={(id) => setSelected((s) => s.filter((x) => x !== id))}
+            aoVerPrevia={() => setPainel('previa')}
+          />
+        )}
+
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
           {/* Selecionados, na ordem. */}
           <div
@@ -676,11 +695,20 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                       <div className="truncate text-[12px]" style={{ color: 'var(--color-fg)' }}>
                         {c?.name ?? 'Componente removido'}
                       </div>
+                      {/* O selo na LINHA da peça, e não só no painel de cima: é
+                          aqui que a pessoa está olhando quando decide subir,
+                          descer ou remover. */}
                       <div
-                        className="ds-data text-[10px]"
+                        className="ds-data flex items-center gap-1.5 text-[10px]"
                         style={{ color: 'var(--color-fg-subtle)' }}
                       >
-                        {CAT_LABEL(c?.category ?? '')}
+                        <span className="truncate">{CAT_LABEL(c?.category ?? '')}</span>
+                        {!alcance.carregando && (
+                          <SeloDeAlcance
+                            marca={alcance.porPeca.get(id)}
+                            medida={!alcance.semMedidaAinda.includes(id)}
+                          />
+                        )}
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-0.5">

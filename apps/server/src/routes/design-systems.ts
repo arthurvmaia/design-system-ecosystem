@@ -19,7 +19,6 @@ import {
   vaultDir,
   vaultDsDir,
   vaultExtractedDir,
-  vaultSegmentBundlesDir,
   vaultSegmentValidation,
   vaultSegmentsManifest,
 } from '@ds/shared';
@@ -32,12 +31,19 @@ import type {
   SegmentInsight,
   Veredito,
 } from '@ds/shared';
-import { ancorasDeMidia, enqueueJob, explicarAncora, vereditosDoSegmento } from '@ds/shared';
+import {
+  ancorasDeMidia,
+  enqueueJob,
+  explicarAncora,
+  procedenciaDaPrevia,
+  vereditosDoSegmento,
+} from '@ds/shared';
 import { zValidator } from '@hono/zod-validator';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { getModels } from '../lib/anthropic.js';
+import { type ChaveDeBundle, type RepresentacaoBundle, lerBundleInfo } from '../lib/bundle-v2.js';
 import { isQueueMode } from '../lib/execution-mode.js';
 import { exigeSenhaDeAcao } from '../lib/exige-senha-de-acao.js';
 import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
@@ -240,35 +246,35 @@ export const ancorasDoSegmento = (
 };
 
 /**
- * O que a listagem precisa do bundle de um segmento: as limitações que o
- * compilador declarou e se a representação é cápsula de runtime (a única que a
- * validação por preview compara). `null` = segmento sem bundle (fluxo V1 ou
- * subcomponente).
+ * O que a listagem precisa do bundle de um segmento: a representação declarada,
+ * as limitações que o compilador escreveu e o alcance da marca. `null` =
+ * segmento sem bundle (fluxo V1 ou subcomponente).
+ *
+ * Passa por `lerBundleInfo` desde a chave composta. Antes montava o caminho
+ * `seg_<position>` à mão, o que tinha duas consequências: a resolução por
+ * identidade não valia aqui (a listagem podia declarar as limitações do
+ * vizinho), e a listagem discordava do preview sobre O QUE É TER BUNDLE — um
+ * manifest sem `representation.type` válido contava aqui e não contava lá.
+ * Agora é a mesma decisão nos dois lugares, que é o mínimo para a procedência
+ * do card não mentir sobre a prévia que o card vai carregar.
  */
 const lerBundleParaListagem = (
   dsId: string,
-  position: number,
-): { limitacoes: string[]; capsula: boolean; marca: Recolorabilidade | null } | null => {
-  const dir = join(vaultSegmentBundlesDir(dsId as `ds_${string}`), `seg_${position}`);
-  const path = join(dir, 'manifest.json');
-  if (!existsSync(path)) return null;
-  try {
-    const m = JSON.parse(readFileSync(path, 'utf8')) as {
-      limitations?: unknown;
-      representation?: { type?: unknown };
-    };
-    return {
-      limitacoes: Array.isArray(m.limitations)
-        ? m.limitations.filter((l): l is string => typeof l === 'string')
-        : [],
-      capsula: m.representation?.type === 'capsula-runtime',
-      // Quanto da peça a marca do usuário alcança. Sai daqui e não do
-      // compilador porque precisa valer para o acervo que já está em disco.
-      marca: recolorabilidadeDoBundle(dir),
-    };
-  } catch {
-    return null;
-  }
+  chave: ChaveDeBundle,
+): {
+  limitacoes: string[];
+  representacao: RepresentacaoBundle;
+  marca: Recolorabilidade | null;
+} | null => {
+  const b = lerBundleInfo(dsId as `ds_${string}`, chave);
+  if (b === null) return null;
+  return {
+    limitacoes: b.limitacoes,
+    representacao: b.representation,
+    // Quanto da peça a marca do usuário alcança. Sai daqui e não do
+    // compilador porque precisa valer para o acervo que já está em disco.
+    marca: recolorabilidadeDoBundle(b.dir),
+  };
 };
 
 /**
@@ -431,11 +437,14 @@ designSystemsRoute.get('/:id/segments', (c) => {
   // cada, 8 a 12 seções por extração — leitura local barata).
   const bundles = new Map<
     string,
-    { limitacoes: string[]; capsula: boolean; marca: Recolorabilidade | null }
+    { limitacoes: string[]; representacao: RepresentacaoBundle; marca: Recolorabilidade | null }
   >();
   for (const s of segmentos) {
     if (s.parentId !== null) continue; // subcomponente não tem bundle próprio
-    const b = lerBundleParaListagem(id, s.position);
+    const b = lerBundleParaListagem(id, {
+      position: s.position,
+      framePath: insights.get(s.id)?.framePath ?? null,
+    });
     if (b !== null) bundles.set(s.id, b);
   }
   const midias = lerMidiasV2(id);
@@ -443,7 +452,9 @@ designSystemsRoute.get('/:id/segments', (c) => {
   const conferencias = associarConferencias({
     comparacoes: lerComparacoesV2(id),
     comFrame: ordenados.filter((s) => insights.get(s.id)?.framePath !== undefined).map((s) => s.id),
-    capsulas: ordenados.filter((s) => bundles.get(s.id)?.capsula === true).map((s) => s.id),
+    capsulas: ordenados
+      .filter((s) => bundles.get(s.id)?.representacao === 'capsula-runtime')
+      .map((s) => s.id),
   });
 
   // Resumo na listagem (contagens por estado de interação); o detalhe pesado —
@@ -461,7 +472,17 @@ designSystemsRoute.get('/:id/segments', (c) => {
       temBundle: bundle !== undefined,
       capturaParcial: capturaParcial !== undefined,
     });
-    const insight = bruto ? comValidacoes(bruto, validacoes.get(r.id), vereditos) : null;
+    // De onde vem o que a prévia do card mostra. Sai do MESMO fato que decide a
+    // prévia (existe pacote para este segmento?), então card e iframe não podem
+    // discordar. Um subcomponente não tem pacote próprio: a prévia dele é a
+    // origem, e o entregável sai do pacote da seção de onde ele foi recortado.
+    const procedencia = procedenciaDaPrevia({
+      representacao: bundle?.representacao ?? null,
+      paiTemPacote: r.parentId !== null && bundles.has(r.parentId),
+    });
+    const insight = bruto
+      ? { ...comValidacoes(bruto, validacoes.get(r.id), vereditos), procedencia }
+      : null;
     // Mídia presa à rolagem: nesta peça a imagem não é "uma imagem", é "esta
     // imagem neste ponto da página". Quem for trocar o arquivo precisa saber o
     // enquadramento antes, não depois de o site sair estranho.
@@ -478,6 +499,12 @@ designSystemsRoute.get('/:id/segments', (c) => {
       // folha para medir — a tela não promete nem acusa o que não mediu.
       ...(bundle?.marca != null ? { marca: bundle.marca } : {}),
       ...(ancoras.length > 0 ? { ancoras } : {}),
+      // Também no topo do item, e não só dentro de `fidelity`: subcomponente e
+      // rejeitado recuperado não têm insight nenhum (`fidelity: null`), e são
+      // exatamente os casos em que a prévia é a origem. Se a procedência
+      // viajasse só dentro do insight, ela sumiria onde mais importa. É o mesmo
+      // objeto nos dois lugares, calculado uma vez.
+      procedencia,
       vereditos,
     };
   });

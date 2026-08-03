@@ -1,4 +1,5 @@
 import { type PaletaDoProjeto, contrasteRatio, distribuirTokens } from '@ds/shared/schemas';
+import { type PecaForaDaMarca, frasesDeAlcanceDoKit } from './alcance-da-marca.js';
 import { ETAPA } from './etapas-core.js';
 
 /**
@@ -33,14 +34,21 @@ export type DadosDeRevisao = {
   secoes: readonly { nome: string; componentIds: string[]; instrucao?: string }[];
   nMidias: number;
   /**
-   * As peças do kit que não aceitam a paleta da marca, com o nome de cada uma.
+   * As peças do kit que não vestem a paleta da marca inteira, com a medida de
+   * cada uma.
    *
-   * A recoloração ignora palavra de cor, função dinâmica e cor dentro de imagem
-   * — decisões certas, todas elas. O que faltava era dizer isso ANTES de gerar:
-   * a pessoa montava o kit, escolhia a paleta, gerava, e só então descobria que
+   * A recoloração ignora palavra de cor, função dinâmica e cor dentro de imagem,
+   * decisões certas todas elas. O que faltava era dizer isso ANTES de gerar: a
+   * pessoa montava o kit, escolhia a paleta, gerava, e só então descobria que
    * metade do site saiu com as cores do site de origem.
+   *
+   * Este campo era `pecasComCoresFixas: string[]`, só com os nomes, e só com as
+   * peças abaixo de 35% de alcance. A lista chegava pronta do wizard, que fazia
+   * o corte lá dentro com o número digitado à mão. Agora chega a MEDIDA e o
+   * corte mora num lugar só (`alcance-da-marca`), com a faixa do meio incluída:
+   * uma peça de 40% também sai com a cara da origem e passava calada.
    */
-  pecasComCoresFixas?: readonly string[];
+  pecasForaDaMarca?: readonly PecaForaDaMarca[];
 };
 
 export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
@@ -106,15 +114,10 @@ export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
   }
 
   // Dito antes de gerar, e não descoberto depois: é a diferença entre uma
-  // limitação declarada e uma surpresa.
-  const fixas = d.pecasComCoresFixas ?? [];
-  if (fixas.length > 0) {
-    const nomes = fixas.slice(0, 3).join(', ');
-    const resto = fixas.length > 3 ? ` e mais ${fixas.length - 3}` : '';
-    aviso(
-      ETAPA.projeto,
-      `${fixas.length === 1 ? 'Uma peça deste kit não aceita' : `${fixas.length} peças deste kit não aceitam`} a sua paleta (${nomes}${resto}). ${fixas.length === 1 ? 'Ela vai sair' : 'Elas vão sair'} com as cores do site de origem.`,
-    );
+  // limitação declarada e uma surpresa. Uma frase por FAIXA de alcance, e todas
+  // apontam para a etapa Projeto, que é onde se troca o kit.
+  for (const frase of frasesDeAlcanceDoKit(d.pecasForaDaMarca ?? [])) {
+    aviso(ETAPA.projeto, frase);
   }
 
   return problemas;

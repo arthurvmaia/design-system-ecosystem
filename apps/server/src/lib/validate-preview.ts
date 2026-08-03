@@ -355,7 +355,13 @@ export const montarCandidatos = (dsId: `ds_${string}`): CandidatoValidacao[] => 
     const temReplay = pipeline.some((p) => p.status === 'replayable' && p.stateIds.length > 0);
     const scroll = insight.scroll ?? [];
     const scrollReproduzivel = scroll.filter((b) => b.kind !== 'external-scroll-runtime');
-    const bundle = lerBundleInfo(dsId, seg.position);
+    // Chave COMPOSTA: validar o bundle do vizinho é pior que não validar, porque
+    // o resultado vai gravado com o id DESTE segmento. O print da dobra carrega
+    // o prefixo do hash da seção; sem print, cai na posição como sempre.
+    const bundle = lerBundleInfo(dsId, {
+      position: seg.position,
+      framePath: insight.framePath ?? null,
+    });
     const v2: ContextoV2 | undefined =
       bundle === null
         ? undefined

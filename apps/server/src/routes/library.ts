@@ -40,7 +40,7 @@ import { desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { planBatchLike } from '../lib/batch.js';
-import { lerBundleInfo } from '../lib/bundle-v2.js';
+import { framePathDoSegmento, lerBundleInfo } from '../lib/bundle-v2.js';
 import { kitsQueUsam, reconsolidarKits } from '../lib/consolidar-kit.js';
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
 
@@ -361,13 +361,27 @@ const montarComponente = (seg: SegmentRow) => {
   // Para um SUBCOMPONENTE, o bundle é o do pai: a peça foi recortada de dentro
   // dele e vive do mesmo CSS. Sem isto o filho caía no ramo V1 e saía com o
   // `styles.css` vazio.
-  const bundleProprio = lerBundleInfo(dsId, seg.position);
+  //
+  // A chave é COMPOSTA: com a posição sozinha, um segmento cuja pasta não é
+  // `seg_<position>` levava o bundle do vizinho para dentro do componente
+  // promovido. O print da dobra carrega o prefixo do hash da seção e resolve por
+  // identidade; sem print, cai na posição como sempre.
+  const bundleProprio = lerBundleInfo(dsId, {
+    position: seg.position,
+    framePath: insight?.framePath ?? null,
+  });
   const pai =
     seg.parentId === null
       ? null
       : (getDb().select().from(tables.segments).where(eq(tables.segments.id, seg.parentId)).get() ??
         null);
-  const bundleDoPai = pai === null ? null : lerBundleInfo(dsId, pai.position);
+  const bundleDoPai =
+    pai === null
+      ? null
+      : lerBundleInfo(dsId, {
+          position: pai.position,
+          framePath: framePathDoSegmento(dsId, pai.id),
+        });
   const bundleV2 = bundleProprio ?? bundleDoPai;
   // A peça herda o CSS do pai, mas não a representação dele: uma seção pode ser
   // cápsula de runtime enquanto o botão de dentro é HTML comum. Prometer

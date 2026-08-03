@@ -32,6 +32,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import {
   MIME_BUNDLE,
+  framePathDoSegmento,
   framesDoMovimento,
   lerBundleInfo,
   lerRepresentacaoDeDir,
@@ -746,7 +747,15 @@ previewRoute.get('/segment/:segId', (c) => {
   // card preto que o V2 existe para eliminar. O documento do bundle é servido
   // DENTRO da rota de bundle, para as refs relativas (css/js/frames) resolverem
   // sem reescrita. Sem bundle (extração V1), o caminho clássico segue intacto.
-  const bundle = lerBundleInfo(seg.designSystemId as `ds_${string}`, seg.position);
+  //
+  // A chave é COMPOSTA: a posição sozinha já serviu o bundle de outro segmento.
+  // O print da dobra carrega o prefixo do hash da seção e resolve por
+  // identidade; sem print (ou sem dono único), cai na posição como sempre.
+  const dsId = seg.designSystemId as `ds_${string}`;
+  const bundle = lerBundleInfo(dsId, {
+    position: seg.position,
+    framePath: framePathDoSegmento(dsId, seg.id),
+  });
   if (bundle !== null && bundle.representation !== 'componente-portatil') {
     const arquivo = bundle.representation === 'capsula-runtime' ? 'runtime.html' : 'index.html';
     if (!existsSync(join(bundle.dir, arquivo))) {
@@ -868,14 +877,24 @@ previewRoute.get('/segment/:segId', (c) => {
       : null;
   const modo = scrollReplay ?? replay ?? hoverDemo;
 
-  // O rótulo do modo contexto. Ele carrega o CSS da página inteira por fora do
-  // bundle — mostra mais do que o bundle tem, de propósito, e por isso precisa
-  // dizer isso na cara. Sem o rótulo, ele é indistinguível do entregável, que
-  // foi exatamente o problema que a prévia tinha.
+  // O rótulo de PROCEDÊNCIA. Aqui embaixo o documento é sempre `head da origem +
+  // recorte`: o CSS da página inteira entra por fora e a prévia mostra mais do
+  // que a peça carrega consigo. Sem o rótulo, ela é indistinguível do
+  // entregável, que foi exatamente o problema que a prévia tinha.
+  //
+  // Ele valia só no `?contexto=1`, que é o modo em que a pessoa PEDIU a página
+  // de origem — justamente o caso em que ela já sabia. Quando não há bundle
+  // nenhum ninguém pediu nada, e é aí que a prévia mente calada.
+  const seloContexto =
+    'Você está vendo esta região <strong>dentro da página de origem</strong>, com o estilo dela carregado por fora. Não é o arquivo que vai no site gerado.';
+  const seloSemBundle =
+    'Não existe pacote desta peça. Esta prévia usa o estilo da página de origem, então o que vai no site pode sair diferente do que você vê aqui.';
+  const textoDoSelo =
+    c.req.query('contexto') === '1' ? seloContexto : bundle === null ? seloSemBundle : '';
   const selo =
-    c.req.query('contexto') === '1'
-      ? '<div style="position:sticky;top:0;z-index:2147483647;font:12px/1.4 system-ui;padding:6px 12px;background:#0c4a6e;color:#e0f2fe;border-bottom:1px solid #0369a1">Você está vendo esta região <strong>dentro da página de origem</strong>, com o estilo dela carregado por fora. Não é o arquivo que vai no site gerado.</div>'
-      : '';
+    textoDoSelo === ''
+      ? ''
+      : `<div style="position:sticky;top:0;z-index:2147483647;font:12px/1.4 system-ui;padding:6px 12px;background:#0c4a6e;color:#e0f2fe;border-bottom:1px solid #0369a1">${textoDoSelo}</div>`;
 
   return responderHtml(
     compor({

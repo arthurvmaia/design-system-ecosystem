@@ -9,6 +9,8 @@ import { LibraryPage } from '@/routes/Library';
 import { MeusProjetosPage } from '@/routes/MeusProjetos';
 import { RevisaoPage } from '@/routes/Revisao';
 import { SettingsPage } from '@/routes/Settings';
+import { PaginaDaFormulaDoKit } from '@/routes/kits/PaginaDaFormula';
+import { PADRAO_DA_ROTA_DA_FORMULA } from '@/routes/kits/rota-da-formula';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
@@ -63,6 +65,12 @@ export function App() {
               <Route path="/revisao" element={<RevisaoPage />} />
               <Route path="/library" element={<LibraryPage />} />
               <Route path="/design-systems" element={<KitsPage />} />
+              {/* A fórmula é um DESTINO, não um pop-up: com endereço próprio ela
+                  pode ser mandada por link e apontada de qualquer tela. O modal
+                  do card continua existindo como atalho para quem já está aqui.
+                  O caminho fica debaixo de `/design-systems` de propósito — é o
+                  que mantém "Kits" aceso na navegação enquanto se lê a fórmula. */}
+              <Route path={PADRAO_DA_ROTA_DA_FORMULA} element={<PaginaDaFormulaDoKit />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/meus-projetos" element={<MeusProjetosPage />} />
               <Route path="/settings" element={<SettingsPage />} />

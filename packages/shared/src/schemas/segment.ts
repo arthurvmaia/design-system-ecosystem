@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RepresentationType } from './capture-v2.js';
 import { FidelityAssessment } from './capture.js';
 import {
   Confidence,
@@ -235,6 +236,93 @@ export const SegmentDependency = z.object({
 });
 export type SegmentDependency = z.infer<typeof SegmentDependency>;
 
+/**
+ * De onde vem o que a prévia está mostrando.
+ *
+ * A pergunta que o card não respondia: isto é o ARQUIVO que vai no site, ou é a
+ * região desenhada com o CSS da página de origem por fora? Na tela as duas
+ * coisas são idênticas, e a diferença só aparecia depois, no `.zip` — foi o
+ * defeito mais caro da Galeria, porque a pessoa escolhia pelo que via.
+ *
+ * - `entregavel`: a prévia serve o pacote da peça. O que se vê é o que se leva.
+ * - `origem`: não há pacote para servir, então a prévia monta o `<head>` da
+ *   página de origem em volta do recorte. O estilo do site inteiro entra por
+ *   fora, e ela mostra mais do que a peça carrega consigo.
+ */
+export const FonteDaPrevia = z.enum(['entregavel', 'origem']);
+export type FonteDaPrevia = z.infer<typeof FonteDaPrevia>;
+
+/**
+ * Onde mora o arquivo que vai no site gerado.
+ *
+ * `do-pai` é o subcomponente: a peça foi recortada de dentro de uma seção e
+ * vive do pacote dela (é o que a promoção para a Biblioteca faz, trocando o
+ * corpo do documento do pai pelo recorte). `null` = não existe pacote nenhum, e
+ * aí não há entregável a prometer.
+ */
+export const FonteDoEntregavel = z.enum(['proprio', 'do-pai']);
+export type FonteDoEntregavel = z.infer<typeof FonteDoEntregavel>;
+
+export const Procedencia = z.object({
+  fonte: FonteDaPrevia,
+  entregavel: FonteDoEntregavel.nullable().default(null),
+  /** Representação declarada pelo pacote que sustenta a peça. `null` sem pacote. */
+  representacao: RepresentationType.nullable().default(null),
+  /** Frase pronta para a tela. */
+  frase: z.string(),
+});
+export type Procedencia = z.infer<typeof Procedencia>;
+
+const FRASE_DO_ENTREGAVEL: Record<RepresentationType, string> = {
+  'componente-portatil': 'Você está vendo o arquivo que vai no site.',
+  'capsula-runtime':
+    'Você está vendo o arquivo que vai no site. Ele roda isolado, com o runtime junto.',
+  'referencia-visual':
+    'Você está vendo o que esta peça entrega: um registro visual da região, sem HTML editável.',
+};
+
+/**
+ * A procedência de uma peça, derivada do que a leitura já sabe do pacote.
+ *
+ * Deriva, não mede: quem chama já resolveu o pacote (ou concluiu que não há), e
+ * repetir a decisão aqui só criaria uma segunda opinião para discordar da
+ * primeira. Por isso também não é gravada na captura — o pacote pode ser
+ * recompilado sem o manifesto de segmentos ser reescrito, e um campo gravado
+ * mentiria no dia seguinte.
+ */
+export const procedenciaDaPrevia = (opts: {
+  /** Representação do pacote da PRÓPRIA peça. `null`/ausente = ela não tem. */
+  representacao?: RepresentationType | null;
+  /** A seção de onde esta peça foi recortada tem pacote? Só vale para recorte. */
+  paiTemPacote?: boolean;
+}): Procedencia => {
+  const representacao = opts.representacao ?? null;
+  if (representacao !== null) {
+    return {
+      fonte: 'entregavel',
+      entregavel: 'proprio',
+      representacao,
+      frase: FRASE_DO_ENTREGAVEL[representacao],
+    };
+  }
+  if (opts.paiTemPacote === true) {
+    return {
+      fonte: 'origem',
+      entregavel: 'do-pai',
+      representacao: null,
+      frase:
+        'Prévia montada com o estilo da página de origem. O arquivo desta peça sai do pacote da seção de onde ela foi recortada.',
+    };
+  }
+  return {
+    fonte: 'origem',
+    entregavel: null,
+    representacao: null,
+    frase:
+      'Prévia montada com o estilo da página de origem. Não existe pacote desta peça, então o que vai no site pode sair diferente do que você vê aqui.',
+  };
+};
+
 export const SegmentInsight = FidelityAssessment.extend({
   /** Liga ao `SegmentRecord.id`. */
   segmentId: z.string().startsWith('seg_'),
@@ -266,6 +354,13 @@ export const SegmentInsight = FidelityAssessment.extend({
    * está em jogo — e para comparar o componente com a origem sem abrir o site.
    */
   framePath: z.string().optional(),
+  /**
+   * De onde vem o que a prévia mostra (ver `procedenciaDaPrevia`). Preenchida na
+   * LEITURA pela rota de segmentos, que é quem sabe se o pacote existe em disco
+   * agora; ausente em manifesto gravado, e ausente também é honesto — significa
+   * "ninguém disse", não "é o entregável".
+   */
+  procedencia: Procedencia.optional(),
   /** Versão do manifesto de captura que gerou este insight. */
   manifestVersion: z.number().int().optional(),
   /** Versão do pipeline de segmentação (`PIPELINE_VERSION`). */

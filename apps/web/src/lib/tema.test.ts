@@ -69,6 +69,13 @@ const NAO_SAO_CLASSE = new Set([
   'ds-preview-altura', // tipo da mensagem que o iframe manda por postMessage
   'ds-flutuante-ativo', // id do elemento flutuante dos seletores
   'ds-impacto', // chave de cache do react-query
+  // O harness de reprodução de estados vive DENTRO do documento de prévia, que
+  // é servido pelo `apps/server` e tem folha própria. A fórmula do kit alcança
+  // esses três por dentro do iframe para montar os estados lado a lado, e
+  // procurá-los no `globals.css` do shell seria procurar no arquivo errado.
+  'ds-rp-alvo', // id do nó que recebe o HTML do estado
+  'ds-rp-bar', // id da barra de botões de estado
+  'ds-rp-btn', // classe dos botões, servida pelo documento de prévia
 ]);
 
 test('as classes que a interface usa existem no CSS', () => {

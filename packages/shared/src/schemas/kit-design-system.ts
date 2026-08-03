@@ -175,3 +175,21 @@ export type KitDesignSystem = z.infer<typeof KitDesignSystem>;
  * desse número divergiriam na primeira afinação.
  */
 export const CONFIANCA_MINIMA_PARA_RECOLORIR = 0.5;
+
+/**
+ * Os cortes de ALCANCE da marca numa peça, pelo mesmo motivo do limiar acima e
+ * com a mesma história: eles nasceram no `@ds/composer` (`nivelDeMarca`) e
+ * ganharam uma segunda cópia no `apps/web` quando a tela precisou dos mesmos
+ * números. Duas cópias divergem na primeira afinação, e o estrago aqui é
+ * específico: a Galeria e o motor passariam a chamar a MESMA peça de coisas
+ * diferentes, uma dizendo "parcial" e a outra "cores fixas".
+ *
+ * Acima de `veste` a peça veste a marca e o que sobra é detalhe (uma borda, o
+ * `white` de uma barra de rolagem). Abaixo de `origem` ela é, na prática, a peça
+ * de origem pintada por fora — chamar isso de "parcial" seria otimismo. No meio,
+ * parcial com o número à vista, que é a única resposta honesta.
+ */
+export const ALCANCE_DA_MARCA = {
+  veste: 0.8,
+  origem: 0.35,
+} as const;

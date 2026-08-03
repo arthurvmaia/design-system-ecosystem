@@ -1,3 +1,4 @@
+import { ALCANCE_DA_MARCA } from '@ds/shared';
 import postcss from 'postcss';
 import { coresDoValor } from './inventario.js';
 
@@ -195,7 +196,7 @@ export type NivelDeMarca = 'aplicavel' | 'parcial' | 'cores-fixas';
  * com o número à vista, que é a única resposta honesta.
  */
 export const nivelDeMarca = (r: Recolorabilidade): NivelDeMarca => {
-  if (r.total === 0 || r.taxa >= 0.8) return 'aplicavel';
-  if (r.taxa < 0.35) return 'cores-fixas';
+  if (r.total === 0 || r.taxa >= ALCANCE_DA_MARCA.veste) return 'aplicavel';
+  if (r.taxa < ALCANCE_DA_MARCA.origem) return 'cores-fixas';
   return 'parcial';
 };

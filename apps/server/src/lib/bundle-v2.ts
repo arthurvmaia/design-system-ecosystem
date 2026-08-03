@@ -17,6 +17,7 @@ import {
   vaultCaptureV2FramesDir,
   vaultCaptureV2Manifest,
   vaultSegmentBundlesDir,
+  vaultSegmentsManifest,
 } from '@ds/shared';
 
 export type RepresentacaoBundle = 'componente-portatil' | 'capsula-runtime' | 'referencia-visual';
@@ -29,6 +30,8 @@ export type BundleInfo = {
   /** Caminho absoluto do bundle no vault. */
   dir: string;
   representation: RepresentacaoBundle;
+  /** Limitações que o compilador declarou para esta peça. */
+  limitacoes: string[];
   /** Hash da seção (SegmentEvidence.segmentId) — liga o bundle ao manifesto V2. */
   hash: string | null;
   /** Hashes dos membros da seção — alvos das observações temporais (loop). */
@@ -64,6 +67,19 @@ export const lerRepresentacaoDeDir = (dir: string): RepresentacaoBundle | null =
   }
 };
 
+/** Hash cheio → pasta, e prefixo de 10 → pasta (`null` = prefixo disputado). */
+type IndiceDeBundles = {
+  porHash: Map<string, string>;
+  porPrefixo: Map<string, string | null>;
+};
+
+const VAZIO: IndiceDeBundles = { porHash: new Map(), porPrefixo: new Map() };
+
+/** Tamanho do prefixo que o nome do frame carrega (`secao-<hash10>-<bytes8>.png`). */
+const TAM_PREFIXO = 10;
+
+const indices = new Map<string, { mtimeMs: number; indice: IndiceDeBundles }>();
+
 /**
  * O índice hash → pasta de bundle, lido dos manifests de um design system.
  *
@@ -74,21 +90,20 @@ export const lerRepresentacaoDeDir = (dir: string): RepresentacaoBundle | null =
  *
  * Cacheado por mtime do diretório de bundles: recompilar invalida sozinho.
  */
-const indices = new Map<string, { mtimeMs: number; porHash: Map<string, string> }>();
-
-const indiceDeHashes = (dsId: DesignSystemId): Map<string, string> => {
+const indiceDeHashes = (dsId: DesignSystemId): IndiceDeBundles => {
   const raiz = vaultSegmentBundlesDir(dsId);
-  if (!existsSync(raiz)) return new Map();
+  if (!existsSync(raiz)) return VAZIO;
   let mtimeMs: number;
   try {
     mtimeMs = statSync(raiz).mtimeMs;
   } catch {
-    return new Map();
+    return VAZIO;
   }
   const cache = indices.get(raiz);
-  if (cache !== undefined && cache.mtimeMs === mtimeMs) return cache.porHash;
+  if (cache !== undefined && cache.mtimeMs === mtimeMs) return cache.indice;
 
   const porHash = new Map<string, string>();
+  const porPrefixo = new Map<string, string | null>();
   try {
     for (const pasta of readdirSync(raiz)) {
       const manifestPath = join(raiz, pasta, 'manifest.json');
@@ -104,15 +119,87 @@ const indiceDeHashes = (dsId: DesignSystemId): Map<string, string> => {
         if (typeof hash === 'string' && hash !== '' && !porHash.has(hash)) {
           porHash.set(hash, pasta);
         }
+        if (typeof hash === 'string' && hash.length >= TAM_PREFIXO) {
+          const p = hash.slice(0, TAM_PREFIXO);
+          // Disputa de prefixo vira `null` de propósito: com dois donos possíveis
+          // não há como afirmar qual é, e chutar um é o defeito que a resolução
+          // por identidade existe para acabar. Sem dono único, cai na posição.
+          porPrefixo.set(p, porPrefixo.has(p) ? null : pasta);
+        }
       } catch {
         // Manifest ilegível não derruba o índice: as outras pastas continuam.
       }
     }
   } catch {
-    return new Map();
+    return VAZIO;
   }
-  indices.set(raiz, { mtimeMs, porHash });
-  return porHash;
+  const indice: IndiceDeBundles = { porHash, porPrefixo };
+  indices.set(raiz, { mtimeMs, indice });
+  return indice;
+};
+
+/**
+ * O prefixo do hash da seção que o nome do print carrega.
+ *
+ * O hash completo não está gravado em lugar nenhum do lado do SEGMENTO (a
+ * coluna foi adiada de propósito, e o insight não o guarda), mas a captura
+ * batiza o print da dobra de `secao-<hash10>-<bytes8>.png`. São 10 dos 16
+ * caracteres do hash da seção, e é a única identidade que sobreviveu ali —
+ * suficiente para achar a pasta certa sem migração nenhuma.
+ *
+ * `null` quando o nome não é desse formato: aí não dá para afirmar identidade e
+ * quem chama cai na posição, como sempre.
+ */
+export const prefixoDeHashDoFrame = (framePath: string | null | undefined): string | null => {
+  if (typeof framePath !== 'string' || framePath === '') return null;
+  const nome = framePath.replace(/\\/g, '/').split('/').pop() ?? '';
+  const m = /^secao-([0-9a-f]+)-/.exec(nome);
+  const prefixo = m?.[1];
+  return prefixo !== undefined && prefixo.length >= TAM_PREFIXO
+    ? prefixo.slice(0, TAM_PREFIXO)
+    : null;
+};
+
+/**
+ * Índice segmento → print da dobra, do manifesto de segmentos.
+ *
+ * Existe para os chamadores que só têm o `SegmentRecord` em mãos (a prévia lê do
+ * banco, não do manifesto) conseguirem montar a chave composta. Cacheado por
+ * mtime porque o manifesto carrega o `htmlSnippet` de todos os segmentos e
+ * costuma passar de 1 MB: parseá-lo a cada miniatura de card sairia caro.
+ */
+const framesPorSegmento = new Map<string, { mtimeMs: number; porSegmento: Map<string, string> }>();
+
+export const framePathDoSegmento = (dsId: DesignSystemId, segId: string): string | null => {
+  const path = vaultSegmentsManifest(dsId);
+  let mtimeMs: number;
+  try {
+    mtimeMs = statSync(path).mtimeMs;
+  } catch {
+    return null;
+  }
+  const cache = framesPorSegmento.get(path);
+  if (cache !== undefined && cache.mtimeMs === mtimeMs) return cache.porSegmento.get(segId) ?? null;
+
+  const porSegmento = new Map<string, string>();
+  try {
+    const m = JSON.parse(readFileSync(path, 'utf8')) as {
+      insights?: Array<{ segmentId?: unknown; framePath?: unknown }>;
+    };
+    for (const i of m.insights ?? []) {
+      if (
+        typeof i.segmentId === 'string' &&
+        typeof i.framePath === 'string' &&
+        i.framePath !== ''
+      ) {
+        porSegmento.set(i.segmentId, i.framePath);
+      }
+    }
+  } catch {
+    return null;
+  }
+  framesPorSegmento.set(path, { mtimeMs, porSegmento });
+  return porSegmento.get(segId) ?? null;
 };
 
 /**
@@ -124,16 +211,37 @@ const indiceDeHashes = (dsId: DesignSystemId): Map<string, string> => {
  * seção existente, e a partir daí a prévia e a promoção servem o bundle de OUTRO
  * segmento. O acervo tinha um rejeitado esperando esse clique.
  *
- * Os três níveis, do mais forte ao mais fraco:
+ * Os quatro níveis, do mais forte ao mais fraco:
  *  1. `bundleId` — autoritativo, escrito pelo motor. O(1).
  *  2. `hash` no índice dos manifests — cobre o acervo atual sem escrita nenhuma.
- *  3. `seg_<position>` — o comportamento de sempre. O pior caso de um bug nos
+ *  3. `framePath` — o nome do print carrega 10 caracteres do hash da seção. É o
+ *     nível que de fato roda hoje: nenhum chamador tem o hash completo em mãos,
+ *     porque ele não é gravado por segmento em lugar nenhum. Só vale quando o
+ *     prefixo tem um dono único.
+ *  4. `seg_<position>` — o comportamento de sempre. O pior caso de um bug nos
  *     níveis acima é voltar exatamente a ele, e não regredir.
  */
 export type ChaveDeBundle = {
   bundleId?: string | null;
   hash?: string | null;
+  /** Print da dobra do insight, relativo a `capture-v2/` (`frames/secao-…png`). */
+  framePath?: string | null;
   position: number;
+};
+
+/** A pasta que a IDENTIDADE aponta, ou `null` quando não dá para afirmar. */
+const pastaPorIdentidade = (dsId: DesignSystemId, c: ChaveDeBundle): string | null => {
+  const temHash = c.hash != null && c.hash !== '';
+  const prefixo = prefixoDeHashDoFrame(c.framePath);
+  // Sem identidade nenhuma não se constrói índice: a chave só com posição é o
+  // caso mais comum (subcomponente, extração V1) e não deve pagar a varredura.
+  if (!temHash && prefixo === null) return null;
+  const indice = indiceDeHashes(dsId);
+  if (temHash) {
+    const exato = indice.porHash.get(c.hash as string);
+    if (exato !== undefined) return exato;
+  }
+  return prefixo === null ? null : (indice.porPrefixo.get(prefixo) ?? null);
 };
 
 /** Lê o manifest.json do bundle de um segmento. `null` = sem bundle (fluxo V1). */
@@ -142,8 +250,7 @@ export const lerBundleInfo = (
   chave: number | ChaveDeBundle,
 ): BundleInfo | null => {
   const c: ChaveDeBundle = typeof chave === 'number' ? { position: chave } : chave;
-  const doIndice =
-    c.hash != null && c.hash !== '' ? (indiceDeHashes(dsId).get(c.hash) ?? null) : null;
+  const doIndice = pastaPorIdentidade(dsId, c);
   const pasta =
     c.bundleId != null && c.bundleId !== '' ? c.bundleId : (doIndice ?? `seg_${c.position}`);
   const dir = join(vaultSegmentBundlesDir(dsId), pasta);
@@ -152,6 +259,7 @@ export const lerBundleInfo = (
   try {
     const m = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
       representation?: { type?: unknown };
+      limitations?: unknown;
       evidence?: {
         segmentId?: unknown;
         members?: unknown;
@@ -167,6 +275,7 @@ export const lerBundleInfo = (
       pasta,
       dir,
       representation: type as RepresentacaoBundle,
+      limitacoes: lista(m.limitations),
       hash: typeof m.evidence?.segmentId === 'string' ? m.evidence.segmentId : null,
       members: lista(m.evidence?.members),
       mediaIds: lista(m.evidence?.mediaIds),

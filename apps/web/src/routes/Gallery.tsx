@@ -2,6 +2,7 @@ import { ConfirmPop } from '@/components/ConfirmPop';
 import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
+import { faixaDeAlcance, fraseDoSelo, motivosDe } from '@/lib/alcance-da-marca';
 import {
   type AncoraNaTela,
   type ConferenciaDePixel,
@@ -148,32 +149,107 @@ const pct = (v: number): string =>
 /**
  * O selo de alcance da marca.
  *
- * A recoloração deixa coisas de fora de propósito — palavra de cor, função
- * dinâmica, cor dentro de imagem — e cada decisão dessas está certa. O que não
+ * A recoloração deixa coisas de fora de propósito (palavra de cor, função
+ * dinâmica, cor dentro de imagem) e cada decisão dessas está certa. O que não
  * estava certo era o silêncio: a peça entrava no kit parecendo que ia receber a
  * paleta da pessoa e saía com as cores da origem. Num site Tailwind isso é a
  * regra, não a exceção (medido no acervo: 46% de alcance, com 232 `var()`).
  *
+ * ## Por que o MOTIVO fica no tooltip e não no rótulo
+ *
+ * O selo continua com duas palavras. O card tem três selos numa linha só que o
+ * comentário do rodapé defende explicitamente (`sm:flex-nowrap sm:truncate`,
+ * para os cards de uma fileira terminarem na mesma altura), e "marca 46% ·
+ * calculada na hora" seria cortado no meio justamente na parte nova. O motivo
+ * inteiro, com contagem por tipo, vai para o tooltip e para o laudo do detalhe,
+ * que é onde há espaço para lê-lo e onde o toque também alcança.
+ *
  * "Aplicável" não ganha selo. Dizer que está tudo bem em toda peça boa vira
- * ruído e ensina a não ler nenhum.
+ * ruído e ensina a não ler nenhum. Peça NÃO MEDIDA também não ganha selo aqui,
+ * porque o card já tem o "Não medido" da fidelidade e dois selos cinzas com a
+ * mesma palavra confundiriam mais do que informam; a ausência de medida é
+ * declarada no laudo, onde as duas medições aparecem separadas.
  */
 function MarcaBadge({ marca }: { marca?: Recolorabilidade }) {
-  if (marca === undefined || marca.total === 0 || marca.taxa >= 0.8) return null;
-  const fixas = marca.taxa < 0.35;
+  const faixa = faixaDeAlcance(marca);
+  if (faixa === 'aplicavel' || faixa === 'nao-medido' || marca === undefined) return null;
+  const fixas = faixa === 'cores-fixas';
   const cor = fixas ? '#dc2626' : '#d97706';
   return (
     <span
       className="inline-flex items-center gap-1 rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
       style={{ backgroundColor: `${cor}22`, color: cor, border: `1px solid ${cor}55` }}
-      title={
-        fixas
-          ? `As cores desta peça são fixas: só ${marca.alcancavel} de ${marca.total} aceitam a sua paleta. Ela vai sair com as cores da origem.`
-          : `${marca.alcancavel} de ${marca.total} cores desta peça aceitam a sua paleta. O resto sai como está na origem.`
-      }
+      title={fraseDoSelo(marca)}
     >
       <Palette size={9} />
       {fixas ? 'cores fixas' : `marca ${pct(marca.taxa)}`}
     </span>
+  );
+}
+
+/**
+ * O alcance da marca no laudo: quanto, e POR QUE o resto ficou de fora.
+ *
+ * Aqui mora a resposta que o selo não cabe. A medição sempre contou por motivo
+ * (`fora`, em `medirRecolorabilidade`), o dado sempre viajou até o cliente, e
+ * nenhum componente o lia: a tela mostrava "46%" e deixava a pessoa adivinhar se
+ * aquilo era uma borda branca ou o fundo inteiro da peça.
+ *
+ * Fica FORA do `FidelityPanel` de propósito. Aquele painel devolve `null` quando
+ * a peça não tem medição de fidelidade, e o alcance da marca é outra medida, com
+ * outra origem: ela existe mesmo quando a fidelidade não existe, e engolir uma na
+ * outra faria a resposta sumir exatamente nas peças mais antigas.
+ */
+function AlcanceDaMarca({ marca }: { marca?: Recolorabilidade }) {
+  const faixa = faixaDeAlcance(marca);
+  if (faixa === 'aplicavel') return null;
+
+  if (faixa === 'nao-medido' || marca === undefined) {
+    return (
+      <div className="border-b px-6 py-3" style={{ borderColor: 'var(--color-border)' }}>
+        <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+          alcance da sua paleta:
+        </span>
+        <p className="mt-1 text-[11px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
+          {fraseDoSelo(marca)}
+        </p>
+      </div>
+    );
+  }
+
+  const motivos = motivosDe(marca);
+  const cor = faixa === 'cores-fixas' ? '#dc2626' : '#d97706';
+  return (
+    <div className="border-b px-6 py-3" style={{ borderColor: 'var(--color-border)' }}>
+      <span className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+        alcance da sua paleta:
+      </span>
+      <div className="mt-1 flex items-baseline gap-2">
+        <span className="ds-data text-[15px]" style={{ color: cor }}>
+          {pct(marca.taxa)}
+        </span>
+        <span className="ds-data text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+          {marca.alcancavel} de {marca.total} cores
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
+        {faixa === 'cores-fixas'
+          ? 'O resto sai com as cores do site de origem, então a peça fica com a cara dele.'
+          : 'O resto sai como está no site de origem, e isso aparece mais em fundo e borda.'}
+      </p>
+      {motivos.length > 0 && (
+        <ul className="mt-2 space-y-1.5">
+          {motivos.map((m) => (
+            <li key={m.motivo} className="text-[11px] leading-relaxed">
+              <span style={{ color: 'var(--color-fg)' }}>
+                {m.quantas} {m.rotulo}.
+              </span>
+              <span style={{ color: 'var(--color-fg-subtle)' }}> {m.explicacao}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -1924,13 +2000,19 @@ function SegmentDetail({
   const ehReferenciaVisual = segment.fidelity?.support === 'visual';
   const temScroll = !ehReferenciaVisual && (segment.fidelity?.scroll?.length ?? 0) > 0;
   // Vale abrir o laudo? É o que decide o ponto de aviso no botão: sem medição,
-  // com selo diferente de completo, com aviso do compilador ou reprovada no
-  // pixel. Peça limpa não pede leitura nenhuma.
+  // com selo diferente de completo, com aviso do compilador, reprovada no pixel
+  // ou fora do alcance da paleta. Peça limpa não pede leitura nenhuma.
+  //
+  // O alcance da marca entrou aqui porque o laudo passou a respondê-lo: sem
+  // isso, uma peça de fidelidade impecável e 12% de recoloração abria o botão
+  // sem ponto de aviso, e o motivo ficava escondido atrás de um clique que nada
+  // convidava a dar.
   const temRessalva =
     !segment.fidelity ||
     segment.fidelity.support !== 'completo' ||
     segment.fidelity.warnings.length > 0 ||
-    segment.comparacaoVisual?.passou === false;
+    segment.comparacaoVisual?.passou === false ||
+    faixaDeAlcance(segment.marca) !== 'aplicavel';
 
   const add = useMutation({
     mutationFn: () => api.addToLibrary(segment.id),
@@ -2120,6 +2202,7 @@ function SegmentDetail({
                 vereditos={segment.vereditos}
                 ancoras={segment.ancoras}
               />
+              <AlcanceDaMarca marca={segment.marca} />
             </aside>
           )}
         </div>

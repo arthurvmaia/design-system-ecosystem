@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { pecasForaDaMarca } from './alcance-da-marca.js';
 import { type DadosDeRevisao, ETAPA, bloqueantes, validarProjeto } from './revisao-core.js';
 
 const BASE: DadosDeRevisao = {
@@ -77,6 +78,53 @@ test('contraste baixo na paleta vira aviso; peça órfã na seção também', ()
   const orfa = problemas.find((p) => p.etapa === ETAPA.estrutura && /saiu do kit/.test(p.mensagem));
   assert.ok(orfa !== undefined, 'a peça que sumiu do kit precisa aparecer na revisão');
   assert.match(orfa.mensagem, /Planos/, 'e precisa dizer QUAL seção');
+});
+
+/**
+ * O corte de alcance da marca era binário aqui: só abaixo de 35% a revisão
+ * falava. Uma peça com 40% de alcance passava calada e saía com a cara do site
+ * de origem do mesmo jeito, que é o defeito que a faixa fecha.
+ */
+test('a peça de 40% de alcance vira aviso na etapa onde se troca o kit', () => {
+  const problemas = validarProjeto({
+    ...BASE,
+    pecasForaDaMarca: pecasForaDaMarca([
+      {
+        id: 'cmp_a',
+        nome: 'Abertura com vídeo',
+        disponivel: true,
+        textos: 0,
+        links: 0,
+        logos: 0,
+        midias: [],
+        marca: { total: 10, alcancavel: 4, taxa: 0.4, fora: { 'funcao-dinamica': 6 } },
+      },
+    ]),
+  });
+  const p = problemas.find((x) => /Abertura com vídeo/.test(x.mensagem));
+  assert.ok(p !== undefined, 'a faixa do meio não pode voltar a ficar calada');
+  assert.equal(p.nivel, 'aviso', 'isso não impede gerar, só precisa ser sabido antes');
+  assert.equal(p.etapa, ETAPA.projeto, 'trocar peça do kit se resolve na etapa Projeto');
+  assert.match(p.mensagem, /40%/);
+});
+
+test('peça que veste a marca não vira aviso nenhum na revisão', () => {
+  const problemas = validarProjeto({
+    ...BASE,
+    pecasForaDaMarca: pecasForaDaMarca([
+      {
+        id: 'cmp_a',
+        nome: 'Rodapé',
+        disponivel: true,
+        textos: 0,
+        links: 0,
+        logos: 0,
+        midias: [],
+        marca: { total: 10, alcancavel: 9, taxa: 0.9, fora: { palavra: 1 } },
+      },
+    ]),
+  });
+  assert.deepEqual(problemas, [], 'aviso em toda peça boa ensina a não ler nenhum');
 });
 
 test('enquanto o kit carrega, nenhuma seção é acusada de peça órfã', () => {

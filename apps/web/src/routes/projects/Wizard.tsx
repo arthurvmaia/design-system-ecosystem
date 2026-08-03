@@ -1,6 +1,7 @@
 import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
+import { pecasForaDaMarca } from '@/lib/alcance-da-marca';
 import {
   type MediaItem,
   PrecisaDaSenhaDeAcao,
@@ -401,12 +402,14 @@ export function ProjectWizard({
     ctaPrincipal: branding.mainCta.label,
     secoes,
     nMidias: media.filter((m) => m.kind !== 'logo').length,
-    // As peças cuja cor é praticamente toda fixa. O corte de 35% é o mesmo do
-    // selo da Galeria: abaixo dele a peça sai, na prática, com a cara da
-    // origem, e isso precisa ser dito antes de gerar.
-    pecasComCoresFixas: espacosDasPecas
-      .filter((c) => c.marca !== undefined && c.marca.total > 0 && c.marca.taxa < 0.35)
-      .map((c) => c.nome ?? c.id),
+    // As peças que não vestem a paleta inteira, já classificadas por faixa.
+    //
+    // Antes era um `filter(taxa < 0.35)` escrito aqui dentro, com o número
+    // digitado à mão: uma peça com 40% de alcance passava calada e saía com a
+    // cara da origem do mesmo jeito. O corte agora mora em `alcance-da-marca`,
+    // que é também de onde a Galeria e o editor de kit leem, e a faixa do meio
+    // deixou de ser silêncio.
+    pecasForaDaMarca: pecasForaDaMarca(espacosDasPecas),
   });
   const travadoPorBloqueante = bloqueantes(problemas).length > 0;
 

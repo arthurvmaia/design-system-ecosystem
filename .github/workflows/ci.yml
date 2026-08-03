@@ -125,6 +125,18 @@ jobs:
     #
     # Vira bloqueante depois de duas semanas de verde, e só depois de afrouxar
     # as asserções sensíveis à velocidade da máquina.
+    #
+    # 2026-08-03: uma das causas de vermelho NÃO era tempo, e foi corrigida.
+    # `engine.browser.test.ts` montava a raiz das fixtures com `process.cwd()` e
+    # era o único dos onze arquivos a fazer isso; chamado de dentro do pacote, o
+    # caminho não existia, o servidor de fixture respondia 404 calado e 28 de 37
+    # falhavam por conteúdo ausente. Com o caminho saindo de `import.meta.url`, a
+    # suíte inteira passa 79 de 79 na máquina de quem desenvolve.
+    #
+    # Isso NÃO cumpre a condição acima: 79 de 79 em 14 núcleos não diz nada sobre
+    # 4 vCPU, e nenhuma asserção sensível a tempo foi afrouxada. O que mudou é que
+    # o contador de "duas semanas de verde" agora parte de uma base real, em vez
+    # de contar em cima de um defeito que fazia o job falhar por outro motivo.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
