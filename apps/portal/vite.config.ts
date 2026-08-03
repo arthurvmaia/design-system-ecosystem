@@ -21,7 +21,9 @@ export default defineConfig({
   server: {
     port: 4000,
     proxy: {
-      '/api/orbis': {
+      // `/api` inteiro, e não só `/api/orbis`: o portal também desliga a suíte,
+      // e essa rota fica atrás do portão de propósito.
+      '/api': {
         target: 'http://localhost:8787',
         changeOrigin: true,
       },

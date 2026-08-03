@@ -11,6 +11,7 @@ import { ehLeitura, estadoDoPortao, lerCookieDaSessao, nivelDaSessao } from './l
 import { appCompiladoExiste, appWebRoute } from './routes/app-web.js';
 import { assetRoute, frameRoute, libraryAssetRoute } from './routes/asset.js';
 import { designSystemsRoute } from './routes/design-systems.js';
+import { desligarRoute } from './routes/desligar.js';
 import { healthRoute } from './routes/health.js';
 import { kitsRoute } from './routes/kits.js';
 import { libraryRoute } from './routes/library.js';
@@ -106,6 +107,9 @@ app.use('*', async (c, next) => {
 });
 
 app.route('/api/orbis', orbisRoute);
+// Fora de `/api/orbis` de propósito: aquele prefixo é o único que responde sem
+// sessão, e desligar a suíte é a ação mais destrutiva do app.
+app.route('/api/desligar', desligarRoute);
 app.route('/health', healthRoute);
 app.route('/api/design-systems', designSystemsRoute);
 app.route('/api/library', libraryRoute);

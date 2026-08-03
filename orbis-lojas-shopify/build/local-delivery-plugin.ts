@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { exec } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve, sep } from "node:path";
@@ -31,11 +32,63 @@ function isSameOrigin(request: IncomingMessage) {
  * index.html abrir com dois cliques. Fora do dev server a rota não existe e o
  * front cai no download do navegador.
  */
+/**
+ * Derruba a suíte inteira: as duas outras telas, o servidor e este app.
+ *
+ * As rotas deste app rodam em workerd e não enxergam processo nenhum. Quem pode
+ * matar os outros é o Node do Vite, que é onde este middleware vive: o mesmo
+ * caminho que já existe aqui para gravar arquivos no disco.
+ *
+ * Por porta, e não por PID guardado: os quatro processos nascem de lugares
+ * diferentes e nenhum é filho deste. `taskkill /T` porque cada um tem netos, e
+ * matar só o pai deixaria a porta presa por um órfão invisível.
+ */
+const PORTAS_DA_SUITE = [4000, 5173, 8787] as const;
+
+function matarPorta(porta: number): Promise<void> {
+  return new Promise((resolve) => {
+    exec(`netstat -ano | findstr ":${porta} " | findstr LISTENING`, (erro, saida) => {
+      if (erro !== null || saida.trim() === "") return resolve();
+      const pids = new Set<string>();
+      for (const linha of saida.trim().split("\n")) {
+        const pid = linha.trim().split(/\s+/).pop();
+        if (pid !== undefined && /^\d+$/.test(pid) && pid !== "0") pids.add(pid);
+      }
+      if (pids.size === 0) return resolve();
+      let restantes = pids.size;
+      for (const pid of pids) {
+        exec(`taskkill /PID ${pid} /T /F`, () => {
+          restantes -= 1;
+          if (restantes === 0) resolve();
+        });
+      }
+    });
+  });
+}
+
 export function localDelivery(): Plugin {
   return {
     name: "local-delivery",
     apply: "serve",
     configureServer(server) {
+      server.middlewares.use("/local/desligar", (request, response) => {
+        if (request.method !== "POST" || !isSameOrigin(request)) {
+          response.statusCode = request.method !== "POST" ? 405 : 403;
+          response.end(JSON.stringify({ error: "RECUSADO" }));
+          return;
+        }
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ desligando: true }));
+        // A resposta sai ANTES do desligamento: sem essa folga o navegador
+        // perde a conexão no meio e mostra erro para uma ação que deu certo.
+        setTimeout(() => {
+          void (async () => {
+            for (const porta of PORTAS_DA_SUITE) await matarPorta(porta);
+            process.exit(0);
+          })();
+        }, 400);
+      });
+
       server.middlewares.use("/local/deliver-site", (request, response) => {
         if (request.method !== "POST") {
           response.statusCode = 405;

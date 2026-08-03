@@ -125,12 +125,74 @@ export function Portal() {
           Os três são independentes: cada um com o seu banco, a sua interface e o seu ritmo. Aqui é
           só a porta.
         </p>
+
+        <Desligar />
       </div>
 
       {emConstrucao !== null && (
         <EmConstrucao porta={emConstrucao} aoFechar={() => setEmConstrucao(null)} />
       )}
     </main>
+  );
+}
+
+/**
+ * A saída de verdade.
+ *
+ * O INICIAR sobe quatro processos, e o jeito de encerrar era achar a janela
+ * preta certa. Quem abre a suíte em modo `--app` nem vê essa janela: fecha o
+ * navegador e deixa tudo rodando atrás, segurando as portas.
+ *
+ * Fica no rodapé do vestíbulo, discreto: é a última coisa da tela, que é onde
+ * se procura a porta de saída, e não disputa atenção com as três portas de
+ * entrada. Quem mata os processos é o servidor, atrás do portão.
+ */
+function Desligar() {
+  const [confirmando, setConfirmando] = useState(false);
+  const [pronto, setPronto] = useState(false);
+
+  if (pronto) {
+    return (
+      <output className="portal-nota">
+        Desliguei tudo, senhor. Pode fechar esta janela. Quando quiser voltar, é só clicar no
+        INICIAR.
+      </output>
+    );
+  }
+
+  if (!confirmando) {
+    return (
+      <button type="button" className="portal-desligar" onClick={() => setConfirmando(true)}>
+        Desligar o Orbis
+      </button>
+    );
+  }
+
+  return (
+    <div className="portal-desligar-confirma">
+      <span>
+        Encerro as quatro peças de uma vez: este portal, o design system, o servidor e o app de
+        lojas. Confirma?
+      </span>
+      <div>
+        <button type="button" className="portal-desligar" onClick={() => setConfirmando(false)}>
+          Deixa para depois
+        </button>
+        <button
+          type="button"
+          className="portal-desligar portal-desligar-firme"
+          onClick={() => {
+            // O servidor cai no meio da resposta: erro de rede aqui é o
+            // resultado esperado, e não uma falha para mostrar.
+            void fetch('/api/desligar', { method: 'POST', credentials: 'include' })
+              .catch(() => {})
+              .finally(() => setPronto(true));
+          }}
+        >
+          Desligar tudo
+        </button>
+      </div>
+    </div>
   );
 }
 

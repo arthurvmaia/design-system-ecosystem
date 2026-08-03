@@ -1,4 +1,6 @@
+import { Mascote } from '@/components/Mascote';
 import type { MediaItem } from '@/lib/api';
+import { TRATAMENTO, conta } from '@/lib/orbis';
 import { type Problema, bloqueantes } from '@/lib/revisao-core';
 import { familyName } from '@ds/shared/fonts';
 import { ARQUETIPOS, type SecaoDoSite, TONS_DE_VOZ } from '@ds/shared/schemas';
@@ -40,6 +42,20 @@ export function StepRevisao({
 
   return (
     <div className="space-y-4">
+      {/* O Orbis fala aqui porque é aqui que a pessoa decide. Uma lista de
+          problemas sem ninguém dizendo o que ela significa é um formulário
+          reprovando alguém; com uma frase antes, vira o que de fato é: eu
+          conferindo o material antes de pôr a máquina para trabalhar. */}
+      <div className="flex items-start gap-3">
+        <Mascote tamanho={26} className="mt-0.5 shrink-0" />
+        <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
+          {nBloq > 0
+            ? `Ainda não posso gerar, ${TRATAMENTO}. ${conta(nBloq, 'item trava', 'itens travam')} a geração, e deixei o atalho para cada um ao lado.`
+            : avisos.length > 0
+              ? `Posso gerar quando o senhor mandar. ${conta(avisos.length, 'ponto merece', 'pontos merecem')} um olhar antes, mas nenhum deles me impede.`
+              : 'Está tudo no lugar. É só mandar, e eu monto o site.'}
+        </p>
+      </div>
       {problemas.length > 0 && (
         <div className="space-y-1.5">
           {[...bloqueantes(problemas), ...avisos].map((p) => (

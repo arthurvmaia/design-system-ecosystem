@@ -252,6 +252,57 @@ body {
   color: var(--texto-fraco);
 }
 
+/* ── desligar a suíte ──────────────────────────────────────────────────── */
+
+/* Discreto de propósito: é a porta de saída, e ela não disputa atenção com as
+   três portas de entrada. Fica visível, e só. */
+.portal-desligar {
+  padding: 8px 14px;
+  border: 1px solid var(--borda);
+  background: transparent;
+  color: var(--texto-fraco);
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 180ms ease, color 180ms ease;
+}
+
+.portal-desligar:hover,
+.portal-desligar:focus-visible {
+  border-color: var(--borda-viva);
+  color: var(--texto);
+}
+
+.portal-desligar-firme:hover,
+.portal-desligar-firme:focus-visible {
+  border-color: var(--perigo);
+  color: var(--perigo);
+}
+
+.portal-desligar-confirma {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 520px;
+  text-align: center;
+}
+
+.portal-desligar-confirma > span {
+  color: var(--texto-fraco);
+  font-size: 13px;
+}
+
+.portal-desligar-confirma > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
 /* ── o portão de senha ─────────────────────────────────────────────────── */
 
 .portao-caixa {

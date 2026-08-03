@@ -185,9 +185,9 @@ function OndeHaDecisao({
   if (disputadas.length === 0) {
     return (
       <Aviso>
-        Cada categoria da sua Biblioteca vem de uma origem só, {TRATAMENTO}. Não há nada em disputa
-        — quando o senhor trouxer um segundo site com botões, cards ou navegação, as escolhas
-        aparecem aqui.
+        Cada categoria da sua Biblioteca vem de uma origem só, {TRATAMENTO}. Não há nada em disputa.
+        Quando o senhor trouxer um segundo site com botões, cards ou navegação, as escolhas aparecem
+        aqui.
       </Aviso>
     );
   }

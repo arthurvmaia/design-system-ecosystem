@@ -557,6 +557,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .voltar-ao-portal { position: absolute; top: 18px; left: 18px; z-index: 2; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid var(--line); background: rgba(5,12,16,.75); color: var(--muted); font: 600 10.5px var(--font-geist-mono); letter-spacing: .12em; text-transform: uppercase; text-decoration: none; transition: border-color .2s, color .2s; }
 .voltar-ao-portal:hover, .voltar-ao-portal:focus-visible { border-color: rgba(34,211,238,.5); color: var(--green-bright); }
 .portal-switch { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+/* A saída de verdade. Discreta até o cursor chegar: é destrutiva, e um botão
+   vermelho fixo na barra transformaria cada tela num alerta. */
+.desligar-orbis { display: inline-flex; align-items: center; gap: 5px; }
+.desligar-orbis:hover, .desligar-orbis:focus-visible { color: var(--danger); }
+.desligado-aviso { color: var(--muted); font-size: 11px; }
 .entry-gate-marca { font: 800 20px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .34em; color: var(--ink); }
 .entry-gate-submarca { margin-top: -8px; font: 600 10px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .3em; text-transform: uppercase; color: var(--green-bright); }
 .entry-gate-fala { max-width: 460px; color: var(--muted); font-size: 13.5px; line-height: 1.7; }

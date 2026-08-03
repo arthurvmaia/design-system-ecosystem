@@ -1,3 +1,4 @@
+import { DesligarOrbis } from '@/components/DesligarOrbis';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import {
@@ -117,6 +118,9 @@ export function Sidebar({ aberta, aoFechar }: { aberta: boolean; aoFechar: () =>
             ))}
             <li>
               <VoltarAoPortal />
+            </li>
+            <li>
+              <DesligarOrbis />
             </li>
           </ul>
         </div>
