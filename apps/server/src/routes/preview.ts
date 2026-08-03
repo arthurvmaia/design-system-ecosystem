@@ -894,7 +894,13 @@ previewRoute.get('/segment/:segId', (c) => {
   const selo =
     textoDoSelo === ''
       ? ''
-      : `<div style="position:sticky;top:0;z-index:2147483647;font:12px/1.4 system-ui;padding:6px 12px;background:#0c4a6e;color:#e0f2fe;border-bottom:1px solid #0369a1">${textoDoSelo}</div>`;
+      : // `pointer-events:none` não é detalhe de estilo: o selo é texto, nada
+        // nele se clica, e ele fica no topo com o z-index máximo. Sem isso ele
+        // COME o clique dos controles do harness de rolagem que moram na mesma
+        // faixa — foi o que quebrou `preview.scroll.browser.test.ts` quando o
+        // selo passou a valer também sem `?contexto=1`. Aviso que impede a
+        // pessoa de usar a tela deixa de ser aviso e vira obstáculo.
+        `<div style="position:sticky;top:0;z-index:2147483647;pointer-events:none;font:12px/1.4 system-ui;padding:6px 12px;background:#0c4a6e;color:#e0f2fe;border-bottom:1px solid #0369a1">${textoDoSelo}</div>`;
 
   return responderHtml(
     compor({

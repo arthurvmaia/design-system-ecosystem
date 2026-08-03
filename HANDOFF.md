@@ -1,6 +1,7 @@
 # HANDOFF — onde o trabalho está
 
-*Atualizado em 2026-08-03. Main em `544b472`+, CI verde, 1.144 testes passando.*
+*Atualizado em 2026-08-03. CI verde, 1.290 testes rápidos e 79 de navegador
+passando, portão de fidelidade aprovado.*
 
 Este arquivo é para quem senta amanhã: o que está pronto, o que ficou pelo
 caminho e **por que** cada coisa que falta foi deixada para depois. O registro
@@ -46,11 +47,19 @@ regenerável, e corrigiu três documentos que descreviam um sistema que não exi
 mais — o `ARCHITECTURE.md` ainda chamava o `@ds/generator` de "agente LLM que
 compõe site".
 
-As quatro frentes: **4.1 e 4.4** (a marca rege tamanho e respiro), **4.3** (o
-teste do motor media o diretório de trabalho), **fatia 5** (a etapa Marca parou
-de dizer "herdado do kit" para o que não se herda — e nada é herdado do kit
-hoje, `buildBrandingCss` recebe só o branding) e **fatia 11** (o acervo passou a
-governar o ritmo do app, não só a curva).
+As frentes fechadas: **4.1, 4.4 e o terceiro eixo** (a marca rege tamanho,
+respiro e raio dentro das peças, com o corpo como âncora), **4.3** (o teste do
+motor media o diretório de trabalho, não o motor), **fatia 5** (a etapa Marca
+parou de dizer "herdado do kit" para o que não se herda — e nada é herdado do
+kit hoje, `buildBrandingCss` recebe só o branding), **fatia 6** (o alcance da
+marca aparece com o motivo, e o aviso passou a existir no editor de kit, que é
+onde a mistura é decidida), **fatia 7** (os quatro chamadores da resolução por
+identidade migraram; o índice deixou de ser código morto), **fatia 8** (esqueleto
+tipado, drag, contrato de mídia no inspetor e a etapa Mídia fora do wizard),
+**fatia 9** (a recusa, limitada ao descasamento de tipo), **fatia 10** (a nav
+superior), **fatia 11** (o acervo governa o ritmo, não só a curva), **fatia 12**
+(a fórmula virou página com URL e os estados aparecem lado a lado) e **fatia 13**
+(a âncora de rolagem viaja pela pilha).
 
 ## 2.1 O que a sessão anterior entregou
 
@@ -108,6 +117,12 @@ amarrando as duas.
 
 **Nada.** A árvore está limpa, o CI verde, e não há trabalho começado pela
 metade. O que segue abaixo é escolha do dono, não pendência de execução.
+
+Uma coisa mudou de natureza e vale dizer: até esta sessão, "o que falta" saía do
+que os documentos diziam. Agora sai de uma auditoria que leu fatia por fatia
+contra o código. Se o que está escrito aqui divergir do que você encontrar,
+acredite no código e corrija este arquivo — foi assim que se descobriu que a
+fatia 13 estava liberada havia semanas e ninguém sabia.
 
 ---
 
@@ -169,18 +184,36 @@ Ver acima. Mesma mecânica, régua própria (`EscalaDaOrigem.espacos`) e sem
 âncora: respiro não tem "corpo", e nomear um degrau de espaço como o principal
 exigiria saber a intenção de quem desenhou.
 
-### 4.5 Herdado do diagnóstico anterior, ainda de pé
+### 4.5 As fatias do diagnóstico — auditadas contra o código em 2026-08-03
 
-- **Fatia 7**: a coluna `segments.hash` nunca foi criada. A resolução de bundle
-  por identidade funciona lendo o índice hash→pasta dos manifests, sem escrita.
-  A coluna só vale quando houver algo que ela destrave.
-- **Fatia 8**: os três painéis existem, mas a etapa Mídia continua no wizard —
-  removê-la mudaria o gate de etapas.
-- **Fatia 13**: a MEDIÇÃO da âncora de scroll existe (`ancorasDeMidia`); a oferta
-  de mídia posicional, não. Ela depende de o veredito de cápsula chegar à tela, e
-  hoje 8 de 9 reprovam e o resultado é descartado antes da UI. Oferecer mídia
-  posicional numa cápsula que ninguém sabe se funciona é vender o que não se pode
-  entregar.
+Antes desta sessão, o que se sabia era o que os documentos diziam. Uma auditoria
+leu cada fatia contra o código, e o resultado mudou o quadro: **quase nada estava
+intocado, quase tudo estava pela metade.** As fatias 1 a 4, 5, 6 e 9 a 13 foram
+fechadas ou tiveram a parte que faltava entregue nesta sessão.
+
+O que ficou, e por quê:
+
+- **Fatia 7, a coluna `segments.hash`**: continua sem existir, e continua sendo a
+  decisão certa. Os quatro chamadores foram migrados para a chave composta, então
+  o índice hash→pasta deixou de ser código morto e o app resolve bundle por
+  identidade de verdade. A coluna só vale quando houver algo que ela destrave, e
+  a razão original (mexer no banco logo depois de uma perda de acervo) segue de pé.
+- **Fatia 12, a galeria de movimento e a vitrine de ícones**: a página existe, com
+  rota e URL, e as peças mostram os estados lado a lado. As duas vitrines que
+  faltam são apresentação, não mecanismo.
+- **Fatia 13, a troca de mídia dentro de cápsula de runtime**: não foi feita de
+  propósito. O diagnóstico registra que está "desenhada, não validada", e nenhuma
+  cápsula do acervo foi testada com mídia trocada. Em vez de prometer, a geração
+  avisa quais peças têm mídia presa à rolagem e diz que o movimento é o do
+  original. Para validar, é preciso trocar a mídia de uma cápsula real e conferir
+  se o efeito sobrevive.
+
+**Duas premissas do handoff anterior caducaram, e vale registrar para ninguém
+replanejar em cima delas.** A fatia 13 era declarada travada porque "o veredito
+de cápsula é descartado antes da UI" e "8 de 9 reprovam". O descarte foi
+corrigido (o rebaixamento acontece em `design-systems.ts` via
+`suporteAposVereditos`), e no acervo de hoje **zero cápsulas reprovam** — o que
+falha são cinco registros do canal de scroll.
 
 ### 4.6 Depois que os sócios validarem
 
