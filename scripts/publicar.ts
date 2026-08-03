@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getRoot } from '@ds/shared/paths';
@@ -23,22 +23,27 @@ import { config as carregarEnv } from 'dotenv';
  * sempre. Quem abrir o link vê o app inteiro e pede o que quiser; o pedido
  * espera você.
  *
- * **E não publica a suíte inteira, só o app de design system.** Isto precisa
- * ficar dito em voz alta, porque a suíte agora tem três frentes e o nome do
- * comando não diferencia. Um túnel da Cloudflare aponta para UM endereço, e as
- * três frentes moram em portas diferentes: o portal na 4000, esta tela na 5173
- * com a API na 8787, e o app de lojas na 3000. O que sai por este link é o que
- * este servidor serve, e ele serve o design system.
+ * ## Três túneis, e um link para mandar
  *
- * Para as três saírem por um link só, este servidor precisaria servir o portal
- * na raiz e encaminhar as outras duas por caminho (`/design-system`, `/lojas`),
- * o que exige ensinar cada app a viver debaixo de um sub-caminho: hoje os dois
- * assumem que moram em `/`, e o endereço de cada arquivo deles quebraria. É
- * trabalho de verdade, e fica anotado como pendência em vez de meio-feito.
+ * A suíte tem três frentes em três portas, e um túnel aponta para UMA. Servir
+ * as três por caminho (`/design-system`, `/lojas`) atrás de um túnel só exigiria
+ * ensinar cada app a viver debaixo de um sub-caminho, e os dois assumem que
+ * moram na raiz: o endereço de cada arquivo deles quebraria.
  *
- * O túnel vive enquanto este comando estiver rodando. Fechou a janela, o
- * endereço morre — e isso é uma característica, não um defeito: o que está no ar
- * é o SEU computador, e você decide quando.
+ * Então são três túneis, um por frente, e o portal costura. Quem recebe continua
+ * com UM link para abrir, o do portal, e de lá saem as outras duas: o comando
+ * grava os três endereços num arquivo, o servidor os devolve e o portal os usa.
+ *
+ * ## O que ele NÃO sobe
+ *
+ * As outras duas frentes. Ele sabe subir o servidor e mais nada, então confere
+ * as três portas antes de abrir túnel nenhum: faltando alguma, recusa e manda
+ * clicar no INICIAR. Abrir endereço público para porta morta é o pior resultado
+ * possível, porque quem recebe o link conclui que o app está quebrado.
+ *
+ * Os três endereços vivem enquanto este comando estiver rodando. Fechou a
+ * janela, eles morrem, e isso é característica e não defeito: o que está no ar é
+ * o SEU computador, e você decide quando.
  */
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -148,9 +153,21 @@ const subirServidorSePreciso = async (): Promise<void> => {
   });
 };
 
+/**
+ * Apaga o arquivo de endereços ao encerrar.
+ *
+ * Sem isso ele fica no disco com três endereços que já morreram, e o portal
+ * continua desenhando cartões que apontam para eles: o senhor abre em casa, na
+ * porta local, e os botões mandam para um túnel que não existe mais.
+ */
 const encerrar = (): void => {
   servidor?.kill();
   tunel?.kill();
+  try {
+    rmSync(arquivoDeEnderecos(), { force: true });
+  } catch {
+    // Sumiu antes, ou nunca existiu. As duas coisas são o que queríamos.
+  }
 };
 process.on('SIGINT', () => {
   console.log('\n  Fechando o túnel. O endereço para de responder agora.\n');
@@ -345,6 +362,54 @@ const main = async (): Promise<void> => {
       process.exit(codigo ?? 0);
     });
   }
+
+  /*
+   * O túnel morre quando a suíte morre.
+   *
+   * Isto virou obrigatório no dia em que este comando passou a REAPROVEITAR o
+   * servidor que já estava de pé. Antes, ele subia o próprio, e a proteção era
+   * o `exit` daquele processo: caiu o servidor, cai o túnel. Reaproveitando um
+   * servidor de fora, esse fio some, e foi exatamente o que aconteceu na
+   * primeira publicação de verdade: a suíte caiu e os três endereços
+   * continuaram no ar, apontando para portas mortas.
+   *
+   * Endereço público aberto para uma máquina, servindo erro, é o pior dos dois
+   * mundos: quem tem o link vê um app quebrado, e o link continua de pé. Então
+   * o vigia confere as três portas de dez em dez segundos e encerra tudo assim
+   * que uma delas sumir.
+   *
+   * Duas faltas seguidas antes de agir: um servidor reiniciando (o Vite faz
+   * isso ao salvar um arquivo de config) não pode derrubar a publicação.
+   */
+  let faltasSeguidas = 0;
+  const vigia = setInterval(() => {
+    void (async () => {
+      const vivas = await Promise.all(
+        (Object.keys(PORTA_DA_FRENTE) as Frente[]).map(async (frente) => ({
+          frente,
+          viva: await responde(
+            PORTA_DA_FRENTE[frente],
+            frente === 'designSystem' ? '/health' : '/',
+          ),
+        })),
+      );
+      const mortas = vivas.filter((v) => !v.viva);
+      if (mortas.length === 0) {
+        faltasSeguidas = 0;
+        return;
+      }
+      faltasSeguidas += 1;
+      if (faltasSeguidas < 2) return;
+      clearInterval(vigia);
+      console.error(
+        `\n  ${mortas.map((m) => NOME_DA_FRENTE[m.frente]).join(' e ')} parou de responder.`,
+      );
+      console.error('  Fechando os túneis: endereço público servindo erro é pior que nenhum.\n');
+      for (const processo of tuneis) processo.kill();
+      encerrar();
+      process.exit(1);
+    })();
+  }, 10_000);
 };
 
 void main();
