@@ -1,10 +1,42 @@
 # HANDOFF — Orbis · Criação de lojas Shopify
 
-> Documento de passagem de trabalho. Última atualização: **2026-08-02 (rodada
-> Fluxo Cliente, nesta máquina: clone em
-> `C:\Users\arthur.maia\Desktop\app2-shopify`)**.
-> Sessões conduzidas com Claude (Fable 5) no Claude Code. Backup espelho da
-> máquina original em `C:\Users\rick3\Desktop\Projeto shopify.zip`.
+> Documento de passagem de trabalho. Última atualização: **2026-08-03 (rodada
+> Suíte Orbis: o app mudou de casa, de nome e passou a caber no celular)**.
+> Mora em `orbis-lojas-shopify/`, dentro do repositório
+> `design-system-ecosystem`. Sessões conduzidas com Claude no Claude Code.
+
+## 🏠 Onde este app vive agora (leia primeiro)
+
+Ele deixou de rodar sozinho na Área de Trabalho e passou a ser uma das três
+portas da **Suíte Orbis**. O que mudou para quem trabalha aqui:
+
+- **A pasta**: `Desktop\orbis-suite\orbis-lojas-shopify`. A pasta antiga
+  (`Desktop\app2-shopify`) continua no disco como registro histórico, com o
+  próprio git — mas o trabalho novo é aqui.
+- **Como subir**: o `INICIAR.bat` da raiz da suíte sobe as quatro peças (portal
+  4000, design system 5173 + 8787, este app 3000) e abre o portal. Para subir só
+  este app, o `iniciar.bat` daqui continua funcionando.
+- **A independência é real e proposital**: npm, lockfile, testes e ESLint
+  próprios. Ele fica **fora** do workspace pnpm (`apps/*`, `packages/*`) e no
+  `files.ignore` do `biome.json` da suíte — sem isso o `pnpm lint`, que bloqueia
+  o CI, tentaria formatar este projeto com o estilo do outro.
+- **A marca**: "Tempera" virou **Orbis · Criação de lojas Shopify**, e a troca
+  desceu até o sufixo do ZIP exportado (`-orbis.zip`), o prefixo dos assets que
+  a exportação cria (`orbis-<id>-`, `orbis-inline-`) e o atributo que a prévia
+  escuta (`data-orbis-section`).
+- **Este app não tem senha.** O portão da suíte protege o portal e o app de
+  design system; a porta 3000 abre direto. Local, tudo bem; se um dia a suíte
+  for publicada por túnel, isso precisa ser resolvido antes.
+
+### O editor no celular (rodada 2026-08-03)
+
+Abaixo de 860px os três painéis viram **abas**: Seções · Prévia · Ajustes. Antes
+a árvore de seções tinha `display: none` — o telefone perdia justamente a peça
+que escolhe o que editar. Tocar numa seção da árvore já pula para os Ajustes
+dela. A barra de ações parou de esconder Exportar ZIP, versões e desfazer:
+agora ela quebra em linha, porque com `justify-content: flex-end` o excesso
+transbordava para a **esquerda**, e o que transborda para a esquerda nenhum dedo
+alcança. Conferido em 390×844 e 768×1024 no navegador de verdade.
 
 ## O que é o projeto
 
@@ -20,9 +52,9 @@ Stack: Vinext (Next-on-Vite) · React 19 · TypeScript · Cloudflare Workers (mi
 
 ```bash
 npm install
-npm run dev        # porta 3000 nesta máquina (ou dois cliques no iniciar.bat)
+npm run dev        # porta 3000 (ou o INICIAR.bat da suíte, que sobe tudo)
 npm run lint       # ESLint
-node --test tests/*.test.mjs   # 21 testes (npm test builda antes e pode resetar o miniflare)
+node --test tests/*.test.mjs   # 25 testes (npm test builda antes e pode resetar o miniflare)
 npm run build      # build de produção
 ```
 
