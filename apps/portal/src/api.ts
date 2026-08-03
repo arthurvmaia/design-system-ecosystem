@@ -43,8 +43,24 @@ const pedir = async <T>(url: string, init?: RequestInit): Promise<T> => {
   return (await resposta.json()) as T;
 };
 
+/**
+ * Onde cada frente atende quando a suíte está publicada por túnel.
+ *
+ * Na máquina, o portal monta os endereços trocando a porta do host atual. Isso
+ * quebra no túnel: lá fora não existe porta 5173 nenhuma, e cada frente sai por
+ * um endereço `trycloudflare` sorteado na hora. O servidor guarda os três e os
+ * devolve aqui; sem túnel, devolve vazio e o portal usa as portas locais.
+ */
+export type EnderecosPublicos = {
+  portal?: string;
+  designSystem?: string;
+  lojas?: string;
+  gravadoEm?: number;
+};
+
 export const api = {
   sessao: () => pedir<Sessao>('/api/orbis/sessao'),
+  enderecos: () => pedir<{ enderecos: EnderecosPublicos | null }>('/api/enderecos'),
   entrar: (senha: string) =>
     pedir<{ dentro: boolean; nivel: NivelDeAcesso }>('/api/orbis/entrar', {
       method: 'POST',

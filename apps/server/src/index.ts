@@ -12,6 +12,7 @@ import { appCompiladoExiste, appWebRoute } from './routes/app-web.js';
 import { assetRoute, frameRoute, libraryAssetRoute } from './routes/asset.js';
 import { designSystemsRoute } from './routes/design-systems.js';
 import { desligarRoute } from './routes/desligar.js';
+import { enderecosRoute } from './routes/enderecos.js';
 import { healthRoute } from './routes/health.js';
 import { kitsRoute } from './routes/kits.js';
 import { libraryRoute } from './routes/library.js';
@@ -110,6 +111,7 @@ app.route('/api/orbis', orbisRoute);
 // Fora de `/api/orbis` de propósito: aquele prefixo é o único que responde sem
 // sessão, e desligar a suíte é a ação mais destrutiva do app.
 app.route('/api/desligar', desligarRoute);
+app.route('/api/enderecos', enderecosRoute);
 app.route('/health', healthRoute);
 app.route('/api/design-systems', designSystemsRoute);
 app.route('/api/library', libraryRoute);

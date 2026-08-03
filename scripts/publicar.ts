@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getRoot } from '@ds/shared/paths';
 import { config as carregarEnv } from 'dotenv';
 
 /**
@@ -148,7 +149,7 @@ const esperarServidor = async (): Promise<void> => {
 
 /** O cloudflared imprime o endereço no meio de um bloco decorado. Extrai. */
 const ENDERECO = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
-let jaMostrou = false;
+const jaMostrou = false;
 const olhar = (b: Buffer): void => {
   const texto = b.toString();
 
@@ -156,23 +157,73 @@ const olhar = (b: Buffer): void => {
   // fosse o endereço, e quando o túnel falhava a janela ficava com um endereço
   // bonito e nenhuma pista — o log estava lá e ninguém via.
   for (const linha of texto.split('\n')) {
-    if (/\bERR\b|\bWRN\b/.test(linha)) console.error(`  [túnel] ${linha.trim()}`);
+    if (/\bERR\b|\bWRN\b/.test(linha)) console.error(`  [${NOME_DA_FRENTE[qual]}] ${linha.trim()}`);
   }
 
   const achado = texto.match(ENDERECO);
-  if (achado === null || jaMostrou) return;
-  jaMostrou = true;
-  const url = achado[0];
+  if (achado === null) return;
+  registrarEndereco(qual, achado[0]);
+};
+
+/**
+ * Um túnel por frente, e o portal costurando as três.
+ *
+ * Servir as três por caminho num túnel só exigiria ensinar cada app a viver
+ * debaixo de um sub-caminho, e os dois assumem que moram na raiz: o endereço de
+ * cada arquivo deles quebraria. Três túneis custam três processos e nenhuma
+ * reescrita, e quem recebe continua com UM link para abrir, o do portal.
+ *
+ * Os endereços vão para um arquivo que o servidor lê e o portal consulta. Sem
+ * ele, os cartões voltam a apontar para as portas locais, que é o certo quando
+ * não há túnel.
+ */
+/**
+ * Onde os endereços públicos ficam para o servidor achar.
+ *
+ * O mesmo caminho que `apps/server/src/routes/enderecos.ts` lê. Ele é repetido
+ * aqui, em vez de importado, porque importar um módulo de ROTA para dentro de um
+ * script de linha de comando arrastaria o Hono inteiro junto: uma linha de
+ * acoplamento por um caminho de arquivo é o troco mais barato.
+ */
+const arquivoDeEnderecos = (): string => join(getRoot(), 'tunel.json');
+
+const enderecos: Record<Frente, string | undefined> = {
+  portal: undefined,
+  designSystem: undefined,
+  lojas: undefined,
+};
+
+const registrarEndereco = (qual: Frente, url: string): void => {
+  if (enderecos[qual] !== undefined) return;
+  enderecos[qual] = url;
+  writeFileSync(
+    arquivoDeEnderecos(),
+    JSON.stringify({ ...enderecos, gravadoEm: Date.now() }, null, 2),
+    'utf8',
+  );
+  console.log(`  [túnel] ${NOME_DA_FRENTE[qual]} no ar`);
+  if (
+    enderecos.portal !== undefined &&
+    enderecos.designSystem !== undefined &&
+    enderecos.lojas !== undefined
+  ) {
+    mostrarQuadro();
+  }
+};
+
+const mostrarQuadro = (): void => {
   console.log(`
   ┌────────────────────────────────────────────────────────────────
-  │  No ar: ${url}
+  │  Mande SÓ este: ${enderecos.portal}
   │
-  │  Este link abre o app de DESIGN SYSTEM, e só ele. O portal e o
-  │  app de lojas Shopify ficam de fora: um túnel aponta para um
-  │  endereço, e as três frentes moram em portas diferentes.
+  │  É o portal, e de lá saem as três frentes. Ele já sabe o
+  │  endereço público de cada uma; quem recebe não precisa de
+  │  mais nenhum link.
   │
-  │  Mande este endereço para quem vai testar. O Orbis pede a
-  │  credencial antes de mostrar qualquer coisa.
+  │  design system : ${enderecos.designSystem}
+  │  lojas shopify : ${enderecos.lojas}
+  │
+  │  O Orbis pede a credencial antes de mostrar qualquer coisa.
   │${
     temVisita
       ? `
@@ -184,7 +235,7 @@ const olhar = (b: Buffer): void => {
   │  defina ORBIS_SENHA_VISITA no .env e rode de novo.`
   }
   │
-  │  O endereço vive enquanto esta janela estiver aberta.
+  │  Os três endereços vivem enquanto esta janela estiver aberta.
   │  Ctrl+C encerra.
   └────────────────────────────────────────────────────────────────
 `);
@@ -206,19 +257,27 @@ const main = async (): Promise<void> => {
   //
   // Custa um pouco de latência em conexão ruim. Um endereço mais lento é melhor
   // que um endereço que não abre.
-  tunel = spawn(
-    'cloudflared',
-    ['tunnel', '--protocol', 'http2', '--url', `http://localhost:${porta}`],
-    { stdio: ['ignore', 'pipe', 'pipe'], shell: ehWindows },
-  );
-
-  tunel.stdout?.on('data', olhar);
-  tunel.stderr?.on('data', olhar); // o cloudflared imprime o endereço no stderr
-  tunel.on('exit', (codigo) => {
-    console.log(`\n  O túnel encerrou (código ${codigo ?? 0}).`);
-    encerrar();
-    process.exit(codigo ?? 0);
+  const tuneis = (Object.keys(PORTA_DA_FRENTE) as Frente[]).map((frente) => {
+    const processo = spawn(
+      'cloudflared',
+      ['tunnel', '--protocol', 'http2', '--url', `http://localhost:${PORTA_DA_FRENTE[frente]}`],
+      { stdio: ['ignore', 'pipe', 'pipe'], shell: ehWindows },
+    );
+    processo.stdout?.on('data', olhar(frente));
+    processo.stderr?.on('data', olhar(frente)); // o endereço sai no stderr
+    return processo;
   });
+  tunel = tuneis[0] ?? null;
+
+  for (const processo of tuneis) {
+    processo.on('exit', (codigo) => {
+      console.log(`
+  Um dos túneis encerrou (código ${codigo ?? 0}).`);
+      for (const outro of tuneis) if (outro !== processo) outro.kill();
+      encerrar();
+      process.exit(codigo ?? 0);
+    });
+  }
 };
 
 void main();

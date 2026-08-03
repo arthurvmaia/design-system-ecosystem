@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mascote } from './Mascote';
-import { type Sessao, api } from './api';
+import { type EnderecosPublicos, type Sessao, api } from './api';
 
 /**
  * O vestíbulo da suíte Orbis: a credencial e três portas.
@@ -25,7 +25,12 @@ import { type Sessao, api } from './api';
  * de novo — decisão de segurança que foi mantida de propósito.
  */
 
-type Destino = { porta: number; caminho?: string };
+type Destino = {
+  porta: number;
+  caminho?: string;
+  /** Qual endereço público usar quando a suíte está publicada por túnel. */
+  chave?: 'designSystem' | 'lojas';
+};
 
 type Porta = {
   id: string;
@@ -43,7 +48,7 @@ const PORTAS: Porta[] = [
     titulo: 'Criação de Design System',
     fala: 'Capturo um site inteiro, separo em peças reaproveitáveis e monto o seu design system.',
     detalhes: ['Captura e curadoria', 'Kits de peças', 'Geração de site com a sua marca'],
-    destino: { porta: 5173 },
+    destino: { porta: 5173, chave: 'designSystem' },
   },
   {
     id: 'lojas-shopify',
@@ -51,7 +56,7 @@ const PORTAS: Porta[] = [
     titulo: 'Criação de Lojas Shopify',
     fala: 'Instalo o tema Shopify de verdade, edito com paridade ao editor da Shopify e devolvo um ZIP instalável.',
     detalhes: ['Importação do tema', 'Editor com prévia ao vivo', 'Site do cliente em um arquivo'],
-    destino: { porta: 3000 },
+    destino: { porta: 3000, chave: 'lojas' },
   },
   {
     id: 'criativos',
@@ -70,13 +75,24 @@ const PORTAS: Porta[] = [
  * o IP da máquina: com `localhost` no card, o telefone tentaria falar consigo
  * mesmo e não acharia nada.
  */
-const enderecoDe = (destino: Destino): string =>
-  `${window.location.protocol}//${window.location.hostname}:${destino.porta}${destino.caminho ?? ''}`;
+const enderecoDe = (destino: Destino, publicos?: EnderecosPublicos | null): string => {
+  // Publicado por túnel, cada frente tem um endereço próprio e sorteado na
+  // hora. Trocar a porta do host atual, que é o que funciona na máquina, ali
+  // produziria um link para uma porta que não existe do lado de fora.
+  const doTunel = destino.chave === undefined ? undefined : publicos?.[destino.chave];
+  if (typeof doTunel === 'string' && doTunel !== '') {
+    return `${doTunel.replace(/\/$/, '')}${destino.caminho ?? ''}`;
+  }
+  return `${window.location.protocol}//${window.location.hostname}:${destino.porta}${destino.caminho ?? ''}`;
+};
 
 export function Portal() {
   const [sessao, setSessao] = useState<Sessao | null>(null);
   const [falhaDeServidor, setFalhaDeServidor] = useState(false);
   const [emConstrucao, setEmConstrucao] = useState<Porta | null>(null);
+  // Publicado por túnel, cada frente tem endereço próprio. Sem túnel isto vem
+  // vazio e os cartões usam as portas locais, que é o certo na máquina.
+  const [publicos, setPublicos] = useState<EnderecosPublicos | null>(null);
 
   const conferir = useCallback(async () => {
     try {
@@ -92,6 +108,14 @@ export function Portal() {
   useEffect(() => {
     void conferir();
   }, [conferir]);
+
+  useEffect(() => {
+    if (sessao?.dentro !== true) return;
+    api
+      .enderecos()
+      .then((r) => setPublicos(r.enderecos))
+      .catch(() => setPublicos(null));
+  }, [sessao?.dentro]);
 
   if (falhaDeServidor) return <ServidorMudo aoTentar={() => void conferir()} />;
   if (sessao === null) return <Espera />;
@@ -117,7 +141,12 @@ export function Portal() {
 
         <div className="portal-portas">
           {PORTAS.map((porta) => (
-            <Cartao key={porta.id} porta={porta} aoPedirEmBreve={() => setEmConstrucao(porta)} />
+            <Cartao
+              key={porta.id}
+              porta={porta}
+              publicos={publicos}
+              aoPedirEmBreve={() => setEmConstrucao(porta)}
+            />
           ))}
         </div>
 
@@ -196,7 +225,11 @@ function Desligar() {
   );
 }
 
-function Cartao({ porta, aoPedirEmBreve }: { porta: Porta; aoPedirEmBreve: () => void }) {
+function Cartao({
+  porta,
+  publicos,
+  aoPedirEmBreve,
+}: { porta: Porta; publicos: EnderecosPublicos | null; aoPedirEmBreve: () => void }) {
   const indisponivel = porta.destino === null;
   return (
     <button
@@ -208,7 +241,7 @@ function Cartao({ porta, aoPedirEmBreve }: { porta: Porta; aoPedirEmBreve: () =>
           return;
         }
         // Mesma aba: o Voltar do navegador traz a pessoa de volta para cá.
-        window.location.href = enderecoDe(porta.destino);
+        window.location.href = enderecoDe(porta.destino, publicos);
       }}
     >
       <span className="porta-marca">{porta.marca}</span>
