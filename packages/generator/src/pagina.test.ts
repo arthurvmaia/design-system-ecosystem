@@ -49,6 +49,141 @@ const DS: KitDesignSystem = {
   limitacoes: [],
 };
 
+/**
+ * Duas origens com réguas DIFERENTES, medidas.
+ *
+ * `ds_a` é a referência (a preferência do layout aponta para ela) e tem corpo
+ * em 16px; `ds_b` tem corpo em 14px. Se o alinhamento funcionar, o texto de
+ * leitura das duas sai do mesmo tamanho no site gerado — que é a coisa mais
+ * visível que esta fatia faz.
+ */
+const DS_COM_ESCALA: KitDesignSystem = {
+  versao: 1,
+  geradoEm: 1,
+  tema: 'claro',
+  origens: [
+    {
+      designSystemId: 'ds_a',
+      tema: 'claro',
+      clusters: [],
+      fontes: [],
+      escala: {
+        degraus: [14, 16, 24, 48],
+        corpo: 16,
+        display: 48,
+        espacos: [8, 16, 32],
+        raios: [],
+      },
+    },
+    {
+      designSystemId: 'ds_b',
+      tema: 'claro',
+      clusters: [],
+      fontes: [],
+      escala: {
+        degraus: [12, 14, 20, 40],
+        corpo: 14,
+        display: 40,
+        espacos: [6, 12, 24],
+        raios: [],
+      },
+    },
+  ],
+  limitacoes: [],
+};
+
+const montarComEscala = (raiz: string, regime: 'da-marca' | 'de-cada-origem') => {
+  const a = bundle(raiz, `a-${regime}`, '<section class="a">A</section>', '.a{font-size:16px}');
+  const b = bundle(
+    raiz,
+    `b-${regime}`,
+    '<section class="b">B</section>',
+    '.b{font-size:14px;padding:12px}.b h2{font-size:40px}',
+  );
+  const out = join(raiz, `saida-${regime}`);
+  const r = montarPaginaDoKit({
+    projectId: 'prj_teste',
+    titulo: 'Escala',
+    kit: {
+      id: 'kit_e',
+      components: [
+        {
+          id: 'cmp_a',
+          name: 'A',
+          category: 'hero',
+          kind: 'component',
+          bundlePath: a,
+          designSystemId: 'ds_a',
+        },
+        {
+          id: 'cmp_b',
+          name: 'B',
+          category: 'pricing',
+          kind: 'component',
+          bundlePath: b,
+          designSystemId: 'ds_b',
+        },
+      ],
+    },
+    designSystem: DS_COM_ESCALA,
+    layout: ProjectLayout.parse({
+      preferDesignSystemId: 'ds_a',
+      secoes: [
+        { id: 's1', nome: 'A', componentIds: ['cmp_a'] },
+        { id: 's2', nome: 'B', componentIds: ['cmp_b'] },
+      ],
+    }),
+    branding: { ...DEFAULT_PROJECT_BRANDING, escalaDoSite: regime },
+    outputDir: out,
+  });
+  return {
+    r,
+    estilos: readFileSync(join(out, 'assets', 'styles.css'), 'utf8'),
+    marca: readFileSync(join(out, 'assets', 'marca.css'), 'utf8'),
+  };
+};
+
+test('a marca rege o tamanho: o corpo das duas origens cai no mesmo degrau', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'escala-'));
+  try {
+    const { r, estilos, marca } = montarComEscala(raiz, 'da-marca');
+
+    // A régua da referência vira token declarado, em px.
+    assert.match(marca, /--marca-passo-2:\s*16px/, 'o degrau de corpo da referência');
+    assert.match(marca, /--marca-passo-4:\s*48px/, 'o degrau de display da referência');
+    assert.match(marca, /--marca-espaco-2:\s*16px/);
+
+    // O corpo de ds_b (14px, degrau 2 da régua dele) aponta para o MESMO token
+    // que o corpo de ds_a (16px, degrau 2 da régua dela). É o alinhamento.
+    assert.match(estilos, /font-size:\s*var\(--marca-passo-2,\s*14px\)/, 'corpo de ds_b');
+    assert.match(estilos, /font-size:\s*var\(--marca-passo-2,\s*16px\)/, 'corpo de ds_a');
+
+    // E a hierarquia sobrevive: o maior de ds_b vai para o maior da referência.
+    assert.match(estilos, /font-size:\s*var\(--marca-passo-4,\s*40px\)/);
+    assert.match(estilos, /padding:\s*var\(--marca-espaco-2,\s*12px\)/);
+
+    // O literal original é SEMPRE a reserva: sem o token, a peça degrada para o
+    // tamanho de origem, nunca para quebrado.
+    assert.doesNotMatch(estilos, /var\(--marca-passo-\d+\)/, 'nenhum var() sem fallback');
+    assert.ok(r.reescala.reescritas >= 4, `reescreveu pouco: ${r.reescala.reescritas}`);
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('em `de-cada-origem` nada é reescrito e o marca.css não ganha degrau', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'escala-off-'));
+  try {
+    const { r, estilos, marca } = montarComEscala(raiz, 'de-cada-origem');
+    assert.equal(r.reescala.reescritas, 0);
+    assert.doesNotMatch(estilos, /--marca-passo/, 'a peça mantém a régua da origem');
+    assert.doesNotMatch(marca, /--marca-passo/, 'sem régua declarada');
+    assert.match(estilos, /font-size:\s*14px/, 'o valor de origem continua literal');
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
 const montar = (raiz: string) => {
   const hero = bundle(
     raiz,

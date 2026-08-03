@@ -7,6 +7,7 @@ import {
   RedeSocial,
   TipografiaDoProjeto,
 } from './brand.js';
+import { REGIME_DE_ESCALA_PADRAO, RegimeDeEscala } from './escala-do-site.js';
 
 export const ProjectStatus = z.enum([
   'draft',
@@ -195,6 +196,35 @@ export const ProjectBranding = z.object({
   tipografia: TipografiaDoProjeto.optional(),
   /** Redes sociais com ordem, visibilidade e posições. */
   sociais: z.array(RedeSocial).optional(),
+
+  /**
+   * De quem é a RÉGUA DE TAMANHO do site: uma escala só, da marca, ou a de cada
+   * origem, peça por peça.
+   *
+   * ## Por que o padrão é `da-marca`
+   *
+   * Porque a FAMÍLIA da fonte já se comporta assim. O `retipografar` reescreve
+   * `font-family` no ponto de uso dentro das peças de origem desde sempre; fazer
+   * o tamanho seguir outra regra que a família seria surpresa sem motivo. Some a
+   * isso que misturar origens é a promessa central do produto, e uma régua que
+   * não conversa mina exatamente essa promessa: hero de 64px em cima e preços de
+   * 40px embaixo não porque alguém escolheu, mas porque dois designers
+   * escolheram em dois sites e ninguém conciliou. `de-cada-origem` continua
+   * disponível para quem quiser justamente a fidelidade de cada captura.
+   *
+   * ## Por que ligar o padrão não muda projeto que já existe
+   *
+   * O regime só produz efeito onde há régua MEDIDA. Origem capturada antes de o
+   * motor medir escala vem com `escala` ausente, `reguasParaOrigem` devolve
+   * mapas vazios e a reescrita não acontece: o literal de tamanho da origem
+   * continua valendo, igualzinho a antes. É a mesma degradação da recoloração e
+   * da retipografia — sem dado, a peça sai como estava.
+   *
+   * E branding gravado ANTES deste campo valida sem ajuste nenhum: o `default`
+   * do Zod preenche na leitura, então o campo é opcional na entrada e garantido
+   * na saída (é por isso que `DEFAULT_PROJECT_BRANDING` também o declara).
+   */
+  escalaDoSite: RegimeDeEscala.default(REGIME_DE_ESCALA_PADRAO),
 });
 export type ProjectBranding = z.infer<typeof ProjectBranding>;
 
@@ -252,6 +282,11 @@ export const DEFAULT_PROJECT_CONTENT: ProjectContent = {
 export const DEFAULT_PROJECT_BRANDING: ProjectBranding = {
   palette: { primary: '#7f1d1d', background: '#ffffff', foreground: '#0a0a0a' },
   typography: { display: 'Inter, sans-serif', body: 'Inter, sans-serif' },
+  // Explícito porque o tipo é o de SAÍDA do schema, onde o default já se
+  // aplicou. Sem ele, o caminho parcial de `normalizarProjectBranding` montaria
+  // um branding sem regime — e o consumidor leria `undefined` no lugar de uma
+  // escolha.
+  escalaDoSite: REGIME_DE_ESCALA_PADRAO,
 };
 
 const jsonSeguro = (raw: string | null): unknown => {
@@ -418,6 +453,11 @@ export const normalizarProjectBranding = (raw: string | null): ProjectBranding =
     ...parcial,
     palette: { ...DEFAULT_PROJECT_BRANDING.palette, ...(parcial.palette ?? {}) },
     typography: { ...DEFAULT_PROJECT_BRANDING.typography, ...(parcial.typography ?? {}) },
+    // O espalhamento acima é um CAST, não uma validação: sem isto, um
+    // `escalaDoSite` torto no JSON atravessaria intacto e chegaria como regime
+    // desconhecido a quem decide a régua. Enum que liga um caminho de código
+    // precisa ser um dos dois valores, sempre.
+    escalaDoSite: RegimeDeEscala.catch(REGIME_DE_ESCALA_PADRAO).parse(parcial.escalaDoSite),
     schemaVersion: PROJECT_DATA_VERSION,
   });
 };

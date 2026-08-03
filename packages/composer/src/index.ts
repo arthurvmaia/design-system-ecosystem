@@ -66,3 +66,5 @@ export { fontesDaOrigem, placarDasFontes } from './papel-da-fonte.js';
 export type { FontesDaOrigem, PapelDeFonte } from './papel-da-fonte.js';
 export { mapaDeFontes, retipografarCss, TOKEN_DE_FONTE } from './retipografar.js';
 export type { MapaDeFontes, ResultadoRetipografia } from './retipografar.js';
+export { PX_POR_REM, TOLERANCIA_EM_PX, reescalarCss } from './reescalar.js';
+export type { ReguasDeEscala, ResultadoDeReescala } from './reescalar.js';

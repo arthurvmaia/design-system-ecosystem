@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import {
+  type EscalaDaOrigem,
   type GeneratePayload,
   OBJETIVOS,
   type ProjectBranding,
@@ -10,6 +11,8 @@ import {
   derivarEscala,
   distribuirTokens,
   explicarPapel,
+  nomeDoEspaco,
+  nomeDoPasso,
   projectGeneratedVersionDir,
   resolverSecoes,
 } from '@ds/shared';
@@ -298,6 +301,66 @@ Componha o site.`;
 };
 
 /**
+ * Os tokens de ESCALA: os degraus de tamanho e de respiro que as peças consomem.
+ *
+ * ## O defeito, medido
+ *
+ * A fonte da marca já valia DENTRO das peças de origem — `retipografar.ts`
+ * reescreve `font-family` no ponto de uso, e a peça passa a consumir
+ * `var(--marca-fonte-display, ...)`. O TAMANHO não valia: cada peça continuava
+ * com os degraus do site de onde foi capturada, e um kit que junta o hero de um
+ * site com os preços de outro saía com título de 64px em cima e de 40px embaixo.
+ * Não porque alguém escolheu, mas porque dois designers escolheram, em dois
+ * sites, e ninguém conciliou.
+ *
+ * A reescrita da peça troca o literal por `font-size: var(--marca-passo-5, 3rem)`
+ * — e alguém precisa DECLARAR `--marca-passo-5`. É esta função. Sem ela a peça
+ * fica com um `var()` que não resolve e cai no fallback, ou seja, o defeito
+ * inteiro de volta em silêncio.
+ *
+ * ## A saída
+ *
+ * Uma declaração por degrau da régua de referência, dentro do mesmo `:root` dos
+ * tokens de cor e de fonte, na ordem em que a régua os mediu:
+ *
+ *   `--marca-passo-1: 12px;` … `--marca-espaco-1: 4px;` …
+ *
+ * O nome sai de `nomeDoPasso`/`nomeDoEspaco` (@ds/shared), os MESMOS que a
+ * reescrita das peças usa. Nome montado à mão nas duas pontas é exatamente como
+ * elas divergem sem ninguém perceber.
+ *
+ * ## Os invariantes
+ *
+ * - **Sem régua medida, nada é declarado.** `escala` ausente, nula ou sem
+ *   degraus produz o CSS de sempre, byte a byte. Projeto que já existe não muda
+ *   de aparência porque o motor aprendeu a medir escala; é a mesma degradação da
+ *   recoloração e da retipografia, sem dado a peça sai como estava. (Régua sem
+ *   degrau nem chega aqui na prática: `escalaDeReferencia` só elege origem com
+ *   degraus medidos.)
+ * - **Aqui é o único lugar que DECLARA `--marca-*`.** `recolorir.ts` e
+ *   `retipografar.ts` carregam o invariante espelhado do outro lado: elas só
+ *   consomem. É isso que mantém a herança do `:root` limpa até dentro do bundle,
+ *   sem proxy no caminho para interceptar.
+ * - **O índice é a identidade do degrau.** Valor impossível (um `Infinity` que
+ *   passou pelo `positive()` do schema) não vira declaração, mas também não é
+ *   removido da lista: filtrar deslocaria os vizinhos e `--marca-passo-5`
+ *   passaria a nomear outro tamanho aqui e na peça. Sem a declaração, aquele
+ *   degrau cai no literal de origem, que é a degradação certa.
+ */
+const varsDaEscala = (escala: EscalaDaOrigem | null | undefined): string => {
+  if (escala == null || escala.degraus.length === 0) return '';
+
+  const linhas: string[] = [];
+  escala.degraus.forEach((px, i) => {
+    if (Number.isFinite(px)) linhas.push(`  ${nomeDoPasso(i)}: ${px}px;`);
+  });
+  escala.espacos.forEach((px, i) => {
+    if (Number.isFinite(px)) linhas.push(`  ${nomeDoEspaco(i)}: ${px}px;`);
+  });
+  return linhas.length === 0 ? '' : `\n${linhas.join('\n')}`;
+};
+
+/**
  * CSS da marca aplicado ao site gerado.
  *
  * A tipografia sai de `buildTypographyCss` (fonte da verdade compartilhada):
@@ -305,8 +368,20 @@ Componha o site.`;
  * — aplica a fonte de títulos aos headings e a de corpo ao body. A importação da
  * família em si entra por um `<link>` no head (ver `generateSite`), carregando
  * só os pesos usados.
+ *
+ * A `escala` é a régua de REFERÊNCIA do kit (`escalaDeReferencia`), e chega por
+ * parâmetro opcional porque quem monta a página é que sabe qual origem rege —
+ * esta função só declara o que recebeu. Sem ela, o CSS sai idêntico ao de antes.
+ *
+ * A escala por TAG derivada dos presets (h1..h6 mais abaixo) não sai daqui e não
+ * disputa com os tokens novos: ela pinta a tag nua, com especificidade (0,0,1),
+ * e os tokens existem para o ponto de uso dentro das peças, que é onde a classe
+ * utilitária da origem ganharia da tag.
  */
-export const buildBrandingCss = (branding: ProjectBranding): string => {
+export const buildBrandingCss = (
+  branding: ProjectBranding,
+  escala?: EscalaDaOrigem | null,
+): string => {
   const typo = buildTypographyCss(branding.typography);
 
   // Tokens semânticos da paleta nova (A5); sem paleta, o legado de 4 cores
@@ -347,7 +422,7 @@ body { font-size: ${e.corpoTamanho}; line-height: ${e.corpoLineHeight}; }
   --brand-bg: ${fundo};
   --brand-fg: ${texto};
   ${branding.palette.accent ? `--brand-accent: ${branding.palette.accent};` : ''}
-${varsSemanticas}
+${varsSemanticas}${varsDaEscala(escala)}
 }
 /* Override dos --primary do componente para casar com a marca. */
 :root { --primary: var(--brand-primary); }

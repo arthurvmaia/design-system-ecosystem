@@ -89,6 +89,13 @@ const principal = (): void => {
   console.log(
     `  Recoloração: ${r.recoloracao.origens} origem(ns), ${r.recoloracao.reescritas} cor(es) apontando para a marca, ${r.recoloracao.mantidas} mantida(s).`,
   );
+  console.log(`  Retipografia: ${r.retipografia.reescritas} fonte(s) apontando para a marca.`);
+  // `mantidas` sai junto porque é o número que responde "por que o site ainda
+  // parece de dois tamanhos": régua que não alcança unidade relativa nem
+  // expressão fluida deixa a origem mandar, e isso precisa ser visível.
+  console.log(
+    `  Escala: ${r.reescala.reescritas} tamanho(s) e respiro(s) na régua da marca, ${r.reescala.mantidas} com o valor da origem.`,
+  );
   if (r.faltando.length > 0) {
     console.log(`  Peças sem bundle: ${r.faltando.join(', ')}`);
   }

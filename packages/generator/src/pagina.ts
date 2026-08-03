@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync
 import { join } from 'node:path';
 import {
   type MapaDeRecoloracao,
+  type ReguasDeEscala,
   atributosDeProxy,
   envolverEmProxies,
   escoparCss,
@@ -10,6 +11,7 @@ import {
   mapaDeRecoloracao,
   nomesGlobaisDe,
   recolorirCss,
+  reescalarCss,
   retipografarCss,
 } from '@ds/composer';
 import {
@@ -19,8 +21,10 @@ import {
   type ProjectLayout,
   buildTypographyCss,
   ehPecaDeFundo,
+  escalaDeReferencia,
   projectGeneratedVersionDir,
   projectMediaDir,
+  reguasParaOrigem,
   resolverSecoes,
   separarCamadasDePagina,
 } from '@ds/shared';
@@ -112,6 +116,13 @@ export type ResultadoDaPagina = {
   recoloracao: { origens: number; reescritas: number; mantidas: number };
   /** Quantas declarações de fonte passaram a consumir o token da marca. */
   retipografia: { reescritas: number };
+  /**
+   * Tamanhos e respiros que passaram a consumir a régua da marca, e quantos
+   * ficaram com o valor da origem (unidade relativa, expressão fluida, valor
+   * fora de qualquer degrau). `mantidas` alto não é defeito: é o quanto daquela
+   * folha o alinhamento não alcança, e é a única forma de saber disso.
+   */
+  reescala: { reescritas: number; mantidas: number };
 };
 
 /** Troca cada chave pelo valor, uma vez; o que não casar vira aviso. */
@@ -170,6 +181,37 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     if (mapa.size > 0) mapasPorOrigem.set(origem.designSystemId, mapa);
   }
 
+  /**
+   * ── A escala, quando a marca rege ────────────────────────────────────────
+   *
+   * Uma régua só para o site inteiro. Sem isto, um kit que junta o hero de um
+   * site com os preços de outro sai com título de 64px em cima e de 40px
+   * embaixo — não porque alguém escolheu, mas porque dois designers
+   * escolheram, em sites diferentes, e ninguém conciliou.
+   *
+   * O regime `de-cada-origem` não é um segundo caminho de código: é ESTE
+   * caminho desligado. Sem régua, `reescalarCss` não é chamado e o literal da
+   * origem continua valendo, que é exatamente o comportamento anterior.
+   */
+  const regeAMarca = entrada.branding.escalaDoSite !== 'de-cada-origem';
+  const referencia = regeAMarca
+    ? escalaDeReferencia(ds?.origens ?? [], entrada.layout.preferDesignSystemId)
+    : null;
+  const reguasPorOrigem = new Map<string, ReguasDeEscala>();
+  if (referencia !== null) {
+    for (const origem of ds?.origens ?? []) {
+      const reguas = reguasParaOrigem(origem.escala, referencia.escala);
+      if (reguas.tipografia.porValor.size > 0 || reguas.espaco.porValor.size > 0) {
+        reguasPorOrigem.set(origem.designSystemId, reguas);
+      }
+    }
+  }
+  if (regeAMarca && referencia === null && (ds?.origens.length ?? 0) > 0) {
+    avisos.push(
+      'Nenhuma origem do kit tem escala medida: os tamanhos e respiros saem como no site de origem. Recapture para o motor medir a régua.',
+    );
+  }
+
   // ── Estrutura: seções do usuário, fundo separado ──────────────────────────
   const resolvidas = resolverSecoes(entrada.layout.secoes, [...entrada.kit.components]);
   avisos.push(...resolvidas.avisos);
@@ -196,6 +238,7 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   const scriptsRemotos: string[] = [];
   const recoloracaoTotais = { origens: 0, reescritas: 0, mantidas: 0 };
   const retipografiaTotais = { reescritas: 0 };
+  const reescalaTotais = { reescritas: 0, mantidas: 0 };
 
   /**
    * Processa UMA peça: CSS da origem (recolorido → escopado, uma vez), corpo
@@ -262,6 +305,26 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
             `[${origemBase}] não deu para dizer qual fonte é de título e qual é de texto, então a tipografia desta origem fica como está.`,
           );
         }
+      }
+
+      /**
+       * A reescala fecha a trinca de reescrita de VALOR, e vem por último das
+       * três de propósito: ela lê `font-size`, que a retipografia não toca (a
+       * retipografia mexe em `font-family`), então as duas são cegas uma para a
+       * outra em qualquer ordem — mas manter a ordem cor → letra → tamanho faz o
+       * placar e os avisos saírem na mesma sequência em que a pessoa pensa a
+       * marca.
+       *
+       * `manterCores` segura esta também, pela terceira vez e pelo mesmo motivo:
+       * quem escolheu a peça pela aparência de origem quis a aparência inteira,
+       * e proporção é aparência.
+       */
+      const reguas = manterCores ? undefined : reguasPorOrigem.get(origemBase);
+      if (reguas !== undefined && css.trim().length > 0) {
+        const esc = reescalarCss(css, reguas);
+        css = esc.css;
+        reescalaTotais.reescritas += esc.reescritas;
+        reescalaTotais.mantidas += esc.mantidas;
       }
 
       if (css.trim().length > 0) {
@@ -408,7 +471,10 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       ? cssResponsivoBase()
       : `${cssResponsivoBase()}\n\n/* deste site */\n${entrada.responsivoExtra}`,
   );
-  escrever('assets/marca.css', buildBrandingCss(entrada.branding));
+  // A régua da referência vira `--marca-passo-N` e `--marca-espaco-N` aqui, e é
+  // o que as peças reescritas acima consomem. Sem referência, `buildBrandingCss`
+  // sai idêntico ao de antes: nenhum token novo, nenhuma mudança de aparência.
+  escrever('assets/marca.css', buildBrandingCss(entrada.branding, referencia?.escala));
 
   const fontImportUrl = buildTypographyCss(entrada.branding.typography).importUrl;
   const fontLinks = fontImportUrl
@@ -440,5 +506,6 @@ ${scriptsHtml}
     faltando,
     recoloracao: recoloracaoTotais,
     retipografia: retipografiaTotais,
+    reescala: reescalaTotais,
   };
 };

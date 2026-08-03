@@ -16,6 +16,7 @@ export * from './generate.js';
 export * from './kit.js';
 export * from './estrutura-marketing.js';
 export * from './kit-design-system.js';
+export * from './escala-do-site.js';
 export * from './layout.js';
 export * from './midia-sugerida.js';
 export * from './project.js';
