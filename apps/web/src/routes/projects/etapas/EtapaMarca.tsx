@@ -165,7 +165,7 @@ function LinhaDeInstrumento({
           color: info.status === 'configurado' ? 'var(--color-ion-3)' : 'var(--color-fg-subtle)',
         }}
       >
-        {info.status === 'configurado' ? info.resumo : 'herdado do kit'}
+        {info.resumo}
       </span>
       <ChevronRight size={14} className="shrink-0" style={{ color: 'var(--color-fg-subtle)' }} />
     </button>
@@ -177,10 +177,14 @@ function StatusDot({ status, resumo }: { status: SecaoStatus; resumo: string }) 
   const cor =
     status === 'configurado'
       ? 'var(--color-signal)'
-      : status === 'opcional'
+      : // `parcial` e `padrao` são "tem algo, mas não é escolha sua": ficam entre
+        // o aceso e o apagado, e o resumo ao lado diz o que falta.
+        status === 'parcial' || status === 'padrao'
         ? 'var(--color-fg-subtle)'
-        : 'var(--color-border-strong)';
-  const rotulo = status === 'configurado' ? resumo : STATUS_LABEL[status];
+        : status === 'opcional'
+          ? 'var(--color-fg-subtle)'
+          : 'var(--color-border-strong)';
+  const rotulo = status === 'configurado' ? resumo : `${STATUS_LABEL[status]} — ${resumo}`;
   return (
     <span
       title={rotulo}
