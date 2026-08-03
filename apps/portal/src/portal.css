@@ -1,0 +1,464 @@
+/*
+ * O vestíbulo.
+ *
+ * CSS próprio, sem Tailwind e sem importar nada dos dois apps: a suíte é
+ * independente por dentro e só PARECE a mesma casa. A linguagem é a do Orbis —
+ * preto puro, um acento ciano só, canto reto e Orbitron na marca.
+ */
+
+:root {
+  --preto: #000000;
+  --superficie: rgb(255 255 255 / 0.03);
+  --superficie-alta: rgb(255 255 255 / 0.05);
+  --borda: rgb(255 255 255 / 0.08);
+  --borda-viva: rgb(255 255 255 / 0.16);
+  --texto: #e8eef0;
+  --texto-fraco: #8b9ba3;
+  --acento: 34 211 238;
+  --perigo: #ef4444;
+  --display: "Orbitron", system-ui, sans-serif;
+  --corpo: "Inter Tight", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--preto);
+  color: var(--texto);
+  font-family: var(--corpo);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── o palco ───────────────────────────────────────────────────────────── */
+
+.portal {
+  position: relative;
+  min-height: 100vh;
+  /* `dvh` respeita a barra do navegador no celular, que come 100vh e corta o
+     rodapé justamente onde a pessoa procura a próxima ação. */
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  overflow-y: auto;
+}
+
+.portal-portao {
+  align-items: center;
+}
+
+.portal-brilho {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 60% 45% at 50% 38%,
+    rgb(var(--acento) / 0.13),
+    transparent 70%
+  );
+  animation: respira-halo 6s ease-in-out infinite;
+}
+
+@keyframes respira-halo {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.portal-conteudo {
+  position: relative;
+  width: 100%;
+  max-width: 1080px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 34px;
+  animation: entra 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes entra {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.portal-cabecalho {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.portal-marca {
+  font-family: var(--display);
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  color: var(--texto);
+}
+
+.portal-fala {
+  max-width: 560px;
+  color: var(--texto-fraco);
+  font-size: 15px;
+}
+
+.portal-fala code {
+  padding: 1px 6px;
+  border: 1px solid var(--borda);
+  background: var(--superficie);
+  color: rgb(var(--acento));
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+}
+
+.portal-nota {
+  max-width: 520px;
+  color: var(--texto-fraco);
+  font-size: 13px;
+  text-align: center;
+}
+
+.portal-rodape {
+  max-width: 620px;
+  color: rgb(255 255 255 / 0.28);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+/* ── as três portas ────────────────────────────────────────────────────── */
+
+.portal-portas {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.porta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 260px;
+  padding: 24px 22px 20px;
+  border: 1px solid var(--borda);
+  background: var(--superficie);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+}
+
+.porta:hover,
+.porta:focus-visible {
+  border-color: rgb(var(--acento) / 0.55);
+  background: var(--superficie-alta);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.porta:focus-visible {
+  box-shadow: 0 0 0 2px rgb(var(--acento) / 0.4);
+}
+
+.porta-marca {
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  color: rgb(var(--acento));
+}
+
+.porta-titulo {
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+}
+
+.porta-fala {
+  color: var(--texto-fraco);
+  font-size: 13.5px;
+}
+
+.porta-detalhes {
+  margin-top: 2px;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+}
+
+.porta-detalhes li {
+  position: relative;
+  padding-left: 14px;
+  color: rgb(255 255 255 / 0.42);
+  font-size: 12.5px;
+}
+
+.porta-detalhes li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 5px;
+  height: 5px;
+  background: rgb(var(--acento) / 0.7);
+}
+
+.porta-acao {
+  margin-top: auto;
+  padding-top: 12px;
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: rgb(var(--acento));
+}
+
+.porta-em-breve {
+  border-style: dashed;
+}
+
+.porta-em-breve .porta-titulo,
+.porta-em-breve .porta-fala {
+  opacity: 0.72;
+}
+
+.porta-em-breve .porta-acao {
+  color: var(--texto-fraco);
+}
+
+/* ── o portão de senha ─────────────────────────────────────────────────── */
+
+.portao-caixa {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 40px 32px 30px;
+  border: 1px solid var(--borda);
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(10px);
+  text-align: center;
+  animation: entra 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.portao-caixa-quieta {
+  gap: 20px;
+  padding: 44px 32px;
+}
+
+.portao-form {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+}
+
+.portao-campo {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--borda-viva);
+  background: rgb(255 255 255 / 0.04);
+  color: var(--texto);
+  font-family: var(--corpo);
+  font-size: 15px;
+}
+
+.portao-campo::placeholder {
+  color: rgb(255 255 255 / 0.3);
+}
+
+.portao-campo:focus {
+  border-color: rgb(var(--acento) / 0.6);
+  outline: none;
+}
+
+.portao-campo[aria-invalid="true"] {
+  border-color: var(--perigo);
+}
+
+.portao-campo:disabled {
+  opacity: 0.6;
+}
+
+.portao-btn {
+  height: 44px;
+  padding: 0 20px;
+  border: 1px solid rgb(var(--acento) / 0.55);
+  background: rgb(var(--acento) / 0.12);
+  color: rgb(var(--acento));
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.portao-btn:hover:not(:disabled) {
+  background: rgb(var(--acento) / 0.2);
+  border-color: rgb(var(--acento) / 0.8);
+}
+
+.portao-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.portao-erro {
+  color: var(--perigo);
+  font-size: 13.5px;
+}
+
+/* ── o modal de "em construção" ────────────────────────────────────────── */
+
+/* O `<dialog>` nativo já vem centralizado pelo navegador; o que sobra aqui é
+   vesti-lo. O padding fica na caixa de dentro para o clique no espaço vazio
+   ainda contar como "clicou fora" e fechar. */
+.modal {
+  width: min(440px, calc(100vw - 32px));
+  max-width: none;
+  /* O reset lá de cima zera todas as margens, inclusive o `margin: auto` que o
+     navegador usa para centralizar o dialog — sem devolvê-lo aqui, o modal
+     abre grudado no canto superior esquerdo. */
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--borda-viva);
+  background: #050708;
+  color: var(--texto);
+  animation: entra 220ms ease both;
+}
+
+.modal::backdrop {
+  background: rgb(0 0 0 / 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.modal-caixa {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 34px 28px 28px;
+  text-align: center;
+}
+
+.modal-titulo {
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+/* ── o mascote ─────────────────────────────────────────────────────────── */
+
+.mascote {
+  display: block;
+  object-fit: contain;
+  user-select: none;
+}
+
+.mascote-respira {
+  animation: mascote-respira 3.2s ease-in-out infinite;
+}
+
+.mascote-gira {
+  animation: mascote-gira 1.4s linear infinite;
+}
+
+@keyframes mascote-respira {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+@keyframes mascote-gira {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── telas estreitas ───────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .portal-portas {
+    grid-template-columns: 1fr;
+  }
+
+  .porta {
+    min-height: 0;
+  }
+
+  .portal {
+    align-items: flex-start;
+  }
+
+  .portal-conteudo {
+    gap: 26px;
+  }
+}
+
+@media (max-width: 420px) {
+  .portal {
+    padding: 24px 14px;
+  }
+
+  .portao-caixa {
+    padding: 32px 20px 24px;
+  }
+
+  .portao-form {
+    flex-direction: column;
+  }
+
+  .portao-btn {
+    width: 100%;
+  }
+}
+
+/* Quem pediu menos movimento recebe menos movimento — inclusive o mascote, que
+   é a única coisa que se mexe sozinha nesta tela. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
