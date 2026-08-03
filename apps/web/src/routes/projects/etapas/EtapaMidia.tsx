@@ -1,17 +1,10 @@
 import { Mascote } from '@/components/Mascote';
 import { Select } from '@/components/seletores';
-import { type KitComponentRef, type MediaItem, api } from '@/lib/api';
-import { avaliarMidia, oQueCabe } from '@/lib/cabe-na-secao';
-import { contagemUnificada, contarEspacos } from '@/lib/midia-contagens';
+import { type MediaItem, api } from '@/lib/api';
+import { ehVideoEscolhido } from '@/lib/arquivo-escolhido';
 import { toast } from '@/lib/toast';
-import {
-  type ObjetivoDoSite,
-  type Produto,
-  type SecaoDoSite,
-  resolverSecoes,
-  sugerirMidiaDaSecao,
-} from '@ds/shared/schemas';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import type { Produto, SecaoDoSite } from '@ds/shared/schemas';
+import { useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ChevronDown,
@@ -21,109 +14,90 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../partes';
 
 /**
- * Mídia e produtos do projeto.
+ * O depósito do projeto: o que existe no site sem pertencer a seção nenhuma.
  *
- * A regra antiga era "só pede upload quem tem espaço declarado no componente".
- * Na prática isso zerava a etapa: um kit cujas peças não declaram mídia deixava
- * a tela vazia, com um aviso dizendo que todas as seções ficaram de fora. Quem
- * quer subir um banner não tinha onde.
+ * A Mídia era uma etapa do wizard e deixou de ser. A mídia DE UMA SEÇÃO se
+ * envia olhando para a seção, no inspetor da Estrutura — escolher uma imagem
+ * para "a abertura" é decisão diferente de escolher uma imagem no meio de uma
+ * lista de seis campos iguais, e era essa lista que a etapa era. Sobraram duas
+ * coisas que não têm seção a que pertencer, e por isso não cabem no inspetor:
  *
- * Agora TODA seção aceita mídia, e a etapa inteira é opcional por extenso: dá
- * para pular sem enviar nada. As MÍDIAS GERAIS são área de primeira classe: o
- * que entra sem seção fica sem `secaoId` no manifesto (o cliente e o servidor
- * descartam o campo vazio) e o gerador decide onde cada uma entra. O selo e a
- * frase de cada seção saem da MESMA conta (`midia-contagens`), separando imagem
- * de vídeo.
+ * - as MÍDIAS GERAIS, que entram sem `secaoId` no manifesto (o cliente e o
+ *   servidor descartam o campo vazio) e cujo lugar quem escolhe é a geração;
+ * - os PRODUTOS, que viram vitrine montada com as peças do kit e não moram numa
+ *   dobra específica da página.
  *
- * O contrato das peças é informação em quase tudo, e porteiro numa coisa só:
- * arquivo do tipo que a seção não tem onde pôr (vídeo onde todo espaço é de
- * imagem, e o contrário) é RECUSADO, com o motivo e a saída ditos. Proporção
- * fora da do original continua aviso, porque ali o app tem preferência e não
- * certeza. A regra inteira, e por que ela para nesse limite, mora em
- * `cabe-na-secao`. As mídias gerais não passam por essa porta: sem seção não há
- * contrato, e quem escolhe o lugar é a geração.
+ * Elas ficam aqui, num painel ao pé da Estrutura, fechado por padrão: uma etapa
+ * inteira do wizard para duas listas opcionais cobrava um "Próximo" de todo
+ * mundo, inclusive de quem não tem produto nem arquivo solto.
  *
- * A mídia é ancorada na SEÇÃO, não na peça: trocar o componente na Estrutura
- * preserva tudo. Logos vêm da Marca e entram sozinhas.
+ * Mídia de uma seção APAGADA também cai aqui: ela volta para as mídias gerais em
+ * vez de sumir junto com a seção. E cada thumb tem o seletor de seção, que é o
+ * caminho de mão dupla — dá para mandar um arquivo geral para uma seção sem
+ * reenviá-lo.
  */
-export function StepMidia({
+export function Deposito({
   projectId,
   secoes,
-  components,
-  kitId,
   media,
   onMedia,
   produtos,
   onProdutos,
-  objetivo,
   criarArteDeApoio,
   onCriarArteDeApoio,
+  pendencia,
 }: {
   projectId: string | null;
   secoes: SecaoDoSite[];
-  components: KitComponentRef[];
-  kitId: string | null;
   media: MediaItem[];
   onMedia: (m: MediaItem[]) => void;
   produtos: Produto[];
   onProdutos: (p: Produto[]) => void;
-  /** Decide qual sequência de marketing explica o pedido de imagem de cada seção. */
-  objetivo: ObjetivoDoSite | null;
   /**
    * A permissão `layout.permissoes.criarArteDeApoio`. Mora no layout do projeto
-   * e o Wizard a grava junto com as seções; aqui vive só a caixa que a liga.
+   * e o Wizard a grava junto com as seções; aqui vive só a caixa que a liga. Ela
+   * está neste painel porque o que a caixa autoriza é justamente reusar as
+   * mídias gerais logo acima.
    */
   criarArteDeApoio: boolean;
   onCriarArteDeApoio: (v: boolean) => void;
+  /**
+   * A pendência do gate que se resolve AQUI dentro, quando existe.
+   *
+   * É o que impede o painel fechado de virar esconderijo: o botão "Próximo"
+   * trava dizendo que um produto está sem nome, e o produto está a uma rolagem
+   * de distância dentro de um bloco recolhido. Com a mensagem, o painel abre
+   * sozinho e se aproxima.
+   */
+  pendencia?: string;
 }) {
-  const contratos = useQuery({
-    queryKey: ['kit-contratos', kitId],
-    queryFn: () => {
-      if (!kitId) throw new Error('sem kit');
-      return api.getKitContratos(kitId);
-    },
-    enabled: kitId !== null,
-  });
+  const [aberto, setAberto] = useState(false);
+  const painel = useRef<HTMLDivElement>(null);
 
-  // A lista é a estrutura que a pessoa montou, na ordem dela. Antes vinha dos
-  // slots do blueprint, então esta tela mostrava seções que o site não teria.
-  const resolvidas = resolverSecoes(secoes, components).secoes;
-
-  // Uma seção aberta por vez. Com todas abertas, o texto que explica o pedido de
-  // imagem se repetia em cada uma e a tela virava uma parede de frases iguais.
-  const [secaoAberta, setSecaoAberta] = useState<string | null>(null);
-
-  // `file.type` vem VAZIO em alguns sistemas, então a extensão decide — a mesma
-  // regra que o upload e o servidor já aplicam.
-  const ehVideo = (f: File): boolean =>
-    f.type
-      ? f.type.startsWith('video/')
-      : ['.mp4', '.webm', '.mov', '.ogv', '.m4v'].includes(
-          f.name.slice(f.name.lastIndexOf('.')).toLowerCase(),
-        );
+  // `block: 'nearest'` de propósito: quando a pendência aparece porque a pessoa
+  // acabou de clicar em "adicionar produto" (produto novo nasce sem nome), o
+  // painel já está na frente dela e um scroll qualquer seria um pulo sem motivo.
+  useEffect(() => {
+    if (pendencia === undefined) return;
+    setAberto(true);
+    painel.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [pendencia]);
 
   const upload = useMutation({
-    mutationFn: ({ file, secaoId }: { file: File; secaoId: string | null }) => {
+    mutationFn: (file: File) => {
       if (!projectId) throw new Error('rascunho ainda não criado');
-      // `file.type` vem VAZIO em alguns sistemas — e aí todo vídeo cairia em
-      // 'image' e o thumb renderizaria um <img> de .mp4. Quando o navegador
-      // não diz o MIME, a extensão decide (o servidor aplica a mesma regra).
-      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-      const pareceVideo = file.type
-        ? file.type.startsWith('video/')
-        : ['.mp4', '.webm', '.mov', '.ogv', '.m4v'].includes(ext);
-      const kind: MediaItem['kind'] = pareceVideo ? 'video' : 'image';
-      // Mídia geral vai SEM o campo: é a ausência de `secaoId` no manifesto que
-      // significa "o gerador decide" (string vazia seria descartada no caminho,
-      // mas não mandar é o contrato dito por inteiro).
-      return api.uploadMedia(projectId, file, {
-        kind,
-        ...(secaoId !== null ? { secaoId } : {}),
-      });
+      // A decisão vídeo/imagem vem de `arquivo-escolhido`, não de uma cópia
+      // local: com `file.type` vazio (acontece) a regra é a extensão, e duas
+      // cópias dela fariam o MESMO arquivo virar vídeo aqui e imagem no
+      // inspetor da seção.
+      const kind: MediaItem['kind'] = ehVideoEscolhido(file) ? 'video' : 'image';
+      // Sem `secaoId`: é a AUSÊNCIA do campo no manifesto que significa "o
+      // gerador decide onde entra".
+      return api.uploadMedia(projectId, file, { kind });
     },
     onSuccess: (res) => {
       onMedia(res.media);
@@ -141,14 +115,6 @@ export function StepMidia({
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao remover.'),
   });
 
-  // Logo aparece na etapa de marca; aqui listamos só as mídias de conteúdo.
-  const conteudo = media.filter((m) => m.kind !== 'logo');
-  // Geral também é a mídia de uma seção que a pessoa apagou depois: ela volta
-  // para as mídias gerais em vez de desaparecer junto com a seção.
-  const gerais = conteudo.filter(
-    (m) => m.secaoId === undefined || !secoes.some((s) => s.id === m.secaoId),
-  );
-
   const mover = useMutation({
     mutationFn: ({ path, secaoId }: { path: string; secaoId: string | null }) => {
       if (!projectId) throw new Error('sem projeto');
@@ -158,276 +124,168 @@ export function StepMidia({
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao mover a mídia.'),
   });
 
+  // Logo aparece na etapa de marca; aqui listamos só as mídias de conteúdo.
+  const conteudo = media.filter((m) => m.kind !== 'logo');
+  const gerais = conteudo.filter(
+    (m) => m.secaoId === undefined || !secoes.some((s) => s.id === m.secaoId),
+  );
+
   const opcoesDeSecao = [
     { valor: '', rotulo: 'Mídias gerais', descricao: 'eu decido onde entra' },
-    ...resolvidas.map((s) => ({ valor: s.id, rotulo: s.nome.trim() || 'Seção sem nome' })),
+    ...secoes.map((s) => ({ valor: s.id, rotulo: s.nome.trim() || 'Seção sem nome' })),
   ];
 
+  const resumo = [
+    `${gerais.length} ${gerais.length === 1 ? 'mídia geral' : 'mídias gerais'}`,
+    `${produtos.length} ${produtos.length === 1 ? 'produto' : 'produtos'}`,
+  ].join(' · ');
+
   return (
-    <div className="space-y-4">
-      <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
-        Tudo aqui é <strong style={{ color: 'var(--color-fg)' }}>opcional</strong>, seção por seção:
-        o senhor pode pular e gerar sem enviar nada, que cada seção sai no estilo do kit. Mídia
-        enviada fica presa à seção, então trocar a peça na Estrutura não apaga nada. As logos vêm da
-        Marca e entram sozinhas.
-      </p>
-
-      {/* ── Mídias gerais: área de primeira classe ──────────────────────────
-          O caminho mais curto para quem só quer subir arquivos e seguir. O que
-          entra aqui fica sem seção no manifesto, e cada item pode ser movido
-          depois pelo seletor do próprio thumb. */}
-      <div className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border-strong)' }}>
-        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
-            Mídias gerais
-          </span>
-          <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            Eu decido onde cada uma entra.
-          </span>
-          <label
-            className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-none px-4 py-1.5 text-[12px] font-medium"
-            style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
-          >
-            {upload.isPending ? <Mascote tamanho={12} girando /> : <Upload size={12} />}
-            enviar arquivos
-            <input
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              className="hidden"
-              disabled={!projectId || upload.isPending}
-              onChange={(e) => {
-                for (const f of Array.from(e.target.files ?? [])) {
-                  upload.mutate({ file: f, secaoId: null });
-                }
-                e.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-        {gerais.length === 0 ? (
-          <div className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            Nada aqui ainda. Banner, foto, vídeo: o que entrar sem seção aparece nesta grade, e eu
-            escolho onde cada peça funciona melhor no site.
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {gerais.map((m) => (
-              <MidiaThumb
-                key={m.path}
-                item={m}
-                projectId={projectId}
-                opcoes={opcoesDeSecao}
-                onMover={(v) => mover.mutate({ path: m.path, secaoId: v === '' ? null : v })}
-                onRemover={() => remover.mutate(m.path)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── A permissão de arte de apoio ────────────────────────────────────
-          Liga `layout.permissoes.criarArteDeApoio`. O texto diz EXATAMENTE o
-          que acontece: desenho em SVG/CSS na paleta e reuso das mídias gerais.
-          Geração de imagem por IA não existe neste fluxo, então a caixa não
-          promete isso. */}
-      <label
-        className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
-        style={{ borderColor: 'var(--color-border)' }}
+    <div
+      ref={painel}
+      className="rounded-lg border"
+      style={{
+        borderColor: pendencia !== undefined ? 'var(--color-ion-5)' : 'var(--color-border-strong)',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setAberto(!aberto)}
+        aria-expanded={aberto}
+        className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors duration-300 hover:bg-white/[0.03]"
       >
-        <input
-          type="checkbox"
-          checked={criarArteDeApoio}
-          onChange={(e) => onCriarArteDeApoio(e.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
-        />
-        <span className="min-w-0">
-          <span className="block text-[13px] font-medium" style={{ color: 'var(--color-fg)' }}>
-            Numa seção sem mídia, posso criar arte de apoio com a sua identidade.
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
+            Mídias gerais e produtos
           </span>
           <span
             className="mt-0.5 block text-[11px] leading-relaxed"
             style={{ color: 'var(--color-fg-subtle)' }}
           >
-            Arte de apoio é desenho em SVG e CSS na paleta da marca, ou o reuso de uma das mídias
-            gerais acima. Eu não gero imagem por IA: esse canal não existe aqui. Desmarcada, a seção
-            sem mídia sai só com o estilo do kit.
+            O que não é de nenhuma seção. A mídia de uma seção você envia na própria seção, ali no
+            painel de detalhes.
           </span>
         </span>
-      </label>
+        <span className="ds-data shrink-0 text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
+          {resumo}
+        </span>
+        <ChevronDown
+          size={14}
+          className="shrink-0 transition-transform duration-300"
+          style={{
+            color: 'var(--color-fg-subtle)',
+            transform: aberto ? 'rotate(180deg)' : undefined,
+          }}
+        />
+      </button>
 
-      {resolvidas.map((s) => {
-        // Os espaços somam TODAS as peças da seção: com duas peças de cards, a
-        // seção aceita o dobro de imagens, e dizer o número de uma só mentiria.
-        const contratosDaSecao = s.pecas
-          .map((p) => contratos.data?.items.find((x) => x.id === p.id))
-          .filter((c) => c !== undefined);
-        const sugestao = sugerirMidiaDaSecao(
-          secoes.find((x) => x.id === s.id) ?? { id: s.id, nome: s.nome, componentIds: [] },
-          contratos.data?.items ?? [],
-          objetivo,
-        );
-        // O selo e a frase saem da MESMA conta, separando imagem de vídeo. A
-        // frase do shared soma tudo como imagem; a composição vive em
-        // `midia-contagens`, testada sem navegador.
-        const contagem = contagemUnificada(sugestao, contarEspacos(contratosDaSecao));
-        const daSecao = conteudo.filter((m) => m.secaoId === s.id);
-        const aberta = secaoAberta === s.id;
-        return (
-          <div key={s.id} className="border-b" style={{ borderColor: 'var(--color-border)' }}>
-            {/* A linha compacta: nome, quanto cabe e quanto já tem. O detalhe —
-                a explicação e o envio — só abre quando a pessoa escolhe a seção.
-                Com as seis abertas, a mesma frase de "criada no estilo do kit"
-                aparecia seis vezes na mesma tela e afogava o que era diferente
-                entre elas. */}
-            <button
-              type="button"
-              onClick={() => setSecaoAberta(aberta ? null : s.id)}
-              aria-expanded={aberta}
-              className="flex w-full items-center gap-3 py-3 text-left transition-colors duration-300 hover:bg-white/[0.03]"
-            >
-              <span
-                className="inline-block h-[7px] w-[7px] shrink-0 rounded-full"
-                style={{
-                  backgroundColor:
-                    daSecao.length > 0 ? 'var(--color-signal)' : 'var(--color-border-strong)',
-                  boxShadow: daSecao.length > 0 ? '0 0 8px rgba(34,211,238,0.6)' : undefined,
-                }}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[14px]" style={{ color: 'var(--color-fg)' }}>
-                  {s.nome.trim() || 'Seção sem nome'}
-                </span>
-                <span
-                  className="ds-data block text-[10px]"
-                  style={{ color: 'var(--color-fg-subtle)' }}
-                >
-                  {s.pecas.length === 0
-                    ? 'criada no estilo do kit'
-                    : s.pecas.map((p) => p.name).join(' + ')}
-                  {/* O que a seção aceita, dito na linha e não escondido no
-                      clique: era a pergunta sem resposta na hora de escolher o
-                      arquivo, e a razão de a mesma tela servir para uma barra de
-                      navegação e para uma abertura com vídeo de fundo. */}
-                  {oQueCabe(contratosDaSecao) !== '' && ` · ${oQueCabe(contratosDaSecao)}`}
-                </span>
+      {pendencia !== undefined && (
+        <div
+          className="border-t px-3.5 py-2 text-[12px]"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
+        >
+          {pendencia}
+        </div>
+      )}
+
+      {aberto && (
+        <div
+          className="ds-fade-in space-y-4 border-t p-3.5"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          {/* ── Mídias gerais ─────────────────────────────────────────────────
+              O caminho mais curto para quem só quer subir arquivos e seguir. */}
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-[13px] font-medium" style={{ color: 'var(--color-fg)' }}>
+                Mídias gerais
               </span>
-              {contagem.selo !== null && (
-                <span
-                  className="shrink-0 rounded-none px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]"
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.06)',
-                    color: 'var(--color-fg-muted)',
-                  }}
-                >
-                  {contagem.selo}
-                </span>
-              )}
-              <span
-                className="ds-data shrink-0 text-[11px]"
-                style={{
-                  color: daSecao.length > 0 ? 'var(--color-ion-3)' : 'var(--color-fg-subtle)',
-                }}
+              <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                Eu decido onde cada uma entra.
+              </span>
+              <label
+                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-none px-4 py-1.5 text-[12px] font-medium"
+                style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
               >
-                {daSecao.length > 0
-                  ? `${daSecao.length} enviada${daSecao.length > 1 ? 's' : ''}`
-                  : 'nenhuma'}
-              </span>
-              <ChevronDown
-                size={14}
-                className="shrink-0 transition-transform duration-300"
-                style={{
-                  color: 'var(--color-fg-subtle)',
-                  transform: aberta ? 'rotate(180deg)' : undefined,
-                }}
-              />
-            </button>
-            {aberta && (
-              <div className="ds-fade-in pb-4 pl-[19px]">
-                {/* O PORQUÊ, por extenso e só na seção aberta.
-                    A tela pedia um número de imagens sem dizer para quê, e a
-                    única resposta possível era chutar. A razão vem da etapa de
-                    marketing daquela seção, somada aos espaços reais das peças —
-                    ver `sugerirMidiaDaSecao`. */}
-                <p
-                  className="text-[11px] leading-relaxed"
-                  style={{ color: 'var(--color-fg-muted)' }}
-                >
-                  {contagem.porque}
-                </p>
-                <label
-                  className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-none border px-3 py-1.5 text-[11px] transition-colors hover:border-[var(--color-signal)]"
-                  style={{
-                    borderColor: 'var(--color-border-strong)',
-                    color: 'var(--color-fg-muted)',
+                {upload.isPending ? <Mascote tamanho={12} girando /> : <Upload size={12} />}
+                enviar arquivos
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  className="hidden"
+                  disabled={!projectId || upload.isPending}
+                  onChange={(e) => {
+                    for (const f of Array.from(e.target.files ?? [])) upload.mutate(f);
+                    e.target.value = '';
                   }}
-                >
-                  {upload.isPending ? <Mascote tamanho={11} girando /> : <Upload size={11} />}
-                  enviar para esta seção
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    className="hidden"
-                    disabled={!projectId || upload.isPending}
-                    onChange={async (e) => {
-                      const f = e.target.files?.[0];
-                      // O input é limpo AGORA, antes do await: escolher o mesmo
-                      // arquivo de novo (depois de uma recusa) precisa disparar
-                      // o `change`, e ele não dispara se o valor continuar lá.
-                      e.target.value = '';
-                      if (!f) return;
-                      const video = ehVideo(f);
-                      const proporcao = await medirProporcao(f, video);
-                      // A conferência acontece ANTES do envio e tem duas
-                      // saídas. Descasamento de TIPO recusa o arquivo: é o
-                      // único caso em que a peça não tem onde pôr o que chegou,
-                      // e deixar passar entregaria uma seção quebrada que só
-                      // apareceria depois de gerar o site. Proporção só avisa,
-                      // porque o contrato descreve a peça de origem e a peça de
-                      // origem não é o limite do que a pessoa quer fazer.
-                      const veredicto = avaliarMidia({
-                        tipo: video ? 'video' : 'image',
-                        ...(proporcao !== undefined ? { proporcao } : {}),
-                        contratos: contratosDaSecao,
-                      });
-                      if (!veredicto.aceita) {
-                        toast.erro(veredicto.texto);
-                        return;
-                      }
-                      if (veredicto.texto !== '') toast.info(veredicto.texto);
-                      upload.mutate({ file: f, secaoId: s.id });
-                    }}
+                />
+              </label>
+            </div>
+            {gerais.length === 0 ? (
+              <div className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                Nada aqui ainda. Banner, foto, vídeo: o que entrar sem seção aparece nesta grade, e
+                eu escolho onde cada peça funciona melhor no site.
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {gerais.map((m) => (
+                  <MidiaThumb
+                    key={m.path}
+                    item={m}
+                    projectId={projectId}
+                    opcoes={opcoesDeSecao}
+                    onMover={(v) => mover.mutate({ path: m.path, secaoId: v === '' ? null : v })}
+                    onRemover={() => remover.mutate(m.path)}
                   />
-                </label>
-                {daSecao.length > 0 && (
-                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                    {daSecao.map((m) => (
-                      <MidiaThumb
-                        key={m.path}
-                        item={m}
-                        projectId={projectId}
-                        opcoes={opcoesDeSecao}
-                        onMover={(v) =>
-                          mover.mutate({ path: m.path, secaoId: v === '' ? null : v })
-                        }
-                        onRemover={() => remover.mutate(m.path)}
-                      />
-                    ))}
-                  </div>
-                )}
+                ))}
               </div>
             )}
+            {!projectId && (
+              <p className="mt-1.5 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                O envio abre depois do primeiro avanço, quando o rascunho existe.
+              </p>
+            )}
           </div>
-        );
-      })}
 
-      <BlocoProdutos
-        projectId={projectId}
-        produtos={produtos}
-        onProdutos={onProdutos}
-        onMedia={onMedia}
-      />
+          {/* ── A permissão de arte de apoio ────────────────────────────────
+              Liga `layout.permissoes.criarArteDeApoio`. O texto diz EXATAMENTE
+              o que acontece: desenho em SVG/CSS na paleta e reuso das mídias
+              gerais. Geração de imagem por IA não existe neste fluxo, então a
+              caixa não promete isso. */}
+          <label
+            className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            <input
+              type="checkbox"
+              checked={criarArteDeApoio}
+              onChange={(e) => onCriarArteDeApoio(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-primary)]"
+            />
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium" style={{ color: 'var(--color-fg)' }}>
+                Numa seção sem mídia, posso criar arte de apoio com a sua identidade.
+              </span>
+              <span
+                className="mt-0.5 block text-[11px] leading-relaxed"
+                style={{ color: 'var(--color-fg-subtle)' }}
+              >
+                Arte de apoio é desenho em SVG e CSS na paleta da marca, ou o reuso de uma das
+                mídias gerais acima. Eu não gero imagem por IA: esse canal não existe aqui.
+                Desmarcada, a seção sem mídia sai só com o estilo do kit.
+              </span>
+            </span>
+          </label>
+
+          <BlocoProdutos
+            projectId={projectId}
+            produtos={produtos}
+            onProdutos={onProdutos}
+            onMedia={onMedia}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -619,56 +477,6 @@ function BlocoProdutos({
   );
 }
 
-/**
- * Prazo para o navegador dizer o tamanho do arquivo.
- *
- * Existe para o arquivo que não dispara evento nenhum: sem ele, o envio ficaria
- * esperando para sempre por uma medida que é só um aviso. Quatro segundos é
- * folgado para um `loadedmetadata` de arquivo local, que é leitura de disco.
- */
-const LIMITE_PARA_MEDIR_MS = 4000;
-
-/**
- * A proporção (largura/altura) do arquivo, lida antes de ele subir.
- *
- * A conferência de proporção compara o arquivo com o espaço que a peça de
- * origem tinha, e essa medida não existe em lugar nenhum antes do upload: o
- * servidor só a teria depois de receber o arquivo, tarde demais para avisar
- * alguma coisa a quem ainda está escolhendo.
- *
- * Devolve `undefined` quando não deu para ler, e aí a conferência de proporção
- * simplesmente não acontece — aviso baseado em chute é pior que aviso nenhum. O
- * caso real é o HEVC que o `MidiaThumb` abaixo documenta: `loadedmetadata`
- * dispara, o container é lido e mesmo assim `videoWidth` vem zero.
- */
-const medirProporcao = (file: File, ehVideo: boolean): Promise<number | undefined> =>
-  new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    let respondido = false;
-    const responder = (p: number | undefined): void => {
-      if (respondido) return;
-      respondido = true;
-      URL.revokeObjectURL(url);
-      resolve(p);
-    };
-    const daMedida = (largura: number, altura: number): void =>
-      responder(largura > 0 && altura > 0 ? largura / altura : undefined);
-    setTimeout(() => responder(undefined), LIMITE_PARA_MEDIR_MS);
-
-    if (ehVideo) {
-      const v = document.createElement('video');
-      v.preload = 'metadata';
-      v.onloadedmetadata = () => daMedida(v.videoWidth, v.videoHeight);
-      v.onerror = () => responder(undefined);
-      v.src = url;
-      return;
-    }
-    const img = new Image();
-    img.onload = () => daMedida(img.naturalWidth, img.naturalHeight);
-    img.onerror = () => responder(undefined);
-    img.src = url;
-  });
-
 function MidiaThumb({
   item,
   projectId,
@@ -771,12 +579,12 @@ function MidiaThumb({
           <Trash2 size={11} style={{ color: 'var(--color-ion-3)' }} />
         </button>
       </div>
-      {/* Trocar de seção sem reenviar o arquivo. O valor é o `secaoId` (o
-          espelho `slotRole` é derivado e nunca casaria com um `sec_...`).
+      {/* Mandar o arquivo para uma seção sem reenviá-lo. O valor é o `secaoId`
+          (o espelho `slotRole` é derivado e nunca casaria com um `sec_...`).
           Seletor próprio do app, não o <select> nativo: é a regra declarada em
           `seletores/index.ts`, e o flutuante em portal funciona dentro do
-          Modal. Valor '' é "Mídias gerais": a mídia volta para a grade de cima
-          e quem decide o lugar sou eu. */}
+          Modal. Valor '' é "Mídias gerais": a mídia volta para esta grade e quem
+          decide o lugar sou eu. */}
       <div className="border-t p-1" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <Select
           opcoes={opcoes}

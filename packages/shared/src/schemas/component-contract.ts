@@ -21,6 +21,13 @@ import { z } from 'zod';
 /**
  * Versão do contrato. Sobe quando a forma de derivar muda de um jeito que
  * invalida contratos gravados — o leitor re-deriva o que estiver aquém.
+ *
+ * A âncora de rolagem (`SlotDeMidia.ancoras`) entrou SEM subir a versão, e o
+ * motivo é o oposto do que parece: re-derivar destruiria a medida. Ela é
+ * gravada no contrato do componente na hora da promoção, quando o manifesto da
+ * captura ainda existe; re-derivar depois, a partir do bundle em disco, sairia
+ * sem âncora nenhuma e apagaria o que já estava lá. Contrato antigo continua
+ * válido e declara `ancoras: null` — ninguém mediu, e é isso que se diz.
  */
 export const CONTRACT_VERSION = 1;
 
@@ -77,6 +84,35 @@ export const ExibicaoDeMidia = z.object({
 });
 export type ExibicaoDeMidia = z.infer<typeof ExibicaoDeMidia>;
 
+/**
+ * A âncora de rolagem de uma mídia: ela não está "numa seção", está num PONTO
+ * da rolagem, sob um efeito.
+ *
+ * Espelha `AncoraDeMidia` (`midia-posicional.ts`) campo a campo, de propósito:
+ * é a MESMA medida viajando para dentro do contrato, e um segundo vocabulário
+ * para a mesma coisa é vocabulário que diverge — quem consome pode passar isto
+ * direto para `explicarAncora` sem adaptador. O `midiaId` vem junto como
+ * proveniência (de qual detecção da captura a medida saiu), no mesmo espírito
+ * de `urlOriginal`: referência de derivação, não ponteiro vivo.
+ */
+export const AncoraDeRolagem = z.object({
+  /** Id da detecção de mídia na captura de origem. */
+  midiaId: z.string(),
+  /** O tipo de efeito: `parallax`, `sticky`, `viewport-reveal`… */
+  efeito: z.string(),
+  /**
+   * Onde na rolagem, em fração da página. A faixa 0..1 é garantida na origem
+   * (`ScrollBehavior.start/end` já valida), e NÃO é repetida aqui: um valor
+   * fora da faixa derrubaria o contrato inteiro no `parse` final da derivação,
+   * quando o certo é perder só a âncora.
+   */
+  de: z.number(),
+  ate: z.number(),
+  /** O movimento acompanha a rolagem quadro a quadro (e não só dispara). */
+  acompanhaRolagem: z.boolean(),
+});
+export type AncoraDeRolagem = z.infer<typeof AncoraDeRolagem>;
+
 export const SlotDeMidia = z.object({
   id: z.string(),
   /**
@@ -90,6 +126,21 @@ export const SlotDeMidia = z.object({
   /** Caminho local no vault quando o asset foi baixado (via manifest). */
   localPath: z.string().optional(),
   exibicao: ExibicaoDeMidia.default({}),
+  /**
+   * As âncoras de rolagem desta mídia. Três estados, e a diferença entre eles é
+   * o ponto do campo:
+   *
+   * - `null` — ninguém mediu. É o contrato derivado sem a medição da captura
+   *   (todo contrato gravado antes deste campo), e é também o slot que veio de
+   *   um seletor de CSS, onde não dá para afirmar QUAL elemento pinta o fundo.
+   * - `[]` — medido, e esta mídia não está presa a ponto nenhum da rolagem.
+   * - lista — a mídia se move com a rolagem. Trocar o arquivo mantém o
+   *   movimento; o novo precisa funcionar naquele enquadramento.
+   *
+   * Calar `null` e `[]` no mesmo valor faria ausência de medição ler como
+   * "conferi e não tem" — a confusão que este produto existe para não cometer.
+   */
+  ancoras: z.array(AncoraDeRolagem).nullable().default(null),
   /** Sem esta mídia o componente perde o sentido visual (ex.: fundo do hero). */
   obrigatorio: z.boolean().default(false),
   /** Heurística declarada: parece ser o logo da origem (candidato a logo). */

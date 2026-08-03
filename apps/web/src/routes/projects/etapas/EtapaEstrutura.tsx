@@ -2,7 +2,28 @@ import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { Select } from '@/components/seletores';
-import { type KitComponentRef, type MediaItem, api, previewComponentUrl } from '@/lib/api';
+import {
+  type KitComponentRef,
+  type KitContratoResumo,
+  type MediaItem,
+  api,
+  previewComponentUrl,
+} from '@/lib/api';
+import { ehVideoEscolhido, medirProporcao } from '@/lib/arquivo-escolhido';
+import { soltarSecaoSobre } from '@/lib/arrastar-secao';
+import { avaliarMidia, oQueCabe } from '@/lib/cabe-na-secao';
+import {
+  CORPO_NA_PREVIA,
+  type EstiloDoEsqueleto,
+  type FormaDaSecao,
+  type LeituraDoEstilo,
+  type TracoDoEsqueleto,
+  escalaDoNome,
+  estiloDoEsqueleto,
+  formaDoPapel,
+  formaEscreveONome,
+  raioNaPrevia,
+} from '@/lib/esqueleto-da-secao';
 import {
   type FundoEmUso,
   MOTIVO_DO_PAPEL,
@@ -38,9 +59,19 @@ import {
   sugerirMidiaDaSecao,
   sugerirSecoes,
 } from '@ds/shared/schemas';
-import { useMutation } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, Layers, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import {
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Layers,
+  Plus,
+  RotateCcw,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
+import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { INPUT, inputStyle, mediaUrl, rotulo } from '../partes';
 
 const AUTOMATICO = '__automatico__';
@@ -78,12 +109,23 @@ export function StepEstrutura({
   criarSecoesFaltantes,
   onCriarSecoesFaltantes,
   projectId,
+  kitId = null,
   media,
   onMedia,
 }: {
   secoes: SecaoDoSite[];
   onSecoes: (s: SecaoDoSite[]) => void;
   components: KitComponentRef[];
+  /**
+   * O kit do projeto. É o que abre as duas fontes que esta etapa passou a
+   * consultar: o design system consolidado (as cores e as fontes que desenham a
+   * seção sem peça) e os contratos das peças (o que cada seção aceita de mídia).
+   *
+   * Opcional porque a etapa continua inteira sem ele: sem kit o esqueleto vira
+   * contorno com o motivo escrito, e o inspetor só deixa de saber recusar mídia
+   * que não cabe. Nenhum dos dois esconde a falta.
+   */
+  kitId?: string | null;
   /** Decide qual sequência de marketing explica cada seção. */
   objetivo: ObjetivoDoSite | null;
   /** Os espaços REAIS de imagem de cada peça, do contrato do kit. */
@@ -109,6 +151,38 @@ export function StepEstrutura({
   const [aberta, setAberta] = useState<string | null>(null);
   // A seção para a qual a grade de peças está aberta.
   const [escolhendoPara, setEscolhendoPara] = useState<string | null>(null);
+  // Qual seção está na mão e sobre qual ela paira. Só o arrasto usa isto; as
+  // setas continuam mexendo na lista direto.
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+
+  // As duas leituras do kit. Mesma chave de cache que a fórmula e a etapa Mídia
+  // usam, então abrir o wizard depois de ver a fórmula não refaz pedido nenhum.
+  const designSystem = useQuery({
+    queryKey: ['kit-design-system', kitId],
+    queryFn: () => {
+      if (kitId === null) throw new Error('sem kit');
+      return api.getKitDesignSystem(kitId);
+    },
+    enabled: kitId !== null,
+  });
+  const contratos = useQuery({
+    queryKey: ['kit-contratos', kitId],
+    queryFn: () => {
+      if (kitId === null) throw new Error('sem kit');
+      return api.getKitContratos(kitId);
+    },
+    enabled: kitId !== null,
+  });
+
+  // Enquanto o pedido está no ar não há motivo para dizer "não consolidei":
+  // seria uma afirmação sobre o kit feita antes de ler o kit. O contorno fica
+  // calado até a resposta chegar. (Consulta desligada também conta como pendente
+  // no react-query, daí o `kitId` na conta.)
+  const estilo: LeituraDoEstilo =
+    kitId !== null && designSystem.isPending
+      ? { ok: false, porque: '' }
+      : estiloDoEsqueleto(designSystem.data?.item ?? null);
 
   const { secoes: resolvidas, avisos } = resolverSecoes(secoes, components);
   const porId = new Map(resolvidas.map((r) => [r.id, r]));
@@ -185,10 +259,10 @@ export function StepEstrutura({
             </output>
           </div>
           <p className="text-[13px] leading-relaxed" style={{ color: 'var(--color-fg-muted)' }}>
-            Você monta a página: adiciona seções, muda a ordem e escolhe as peças vendo cada uma. A
-            prévia ao lado empilha as seções na ordem em que o site vai sair. Seção sem peça é
-            criada no estilo do kit, e onde você não escrever o texto, eu escrevo no tom da sua
-            marca.
+            Você monta a página: adiciona seções, arrasta pela alça para mudar a ordem (ou usa as
+            setas) e escolhe as peças vendo cada uma. A prévia ao lado empilha as seções na ordem em
+            que o site vai sair. Seção sem peça é criada no estilo do kit, e onde você não escrever
+            o texto, eu escrevo no tom da sua marca.
           </p>
         </div>
 
@@ -230,6 +304,28 @@ export function StepEstrutura({
               onEscolherPeca={() => setEscolhendoPara(s.id)}
               onTirarPeca={(j) => tirarPeca(s.id, j)}
               onMoverPeca={(j, passo) => moverPeca(s.id, j, passo)}
+              naMao={arrastando === s.id}
+              alvoDoArrasto={arrastando !== null && arrastando !== s.id && sobre === s.id}
+              recebeArrasto={arrastando !== null && arrastando !== s.id}
+              onPegar={() => setArrastando(s.id)}
+              onLargar={() => {
+                setArrastando(null);
+                setSobre(null);
+              }}
+              // `dragleave` de uma linha chega DEPOIS do `dragenter` da vizinha
+              // quando o ponteiro passa direto de uma para a outra. Sem comparar
+              // com o id, a saída da primeira apagaria o realce que a segunda
+              // acabou de acender.
+              onPairar={(dentro) =>
+                setSobre((atual) => (dentro ? s.id : atual === s.id ? null : atual))
+              }
+              onSoltar={() => {
+                if (arrastando !== null && arrastando !== s.id) {
+                  onSecoes(soltarSecaoSobre(secoes, components, arrastando, s.id));
+                }
+                setArrastando(null);
+                setSobre(null);
+              }}
             />
           ))}
         </div>
@@ -294,6 +390,7 @@ export function StepEstrutura({
         fundos={fundos}
         ativa={aberta}
         objetivo={objetivo}
+        estilo={estilo}
         aoAbrir={(id) => setAberta(id)}
       />
 
@@ -302,6 +399,7 @@ export function StepEstrutura({
         resolvida={aberta === null ? null : (porId.get(aberta) ?? null)}
         objetivo={objetivo}
         projectId={projectId}
+        contratos={contratos.data?.items ?? []}
         media={media}
         onMedia={onMedia}
         onMudar={(patch) => aberta !== null && mudar(aberta, patch)}
@@ -347,6 +445,13 @@ function LinhaDaSecao({
   onEscolherPeca,
   onTirarPeca,
   onMoverPeca,
+  naMao,
+  alvoDoArrasto,
+  recebeArrasto,
+  onPegar,
+  onLargar,
+  onPairar,
+  onSoltar,
 }: {
   secao: SecaoDoSite;
   resolvida: SecaoResolvida | undefined;
@@ -363,7 +468,20 @@ function LinhaDaSecao({
   onEscolherPeca: () => void;
   onTirarPeca: (indice: number) => void;
   onMoverPeca: (indice: number, passo: -1 | 1) => void;
+  /** Esta é a linha que está sendo arrastada. */
+  naMao: boolean;
+  /** O ponteiro está sobre esta linha carregando outra. */
+  alvoDoArrasto: boolean;
+  /** Há um arrasto em curso e esta linha pode recebê-lo. */
+  recebeArrasto: boolean;
+  onPegar: () => void;
+  onLargar: () => void;
+  onPairar: (dentro: boolean) => void;
+  onSoltar: () => void;
 }) {
+  // A moldura da linha vira a IMAGEM do arrasto. Sem isto o Chrome arrasta só o
+  // ícone da alça, e a pessoa não vê o que está carregando.
+  const moldura = useRef<HTMLDivElement>(null);
   const pecas = r?.pecas ?? [];
   const capa = pecas[0];
   const papel = papelEfetivoDaSecao(s, components);
@@ -382,13 +500,64 @@ function LinhaDaSecao({
 
   return (
     <div
-      className="rounded-lg border"
+      ref={moldura}
+      // A linha inteira recebe o arrasto, mas só a alça o INICIA: com
+      // `draggable` na moldura, selecionar o texto do campo de instrução (que
+      // fica dentro dela quando expandida) viraria um arrasto pela metade.
+      onDragOver={(e) => {
+        if (!recebeArrasto) return;
+        // Sem o `preventDefault` o navegador recusa a soltura e o `drop` nunca
+        // chega. É a linha que faz o HTML5 drag-and-drop funcionar.
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        onPairar(true);
+      }}
+      onDragLeave={(e) => {
+        // `dragleave` também dispara quando o ponteiro passa da linha para um
+        // filho dela, e o alvo continua sendo a mesma linha. Sem esta guarda o
+        // realce piscaria a cada elemento atravessado por dentro do mesmo alvo.
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        onPairar(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onSoltar();
+      }}
+      className="rounded-lg border transition-colors"
       style={{
-        borderColor: expandida ? 'var(--color-signal)' : 'var(--color-border)',
-        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderColor: alvoDoArrasto
+          ? 'var(--color-ion-3)'
+          : expandida
+            ? 'var(--color-signal)'
+            : 'var(--color-border)',
+        backgroundColor: alvoDoArrasto ? 'rgba(34,211,238,0.1)' : 'rgba(255,255,255,0.02)',
+        // A linha na mão fica apagada: é o que diz "esta saiu do lugar" sem
+        // precisar desenhar um espaço vazio na lista.
+        opacity: naMao ? 0.4 : 1,
       }}
     >
       <div className="flex items-center gap-1 px-2 py-2">
+        {/* A alça é redundante DE PROPÓSITO: quem usa teclado reordena pelas
+            setas abaixo, que continuam sendo o caminho completo. Por isso ela
+            sai da ordem de foco e do leitor de tela em vez de virar um segundo
+            controle que faz a mesma coisa e confunde. */}
+        <span
+          draggable
+          aria-hidden
+          title="Arraste para mudar a ordem"
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            // O Firefox só inicia o arrasto se o evento carregar algum dado.
+            e.dataTransfer.setData('text/plain', s.id);
+            if (moldura.current !== null) e.dataTransfer.setDragImage(moldura.current, 16, 16);
+            onPegar();
+          }}
+          onDragEnd={onLargar}
+          className="shrink-0 cursor-grab rounded p-0.5 transition-colors hover:bg-white/[0.06] active:cursor-grabbing"
+          style={{ color: 'var(--color-fg-subtle)' }}
+        >
+          <GripVertical size={13} />
+        </span>
         <div className="flex flex-col">
           <button
             type="button"
@@ -823,12 +992,19 @@ function BlocoDeFundo({
  *
  * O upload é o que mais ganha: escolher uma imagem para "a abertura" é decisão
  * diferente de escolher uma imagem no meio de uma lista de seis campos iguais.
+ *
+ * E ganha com a MESMA conferência que a etapa Mídia faz: sem ela, este painel
+ * oferecia o mesmo botão "enviar" em toda seção e aceitava calado um vídeo numa
+ * seção cujos espaços são todos de imagem parada — uma seção quebrada que só
+ * apareceria depois de gerar o site inteiro. As duas telas leem `cabe-na-secao`,
+ * então elas nunca discordam sobre o mesmo arquivo.
  */
 function Inspetor({
   secao,
   resolvida,
   objetivo,
   projectId,
+  contratos,
   media,
   onMedia,
   onMudar,
@@ -839,6 +1015,8 @@ function Inspetor({
   resolvida: SecaoResolvida | null;
   objetivo: ObjetivoDoSite | null;
   projectId: string | null;
+  /** Os espaços reais das peças do kit. Vazio = nada a afirmar, e nada é dito. */
+  contratos: readonly KitContratoResumo[];
   media: MediaItem[];
   onMedia: (m: MediaItem[]) => void;
   onMudar: (patch: Partial<SecaoDoSite>) => void;
@@ -849,12 +1027,8 @@ function Inspetor({
     mutationFn: (file: File) => {
       if (!projectId) throw new Error('rascunho ainda não criado');
       if (secao === null) throw new Error('sem seção');
-      const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
-      const pareceVideo = file.type
-        ? file.type.startsWith('video/')
-        : ['.mp4', '.webm', '.mov', '.ogv', '.m4v'].includes(ext);
       return api.uploadMedia(projectId, file, {
-        kind: pareceVideo ? 'video' : 'image',
+        kind: ehVideoEscolhido(file) ? 'video' : 'image',
         secaoId: secao.id,
       });
     },
@@ -886,6 +1060,12 @@ function Inspetor({
   const papel = SectionRole.safeParse(resolvida.slug);
   const etapa = papel.success ? explicarPapel(papel.data, objetivo) : undefined;
   const daSecao = media.filter((m) => m.kind !== 'logo' && m.secaoId === secao.id);
+  // Os espaços somam TODAS as peças da seção: com duas peças de cards ela aceita
+  // o dobro de imagens, e o número de uma só mentiria. Mesma conta da etapa Mídia.
+  const contratosDaSecao = resolvida.pecas
+    .map((p) => contratos.find((x) => x.id === p.id))
+    .filter((c) => c !== undefined);
+  const cabe = oQueCabe(contratosDaSecao);
 
   return (
     <aside className="hidden xl:block">
@@ -980,6 +1160,14 @@ function Inspetor({
           {/* A mídia DESTA seção, enviada olhando para ela. */}
           <div>
             <div className="ds-label mb-1.5">Mídia desta seção</div>
+            {/* O que cabe, dito ANTES de a pessoa escolher o arquivo. Recusar
+                depois sem nunca ter avisado é a ferramenta brigando com quem
+                usa. Seção sem contrato legível não promete nada e fica calada. */}
+            {cabe !== '' && (
+              <p className="mb-1.5 text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                Esta seção {cabe}.
+              </p>
+            )}
             {daSecao.length > 0 && (
               <div className="mb-2 grid grid-cols-3 gap-1.5">
                 {daSecao.map((m) => (
@@ -1017,10 +1205,32 @@ function Inspetor({
                 accept="image/*,video/*"
                 className="hidden"
                 disabled={!projectId || upload.isPending}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const f = e.target.files?.[0];
-                  if (f) upload.mutate(f);
+                  // O input é limpo AGORA, antes do await: escolher o mesmo
+                  // arquivo de novo (depois de uma recusa) precisa disparar o
+                  // `change`, e ele não dispara se o valor continuar lá.
                   e.target.value = '';
+                  if (!f) return;
+                  const video = ehVideoEscolhido(f);
+                  const proporcao = await medirProporcao(f, video);
+                  // Duas saídas, e a fronteira entre elas é o que o app SABE.
+                  // Descasamento de tipo recusa: o espaço é `<img>` ou é
+                  // `<video>`, e o arquivo do outro tipo não ocupa aquele lugar.
+                  // Proporção só avisa, porque o contrato descreve a peça de
+                  // origem e a peça de origem não é o limite do que a pessoa
+                  // quer fazer.
+                  const veredicto = avaliarMidia({
+                    tipo: video ? 'video' : 'image',
+                    ...(proporcao !== undefined ? { proporcao } : {}),
+                    contratos: contratosDaSecao,
+                  });
+                  if (!veredicto.aceita) {
+                    toast.erro(veredicto.texto);
+                    return;
+                  }
+                  if (veredicto.texto !== '') toast.info(veredicto.texto);
+                  upload.mutate(f);
                 }}
               />
             </label>
@@ -1053,21 +1263,27 @@ function Inspetor({
  *   miniatura de verdade.
  * - **o nome da seção é a legenda entre os blocos.** Sem ela, duas peças
  *   vizinhas de seções diferentes liam como uma coisa só.
- * - **seção sem peça diz o que vai nascer ali**: o bloco pontilhado carrega o
- *   nome e o resumo da sugestão de peça, em vez de só "criada no estilo" —
- *   que descrevia o COMO e escondia o quê.
+ * - **seção sem peça é DESENHADA, não descrita.** Ela era um retângulo
+ *   pontilhado com o nome, "criada no estilo do kit" e o resumo da sugestão:
+ *   metade da coluna renderizava o site e a outra metade contava sobre ele em
+ *   três frases. Agora ela sai como bloco nas cores e nas fontes do kit, com a
+ *   forma do papel dela. O contorno só volta quando não há design system
+ *   consolidado, e então ele diz o motivo.
  */
 function PreviaEmpilhada({
   secoes,
   fundos,
   ativa,
   objetivo,
+  estilo,
   aoAbrir,
 }: {
   secoes: readonly SecaoResolvida[];
   fundos: readonly FundoEmUso[];
   ativa: string | null;
   objetivo: ObjetivoDoSite | null;
+  /** O estilo do kit, ou o motivo de não haver um. */
+  estilo: LeituraDoEstilo;
   aoAbrir: (id: string) => void;
 }) {
   // Quando a seção ativa muda por fora (clique na lista), a prévia rola até
@@ -1127,25 +1343,13 @@ function PreviaEmpilhada({
                 }}
               >
                 {r.pecas.length === 0 ? (
-                  <div
-                    className="mt-1.5 rounded-md border border-dashed px-3 py-4 text-center leading-relaxed"
-                    style={{ borderColor: 'rgba(255,255,255,0.16)' }}
-                  >
-                    <div className="text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
-                      {nome}
-                    </div>
-                    <div className="text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                      criada no estilo do kit
-                    </div>
-                    {etapa !== undefined && (
-                      <div
-                        className="mt-1 text-[10px] italic leading-snug"
-                        style={{ color: 'var(--color-ion-3)' }}
-                      >
-                        {resumirSugestao(etapa.sugestao)}
-                      </div>
-                    )}
-                  </div>
+                  <BlocoSemPeca
+                    nome={nome}
+                    papel={papel.success ? papel.data : undefined}
+                    sugestao={etapa === undefined ? undefined : resumirSugestao(etapa.sugestao)}
+                    estilo={estilo}
+                    ativa={ativa === r.id}
+                  />
                 ) : (
                   <>
                     <div
@@ -1186,7 +1390,235 @@ function PreviaEmpilhada({
             </div>
           )}
         </div>
+        {/* O que o esqueleto esconde do kit, uma vez só no pé da coluna. Repetir
+            em cada bloco criado diria a mesma coisa cinco vezes na mesma tela. */}
+        {estilo.ok && estilo.estilo.aviso !== null && secoes.some((r) => r.pecas.length === 0) && (
+          <p
+            className="mt-1.5 text-[10px] leading-snug"
+            style={{ color: 'var(--color-fg-subtle)' }}
+          >
+            {estilo.estilo.aviso}
+          </p>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ── Seção sem peça: o esqueleto no estilo do kit ────────────────────────────
+
+/**
+ * O bloco de uma seção que ainda não tem peça.
+ *
+ * Duas saídas, e a fronteira é o que o app leu do kit. Com design system
+ * consolidado ele DESENHA: fundo, cor de texto, fonte de título e cantos são os
+ * do kit, e a forma é a do papel da seção (`formaDoPapel`). Sem ele o contorno
+ * pontilhado fica, com o motivo escrito no lugar de "criada no estilo do kit" —
+ * um bloco em cinza genérico diria "o seu kit é assim" sobre um kit que ninguém
+ * leu, e é exatamente o tipo de prévia que faz a pessoa desconfiar do resto.
+ *
+ * O resumo da sugestão de peça só aparece no caminho degradado. Onde há desenho,
+ * ele já mostra a forma que a frase descrevia, e a frase continua na linha da
+ * árvore e na grade de peças, que é onde ela decide algo.
+ */
+function BlocoSemPeca({
+  nome,
+  papel,
+  sugestao,
+  estilo,
+  ativa,
+}: {
+  nome: string;
+  papel: SectionRole | undefined;
+  sugestao: string | undefined;
+  estilo: LeituraDoEstilo;
+  ativa: boolean;
+}) {
+  const forma = formaDoPapel(papel);
+
+  if (!estilo.ok) {
+    return (
+      <div
+        className="mt-1.5 rounded-md border border-dashed px-3 py-4 text-center leading-relaxed"
+        style={{ borderColor: 'rgba(255,255,255,0.16)' }}
+      >
+        <div className="text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
+          {nome}
+        </div>
+        {/* Motivo vazio = a leitura do kit ainda está no ar. Aí a frase antiga
+            serve: ela não afirma nada sobre o kit, só sobre o que vai acontecer. */}
+        <div className="text-[10px] leading-snug" style={{ color: 'var(--color-fg-subtle)' }}>
+          {estilo.porque === '' ? 'criada no estilo do kit' : estilo.porque}
+        </div>
+        {sugestao !== undefined && (
+          <div
+            className="mt-1 text-[10px] italic leading-snug"
+            style={{ color: 'var(--color-ion-3)' }}
+          >
+            {sugestao}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const escreveONome = formaEscreveONome(forma);
+  return (
+    <>
+      {/* Onde o esqueleto escreve o nome na fonte do kit, a legenda o repetiria
+          duas vezes em dois centímetros. */}
+      {!escreveONome && (
+        <div
+          className="ds-data truncate pt-1.5 pb-1 text-[10px] uppercase tracking-[0.12em]"
+          style={{ color: ativa ? 'var(--color-ion-3)' : 'var(--color-fg-subtle)' }}
+        >
+          {nome}
+        </div>
+      )}
+      <div className={`overflow-hidden rounded-sm${escreveONome ? ' mt-1.5' : ''}`}>
+        <Esqueleto nome={nome} forma={forma} estilo={estilo.estilo} />
+      </div>
+    </>
+  );
+}
+
+/** A largura de um traço em fração da caixa. Nome e moldura ocupam tudo. */
+const larguraDoTraco = (t: TracoDoEsqueleto): number =>
+  t.tipo === 'nome' || t.tipo === 'moldura' ? 1 : t.largura;
+
+/**
+ * O esqueleto desenhado.
+ *
+ * Nenhum traço carrega texto, com uma exceção: o `nome`, que é o nome que a
+ * pessoa deu à seção. Escrever uma chamada de exemplo faria a prévia prometer
+ * uma frase que a geração não vai escrever, e prévia que mente é pior que
+ * contorno que se cala. O nome existe também porque é o que mostra a TIPOGRAFIA
+ * do kit: uma barra cinza não mostra fonte nenhuma.
+ */
+function Esqueleto({
+  nome,
+  forma,
+  estilo,
+}: {
+  nome: string;
+  forma: FormaDaSecao;
+  estilo: EstiloDoEsqueleto;
+}) {
+  const raio = raioNaPrevia(estilo.raio, estilo.corpoMedido);
+  // `color-mix` porque as cores do kit são hex: é o jeito de dosar a MESMA cor
+  // em barra, borda e moldura sem inventar um cinza que não está no kit.
+  const tenue = (pct: number): string => `color-mix(in srgb, ${estilo.texto} ${pct}%, transparent)`;
+
+  const desenhar = (t: TracoDoEsqueleto): CSSProperties => {
+    switch (t.tipo) {
+      case 'nome':
+        return {};
+      case 'linha':
+        return {
+          height: Math.max(2, Math.round((t.escala ?? 1) * CORPO_NA_PREVIA * 0.62)),
+          borderRadius: 1,
+          backgroundColor: tenue(26),
+        };
+      case 'botao':
+        return {
+          height: Math.round(CORPO_NA_PREVIA * 2.2),
+          borderRadius: raio,
+          backgroundColor: estilo.destaque,
+        };
+      case 'campo':
+        return {
+          height: Math.round(CORPO_NA_PREVIA * 2.4),
+          borderRadius: raio,
+          border: `1px solid ${estilo.borda ?? tenue(24)}`,
+        };
+      case 'pastilha':
+        return {
+          height: Math.round(CORPO_NA_PREVIA * 1.6),
+          borderRadius: raio,
+          backgroundColor: tenue(20),
+        };
+      case 'moldura':
+        return {
+          height: Math.round(t.altura * CORPO_NA_PREVIA * 2),
+          borderRadius: raio,
+          backgroundColor: tenue(10),
+          border: `1px solid ${estilo.borda ?? tenue(16)}`,
+        };
+    }
+  };
+
+  const traco = (t: TracoDoEsqueleto, chave: string, extra?: CSSProperties) => (
+    <div key={chave} style={{ width: `${larguraDoTraco(t) * 100}%`, ...extra }}>
+      {t.tipo === 'nome' ? (
+        <div
+          className="truncate"
+          style={{
+            fontFamily: estilo.fonteTitulo ?? undefined,
+            fontSize: Math.round(
+              escalaDoNome(t.escala, estilo.destaqueTipografico) * CORPO_NA_PREVIA,
+            ),
+            lineHeight: 1.15,
+            fontWeight: 600,
+            color: estilo.texto,
+          }}
+        >
+          {nome}
+        </div>
+      ) : (
+        <div style={desenhar(t)} />
+      )}
+    </div>
+  );
+
+  const empilhados = (tracos: readonly TracoDoEsqueleto[], prefixo: string) => (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: forma.centralizado ? 'center' : 'flex-start',
+        textAlign: forma.centralizado ? 'center' : 'left',
+        gap: Math.round(CORPO_NA_PREVIA * 0.9),
+      }}
+    >
+      {tracos.map((t, i) => traco(t, `${prefixo}-${i}`))}
+    </div>
+  );
+
+  const grade = forma.grade;
+  return (
+    <div
+      style={{
+        backgroundColor: estilo.fundo,
+        fontFamily: estilo.fonteTexto ?? undefined,
+        padding: Math.round(CORPO_NA_PREVIA * 2),
+        display: 'flex',
+        flexDirection: 'column',
+        gap: Math.round(CORPO_NA_PREVIA * 1.6),
+      }}
+    >
+      {forma.barra !== null && (
+        // Marca à esquerda, o resto à direita: o desenho de toda barra de topo.
+        <div style={{ display: 'flex', alignItems: 'center', gap: CORPO_NA_PREVIA }}>
+          {forma.barra.map((t, i) =>
+            traco(t, `barra-${i}`, i === 0 ? { marginRight: 'auto' } : undefined),
+          )}
+        </div>
+      )}
+      {forma.topo.length > 0 && empilhados(forma.topo, 'topo')}
+      {grade !== null && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${grade.colunas}, minmax(0, 1fr))`,
+            gap: Math.round(CORPO_NA_PREVIA * 1.4),
+          }}
+        >
+          {Array.from({ length: grade.colunas * grade.linhas }, (_, c) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: as células da grade são idênticas e sem estado; a posição É a identidade delas, e não existe outra chave possível.
+            <div key={`celula-${c}`}>{empilhados(grade.item, `celula-${c}`)}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

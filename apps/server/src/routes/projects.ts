@@ -11,10 +11,13 @@ import {
   type ProjectBranding,
   type ProjectContent,
   ProjectLayout,
+  type SlotDeMidia,
   analisarVideo,
   ehProjectId,
   enqueueJob,
   jobsAbertosDoProjeto,
+  lerOuDerivarContrato,
+  libraryComponentBundleDir,
   newProjectId,
   normalizarProjectBranding,
   normalizarProjectContent,
@@ -380,6 +383,45 @@ projectsRoute.delete('/:id/media', (c) => {
 });
 
 /**
+ * O que este site herda de mídia presa à rolagem, dito na hora de gerar.
+ *
+ * A peça chega à geração como bundle e contrato; a âncora está gravada nos slots
+ * de mídia desde a promoção. O que faltava era ALGUÉM DIZER: quem monta o site
+ * troca a imagem de um hero sem saber que aquela imagem se move entre 20% e 60%
+ * da rolagem, e o resultado fica estranho sem ninguém entender por quê.
+ *
+ * Isto declara, e só. Não promete que a troca preserva o movimento: o gerador
+ * não foi validado com mídia trocada dentro de cápsula, e prometer o que
+ * ninguém conferiu é o que este produto evita.
+ */
+export const avisoDeMidiaPresaARolagem = (
+  nomeDaPeca: string,
+  midias: readonly SlotDeMidia[],
+): string | null => {
+  const presas = midias.filter((m) => (m.ancoras?.length ?? 0) > 0);
+  if (presas.length === 0) return null;
+  const efeitos = [...new Set(presas.flatMap((m) => (m.ancoras ?? []).map((a) => a.efeito)))].join(
+    ', ',
+  );
+  const quantas =
+    presas.length === 1 ? '1 mídia está presa' : `${presas.length} mídias estão presas`;
+  const fim =
+    'Trocar o arquivo mantém o movimento do original, e o arquivo novo precisa funcionar nesse enquadramento.';
+  return `Na peça "${nomeDaPeca}", ${quantas} a um ponto da rolagem (${efeitos}). ${fim}`;
+};
+
+/** Os avisos de mídia posicional de um kit inteiro, lidos dos contratos em disco. */
+const avisosDeMidiaPresaARolagem = (
+  componentes: readonly { id: string; name: string }[],
+): string[] =>
+  componentes.flatMap((cmp) => {
+    const contrato = lerOuDerivarContrato(libraryComponentBundleDir(cmp.id as `cmp_${string}`));
+    if (contrato === null) return [];
+    const aviso = avisoDeMidiaPresaARolagem(cmp.name, contrato.slots.midias);
+    return aviso === null ? [] : [aviso];
+  });
+
+/**
  * Dispara a geração do site a partir do rascunho já salvo.
  *
  * Regra central da reforma: o site usa SOMENTE os componentes do kit do projeto
@@ -460,6 +502,7 @@ projectsRoute.post('/:id/generate', async (c) => {
     componentes: componentesDoKit,
     ausentes,
   });
+  const avisos = [...contexto.avisos, ...avisosDeMidiaPresaARolagem(componentesDoKit)];
 
   // Modo fila: registra o pedido com o payload do contrato. Nada roda aqui.
   if (isQueueMode()) {
@@ -468,7 +511,7 @@ projectsRoute.post('/:id/generate', async (c) => {
       .set({ status: 'ready-to-generate', updatedAt: Date.now() })
       .where(eq(tables.projects.id, id))
       .run();
-    return c.json({ queued: true, job, projectId: id, avisos: contexto.avisos }, 202);
+    return c.json({ queued: true, job, projectId: id, avisos }, 202);
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -485,7 +528,7 @@ projectsRoute.post('/:id/generate', async (c) => {
       'info',
       `Compondo site com ${contexto.payload.kit.components.length} componentes do kit "${kit.name}"`,
     );
-    for (const aviso of contexto.avisos) onEvent('warn', aviso);
+    for (const aviso of avisos) onEvent('warn', aviso);
 
     const result = await generateSite(contexto.payload, {
       apiKey,

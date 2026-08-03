@@ -15,10 +15,12 @@ import { isolateComponent } from '@ds/isolator';
 import {
   CaptureManifest,
   CapturedAsset,
+  type MidiaParaAncora,
   type SegmentInsight,
   SegmentStatesFile,
   SegmentsManifest,
   type StoredState,
+  ancorarContratoDoBundle,
   coletarAssetRefs,
   construirIndiceAssets,
   libraryComponentBundleDir,
@@ -43,6 +45,7 @@ import { planBatchLike } from '../lib/batch.js';
 import { framePathDoSegmento, lerBundleInfo } from '../lib/bundle-v2.js';
 import { kitsQueUsam, reconsolidarKits } from '../lib/consolidar-kit.js';
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
+import { lerMidiasV2 } from './design-systems.js';
 
 export const libraryRoute = new Hono();
 
@@ -338,7 +341,69 @@ export const documentoDaPeca = (bundleDoPai: string, snippetDaPeca: string): str
   }
 };
 
-const montarComponente = (seg: SegmentRow) => {
+/**
+ * As mídias detectadas de cada extração, uma leitura por design system.
+ *
+ * O manifesto de captura passa de 1 MB e a promoção em lote chega a 200 peças,
+ * quase sempre da MESMA extração: sem isto seriam 200 leituras do mesmo arquivo.
+ * O cache vive por chamada (a rota cria o mapa e passa adiante) e não entre
+ * requisições, senão uma re-extração deixaria a medida velha em memória.
+ */
+type MidiasPorExtracao = Map<string, MidiaParaAncora[] | null>;
+
+/**
+ * Grava a âncora de rolagem no contrato do componente que acabou de ser
+ * promovido — a última hora em que ela ainda pode ser gravada.
+ *
+ * A medida nasce de duas fontes que moram no VAULT: as detecções de mídia do
+ * manifesto de captura e os comportamentos de scroll que o motor associou a este
+ * segmento. As duas somem quando a extração é apagada, e o componente da
+ * Biblioteca é uma cópia autônoma que sobrevive a isso. O que não for gravado
+ * agora não existe mais depois: o kit e a geração leriam um contrato que diz
+ * "esta imagem é só uma imagem" sobre uma imagem presa a 40% da rolagem.
+ *
+ * Fica de fora, de propósito:
+ * - Subcomponente. O bundle copiado é o do PAI e o contrato dentro dele descreve
+ *   a seção inteira; casar slot com elemento aqui ancoraria no recorte errado.
+ * - Extração sem manifesto de captura (fluxo V1). Ninguém mediu, e o contrato
+ *   continua dizendo `null` em vez de `[]`.
+ */
+const ancorarContratoDoComponente = (
+  bundleDir: string,
+  dsId: `ds_${string}`,
+  insight: SegmentInsight | null,
+  midiasPorExtracao: MidiasPorExtracao,
+): void => {
+  // Sem insight não houve avaliação deste segmento: a ausência de comportamento
+  // de scroll não é medição, é silêncio.
+  if (insight === null) return;
+  if (!midiasPorExtracao.has(dsId)) midiasPorExtracao.set(dsId, lerMidiasV2(dsId));
+  const midias = midiasPorExtracao.get(dsId) ?? null;
+  if (midias === null) return;
+
+  const contrato = ancorarContratoDoBundle(bundleDir, {
+    midias,
+    // `scroll` ausente no insight quer dizer NENHUM comportamento associado
+    // (o motor grava `undefined` em vez de lista vazia) — isso é medida.
+    comportamentos: insight.scroll ?? [],
+  });
+  if (contrato === null) return;
+
+  const manifestPath = join(bundleDir, 'manifest.json');
+  try {
+    const manifesto = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify({ ...manifesto, contract: contrato }, null, 2)}\n`,
+      'utf8',
+    );
+  } catch {
+    // Manifesto ilegível: o componente entra sem a âncora, como entrava antes.
+    // Falhar a promoção inteira por causa de um metadado seria pior.
+  }
+};
+
+const montarComponente = (seg: SegmentRow, midiasPorExtracao: MidiasPorExtracao = new Map()) => {
   const componentId = newComponentId();
   const bundleHash = createHash('sha256').update(seg.htmlSnippet).digest('hex');
 
@@ -433,6 +498,12 @@ const montarComponente = (seg: SegmentRow) => {
     // O HTML CRU também: a prévia do componente mira as classes originais, e o
     // index.html do bundle é um documento completo (com <html>/<head>).
     writeFileSync(join(bundleDir, 'raw.html'), seg.htmlSnippet, 'utf8');
+
+    // A mídia desta peça está presa a um ponto da rolagem? A resposta só existe
+    // enquanto a extração existir — ver `ancorarContratoDoComponente`.
+    if (seg.parentId === null) {
+      ancorarContratoDoComponente(bundleDir, dsId, insight, midiasPorExtracao);
+    }
     bundleAssets = { index: new Map(), assets: [] };
     local = (t) => t;
   } else {
@@ -623,7 +694,10 @@ libraryRoute.post('/batch', zValidator('json', BatchAddInput), (c) => {
     }
     return true;
   });
-  const records = aprovados.map(montarComponente);
+  // O mapa é criado AQUI e passado adiante: as 200 peças de um lote costumam vir
+  // da mesma extração, e sem ele o manifesto de captura seria lido 200 vezes.
+  const midiasPorExtracao: MidiasPorExtracao = new Map();
+  const records = aprovados.map((s) => montarComponente(s, midiasPorExtracao));
   const addedIds = aprovados.map((s) => s.id);
 
   db.transaction((tx) => {

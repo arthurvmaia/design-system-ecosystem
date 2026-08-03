@@ -160,13 +160,19 @@ const lerComparacoesV2 = (dsId: string): ComparacaoBruta[] => {
  * Parse cru pelo mesmo motivo das comparações: o manifesto passa de 1 MB e daqui
  * só interessa a identidade de cada mídia (id e classes estáveis) — é por ela
  * que a âncora de rolagem casa, e não pela seção dona.
+ *
+ * `null` quando não há manifesto de captura ou ele está ilegível, e a diferença
+ * para a lista vazia é o que a promoção para a Biblioteca usa: sem manifesto
+ * ninguém mediu mídia nenhuma, e prometer "medi e não achei" seria mentira.
  */
-const lerMidiasV2 = (dsId: string): MidiaParaAncora[] => {
+export const lerMidiasV2 = (dsId: string): MidiaParaAncora[] | null => {
   const path = vaultCaptureV2Manifest(dsId as `ds_${string}`);
-  if (!existsSync(path)) return [];
+  if (!existsSync(path)) return null;
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as { mediaDetections?: unknown };
-    if (!Array.isArray(raw.mediaDetections)) return [];
+    // Manifesto sem o campo é manifesto de antes da detecção de mídia: também
+    // é "ninguém mediu", e não "medi e não achei".
+    if (!Array.isArray(raw.mediaDetections)) return null;
     return raw.mediaDetections
       .filter(
         (m): m is { id: string; kind: string; fingerprint?: MidiaParaAncora['fingerprint'] } =>
@@ -177,7 +183,7 @@ const lerMidiasV2 = (dsId: string): MidiaParaAncora[] => {
       )
       .map((m) => ({ id: m.id, kind: m.kind, fingerprint: m.fingerprint ?? null }));
   } catch {
-    return [];
+    return null;
   }
 };
 
@@ -447,7 +453,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
     });
     if (b !== null) bundles.set(s.id, b);
   }
-  const midias = lerMidiasV2(id);
+  const midias = lerMidiasV2(id) ?? [];
   const ordenados = [...segmentos].sort((a, b) => a.position - b.position);
   const conferencias = associarConferencias({
     comparacoes: lerComparacoesV2(id),

@@ -160,6 +160,11 @@ kitsRoute.get('/:id', (c) => {
  * corte, ou sobre espaço que não pode ficar vazio, teria de ser chutada no
  * cliente. Medida que o servidor tem e não manda é medida que alguém inventa do
  * outro lado.
+ *
+ * É por essa decisão que a ÂNCORA DE ROLAGEM (`SlotDeMidia.ancoras`) chega aqui
+ * sem uma linha de código: ela viaja dentro do slot, gravada na promoção. Slot
+ * com `ancoras: null` é slot que ninguém mediu; com lista, é mídia que se move
+ * com a rolagem, e quem for trocar o arquivo precisa saber disso antes.
  */
 kitsRoute.get('/:id/contratos', (c) => {
   const kit = carregarKit(c.req.param('id'));

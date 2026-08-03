@@ -44,7 +44,7 @@ import { ArrowLeft, ArrowRight, Check, CloudOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { StepEstrutura } from './etapas/EtapaEstrutura';
 import { StepMarca } from './etapas/EtapaMarca';
-import { StepMidia } from './etapas/EtapaMidia';
+import { Deposito } from './etapas/EtapaMidia';
 import { StepProjeto } from './etapas/EtapaProjeto';
 import { StepRevisao } from './etapas/EtapaRevisao';
 import type { WizardBranding } from './partes';
@@ -69,7 +69,7 @@ export function ProjectWizard({
   const [step, setStep] = useState(0);
   // Até onde a pessoa JÁ chegou: a StepBar deixa voltar E avançar para
   // qualquer etapa visitada — só o desconhecido fica bloqueado.
-  const [maxVisitado, setMaxVisitado] = useState(existing !== null ? ETAPAS.length - 1 : 0);
+  const [maxVisitado, setMaxVisitado] = useState(existing !== null ? ETAPA.revisao : 0);
   const [projectId, setProjectId] = useState<string | null>(existing?.id ?? null);
   const [name, setName] = useState(existing?.name ?? '');
   const [kitId, setKitId] = useState<string | null>(existing?.kitId ?? null);
@@ -79,10 +79,12 @@ export function ProjectWizard({
   const [objetivo, setObjetivo] = useState<ObjetivoDoSite | null>(parsedLayout.objetivo);
   // Produtos vivem no conteúdo do projeto.
   const [produtos, setProdutos] = useState<Produto[]>(parsedContent.produtos ?? []);
-  // As permissões moram em `layout.permissoes`, mas cada caixa fica na etapa em
-  // que a decisão acontece: arte de apoio na Mídia, seções obrigatórias que
-  // faltam na Estrutura. Chave sem tela atravessa intacta pelo espalhamento do
-  // layout no salvar().
+  // As permissões moram em `layout.permissoes`, mas cada caixa fica onde a
+  // decisão acontece — as duas na Estrutura desde que a Mídia deixou de ser
+  // etapa: arte de apoio no depósito (é ele que guarda as mídias gerais que a
+  // permissão autoriza reusar) e seções obrigatórias que faltam junto da lista
+  // de seções. Chave sem tela atravessa intacta pelo espalhamento do layout no
+  // salvar().
   const [criarArteDeApoio, setCriarArteDeApoio] = useState(
     parsedLayout.permissoes.criarArteDeApoio,
   );
@@ -193,7 +195,7 @@ export function ProjectWizard({
     onSuccess: () => {
       setAutosave((e) => reduzirAutosave(e, 'salvou'));
       setStep((s) => {
-        const proxima = Math.min(ETAPAS.length - 1, s + 1);
+        const proxima = Math.min(ETAPA.revisao, s + 1);
         setMaxVisitado((m) => Math.max(m, proxima));
         return proxima;
       });
@@ -346,9 +348,9 @@ export function ProjectWizard({
 
   const componentesDoKit = kit.data?.item.components ?? [];
 
-  // Os espaços REAIS de imagem de cada peça. Alimenta a explicação da etapa
-  // Estrutura e a contagem da etapa Mídia: as duas precisam dizer o MESMO
-  // número, e duas buscas separadas acabariam discordando.
+  // Os espaços REAIS de imagem de cada peça. Alimenta a explicação de cada seção
+  // na Estrutura e a medida de alcance da marca que a Revisão mostra: uma busca
+  // só, porque duas acabariam dizendo números diferentes sobre o mesmo kit.
   const contratos = useQuery({
     queryKey: ['kit-contratos', kitId],
     queryFn: () => api.getKitContratos(kitId as string),
@@ -382,7 +384,12 @@ export function ProjectWizard({
   const pendencias = pendenciasDaEtapa(step, dadosDasEtapas);
   const podeAvancar = pendencias.length === 0;
   const tetoLiberado = Math.min(maxVisitado, maiorEtapaLiberada(dadosDasEtapas));
-  const ultima = step === ETAPAS.length - 1;
+  const ultima = step === ETAPA.revisao;
+  // A pendência que se resolve DENTRO do depósito, não na tela em volta dele.
+  // Sem isto, o botão "Próximo" da Estrutura acusaria um produto sem nome com a
+  // pessoa olhando para a lista de seções, e o produto ficaria escondido num
+  // painel fechado no fim da rolagem.
+  const pendenciaDoDeposito = pendencias.find((p) => p.foco === 'deposito')?.mensagem;
 
   // Validação da revisão: bloqueante impede gerar; aviso só aponta. Enquanto o
   // kit carrega, um marcador evita o falso "kit vazio".
@@ -456,34 +463,37 @@ export function ProjectWizard({
           {step === ETAPA.marca && (
             <StepMarca branding={branding} setB={setB} projectId={projectId} />
           )}
+          {/* A Estrutura absorveu a antiga etapa Mídia. A mídia de uma seção se
+              envia no inspetor da própria seção, aqui dentro; o que não é de
+              seção nenhuma (mídias gerais e produtos) fica no depósito ao pé da
+              tela, fechado por padrão. Manter uma etapa inteira do wizard para
+              duas listas opcionais cobrava um "Próximo" de todo mundo. */}
           {step === ETAPA.estrutura && (
-            <StepEstrutura
-              secoes={secoes}
-              onSecoes={setSecoes}
-              components={componentesDoKit}
-              objetivo={objetivo}
-              espacos={espacosDasPecas}
-              criarSecoesFaltantes={criarSecoesFaltantes}
-              onCriarSecoesFaltantes={setCriarSecoesFaltantes}
-              projectId={projectId}
-              media={media}
-              onMedia={setMedia}
-            />
-          )}
-          {step === ETAPA.midia && (
-            <StepMidia
-              projectId={projectId}
-              secoes={secoes}
-              components={componentesDoKit}
-              kitId={kitId}
-              media={media}
-              onMedia={setMedia}
-              produtos={produtos}
-              onProdutos={setProdutos}
-              objetivo={objetivo}
-              criarArteDeApoio={criarArteDeApoio}
-              onCriarArteDeApoio={setCriarArteDeApoio}
-            />
+            <div className="space-y-6">
+              <StepEstrutura
+                secoes={secoes}
+                onSecoes={setSecoes}
+                components={componentesDoKit}
+                objetivo={objetivo}
+                espacos={espacosDasPecas}
+                criarSecoesFaltantes={criarSecoesFaltantes}
+                onCriarSecoesFaltantes={setCriarSecoesFaltantes}
+                projectId={projectId}
+                media={media}
+                onMedia={setMedia}
+              />
+              <Deposito
+                projectId={projectId}
+                secoes={secoes}
+                media={media}
+                onMedia={setMedia}
+                produtos={produtos}
+                onProdutos={setProdutos}
+                criarArteDeApoio={criarArteDeApoio}
+                onCriarArteDeApoio={setCriarArteDeApoio}
+                {...(pendenciaDoDeposito !== undefined ? { pendencia: pendenciaDoDeposito } : {})}
+              />
+            </div>
           )}
           {step === ETAPA.revisao && (
             <StepRevisao

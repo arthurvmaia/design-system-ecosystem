@@ -1,4 +1,5 @@
 import type {
+  AncoraDeRolagem,
   GovernancaDoKit,
   IdentidadeVerbal,
   KitDesignSystem,
@@ -13,6 +14,14 @@ import type {
 } from '@ds/shared/schemas';
 
 export type { KitDesignSystem, ProjectLayout };
+
+/**
+ * A âncora de rolagem de um slot de mídia, reexportada do shared para a tela
+ * poder nomear o que recebe. Ela viaja DENTRO de `SlotDeMidia.ancoras`: `null` é
+ * "ninguém mediu", `[]` é "medido e não está preso", lista é mídia que se move
+ * com a rolagem. Redigitar essa forma aqui só criaria uma cópia para defasar.
+ */
+export type { AncoraDeRolagem };
 
 export type HealthResponse = {
   status: 'ok';

@@ -19,7 +19,8 @@ export type Problema = {
 
 // Os índices das etapas vêm de `etapas-core`: eram duplicados aqui, e o botão
 // "Corrigir" navega pelo número, então uma divergência levava para a etapa
-// errada em silêncio.
+// errada em silêncio. Lá eles são derivados da lista de etapas, então tirar uma
+// etapa do meio (foi o caso da Mídia) não deixa número velho para trás aqui.
 export { ETAPA } from './etapas-core.js';
 
 export type DadosDeRevisao = {
@@ -110,7 +111,16 @@ export const validarProjeto = (d: DadosDeRevisao): Problema[] => {
     aviso(ETAPA.marca, 'Você não definiu a chamada principal. Os botões saem com um texto padrão.');
   }
   if (d.nMidias === 0) {
-    aviso(ETAPA.midia, 'Você não enviou nenhuma mídia. As seções visuais saem só com o estilo.');
+    // Aponta para a Estrutura porque é lá que a mídia se resolve desde que a
+    // Mídia deixou de ser etapa: a de cada seção no inspetor da própria seção, e
+    // a que não é de seção nenhuma no depósito da mesma tela. Se este aviso
+    // tivesse ficado com o índice antigo, ele não daria erro nenhum — o número 3
+    // continuou existindo, só que com a Revisão dentro, e "Corrigir" mandaria a
+    // pessoa para a tela em que ela já está.
+    aviso(
+      ETAPA.estrutura,
+      'Você não enviou nenhuma mídia. As seções visuais saem só com o estilo.',
+    );
   }
 
   // Dito antes de gerar, e não descoberto depois: é a diferença entre uma

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { type HTMLElement, parse } from 'node-html-parser';
 import {
+  type AncoraDeRolagem,
   CONTRACT_VERSION,
   type ComponentContract,
   type CorTematizavel,
@@ -13,6 +14,11 @@ import {
   type SlotDeTexto,
 } from './schemas/component-contract.js';
 import { ComponentContract as ComponentContractSchema } from './schemas/component-contract.js';
+import {
+  type ComportamentoParaAncora,
+  type MidiaParaAncora,
+  ancorasDeMidia,
+} from './schemas/midia-posicional.js';
 
 /**
  * Derivação do contrato de esqueleto/slots/tokens de um componente.
@@ -35,6 +41,17 @@ export type EntradaContrato = {
   jsFiles?: readonly string[];
   /** Ponte URL absoluta → arquivo local, vinda do manifest do bundle. */
   assets?: readonly { originalUrl: string; localPath: string; kind?: string }[];
+  /**
+   * As mídias que a captura detectou, com o fingerprint de cada uma. É por ele
+   * que a âncora reencontra o elemento no HTML.
+   *
+   * Os dois campos da medição andam JUNTOS: com só um dos lados não há âncora
+   * para afirmar nem para negar, e os slots ficam `ancoras: null`. Ausentes,
+   * a derivação continua exatamente como era.
+   */
+  midiasDaCaptura?: readonly MidiaParaAncora[];
+  /** Os comportamentos de scroll que o motor associou a ESTE segmento. */
+  comportamentosDeScroll?: readonly ComportamentoParaAncora[];
   /** Origem da derivação, para a proveniência do contrato. */
   origem: 'bundle-v2' | 'bundle-legado';
 };
@@ -198,6 +215,8 @@ const coletarDoElemento = (
           ? { proporcao: Number((w / h).toFixed(3)) }
           : {}),
       },
+      // Nasce sem medida; `ancorarMidias` preenche depois, se a captura veio.
+      ancoras: null,
       obrigatorio: false,
       pareceLogo: /logo/i.test(`${src} ${alt} ${cls} ${el.getAttribute('id') ?? ''}`),
     });
@@ -222,6 +241,7 @@ const coletarDoElemento = (
           ? { proporcao: Number((w / h).toFixed(3)) }
           : {}),
       },
+      ancoras: null,
       // Vídeo de fundo (autoplay+muted) é a alma visual da dobra.
       obrigatorio: el.hasAttribute('autoplay') && el.hasAttribute('muted'),
       pareceLogo: false,
@@ -238,6 +258,7 @@ const coletarDoElemento = (
       tipo: 'background-image',
       urlOriginal: bgInline[1],
       exibicao: { overlay: /gradient\(/i.test(style) },
+      ancoras: null,
       obrigatorio: caminho.length <= 1,
       pareceLogo: false,
     });
@@ -314,6 +335,10 @@ const coletarBackgroundsDoCss = (css: string, col: Colecao, estado: { n: { m: nu
       tipo: 'background-image',
       urlOriginal: m[2],
       exibicao: { overlay: /gradient\(/i.test(m[1] ?? '') },
+      // Fica `null` mesmo com a captura medida: o seletor é de CSS e pode valer
+      // para vários elementos, então não dá para afirmar de qual deles é a
+      // âncora. Ver `ancorarMidias`.
+      ancoras: null,
       obrigatorio: false,
       pareceLogo: false,
     });
@@ -388,6 +413,79 @@ const derivarTokens = (
   return { cores, fontes };
 };
 
+// ── Âncora de rolagem ────────────────────────────────────────────────────────
+
+/**
+ * O elemento que um seletor ESTRUTURAL aponta, ou `null`.
+ *
+ * Só entende a forma que `seletorDe` produz (`:scope > *:nth-child(i) > …`), e
+ * é isso que se quer: um seletor de CSS (o dos backgrounds declarados em folha)
+ * não identifica UM elemento, então cai fora aqui em vez de casar por
+ * aproximação. Os índices contam só elementos, como o `nth-child` do CSS e como
+ * a coleta que gerou o caminho.
+ */
+const elementoDoSeletor = (raiz: HTMLElement, seletor: string): HTMLElement | null => {
+  const m = /^:scope((?:\s*>\s*\*:nth-child\(\d+\))*)$/.exec(seletor.trim());
+  if (m === null) return null;
+  let atual: HTMLElement = raiz;
+  for (const passo of (m[1] ?? '').matchAll(/nth-child\((\d+)\)/g)) {
+    const filhos = atual.childNodes.filter(
+      (f): f is HTMLElement => (f as HTMLElement).tagName !== undefined,
+    );
+    const proximo = filhos[Number(passo[1]) - 1];
+    if (proximo === undefined) return null;
+    atual = proximo;
+  }
+  return atual;
+};
+
+/**
+ * Esta detecção da captura é ESTE elemento?
+ *
+ * Mesma regra de `mesmoElemento`/`midiaEstaNoHtml`: id manda quando existe;
+ * senão as classes estáveis têm de caber INTEIRAS no elemento. Casar por
+ * interseção parcial produziria âncora de dono errado, que é pior que âncora
+ * nenhuma — foi medido no acervo (um canvas fixo virando âncora de seis peças).
+ */
+const ehOMesmoElemento = (midia: MidiaParaAncora, el: HTMLElement): boolean => {
+  const id = midia.fingerprint?.id ?? null;
+  if (id !== null && id !== '') return el.getAttribute('id') === id;
+  const classes = midia.fingerprint?.stableClasses ?? [];
+  if (classes.length === 0) return false;
+  const doElemento = new Set((el.getAttribute('class') ?? '').split(/\s+/).filter((c) => c !== ''));
+  return classes.every((c) => doElemento.has(c));
+};
+
+/**
+ * Preenche a âncora de cada slot de mídia a partir da medição da captura.
+ *
+ * Quem chega aqui já decidiu que a medida EXISTE, então todo slot que reencontra
+ * o elemento dele sai com uma lista (vazia = medido e não está preso). O que não
+ * reencontra continua `null`: ninguém mediu aquilo.
+ */
+const ancorarMidias = (
+  slots: readonly SlotDeMidia[],
+  raiz: HTMLElement | null,
+  midias: readonly MidiaParaAncora[],
+  comportamentos: readonly ComportamentoParaAncora[],
+): SlotDeMidia[] => {
+  if (raiz === null) return [...slots];
+  const porMidia = new Map<string, AncoraDeRolagem[]>();
+  for (const a of ancorasDeMidia(midias, comportamentos)) {
+    const atual = porMidia.get(a.midiaId);
+    if (atual) atual.push(a);
+    else porMidia.set(a.midiaId, [a]);
+  }
+  return slots.map((slot) => {
+    const el = elementoDoSeletor(raiz, slot.seletor);
+    if (el === null) return slot;
+    const suas = midias
+      .filter((m) => ehOMesmoElemento(m, el))
+      .flatMap((m) => porMidia.get(m.id) ?? []);
+    return { ...slot, ancoras: suas };
+  });
+};
+
 /** Liga os slots que vivem dentro do item-modelo de cada grupo. */
 const ligarSlotsAosGrupos = (col: Colecao): void => {
   for (const grupo of col.grupos) {
@@ -432,6 +530,18 @@ export const derivarContrato = (entrada: EntradaContrato): ComponentContract => 
         if (local !== undefined) midia.localPath = local;
       }
     }
+  }
+
+  // A mídia presa a um ponto da rolagem. Só entra com os DOIS lados da medida na
+  // mão: as detecções da captura e os comportamentos deste segmento. Sem eles a
+  // âncora fica `null`, que é dizer "ninguém mediu" — e não "não tem".
+  if (entrada.midiasDaCaptura !== undefined && entrada.comportamentosDeScroll !== undefined) {
+    col.midias = ancorarMidias(
+      col.midias,
+      raiz,
+      entrada.midiasDaCaptura,
+      entrada.comportamentosDeScroll,
+    );
   }
 
   const tokens = derivarTokens(cssTodo);
@@ -553,4 +663,59 @@ export const lerOuDerivarContrato = (bundleDir: string): ComponentContract | nul
     assets,
     origem: manifest === null ? 'bundle-legado' : 'bundle-v2',
   });
+};
+
+/**
+ * O contrato GRAVADO de um bundle em disco, com a âncora de rolagem preenchida.
+ *
+ * Existe porque a medida da mídia posicional e o contrato nascem em momentos
+ * diferentes: o compilador escreve o contrato sem saber de scroll, e quem sabe
+ * (o manifesto da captura, com as detecções de mídia, e o insight do segmento,
+ * com os comportamentos) vive no vault e morre junto com a extração. Quem promove
+ * a peça para a Biblioteca é o último a ter as duas coisas ao mesmo tempo.
+ *
+ * O contrato é reancorado, e não re-derivado: os slots e seus seletores são os
+ * que o compilador gravou, e derivar de novo a partir do disco produziria ids
+ * diferentes dos que o resto do sistema já usa. Devolve `null` quando não há
+ * contrato gravado legível ou não há `index.html` — nada é inventado, e quem
+ * chama decide o que fazer com a ausência.
+ */
+export const ancorarContratoDoBundle = (
+  bundleDir: string,
+  medida: {
+    midias: readonly MidiaParaAncora[];
+    comportamentos: readonly ComportamentoParaAncora[];
+  },
+): ComponentContract | null => {
+  const manifestPath = join(bundleDir, 'manifest.json');
+  const indexPath = join(bundleDir, 'index.html');
+  if (!existsSync(manifestPath) || !existsSync(indexPath)) return null;
+
+  let contrato: ComponentContract;
+  try {
+    const bruto = JSON.parse(readFileSync(manifestPath, 'utf8')) as { contract?: unknown };
+    const lido = ComponentContractSchema.safeParse(bruto.contract);
+    if (!lido.success) return null;
+    contrato = lido.data;
+  } catch {
+    return null;
+  }
+
+  // O MESMO html de que o contrato saiu: o corpo do `index.html` é o `corpo` que
+  // o compilador passou para a derivação. É o que faz o seletor estrutural de
+  // cada slot cair no elemento certo — em outro HTML, cairia no vizinho.
+  let raiz: HTMLElement | null = null;
+  try {
+    raiz = parse(corpoDe(readFileSync(indexPath, 'utf8')), { comment: false });
+  } catch {
+    return null;
+  }
+
+  return {
+    ...contrato,
+    slots: {
+      ...contrato.slots,
+      midias: ancorarMidias(contrato.slots.midias, raiz, medida.midias, medida.comportamentos),
+    },
+  };
 };

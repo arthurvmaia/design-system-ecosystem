@@ -50,7 +50,36 @@ test('faltas de marca, texto e mídia são AVISOS com etapa exata', () => {
   const etapas = problemas.map((p) => p.etapa);
   assert.ok(etapas.includes(ETAPA.marca));
   assert.ok(etapas.includes(ETAPA.estrutura), 'nenhuma seção com texto avisa na Estrutura');
-  assert.ok(etapas.includes(ETAPA.midia));
+  const semMidia = problemas.find((p) => /nenhuma mídia/i.test(p.mensagem));
+  assert.ok(semMidia !== undefined, 'projeto sem mídia nenhuma precisa avisar antes de gerar');
+  assert.equal(
+    semMidia.etapa,
+    ETAPA.estrutura,
+    'a mídia se envia na Estrutura desde que a Mídia deixou de ser etapa',
+  );
+});
+
+/**
+ * O defeito que este teste tranca: a Mídia era o índice 3 e a Revisão passou a
+ * ser. Um `ETAPA.midia` esquecido aqui não quebraria nada visível — o botão
+ * "Corrigir" simplesmente mandaria a pessoa para a Revisão, que é a tela em que
+ * ela já está, sem erro no console e sem nada acontecer.
+ */
+test('nenhum aviso aponta para a Revisão: não se corrige nada lá dentro', () => {
+  const problemas = validarProjeto({
+    ...BASE,
+    nome: ' ',
+    kitComponentes: null,
+    brandName: '',
+    nLogos: 0,
+    tons: [],
+    arquetipos: [],
+    ctaPrincipal: '',
+    nMidias: 0,
+    secoes: [{ nome: 'Abertura', componentIds: ['cmp_a'] }],
+  });
+  assert.ok(problemas.length > 0);
+  assert.ok(problemas.every((p) => p.etapa !== ETAPA.revisao));
 });
 
 test('a chamada principal agora se corrige na Marca, não numa etapa de conteúdo', () => {
