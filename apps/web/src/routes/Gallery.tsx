@@ -1,4 +1,5 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
+import { ExplicacaoDaPeca } from '@/components/ExplicacaoDaPeca';
 import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
@@ -532,7 +533,7 @@ function ComoEuConferi({
             <span className="min-w-0">
               <span style={{ color: 'var(--color-fg-muted)' }}>{ROTULO_DO_CANAL[v.canal]}</span>
               <span style={{ color: 'var(--color-fg-subtle)' }}>
-                {' — '}
+                {' · '}
                 {v.motivo}
                 {v.delta !== undefined &&
                   v.limiar !== undefined &&
@@ -599,7 +600,7 @@ function MidiaPresaARolagem({ ancoras }: { ancoras?: AncoraNaTela[] }) {
                 {MIDIA_LABEL[a.midiaKind] ?? a.midiaKind}
               </span>
               <span style={{ color: 'var(--color-fg-subtle)' }}>
-                {' — '}
+                {' · '}
                 {a.frase}
               </span>
             </span>
@@ -2054,6 +2055,14 @@ function SegmentDetail({
               )}
               {CATEGORY_LABEL(segment.category)} · {segment.kind}
             </div>
+            <ExplicacaoDaPeca
+              peca={{
+                category: segment.category,
+                kind: segment.kind,
+                support: segment.fidelity?.support ?? null,
+                interacoes: segment.fidelity?.interactions?.map((i) => i.kind) ?? [],
+              }}
+            />
           </div>
           <div className="-mx-4 flex shrink-0 items-center gap-2 overflow-x-auto px-4 pb-0.5 sm:mx-0 sm:overflow-visible sm:px-0">
             {temEstados && (
@@ -2240,7 +2249,7 @@ function CapturaParcial({
       </p>
       {sugerido === null ? (
         <p className="mt-2">
-          Para tentar completar, extraia de novo com mais tempo — a fase que cortou foi a{' '}
+          Para tentar completar, extraia de novo com mais tempo. A fase que cortou foi a{' '}
           <code className="ds-data">{parcial.fase}</code>.
         </p>
       ) : (

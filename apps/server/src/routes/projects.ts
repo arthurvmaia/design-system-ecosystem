@@ -506,7 +506,7 @@ projectsRoute.post('/:id/generate', async (c) => {
 
   // Modo fila: registra o pedido com o payload do contrato. Nada roda aqui.
   if (isQueueMode()) {
-    const job = enqueueJob('generate', `Gerar site — ${row.name}`, contexto.payload);
+    const job = enqueueJob('generate', `Gerar site: ${row.name}`, contexto.payload);
     db.update(tables.projects)
       .set({ status: 'ready-to-generate', updatedAt: Date.now() })
       .where(eq(tables.projects.id, id))

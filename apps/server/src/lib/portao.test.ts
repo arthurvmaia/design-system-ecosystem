@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import {
+  DURACAO_DA_SESSAO_S,
   assinarSessao,
   cookieDeSessao,
   ehLeitura,
@@ -163,6 +164,24 @@ test('em origem cruzada o cookie sai com SameSite=None e Secure', () => {
   const local = cookieDeSessao({ valor: 'v', maxAgeS: 60, origemCruzada: false });
   assert.match(local, /SameSite=Lax/);
   assert.doesNotMatch(local, /Secure/);
+});
+
+test('a sessão sobrevive a fechar a janela: o cookie leva prazo', () => {
+  // A credencial é pedida na primeira entrada, e não a cada volta. Um cookie
+  // sem `Max-Age` morre quando o navegador fecha, e era isso que fazia o app
+  // pedir a senha de novo depois de minimizar. O prazo aqui e a validade
+  // assinada dentro do valor precisam dizer a mesma coisa.
+  const entrando = cookieDeSessao({
+    valor: 'v',
+    maxAgeS: DURACAO_DA_SESSAO_S,
+    origemCruzada: false,
+  });
+  assert.match(entrando, new RegExp(`Max-Age=${DURACAO_DA_SESSAO_S}`));
+  assert.equal(DURACAO_DA_SESSAO_S, 7 * 24 * 60 * 60);
+
+  // Sair continua apagando: `Max-Age=0` é o que manda o navegador esquecer.
+  const saindo = cookieDeSessao({ valor: '', maxAgeS: 0, origemCruzada: false });
+  assert.match(saindo, /Max-Age=0/);
 });
 
 test('o cookie é lido no meio de outros', () => {

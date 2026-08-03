@@ -151,8 +151,14 @@ export const NOME_DO_COOKIE = 'orbis_sessao';
  *
  * `HttpOnly` para o JavaScript da página não conseguir ler (nem o do app, nem o
  * de um script injetado). `SameSite=None; Secure` quando o app e a API moram em
- * domínios diferentes — que é exatamente o caso de front na Vercel e servidor
- * noutro lugar, e sem isso o navegador descarta o cookie sem avisar.
+ * domínios diferentes, que é exatamente o caso de front na Vercel e servidor
+ * noutro lugar; sem isso o navegador descarta o cookie sem avisar.
+ *
+ * O cookie sempre leva `Max-Age`. Existiu aqui um modo "dura só até fechar",
+ * que emitia o cookie sem prazo para a sessão morrer junto com a janela. Ele
+ * saiu porque contradizia a assinatura: o valor prometia sete dias e o
+ * navegador entregava até o fim da aba. Agora as duas coisas dizem o mesmo, e
+ * quem quiser sair antes usa o botão de sair.
  */
 export const cookieDeSessao = (opts: {
   valor: string;
@@ -160,22 +166,16 @@ export const cookieDeSessao = (opts: {
   origemCruzada: boolean;
   /** A conexão chegou por HTTPS? Pelo túnel, sim; em `localhost`, não. */
   seguro?: boolean;
-  /**
-   * Cookie de SESSÃO: sem `Max-Age`, o navegador o descarta ao fechar.
-   *
-   * É o que faz "fechei o link" virar "preciso da credencial de novo" sem
-   * depender de o JavaScript da página conseguir avisar o servidor — e ele
-   * frequentemente não consegue, porque a aba morre antes de a requisição sair.
-   * A tranca não pode depender de uma despedida educada.
-   */
-  duraSoAteFechar?: boolean;
 }): string => {
-  const partes = [`${NOME_DO_COOKIE}=${opts.valor}`, 'HttpOnly', 'Path=/'];
-  // Apagar o cookie exige `Max-Age=0` explícito, mesmo no modo sessão.
-  if (!opts.duraSoAteFechar || opts.maxAgeS === 0) partes.push(`Max-Age=${opts.maxAgeS}`);
+  const partes = [
+    `${NOME_DO_COOKIE}=${opts.valor}`,
+    'HttpOnly',
+    'Path=/',
+    `Max-Age=${opts.maxAgeS}`,
+  ];
   // `SameSite=None` EXIGE `Secure`, e `Secure` em http é descartado. Por isso os
-  // dois andam juntos, e `Secure` sozinho entra sempre que a conexão for HTTPS
-  // — pelo túnel ela é, mesmo com o app e a API na mesma origem.
+  // dois andam juntos, e `Secure` sozinho entra sempre que a conexão for HTTPS:
+  // pelo túnel ela é, mesmo com o app e a API na mesma origem.
   if (opts.origemCruzada) partes.push('SameSite=None', 'Secure');
   else {
     partes.push('SameSite=Lax');

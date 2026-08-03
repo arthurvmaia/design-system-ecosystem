@@ -344,7 +344,7 @@ export async function unlockTheme(viewer: Viewer, themeId: string, idempotencyKe
       viewer.id,
       themeId,
       projectId,
-      `${theme.name} — novo projeto`,
+      `${theme.name}: novo projeto`,
       JSON.stringify(normalizeCustomization(parseJson(theme.defaults, DEFAULT_CUSTOMIZATION))),
       theme.price,
       `unlock:${viewer.id}:${idempotencyKey}`,
@@ -387,7 +387,7 @@ export async function duplicateProject(viewer: Viewer, projectId: string) {
   if (!source) throw new Error("PROJECT_NOT_FOUND");
   const id = crypto.randomUUID();
   await getD1().prepare("INSERT INTO projects(id, user_id, theme_id, name, status, customization) VALUES (?, ?, ?, ?, 'draft', ?)")
-    .bind(id, viewer.id, source.themeId, `${source.name} — cópia`, source.customization).run();
+    .bind(id, viewer.id, source.themeId, `${source.name} (cópia)`, source.customization).run();
   return getBootstrap(viewer);
 }
 

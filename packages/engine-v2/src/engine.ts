@@ -85,6 +85,7 @@ import { hashBytes } from './observe/pixel.js';
 import { atribuirMovimento, observarTemporal } from './observe/temporal.js';
 import { escolherCamadasDePagina } from './segment/camadas-de-pagina.js';
 import { escolherComportamentos } from './segment/comportamentos.js';
+import { decidirComparacao } from './segment/decidir-comparacao.js';
 import { escolherPecas } from './segment/pecas.js';
 import { type RejeitadoV2, type SegmentoV2, segmentarPorEvidencia } from './segment/segment-v2.js';
 
@@ -1232,24 +1233,25 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       // próprio motor sabia estar incompleto — tempo que faltou justamente à
       // fase que foi interrompida. Conferir o que se sabe incompleto produz um
       // número que não significa nada, e cobra caro por ele.
-      const PISO_PARA_COMPARAR_MS = 3_000;
       const querVerificar = opts.verificarVisual !== false;
       // A comparação é a ÚNICA fase que não recebe o tempo restante: ela fica
       // na fração e ponto. As outras podem crescer com o que sobrou porque
       // produzem o resultado; esta confere o resultado, e uma conferência que
       // se expande para ocupar a sobra é conferência que virou fim em si.
       const tetoComparar = tetoDaFase(FASE_V2.comparar, limits.orcamentoTotalMs) ?? 0;
-      if (!querVerificar) {
-        // Silêncio aqui é correto: quem desligou sabe que desligou.
-      } else if (tel.parcial) {
-        limitacoes.push(
-          'A comparação de pixel não rodou: a captura já tinha sido cortada por tempo, e verificar um resultado incompleto gastaria o orçamento que faltou para completá-lo.',
-        );
-      } else if (tetoComparar < PISO_PARA_COMPARAR_MS) {
-        limitacoes.push(
-          `A comparação de pixel não rodou: o orçamento reservado para ela (${tetoComparar} ms) não daria nem para conferir um bundle.`,
-        );
-      } else
+      const decisao = decidirComparacao({
+        querVerificar,
+        parcial: tel.parcial,
+        faseCortada: tel.faseCortada,
+        tetoMs: tetoComparar,
+        restanteMs: tel.restanteTotal(),
+        // Só o corte no que PRODUZ o bundle invalida a conferência do bundle.
+        fasesQueInvalidam: [FASE_V2.compilar, FASE_V2.comparar],
+      });
+      if (!decisao.rodar) {
+        if (decisao.motivo !== '') limitacoes.push(decisao.motivo);
+      } else {
+        if (decisao.ressalva !== undefined) limitacoes.push(decisao.ressalva);
         await tel.faseCooperativa(
           FASE_V2.comparar,
           async (signal) => {
@@ -1344,6 +1346,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           },
           tetoDaFase(FASE_V2.comparar, limits.orcamentoTotalMs),
         );
+      }
     }
 
     // ── Manifesto ─────────────────────────────────────────────────────────

@@ -105,10 +105,11 @@ orbisRoute.post('/entrar', async (c) => {
       maxAgeS: DURACAO_DA_SESSAO_S,
       origemCruzada: origemCruzada(),
       seguro: conexaoSegura(c),
-      // Fechou a aba, acabou a sessão. Não depende de o JavaScript avisar: o
-      // navegador descarta o cookie sozinho, e é a única forma que funciona
-      // quando a aba morre sem despedida.
-      duraSoAteFechar: true,
+      // O cookie leva `Max-Age` e sobrevive a fechar o navegador. A validade
+      // real continua sendo a que viaja ASSINADA dentro do valor: uma semana,
+      // conferida a cada pedido. Sem `Max-Age`, a assinatura prometia sete dias
+      // e o navegador entregava até o fim da aba, e as duas coisas se
+      // contradiziam sem que ninguém percebesse.
     }),
   );
   return c.json({ dentro: true, nivel });

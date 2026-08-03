@@ -232,9 +232,9 @@ export function CorpoDaFormula({ kit }: { kit: KitRecord }) {
                           key={d}
                           title={`${d}px${
                             d === o.escala?.corpo
-                              ? ' — o tamanho em que está a maior parte do texto'
+                              ? ', o tamanho em que está a maior parte do texto'
                               : d === o.escala?.display
-                                ? ' — o degrau de destaque'
+                                ? ', o degrau de destaque'
                                 : ''
                           }`}
                           style={{

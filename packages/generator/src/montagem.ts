@@ -38,15 +38,63 @@ export const atributosDoDocumentoDaPeca = (html: string): { html?: string; body?
 };
 
 /**
- * Remove os avisos internos do bundle (`<aside data-ds-aviso>`) e os links de
- * stylesheet — o CSS entra concatenado, e o aviso é conversa da Galeria com o
- * usuário, não conteúdo do site gerado.
+ * Remove um elemento inteiro pelo atributo, contando abertura e fechamento.
+ *
+ * Regex não serve aqui: o bloco a remover tem `<div>` dentro, e um `[\s\S]*?`
+ * pararia no primeiro `</div>`, deixando órfãos que quebram o resto da página.
+ * Este varredor conta profundidade e corta no fechamento certo.
+ */
+const removerElementoPorAtributo = (html: string, atributo: string, tag = 'div'): string => {
+  const abertura = new RegExp(`<${tag}\\b[^>]*\\b${atributo}\\b[^>]*>`, 'i');
+  let saida = html;
+  for (;;) {
+    const inicio = abertura.exec(saida);
+    if (inicio === null) return saida;
+    const corpoComeca = inicio.index + inicio[0].length;
+    const passo = new RegExp(`<${tag}\\b[^>]*>|</${tag}\\s*>`, 'gi');
+    passo.lastIndex = corpoComeca;
+    let profundidade = 1;
+    let fim = -1;
+    for (;;) {
+      const m = passo.exec(saida);
+      if (m === null) break;
+      profundidade += m[0].startsWith('</') ? -1 : 1;
+      if (profundidade === 0) {
+        fim = m.index + m[0].length;
+        break;
+      }
+    }
+    // Sem fechamento à vista, o honesto é não mexer: cortar até o fim do
+    // documento faria sumir conteúdo que nada tem a ver com o bloco.
+    if (fim === -1) return saida;
+    saida = saida.slice(0, inicio.index) + saida.slice(fim);
+  }
+};
+
+/**
+ * Prepara o corpo do bundle para virar parte de uma página.
+ *
+ * Três coisas saem:
+ *
+ * 1. `<aside data-ds-aviso>` — conversa da Galeria com o usuário, não conteúdo
+ *    do site gerado.
+ * 2. `<link rel=stylesheet>` — o CSS entra concatenado.
+ * 3. `<div data-ds-camadas-de-fundo>` — e este é o que mais importa. O motor
+ *    embute nele as camadas `position:fixed` que passavam atrás daquela dobra,
+ *    para a peça, vista SOZINHA na Galeria, aparecer com o fundo que ela tinha
+ *    no site. Numa página montada isso vira duplicata: cada peça arrasta uma
+ *    cópia do fundo da própria origem. O sintoma mais feio era a navegação, que
+ *    tem poucos pixels de altura e chegava carregando um canvas de tela cheia
+ *    junto: o que devia ser uma barra virava uma dobra inteira. Numa página, o
+ *    fundo é da PÁGINA, e quem o coloca uma vez só é `envolverCamadaDePagina`.
  */
 export const limparParaComposicao = (corpo: string): string =>
-  corpo
-    .replace(/<aside[^>]*data-ds-aviso[\s\S]*?<\/aside>/gi, '')
-    .replace(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi, '')
-    .trim();
+  removerElementoPorAtributo(
+    corpo
+      .replace(/<aside[^>]*data-ds-aviso[\s\S]*?<\/aside>/gi, '')
+      .replace(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi, ''),
+    'data-ds-camadas-de-fundo',
+  ).trim();
 
 /**
  * Reescreve referências de asset do HTML para o namespace do componente:
@@ -126,4 +174,30 @@ export const envolverCamadaDePagina = (
   corpo: string,
   dados: { componentIds: readonly string[] },
 ): string =>
-  `<div data-ds-camadas-de-pagina aria-hidden="true" data-componente="${dados.componentIds.join(' ')}" style="position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden">\n${corpo}\n</div>`;
+  `${ESTILO_QUE_ABRE_PASSAGEM}\n<div data-ds-camadas-de-pagina aria-hidden="true" data-componente="${dados.componentIds.join(' ')}" style="position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden">\n${corpo}\n</div>`;
+
+/**
+ * Sem isto, a camada de fundo existe e ninguém a vê.
+ *
+ * O compositor veste cada peça em dois proxies e copia para o de corpo as
+ * classes do `<body>` da origem. Entre elas vem a cor de fundo da página de
+ * onde a peça saiu (num dos sites capturados, `bg-[#03020A]`, um preto quase
+ * puro). O resultado é que cada peça pinta um retângulo opaco do tamanho dela,
+ * e a camada, que está em `z-index:-1`, fica atrás de todos eles. O usuário
+ * descreveu exatamente isso: o fundo animado aparece "abaixo da camada dos
+ * outros componentes".
+ *
+ * A regra apaga só o fundo do PROXY DE CORPO, e só dentro de uma seção. O que
+ * ela não toca é tão importante quanto o que ela toca:
+ *
+ * - o fundo próprio de cada seção interna continua, porque ele é da peça e não
+ *   da página de origem;
+ * - o proxy da camada de fundo fica de fora do seletor (ele não vive dentro de
+ *   `[data-secao]`), então um fundo feito só de gradiente no corpo sobrevive.
+ *
+ * `!important` porque a classe da origem e este seletor têm a mesma força, e
+ * quem ganha passa a depender da ordem em que o CSS foi concatenado. Empate
+ * decidido por acaso é defeito que volta sozinho.
+ */
+const ESTILO_QUE_ABRE_PASSAGEM =
+  '<style data-ds-camada-passa>[data-secao] [data-ds-corpo]{background-color:transparent!important;background-image:none!important}</style>';

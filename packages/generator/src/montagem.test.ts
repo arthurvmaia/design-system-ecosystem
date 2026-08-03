@@ -88,3 +88,46 @@ test('envolverCamadaDePagina: camada fixa atrás de tudo, sem roubar clique', ()
   assert.ok(html.includes('<canvas id="p"></canvas>'), 'o corpo vestido segue dentro da camada');
   assert.equal((html.match(/<div/g) ?? []).length, 1, 'um embrulho só, sem aninhamento extra');
 });
+
+test('envolverCamadaDePagina: abre passagem para a camada ser vista', () => {
+  // O compositor copia para o proxy de corpo as classes do <body> de origem, e
+  // entre elas vem a cor de fundo daquela página. Sem esta regra, cada peça
+  // pinta um retângulo opaco e a camada, que está em z-index:-1, some atrás de
+  // todas elas: é o "o fundo fica abaixo dos outros componentes".
+  const html = envolverCamadaDePagina('<canvas id="p"></canvas>', { componentIds: ['cmp_fundo'] });
+  assert.match(html, /<style data-ds-camada-passa>/, 'a regra viaja junto com a camada');
+  assert.match(html, /\[data-secao\] \[data-ds-corpo\]/, 'só o proxy de corpo dentro de uma seção');
+  assert.match(html, /background-color:transparent!important/);
+  assert.match(html, /background-image:none!important/, 'gradiente da origem sai da frente');
+  // O proxy da PRÓPRIA camada não pode ser apagado: um fundo feito só de
+  // gradiente no corpo vive ali, e ele não fica dentro de [data-secao].
+  assert.ok(
+    !/\[data-ds-camadas-de-pagina\] \[data-ds-corpo\]/.test(html),
+    'a regra não alcança a própria camada',
+  );
+});
+
+test('limparParaComposicao: a peça não arrasta o fundo da página de origem', () => {
+  // O caso real: a barra de navegação de um site com canvas de tela cheia. O
+  // motor embute as camadas fixas no bundle para a peça aparecer certa SOZINHA
+  // na Galeria; numa página montada isso vira duplicata, e a nav, que tem
+  // poucos pixels de altura, chegava carregando uma dobra inteira junto.
+  const corpo = `<div data-ds-camadas-de-fundo="2">
+<canvas id="webgl-bg" class="fixed inset-0 -z-20"></canvas>
+<div class="fixed inset-0 -z-10"><div class="blur-grande"></div></div>
+</div>
+<nav id="navbar" class="sticky top-0"><a href="#">Início</a></nav>`;
+  const limpo = limparParaComposicao(corpo);
+  assert.ok(!limpo.includes('data-ds-camadas-de-fundo'), 'o bloco de fundo sai inteiro');
+  assert.ok(!limpo.includes('webgl-bg'), 'o canvas de tela cheia vai junto');
+  assert.ok(!limpo.includes('blur-grande'), 'os divs aninhados dentro do bloco também');
+  assert.ok(limpo.startsWith('<nav id="navbar"'), 'sobra a navegação, e nada antes dela');
+  assert.ok(limpo.endsWith('</nav>'), 'e nada depois: sem div órfão de fechamento');
+});
+
+test('limparParaComposicao: sem fechamento à vista, não corta nada', () => {
+  // HTML quebrado acontece. Cortar até o fim do documento apagaria conteúdo que
+  // nada tem a ver com o bloco, o que é pior que deixar o bloco.
+  const corpo = '<div data-ds-camadas-de-fundo="1"><canvas></canvas><section>texto</section>';
+  assert.ok(limparParaComposicao(corpo).includes('texto'), 'o resto do corpo sobrevive');
+});

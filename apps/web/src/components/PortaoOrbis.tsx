@@ -55,37 +55,19 @@ export function PortaoOrbis({ children }: { children: React.ReactNode }) {
     if (sessao.data?.dentro === false) campo.current?.focus();
   }, [sessao.data?.dentro]);
 
-  /**
-   * Sair de vista encerra a sessão.
+  /*
+   * A credencial é pedida uma vez, e não a cada volta.
    *
-   * Minimizar, trocar de aba ou fechar: em todos, a próxima volta pede a
-   * credencial de novo. É deliberadamente severo — o link está aberto no mundo,
-   * e um aparelho emprestado ou uma aba esquecida num computador alheio não
-   * devem virar acesso permanente ao acervo.
+   * Antes daqui saía um encerramento de sessão a cada `visibilitychange`: quem
+   * minimizava a janela, trocava de app ou só olhava outra coisa por um
+   * instante voltava para a tela de senha. A intenção era proteger o link
+   * público, mas o preço caía inteiro sobre o uso do dia a dia, que é dentro
+   * de casa: o senhor digitava a mesma credencial dez vezes por hora.
    *
-   * O cookie já morre ao fechar a aba (o servidor o emite sem `Max-Age`), então
-   * isto cobre o outro caso: a aba que continua viva enquanto a pessoa está
-   * noutro lugar.
-   *
-   * `keepalive` é o detalhe que faz funcionar: sem ele, a requisição disparada
-   * durante `pagehide` é cancelada com a página, e a sessão sobreviveria.
+   * O que sobrou é suficiente e continua honesto: o cookie é assinado, dura
+   * uma semana, e o servidor confere a assinatura a cada pedido. Quem quiser
+   * sair sai pelo botão, que é uma decisão, não um descuido de foco.
    */
-  useEffect(() => {
-    const encerrar = (): void => {
-      if (sessao.data?.dentro !== true || sessao.data.estado !== 'ativo') return;
-      void fetch('/api/orbis/sair', { method: 'POST', credentials: 'include', keepalive: true });
-      void qc.invalidateQueries({ queryKey: ['orbis-sessao'] });
-    };
-    const aoEsconder = (): void => {
-      if (document.visibilityState === 'hidden') encerrar();
-    };
-    document.addEventListener('visibilitychange', aoEsconder);
-    window.addEventListener('pagehide', encerrar);
-    return () => {
-      document.removeEventListener('visibilitychange', aoEsconder);
-      window.removeEventListener('pagehide', encerrar);
-    };
-  }, [sessao.data?.dentro, sessao.data?.estado, qc]);
 
   // Enquanto pergunto ao servidor, não mostro nem o app nem o portão: piscar a
   // tela de senha para quem já entrou é ruído, e piscar o app para quem não

@@ -105,7 +105,7 @@ export function Portal() {
           <Mascote tamanho={72} alt="Orbis, o núcleo do sistema" />
           <h1 className="portal-marca">ORBIS</h1>
           <p className="portal-fala">
-            Às ordens, senhor. Três frentes abertas — diga por onde começamos hoje.
+            Às ordens, senhor. Três frentes abertas. Diga por onde começamos hoje.
           </p>
           {sessao.nivel === 'visita' && (
             <p className="portal-nota">
@@ -290,7 +290,7 @@ function EmConstrucao({ porta, aoFechar }: { porta: Porta; aoFechar: () => void 
           {porta.titulo}
         </h2>
         <p className="portal-fala">
-          Esta ala ainda está em obra, senhor. A porta já existe e o lugar está reservado — quando o
+          Esta ala ainda está em obra, senhor. A porta já existe e o lugar está reservado. Quando o
           app estiver de pé, ele entra aqui sem que nada mais precise mudar.
         </p>
         <button type="button" className="portao-btn" onClick={aoFechar}>

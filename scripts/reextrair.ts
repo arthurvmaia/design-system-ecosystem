@@ -132,7 +132,24 @@ const medirBundles = (
   return { iconesInline: inline, iconesVazios: vazios, scriptsLocais: locais };
 };
 
-export const reextrair = async (dsId: DesignSystemId, seco: boolean): Promise<Relato> => {
+export const reextrair = async (
+  dsId: DesignSystemId,
+  seco: boolean,
+  /**
+   * Conferir cada bundle contra o print da dobra ao final desta captura.
+   *
+   * Fica desligado numa fila longa, que é o caso para o qual esta ressalva foi
+   * escrita: trinta sites em sequência cobrariam o orçamento de cada captura
+   * para produzir um número que ninguém lê no meio da fila.
+   *
+   * Refazer UM site é o caso oposto, e o padrão precisava ser outro. Quem digita
+   * o id de um design system está consertando aquele site e vai olhar o
+   * resultado agora. Com a conferência desligada também aqui, o canal de pixel
+   * do acervo inteiro ficou em `nao-rodou`: nem a captura parcial deixava rodar,
+   * nem a reextração, e não havia caminho nenhum que produzisse a medida.
+   */
+  verificarVisual = true,
+): Promise<Relato> => {
   const url = urlDoDs(dsId);
   const antes = { segmentos: segmentosDe(dsId) };
   const base: Relato = {
@@ -178,10 +195,7 @@ export const reextrair = async (dsId: DesignSystemId, seco: boolean): Promise<Re
     r = await capturarComV2(url, {
       dirCaptura: tmpCaptura,
       dirBundles: tmpBundles,
-      // A conferência de pixel fica de fora: numa fila de 30 sites ela cobraria
-      // o orçamento de cada captura para produzir um número que ninguém vai ler
-      // no meio da fila. O `pnpm medir-fidelidade` mede tudo no fim, de graça.
-      verificarVisual: false,
+      verificarVisual,
     });
   } catch (err) {
     rmSync(tmp, { recursive: true, force: true });
@@ -395,10 +409,14 @@ const principal = async (): Promise<void> => {
     `\n  ${pendentes.length} de ${ids.length} design system(s) para refazer${seco ? ' (ensaio)' : ''}.\n`,
   );
 
+  // Um site é conserto e vai ser olhado agora; uma fila é manutenção em lote.
+  // `DS_SEM_VERIFICACAO=1` desliga nos dois casos, como no `pnpm extrair`.
+  const verificarVisual = pendentes.length === 1 && process.env.DS_SEM_VERIFICACAO !== '1';
+
   const relatos: Relato[] = [];
   for (const [i, id] of pendentes.entries()) {
     process.stdout.write(`  [${i + 1}/${pendentes.length}] ${id} … `);
-    const r = await reextrair(id, seco);
+    const r = await reextrair(id, seco, verificarVisual);
     relatos.push(r);
     if (!r.ok) {
       console.log(`falhou: ${r.erro}`);

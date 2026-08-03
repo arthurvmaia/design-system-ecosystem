@@ -83,7 +83,7 @@ export const DEFAULT_CUSTOMIZATION = Object.freeze({
     enabled: true,
     eyebrow: "QUEM USA, RECOMENDA",
     title: "Experiências da comunidade",
-    quote: "Conteúdo demonstrativo — substitua por um depoimento real antes de publicar.",
+    quote: "Conteúdo demonstrativo. Substitua por um depoimento real antes de publicar.",
     author: "Cliente de demonstração",
     background: "#edf5f0",
     textColor: "#10231c",

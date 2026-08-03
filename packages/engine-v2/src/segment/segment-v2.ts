@@ -562,6 +562,57 @@ export const camadasQuePassamAtras = (opts: {
 };
 
 /**
+ * Quais runtimes são donos de um trecho da página.
+ *
+ * A pergunta é sempre a mesma, para uma dobra ou para a camada de fundo: qual
+ * script precisa rodar para ESTE pedaço existir como ele era. A regra vive aqui
+ * uma vez só porque, quando ela viveu em dois lugares, os dois discordaram: a
+ * camada de fundo pegava "todo runtime com script" e ficava com o Tailwind e o
+ * Iconify no lugar do runtime da cena. Com os donos errados, o classificador não
+ * encontrava bootstrap nenhum e o fundo animado caía em referência visual, isto
+ * é, virava um PNG parado.
+ *
+ * `temFundoAtras` separa quem tem um canvas de fundo por trás de si de quem não
+ * tem: atribuir o fundo a todas as seções transformaria em cápsula até o rodapé
+ * de texto, que nada perde.
+ */
+export const runtimesDonosDe = (opts: {
+  hashes: readonly string[];
+  runtimes: readonly RuntimeDetection[];
+  midias: readonly MediaDetection[];
+  iconesPendentes: number;
+  temFundoAtras: boolean;
+}): RuntimeDetection[] => {
+  const { hashes, runtimes, midias, iconesPendentes, temFundoAtras } = opts;
+  const alvos = new Set(hashes);
+  const temCena = midias.some(
+    (m) =>
+      m.kind === 'canvas-2d' || m.kind === 'webgl' || m.kind === 'webgl2' || m.kind === 'lottie',
+  );
+  return runtimes.filter((r) => {
+    // Posse declarada: o runtime aponta para um nó deste trecho.
+    if (r.targets.some((t) => alvos.has(t))) return true;
+    // Os que DESENHAM não declaram alvo. O Iconify não "controla" um nó: ele
+    // substitui o conteúdo de cada tag de ícone, então a posse é pela presença
+    // de ícone por desenhar.
+    if (r.kind === 'iconify') return iconesPendentes > 0;
+    if (r.kind === 'fundo-canvas') return temFundoAtras;
+    // O Tailwind por CDN compila as classes de todo mundo. Isso não impede
+    // nada por si: quem trata disso é a evidência de CSS capturado.
+    if (r.kind === 'tailwind-cdn') return true;
+    const desenhaCena =
+      r.kind === 'three' ||
+      r.kind === 'pixi' ||
+      r.kind === 'webgl-cru' ||
+      r.kind === 'canvas-2d' ||
+      r.kind === 'lottie' ||
+      r.kind === 'shader-cru' ||
+      r.kind === 'p5';
+    return temCena && desenhaCena;
+  });
+};
+
+/**
  * As limitações de um segmento, sem repetição e com teto.
  *
  * Elas vêm de várias fontes — a decisão de representação, cada fundo, cada
@@ -750,39 +801,12 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       htmlPorHash: entrada.htmlPorHash,
     });
 
-    const runtimes = entrada.runtimeDetections.filter((r) => {
-      // Runtime pertence à seção quando controla um alvo dela, OU quando a seção
-      // tem canvas/lottie e o runtime é do tipo que os desenha.
-      if (r.targets.some((t) => hashesMembros.has(t))) return true;
-      // Os que DESENHAM não têm alvo declarado: o Iconify não "controla" um nó,
-      // ele substitui o conteúdo de cada tag de ícone. A posse é pela presença
-      // da marca no HTML da seção — sem isso a seção que tem 23 ícones vazios
-      // ficava sem runtime nenhum atribuído, e nascia "portátil".
-      if (r.kind === 'iconify') return icones.pendentes > 0;
-      // O fundo em canvas pesa só sobre quem o tem atrás de si. Atribuí-lo a
-      // todas as seções faria uma página com um canvas de fundo transformar
-      // TODO segmento em cápsula, inclusive o rodapé de texto que nada perde.
-      if (r.kind === 'fundo-canvas') return camadasDeFundo.length > 0;
-      // O Tailwind por CDN é da página inteira: ele compila as classes de todo
-      // mundo. Quando o CSS resultante foi capturado, isso não impede nada — a
-      // classificação trata disso com a evidência, não com a posse.
-      if (r.kind === 'tailwind-cdn') return true;
-      const temCena = midias.some(
-        (m) =>
-          m.kind === 'canvas-2d' ||
-          m.kind === 'webgl' ||
-          m.kind === 'webgl2' ||
-          m.kind === 'lottie',
-      );
-      const desenhaCena =
-        r.kind === 'three' ||
-        r.kind === 'pixi' ||
-        r.kind === 'webgl-cru' ||
-        r.kind === 'canvas-2d' ||
-        r.kind === 'lottie' ||
-        r.kind === 'shader-cru' ||
-        r.kind === 'p5';
-      return temCena && desenhaCena;
+    const runtimes = runtimesDonosDe({
+      hashes: [...hashesMembros],
+      runtimes: entrada.runtimeDetections,
+      midias,
+      iconesPendentes: icones.pendentes,
+      temFundoAtras: camadasDeFundo.length > 0,
     });
 
     const sinais = contarSinais(html);
@@ -1047,8 +1071,17 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     const midiasDoFundo = entrada.mediaDetections.filter((m) =>
       hashes.includes(m.fingerprint.hash),
     );
+    // A camada de fundo É o fundo: `temFundoAtras` é verdadeiro por definição.
     const runtimesDoFundo =
-      grupo === 'comRuntime' ? entrada.runtimeDetections.filter((r) => r.scripts.length > 0) : [];
+      grupo === 'comRuntime'
+        ? runtimesDonosDe({
+            hashes,
+            runtimes: entrada.runtimeDetections,
+            midias: midiasDoFundo,
+            iconesPendentes: contarIcones(html).pendentes,
+            temFundoAtras: true,
+          })
+        : [];
     const fundosDoFundo = entrada.backgroundDetections.filter((b) =>
       hashes.includes(b.fingerprint.hash),
     );
@@ -1081,7 +1114,13 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       reageAoPonteiro: false,
       regiaoReativaSemDom: grupo === 'comRuntime' && temMovimento,
       dependeDeJs: grupo === 'comRuntime',
-      bootstrapIdentificado: false,
+      // A MESMA derivação das dobras. Estava fixo em `false`, e um valor fixo
+      // aqui tornava impossível um fundo animado virar cápsula de runtime: sem
+      // bootstrap identificado, o classificador não tem o que executar isolado
+      // e só lhe resta a referência visual.
+      bootstrapIdentificado: runtimesDoFundo.some(
+        (r) => r.scripts.length > 0 && r.confidence !== 'baixa',
+      ),
       // A mesma evidência que as dobras recebem.
       //
       // Sem estas duas linhas, a camada de fundo era classificada por um

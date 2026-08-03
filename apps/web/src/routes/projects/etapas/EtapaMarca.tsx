@@ -1,3 +1,4 @@
+import { ConviteOrbisCriativos } from '@/components/ConviteOrbisCriativos';
 import {
   type MarcaSubId,
   STATUS_LABEL,
@@ -107,9 +108,10 @@ export function StepMarca({
 
   return (
     <div className="ds-fade-in mx-auto max-w-[760px]">
+      <ConviteOrbisCriativos />
       <p className="mb-4 text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>
-        Abra um de cada vez. O que você deixar em branco eu resolvo com o kit, e a lista diz o que
-        já está definido.
+        Abra um de cada vez. O que o senhor deixar em branco eu resolvo com o kit, e a lista diz o
+        que já está definido.
       </p>
       <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
         {INSTRUMENTOS.map((inst) => (
@@ -184,7 +186,7 @@ function StatusDot({ status, resumo }: { status: SecaoStatus; resumo: string }) 
         : status === 'opcional'
           ? 'var(--color-fg-subtle)'
           : 'var(--color-border-strong)';
-  const rotulo = status === 'configurado' ? resumo : `${STATUS_LABEL[status]} — ${resumo}`;
+  const rotulo = status === 'configurado' ? resumo : `${STATUS_LABEL[status]}: ${resumo}`;
   return (
     <span
       title={rotulo}

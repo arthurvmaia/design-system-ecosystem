@@ -99,7 +99,7 @@ export function Governanca({
             valor={kit.governanca.origemBase ?? ''}
             aoMudar={(v) => aoMudar({ origemBase: v === '' ? null : v })}
             desabilitado={salvando === true || opcoesDeOrigem.length === 0}
-            opcoes={[{ valor: '', rotulo: 'em aberto — nenhuma escolhida' }, ...opcoesDeOrigem]}
+            opcoes={[{ valor: '', rotulo: 'em aberto, nenhuma escolhida' }, ...opcoesDeOrigem]}
           />
         </div>
       </Zona>
@@ -109,7 +109,7 @@ export function Governanca({
         icone={<Lock size={12} />}
         titulo="Peças"
         regra={REGRA_EXPLICA['origem-por-categoria']}
-        detalhe="Botão, card, campo, navegação. Misturar origens aqui é o que vira bagunça — então eu recuso."
+        detalhe="Botão, card, campo, navegação. Misturar origens aqui é o que vira bagunça, então eu recuso."
       >
         {categoriasDePeca.length === 0 ? (
           <p className="text-[12.5px]" style={{ color: 'var(--color-fg-subtle)' }}>
@@ -142,7 +142,7 @@ export function Governanca({
                       opcoes={[
                         {
                           valor: '',
-                          rotulo: `livre — hoje ${conta(origens.length, 'origem', 'origens')}`,
+                          rotulo: `livre, hoje ${conta(origens.length, 'origem', 'origens')}`,
                         },
                         ...opcoesDeOrigem,
                       ]}
@@ -163,7 +163,7 @@ export function Governanca({
         icone={<Shuffle size={12} />}
         titulo="Composição"
         regra={REGRA_EXPLICA.livre}
-        detalhe="Dobras e efeitos. Abertura de um site, preços de outro, parallax de um terceiro — é para isto que o app existe."
+        detalhe="Dobras e efeitos. Abertura de um site, preços de outro, parallax de um terceiro. É para isto que o app existe."
       >
         <ListaDeLivres kit={kit} nomeDaOrigem={nomeDaOrigem} />
       </Zona>

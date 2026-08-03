@@ -244,7 +244,7 @@ export function AppShell({ identity }: { identity: Identity }) {
         </main>
       </div>
 
-      {previewTheme && <Modal title={`Prévia — ${previewTheme.name}`} onClose={() => setPreviewTheme(null)} wide>
+      {previewTheme && <Modal title={`Prévia: ${previewTheme.name}`} onClose={() => setPreviewTheme(null)} wide>
         <div className="modal-preview"><ThemeModalPreview theme={previewTheme} /></div>
         <div className="modal-actions"><button className="secondary-button" onClick={() => setPreviewTheme(null)}>Voltar</button><button className="primary-button" disabled={busy === "use-theme"} onClick={() => { const theme = previewTheme; setPreviewTheme(null); void openTheme(theme); }}>{busy === "use-theme" ? "Criando projeto…" : "Editar este tema"} <ArrowRight size={16} /></button></div>
       </Modal>}
@@ -343,7 +343,7 @@ function ExtractThemeView({ onImported }: { onImported: (payload: { data: Bootst
     <div className="extract-details">
       <div><span>01</span><b>Faro apurado</b><p>Abro pacotes aninhados e encontro sozinho o ZIP instalável do tema, senhor.</p></div>
       <div><span>02</span><b>Instalação completa</b><p>Instalo banners, imagens, logo e recursos do tema, e ergo todas as páginas da loja com eles.</p></div>
-      <div><span>03</span><b>Editor como na Shopify</b><p>Páginas e seções à esquerda, loja no centro e ajustes à direita — como o senhor merece.</p></div>
+      <div><span>03</span><b>Editor como na Shopify</b><p>Páginas e seções à esquerda, loja no centro e ajustes à direita, como o senhor merece.</p></div>
     </div>
     <div className="extract-actions"><span>O carregamento começa no instante em que o senhor escolher o ZIP.</span></div>
   </div>;
@@ -375,7 +375,7 @@ function Dashboard({ data, onNavigate, onEdit }: { data: BootstrapData; onNaviga
         <div className="section-heading"><div><span className="eyebrow">PRÓXIMOS PASSOS</span><h2>Permita-me guiá-lo.</h2></div><button className="text-button" onClick={() => onNavigate("themes")}>Ver galeria <ArrowRight size={15} /></button></div>
         <div className="flow-grid">
           <FlowCard index="01" icon={Eye} title="Teste o tema" body="Abra a prévia, alterne o dispositivo e contemple o visual completo, senhor." onClick={() => onNavigate("themes")} />
-          <FlowCard index="02" icon={Palette} title="Dê a sua cara" body="Cores, tipografia, textos e espaçamentos — atualizo tudo no mesmo instante." onClick={() => recentProject ? onEdit(recentProject.id) : onNavigate("themes")} />
+          <FlowCard index="02" icon={Palette} title="Dê a sua cara" body="Cores, tipografia, textos e espaçamentos: atualizo tudo no mesmo instante." onClick={() => recentProject ? onEdit(recentProject.id) : onNavigate("themes")} />
           <FlowCard index="03" icon={Globe2} title="Publique" body="Guardo versões e disponibilizo um link quando o senhor ordenar." onClick={() => onNavigate("projects")} />
         </div>
       </section>
@@ -704,12 +704,12 @@ function EditorView({ project, onChooseProject, onDataChange, onMessage }: { pro
       URL.revokeObjectURL(url);
       const imagens = modified.filter((path) => path.startsWith("assets/")).length;
       const nota = imagens
-        ? ` ${imagens} imagem(ns) que o senhor enviou viajaram como arquivo em assets/ — na Shopify elas precisam ser reenviadas em Arquivos ou reescolhidas no editor.`
+        ? ` ${imagens} imagem(ns) que o senhor enviou viajaram como arquivo em assets/. Na Shopify elas precisam ser reenviadas em Arquivos ou reescolhidas no editor.`
         : "";
       const alerta = warnings.length ? ` Atenção: ${warnings.slice(0, 2).join("; ")}.` : "";
       onMessage(`ZIP exportado, senhor: ${modified.length} arquivo(s) atualizado(s), o restante preservado byte a byte.${nota}${alerta}`);
     } catch {
-      onMessage("Perdoe-me, senhor — não consegui exportar. O ZIP original do tema precisa estar preservado no armazenamento.");
+      onMessage("Perdoe-me, senhor. Não consegui exportar. O ZIP original do tema precisa estar preservado no armazenamento.");
     } finally {
       setExporting(false);
     }

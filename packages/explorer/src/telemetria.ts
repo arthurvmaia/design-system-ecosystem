@@ -150,6 +150,18 @@ export class Telemetria {
   }
 
   /**
+   * Em que fase o corte aconteceu, quando houve corte.
+   *
+   * Quem decide o que fazer depois de um corte precisa saber ONDE ele foi. Um
+   * corte no percurso e um corte na compilação têm consequências diferentes, e
+   * tratar os dois igual foi o que fez a conferência de pixel sumir de capturas
+   * em que ela tinha tempo de sobra para rodar.
+   */
+  get faseCortada(): string | undefined {
+    return this.faseInterrompida;
+  }
+
+  /**
    * Roda uma fase sob orçamento. Passa um `AbortSignal` ao `fn` e CORRE o `fn`
    * contra o corte por tempo: se o teto estoura, o sinal aborta e a fase retorna
    * `abortada` mesmo que o `fn` não coopere (o `fn` abandonado é engolido). Erro
