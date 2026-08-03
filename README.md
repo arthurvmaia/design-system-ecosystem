@@ -140,7 +140,8 @@ packages/
 ├── segmenter/       Parser HTML → segmentos
 ├── classifier/      Classificação de segmentos via LLM
 ├── isolator/        Bundle mínimo por componente (PostCSS)
-├── tokens/          Extração de design tokens
+├── composer/        Junta peças de origens diferentes sem que se estraguem:
+│                    escopo por origem, recoloração e retipografia pela marca
 └── generator/       Composição de sites a partir do kit, na estrutura do usuário
 
 scripts/             Fila, extração, empacotamento e o iniciar.ps1 dos .bat

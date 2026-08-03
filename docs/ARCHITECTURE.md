@@ -1,7 +1,8 @@
 # Arquitetura
 
-Este documento registra as decisões de projeto para o Design System Ecosystem.
-Complementa o `PROJECT.md` do usuário com o "como" das partes definidas na Fase 0.
+Este documento registra as decisões de projeto para o Design System Ecosystem:
+o "como" de cada parte. Para o estado atual do trabalho, veja o `HANDOFF.md` na
+raiz; para o uso diário sem terminal, o `docs/MANUAL.md`.
 
 ## Princípios
 
@@ -140,9 +141,9 @@ Script planejado: `ds rebuild-index` varre o filesystem e reconstrói o SQLite a
 Frontend: React 19, Vite 6, Tailwind v4, TanStack Query 5, Zustand 5, Zod, lucide-react, react-router 7.
 Backend: Hono 4 sobre @hono/node-server, Drizzle ORM sobre better-sqlite3, @anthropic-ai/sdk.
 Ferramentas: pnpm workspaces, Turborepo 2, Biome 1.9, TypeScript 5.7.
-Futuro: Playwright (Fase 1+), PostCSS + selector-parser (Fase 5), Tauri (Fase 8).
+Captura e composição: Playwright, PostCSS + selector-parser, node-html-parser.
 
-## Módulos das Fases 1-7 (implementados)
+## Módulos
 
 ### @ds/extractor
 Runner do prompt do professor via Claude API com tool_use. Ferramentas expostas ao agente: `create_file`, `str_replace`, `view` — todas confinadas ao workspace com proteção contra path traversal. Fluxo: fetch URL (Playwright opcional ou fetch nativo) → agente Claude loop até `EXTRACTION_COMPLETE` → validação de output → migração pro vault → limpeza do workspace.
@@ -151,13 +152,21 @@ Runner do prompt do professor via Claude API com tool_use. Ferramentas expostas 
 Parse do `design-system.html` via node-html-parser. Estratégia: itera sobre filhos diretos do `<body>`, usa comentários `<!-- [id] -->` para nomear (padrão do professor), fallback pra id/class/tag. Escreve `manifest.json` em `vault/{ds}/segments/`.
 
 ### @ds/classifier
-Batch classifier via LLM. Envia 8 segmentos por chamada, recebe JSON validado por Zod com `category` (enum de 21 valores) + `kind` + `suggestedName`. Sem tool_use, só JSON puro. Atualiza tabela `segments` em transação.
+Batch classifier via LLM. Envia 8 segmentos por chamada, recebe JSON validado por Zod com `category` + `kind` + `suggestedName`. Sem tool_use, só JSON puro. Atualiza tabela `segments` em transação. As categorias e as famílias vêm de `packages/shared/src/schemas/taxonomia.ts`, que é fonte única — nenhuma tela ou pacote redigita a lista.
 
 ### @ds/isolator
 Bundle mínimo por componente. Coleta classes/tags/ids do HTML do segmento, parse todo o CSS do vault via PostCSS, para cada regra checa se algum seletor casa com os tokens coletados (usando `postcss-selector-parser`). Remove regras não usadas, mantém as demais. Detecta assets referenciados (url(), src, href).
 
+A poda por análise estática **não é mais** o caminho da composição: ela errava sempre para menos, descartando CSS que a peça usava. Quem compõe hoje é o `@ds/composer`. O isolator continua importado pela rota da Biblioteca.
+
+### @ds/composer
+Junta peças de origens diferentes sem que elas se estraguem. Escopa o CSS por origem com `:where()` (especificidade ZERO, para o `marca.css` continuar vencendo a cascata) e mantém dois proxies de documento, o que faz `html.dark body .card` casar dentro da peça. Também reescreve VALOR no ponto de uso: `recolorir.ts` troca literais de cor por `var(--marca-<papel>, <literal>)` e `retipografar.ts` faz o mesmo com `font-family`. Em ambos, o literal original é sempre o fallback, e nenhuma das duas jamais declara um `--marca-*` — só consome.
+
+### @ds/engine-v2
+Motor de captura V2: instrumenta a página antes dos scripts do site, observa no tempo, segmenta por evidência e compila os bundles. Também mede a linguagem visual (`mapper/rampas.ts`): os degraus de tamanho de letra, respiro e raio saem no manifesto como `designTokens`.
+
 ### @ds/generator
-Agente LLM que compõe site a partir do catálogo da library + conteúdo + branding do usuário. Recebe JSON com `sections: [{componentId, role, substitutions}]`. Post-processing: monta HTML final, mescla CSS dos componentes escolhidos, aplica variáveis CSS da marca via `:root` override. Cada geração escreve em nova pasta timestampada, nunca sobrescreve.
+Compõe o site a partir da estrutura que o usuário declarou (`layout.secoes`). A composição é **determinística**, não agêntica: `montarPaginaDoKit` faz escopo por origem, recoloração, retipografia, fundo de página, responsivo base, `marca.css` e cópia de assets. O que vem de um LLM é só o criativo, entregue como dado num `entrada-geracao.json`. Cada geração escreve em nova pasta timestampada, nunca sobrescreve.
 
 ## Rotas do servidor
 

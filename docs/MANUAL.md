@@ -87,39 +87,26 @@ O resultado aparece na galeria e nos projetos, normalmente.
 
 ## Gerando um site
 
-No wizard de **Novo projeto**, além de nome, conteúdo e cores, você escolhe
-**como o site é montado**:
+No wizard de **Novo projeto**, além de nome, conteúdo e cores, você diz **para
+que o site serve**. O objetivo escolhido monta uma sequência de seções sugerida:
 
-### "Eu defino a estrutura"
-
-Você escolhe o esqueleto e o gerador só decide qual componente ocupa cada
-posição.
-
-| Estrutura | Para que serve |
+| Objetivo | Para que serve |
 |---|---|
-| SaaS / Produto | Software, apps, ferramentas, assinaturas |
-| Portfólio | Estúdios, freelancers, designers, fotógrafos |
-| Loja | Lojas, catálogos, marcas de produto |
-| Captura | Lançamentos, iscas digitais, inscrições |
-| Página única | Institucional simples, cartão de visita |
+| Captar contato | A pessoa chega, entende a proposta e deixa o contato. É o caminho mais geral |
+| Vender um produto | Tem preço, tem compra. A página precisa vencer as objeções antes do botão |
+| Apresentar um serviço | O que você faz, para quem, e como funciona o trabalho. Fecha em conversa |
+| Mostrar trabalho | Portfólio: o trabalho fala primeiro, o texto vem depois |
 
-Depois de escolher, dá para **ligar e desligar seções** clicando nelas. As
-marcadas com `*` são obrigatórias daquela estrutura.
+**A sugestão é um ponto de partida, não uma regra.** Depois de escolher, você
+edita a lista: liga e desliga seções, muda a ordem, escreve o que cada uma deve
+dizer. A lista que ficar na tela é a decisão final — o gerador segue ela.
 
-**Resultado previsível.** Gerar duas vezes produz páginas equivalentes.
+**Só entram peças da sua biblioteca.** Se você autorizar, ele pode criar uma
+seção que falte ou uma arte de apoio, sempre no estilo do kit e na sua paleta.
+Sem essa autorização, o que faltar fica faltando e ele avisa no fim.
 
-### "Use sua criatividade"
-
-O gerador monta a página do jeito que achar melhor — mas **só com os componentes
-que você curou**.
-
-A cada geração ele sorteia uma direção e se compromete com ela: editorial,
-assimétrica, densa, cinematográfica, minimalista ou narrativa.
-
-**Resultado diferente a cada vez.** Regerar o mesmo projeto dá outra página.
-
-> Nos dois modos vale a mesma regra: só entram componentes da sua biblioteca.
-> O que muda é quem decide a arquitetura da página.
+**Resultado previsível.** Gerar duas vezes com a mesma estrutura produz páginas
+equivalentes.
 
 ---
 
