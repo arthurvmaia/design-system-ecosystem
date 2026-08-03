@@ -3,8 +3,8 @@ import { create } from 'zustand';
 /**
  * Toasts: feedback curto de ação concluída ou falha.
  *
- * Store separado do `useUiStore` de propósito — isto é infraestrutura de
- * feedback, não estado de negócio, e não deve criar acoplamento com ele.
+ * Store próprio de propósito — isto é infraestrutura de feedback, não estado de
+ * negócio, e não deve criar acoplamento com ele.
  */
 
 export type ToastKind = 'ok' | 'erro' | 'info';

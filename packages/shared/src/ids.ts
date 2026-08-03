@@ -32,9 +32,3 @@ export const newKitId = (): KitId => `kit_${ulid()}`;
 export const newProjectId = (): ProjectId => `prj_${ulid()}`;
 export const newTaskId = (): TaskId => `task_${ulid()}`;
 export const newSectionId = (): SectionId => `sec_${ulid()}`;
-
-const PREFIXES = ['ds_', 'seg_', 'cmp_', 'kit_', 'prj_', 'task_', 'sec_'] as const;
-
-export const isValidId = (value: string): boolean => {
-  return PREFIXES.some((p) => value.startsWith(p)) && value.length === 30;
-};

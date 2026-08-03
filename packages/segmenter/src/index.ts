@@ -993,15 +993,3 @@ export {
   embrulhar,
   porAssinatura,
 } from './primitivas.js';
-
-/**
- * Retorna o head do design-system.html isolado (para injeção em preview iframe).
- */
-export const extractHead = (designSystemId: `ds_${string}`): string => {
-  const dsHtmlPath = join(vaultExtractedDir(designSystemId), 'design-system.html');
-  if (!existsSync(dsHtmlPath)) return '';
-  const html = readFileSync(dsHtmlPath, 'utf8');
-  const root = parse(html);
-  const head = root.querySelector('head');
-  return head ? head.outerHTML : '';
-};

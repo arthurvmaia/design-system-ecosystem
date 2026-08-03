@@ -3,12 +3,7 @@ import { type KitRecord, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { TRATAMENTO, conta } from '@/lib/orbis';
 import { useNomeDaOrigem } from '@/lib/origem';
-import {
-  FAMILIA_DA_CATEGORIA,
-  REGRA_EXPLICA,
-  regraDaCategoria,
-  rotuloDaCategoria,
-} from '@ds/shared/schemas';
+import { REGRA_EXPLICA, regraDaCategoria, rotuloDaCategoria } from '@ds/shared/schemas';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Compass, Lock, Shuffle } from 'lucide-react';
 
@@ -253,7 +248,3 @@ function ListaDeLivres({
     </div>
   );
 }
-
-/** Reexportado para o editor não precisar conhecer a taxonomia. */
-export const ehPecaGovernada = (categoria: string): boolean =>
-  FAMILIA_DA_CATEGORIA[categoria as never] === 'pecas';

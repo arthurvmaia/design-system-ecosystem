@@ -200,7 +200,6 @@ export const cookieDeSessao = (opts: {
  * `ORBIS_SENHA_ACAO` é opcional. Sem ela esta tranca não existe e o app se
  * comporta como antes — quem já entrou, dispara.
  */
-export const temSenhaDeAcao = (): boolean => naoVazia(process.env.ORBIS_SENHA_ACAO) !== null;
 
 /** O cabeçalho onde a credencial da ação viaja. Nunca na URL: URL vai para log. */
 export const CABECALHO_DA_ACAO = 'x-orbis-acao';

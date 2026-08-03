@@ -28,7 +28,3 @@ export const resolveEngine = (raw = process.env.EXTRACTION_ENGINE): ExtractionEn
   if (v === 'v2' || v === '2') return 'v2';
   return DEFAULT_ENGINE;
 };
-
-/** Frase para o log, para ficar claro nos relatórios qual motor produziu o quê. */
-export const rotuloEngine = (e: ExtractionEngine): string =>
-  e === 'v2' ? 'motor V2 (composição)' : 'motor V1 (legado)';

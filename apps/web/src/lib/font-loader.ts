@@ -31,9 +31,3 @@ export const loadFont = (family: string, weights?: number[]): void => {
   link.dataset.fontLoader = fam;
   document.head.appendChild(link);
 };
-
-/** Só para teste/reset: esquece o que já foi carregado. */
-export const _resetFontCache = (): void => carregadas.clear();
-
-/** Quantas famílias já foram carregadas — para teste de deduplicação. */
-export const _loadedCount = (): number => carregadas.size;

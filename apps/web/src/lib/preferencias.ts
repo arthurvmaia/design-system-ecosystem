@@ -63,15 +63,6 @@ export const usePreferencias = create<Store>()(
   ),
 );
 
-/** O movimento deve ser reduzido AGORA? (preferência manual OU do sistema) */
-export const movimentoReduzido = (): boolean => {
-  if (usePreferencias.getState().movimento === 'reduzir') return true;
-  return (
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
-  );
-};
-
 /** Mantém a classe global no <html> em dia com a preferência. */
 export const aplicarMovimento = (movimento: Preferencias['movimento']): void => {
   document.documentElement.classList.toggle('reduz-movimento', movimento === 'reduzir');

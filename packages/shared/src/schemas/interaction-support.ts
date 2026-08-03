@@ -42,17 +42,6 @@ export const STATUS_RANK: Record<InteractionStatus, number> = {
 export const melhorStatus = (a: InteractionStatus, b: InteractionStatus): InteractionStatus =>
   STATUS_RANK[a] >= STATUS_RANK[b] ? a : b;
 
-/** Rótulo em PT-BR para a UI. */
-export const ROTULO_STATUS: Record<InteractionStatus, string> = {
-  detected: 'detectada',
-  captured: 'capturada',
-  associated: 'associada',
-  replayable: 'reproduzível',
-  validated: 'validada',
-  unsupported: 'não suportada',
-  'external-runtime': 'runtime externo',
-};
-
 /**
  * Famílias de interação que o preview desta fase sabe reproduzir com segurança —
  * troca de estado por classe/atributo, accordion, tabs, dropdown, modal em
@@ -71,9 +60,6 @@ export const KINDS_REPRODUZIVEIS: ReadonlySet<InteractionKind> = new Set<Interac
   'modal',
   'tooltip',
 ]);
-
-/** Runtimes externos que esta fase reconhece mas ainda não embute. */
-export const RUNTIMES_EXTERNOS = ['lottie', 'gsap', 'three', 'webgl', 'canvas'] as const;
 
 /**
  * Interações que rodam por INCLUSÃO do CSS no preview isolado — hover e focus
@@ -111,13 +97,6 @@ export const statusDaInteracao = (opts: {
 /** Confiança de uma associação elemento↔segmento. */
 export const Confidence = z.enum(['alta', 'media', 'baixa', 'nenhuma']);
 export type Confidence = z.infer<typeof Confidence>;
-
-export const ROTULO_CONFIANCA: Record<z.infer<typeof Confidence>, string> = {
-  alta: 'alta',
-  media: 'média',
-  baixa: 'baixa',
-  nenhuma: 'sem associação',
-};
 
 /**
  * Uma interação de um segmento: qual é, onde parou no pipeline, com que

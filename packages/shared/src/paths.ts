@@ -61,9 +61,6 @@ export const dbPath = (): string => join(getRoot(), 'ecosystem.db');
 /** Config JSON com preferências do usuário. */
 export const configPath = (): string => join(getRoot(), 'ecosystem.config.json');
 
-/** Lockfile para impedir dois processos escrevendo. */
-export const lockPath = (): string => join(getRoot(), '.lock');
-
 // ── Vault ──────────────────────────────────────────────────────────────────
 export const vaultDir = (): string => join(getRoot(), 'vault');
 export const vaultDsDir = (id: DesignSystemId): string =>
@@ -99,9 +96,6 @@ export const vaultCaptureV2AssetsDir = (id: DesignSystemId): string =>
  */
 export const vaultCaptureV2FramesDir = (id: DesignSystemId): string =>
   join(vaultCaptureV2Dir(id), 'frames');
-/** HTML dos nós do grafo de estados (blob por estado, referenciado por `htmlRef`). */
-export const vaultCaptureV2StatesDir = (id: DesignSystemId): string =>
-  join(vaultCaptureV2Dir(id), 'states');
 
 export const vaultSegmentsDir = (id: DesignSystemId): string => join(vaultDsDir(id), 'segments');
 /**
@@ -144,13 +138,10 @@ export const vaultRejeitadosPath = (id: DesignSystemId): string =>
 // ── Library ────────────────────────────────────────────────────────────────
 export const libraryDir = (): string => join(getRoot(), 'library');
 export const librarySharedDir = (): string => join(libraryDir(), '_shared');
-export const librarySharedAssetDir = (sha256: string): string => join(librarySharedDir(), sha256);
 export const libraryComponentDir = (id: ComponentId): string =>
   join(libraryDir(), conferido(id, ehComponentId(id)));
 export const libraryComponentBundleDir = (id: ComponentId): string =>
   join(libraryComponentDir(id), 'bundle');
-export const libraryComponentPreview = (id: ComponentId): string =>
-  join(libraryComponentDir(id), 'preview.png');
 export const libraryComponentMetadata = (id: ComponentId): string =>
   join(libraryComponentDir(id), 'metadata.json');
 export const libraryComponentTokens = (id: ComponentId): string =>

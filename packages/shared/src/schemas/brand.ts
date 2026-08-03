@@ -42,7 +42,6 @@ export const TONS_DE_VOZ = [
   { id: 'comercial', nome: 'Comercial', descricao: 'Oferta clara, benefício na frente.' },
   { id: 'humano', nome: 'Humano', descricao: 'Gente falando com gente, imperfeição admitida.' },
 ] as const;
-export type TomDeVozId = (typeof TONS_DE_VOZ)[number]['id'];
 
 /**
  * Arquétipos clássicos de marca. Arquétipo ≠ tom: o arquétipo muda POSTURA,

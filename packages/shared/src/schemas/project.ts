@@ -239,15 +239,6 @@ export const ProjectRecord = z.object({
 });
 export type ProjectRecord = z.infer<typeof ProjectRecord>;
 
-/** Relacionamento entre um projeto e um componente da library. */
-export const ProjectComponentLink = z.object({
-  projectId: z.string().startsWith('prj_'),
-  componentId: z.string().startsWith('cmp_'),
-  role: z.string(),
-  position: z.number().int().nonnegative(),
-});
-export type ProjectComponentLink = z.infer<typeof ProjectComponentLink>;
-
 // ── Defaults e normalização de leitura ───────────────────────────────────────
 // A FONTE ÚNICA dos defaults de projeto: o server e o gerador leem daqui — não
 // existe mais um default local em cada consumidor podendo divergir.

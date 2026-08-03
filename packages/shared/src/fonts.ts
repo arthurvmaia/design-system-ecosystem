@@ -225,6 +225,3 @@ export const buildTypographyCss = (
   ].join('\n');
   return { importUrl, css };
 };
-
-/** Lista curada para exibir antes de qualquer busca. */
-export const recommendedFonts = (): FontDef[] => GOOGLE_FONTS.filter((f) => f.recommended);

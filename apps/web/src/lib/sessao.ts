@@ -21,6 +21,3 @@ export const useNivel = (): 'admin' | 'visita' => {
   });
   return sessao.data?.nivel === 'admin' ? 'admin' : 'visita';
 };
-
-/** Atalho de leitura: esta sessão pode mudar as coisas? */
-export const usePodeEditar = (): boolean => useNivel() === 'admin';
