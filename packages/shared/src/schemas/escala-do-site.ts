@@ -28,6 +28,19 @@ import type { EscalaDaOrigem, OrigemConsolidada } from './kit-design-system.js';
  * tirar degrau nenhum: a reescrita não acontece e o literal original continua
  * valendo. É a mesma degradação da recoloração e da retipografia — sem dado,
  * a peça sai como estava.
+ *
+ * ## O terceiro eixo: o raio de canto
+ *
+ * O raio entra pelo MESMO argumento que valeu para o tamanho, e ele é
+ * verificável a olho nu: duas origens com raios diferentes — uma de canto vivo,
+ * outra de canto arredondado — lidas na mesma página são duas caras, e o kit
+ * inteiro passa a parecer recortado de dois lugares. Misturar origens é a
+ * promessa do produto; o raio é um dos três eixos que decidem se ela se cumpre.
+ *
+ * Quem quiser a fidelidade de cada origem desliga os três de uma vez pelo
+ * `escalaDoSite: 'de-cada-origem'`. Um interruptor por eixo seria escolha de
+ * quem não sabe o que está escolhendo: os três descrevem a mesma coisa, que é
+ * de quem é a régua do site.
  */
 
 export const RegimeDeEscala = z.enum(['da-marca', 'de-cada-origem']);
@@ -38,9 +51,11 @@ export const REGIME_DE_ESCALA_PADRAO: RegimeDeEscala = 'da-marca';
 /** O prefixo dos tokens que o `marca.css` declara e as peças consomem. */
 export const TOKEN_DE_PASSO = '--marca-passo';
 export const TOKEN_DE_ESPACO = '--marca-espaco';
+export const TOKEN_DE_RAIO = '--marca-raio';
 
 export const nomeDoPasso = (i: number): string => `${TOKEN_DE_PASSO}-${i + 1}`;
 export const nomeDoEspaco = (i: number): string => `${TOKEN_DE_ESPACO}-${i + 1}`;
+export const nomeDoRaio = (i: number): string => `${TOKEN_DE_RAIO}-${i + 1}`;
 
 /**
  * A régua de referência: a origem cuja escala rege o site inteiro.
@@ -153,14 +168,14 @@ export const reguaDaOrigem = (
   return { porValor };
 };
 
-/** As duas réguas de uma origem, prontas para a reescrita. */
+/** As três réguas de uma origem, prontas para a reescrita. */
 export const reguasParaOrigem = (
   daOrigem: EscalaDaOrigem | undefined,
   daReferencia: EscalaDaOrigem | undefined,
-): { tipografia: ReguaAlinhada; espaco: ReguaAlinhada } => {
+): { tipografia: ReguaAlinhada; espaco: ReguaAlinhada; raio: ReguaAlinhada } => {
   const vazia: ReguaAlinhada = { porValor: new Map() };
   if (daOrigem === undefined || daReferencia === undefined) {
-    return { tipografia: vazia, espaco: vazia };
+    return { tipografia: vazia, espaco: vazia, raio: vazia };
   }
   return {
     tipografia: reguaDaOrigem(daOrigem.degraus, daReferencia.degraus, nomeDoPasso, {
@@ -170,5 +185,11 @@ export const reguasParaOrigem = (
     // Respiro não tem "corpo": nomear um degrau de espaço como o principal
     // exigiria saber a intenção de quem desenhou, e a medição não separa isso.
     espaco: reguaDaOrigem(daOrigem.espacos, daReferencia.espacos, nomeDoEspaco),
+    // Raio também não tem âncora, e pela mesma razão do espaço: não existe um
+    // "raio de corpo". O que a medição entrega é a lista de arredondamentos que
+    // a origem usa, do mais fechado ao mais aberto, e é a POSIÇÃO nessa lista
+    // que carrega a intenção — o menor continua sendo o discreto do selo, o
+    // maior continua sendo o da pílula.
+    raio: reguaDaOrigem(daOrigem.raios, daReferencia.raios, nomeDoRaio),
   };
 };

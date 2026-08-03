@@ -201,7 +201,11 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   if (referencia !== null) {
     for (const origem of ds?.origens ?? []) {
       const reguas = reguasParaOrigem(origem.escala, referencia.escala);
-      if (reguas.tipografia.porValor.size > 0 || reguas.espaco.porValor.size > 0) {
+      if (
+        reguas.tipografia.porValor.size > 0 ||
+        reguas.espaco.porValor.size > 0 ||
+        reguas.raio.porValor.size > 0
+      ) {
         reguasPorOrigem.set(origem.designSystemId, reguas);
       }
     }

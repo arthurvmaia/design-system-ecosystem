@@ -1,7 +1,7 @@
 import { Mascote } from '@/components/Mascote';
 import { Select } from '@/components/seletores';
 import { type KitComponentRef, type MediaItem, api } from '@/lib/api';
-import { avisoDeMidia, oQueCabe } from '@/lib/cabe-na-secao';
+import { avaliarMidia, oQueCabe } from '@/lib/cabe-na-secao';
 import { contagemUnificada, contarEspacos } from '@/lib/midia-contagens';
 import { toast } from '@/lib/toast';
 import {
@@ -35,9 +35,17 @@ import { mediaUrl } from '../partes';
  * Agora TODA seção aceita mídia, e a etapa inteira é opcional por extenso: dá
  * para pular sem enviar nada. As MÍDIAS GERAIS são área de primeira classe: o
  * que entra sem seção fica sem `secaoId` no manifesto (o cliente e o servidor
- * descartam o campo vazio) e o gerador decide onde cada uma entra. O contrato
- * das peças vira informação, nunca porteiro, e o selo e a frase de cada seção
- * saem da MESMA conta (`midia-contagens`), separando imagem de vídeo.
+ * descartam o campo vazio) e o gerador decide onde cada uma entra. O selo e a
+ * frase de cada seção saem da MESMA conta (`midia-contagens`), separando imagem
+ * de vídeo.
+ *
+ * O contrato das peças é informação em quase tudo, e porteiro numa coisa só:
+ * arquivo do tipo que a seção não tem onde pôr (vídeo onde todo espaço é de
+ * imagem, e o contrário) é RECUSADO, com o motivo e a saída ditos. Proporção
+ * fora da do original continua aviso, porque ali o app tem preferência e não
+ * certeza. A regra inteira, e por que ela para nesse limite, mora em
+ * `cabe-na-secao`. As mídias gerais não passam por essa porta: sem seção não há
+ * contrato, e quem escolhe o lugar é a geração.
  *
  * A mídia é ancorada na SEÇÃO, não na peça: trocar o componente na Estrutura
  * preserva tudo. Logos vêm da Marca e entram sozinhas.
@@ -362,21 +370,33 @@ export function StepMidia({
                     accept="image/*,video/*"
                     className="hidden"
                     disabled={!projectId || upload.isPending}
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const f = e.target.files?.[0];
-                      if (f) {
-                        // O aviso vem ANTES do envio, e não bloqueia: o
-                        // contrato descreve o que a peça de origem tinha, e a
-                        // peça de origem não é o limite do que a pessoa quer
-                        // fazer. Dito na hora, com a consequência por extenso.
-                        const aviso = avisoDeMidia({
-                          tipo: ehVideo(f) ? 'video' : 'image',
-                          contratos: contratosDaSecao,
-                        });
-                        if (aviso.forte) toast.info(aviso.texto);
-                        upload.mutate({ file: f, secaoId: s.id });
-                      }
+                      // O input é limpo AGORA, antes do await: escolher o mesmo
+                      // arquivo de novo (depois de uma recusa) precisa disparar
+                      // o `change`, e ele não dispara se o valor continuar lá.
                       e.target.value = '';
+                      if (!f) return;
+                      const video = ehVideo(f);
+                      const proporcao = await medirProporcao(f, video);
+                      // A conferência acontece ANTES do envio e tem duas
+                      // saídas. Descasamento de TIPO recusa o arquivo: é o
+                      // único caso em que a peça não tem onde pôr o que chegou,
+                      // e deixar passar entregaria uma seção quebrada que só
+                      // apareceria depois de gerar o site. Proporção só avisa,
+                      // porque o contrato descreve a peça de origem e a peça de
+                      // origem não é o limite do que a pessoa quer fazer.
+                      const veredicto = avaliarMidia({
+                        tipo: video ? 'video' : 'image',
+                        ...(proporcao !== undefined ? { proporcao } : {}),
+                        contratos: contratosDaSecao,
+                      });
+                      if (!veredicto.aceita) {
+                        toast.erro(veredicto.texto);
+                        return;
+                      }
+                      if (veredicto.texto !== '') toast.info(veredicto.texto);
+                      upload.mutate({ file: f, secaoId: s.id });
                     }}
                   />
                 </label>
@@ -598,6 +618,56 @@ function BlocoProdutos({
     </div>
   );
 }
+
+/**
+ * Prazo para o navegador dizer o tamanho do arquivo.
+ *
+ * Existe para o arquivo que não dispara evento nenhum: sem ele, o envio ficaria
+ * esperando para sempre por uma medida que é só um aviso. Quatro segundos é
+ * folgado para um `loadedmetadata` de arquivo local, que é leitura de disco.
+ */
+const LIMITE_PARA_MEDIR_MS = 4000;
+
+/**
+ * A proporção (largura/altura) do arquivo, lida antes de ele subir.
+ *
+ * A conferência de proporção compara o arquivo com o espaço que a peça de
+ * origem tinha, e essa medida não existe em lugar nenhum antes do upload: o
+ * servidor só a teria depois de receber o arquivo, tarde demais para avisar
+ * alguma coisa a quem ainda está escolhendo.
+ *
+ * Devolve `undefined` quando não deu para ler, e aí a conferência de proporção
+ * simplesmente não acontece — aviso baseado em chute é pior que aviso nenhum. O
+ * caso real é o HEVC que o `MidiaThumb` abaixo documenta: `loadedmetadata`
+ * dispara, o container é lido e mesmo assim `videoWidth` vem zero.
+ */
+const medirProporcao = (file: File, ehVideo: boolean): Promise<number | undefined> =>
+  new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    let respondido = false;
+    const responder = (p: number | undefined): void => {
+      if (respondido) return;
+      respondido = true;
+      URL.revokeObjectURL(url);
+      resolve(p);
+    };
+    const daMedida = (largura: number, altura: number): void =>
+      responder(largura > 0 && altura > 0 ? largura / altura : undefined);
+    setTimeout(() => responder(undefined), LIMITE_PARA_MEDIR_MS);
+
+    if (ehVideo) {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.onloadedmetadata = () => daMedida(v.videoWidth, v.videoHeight);
+      v.onerror = () => responder(undefined);
+      v.src = url;
+      return;
+    }
+    const img = new Image();
+    img.onload = () => daMedida(img.naturalWidth, img.naturalHeight);
+    img.onerror = () => responder(undefined);
+    img.src = url;
+  });
 
 function MidiaThumb({
   item,

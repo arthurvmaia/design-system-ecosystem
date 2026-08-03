@@ -150,6 +150,16 @@ kitsRoute.get('/:id', (c) => {
  * O alcance da marca viaja junto porque quem pergunta "o que esta peça aceita"
  * é a mesma tela que precisa saber "e ela vai vestir a minha cor" — e porque a
  * resposta tem de chegar ANTES de gerar, não depois.
+ *
+ * ## O slot de mídia viaja INTEIRO
+ *
+ * Esta rota reduzia cada slot a `{ tipo }`. A projeção jogava fora a proporção
+ * do espaço original, o `obrigatorio` e o papel do slot (fundo de CSS, ícone) —
+ * tudo já medido pelo contrato, do lado de cá. Com `{ tipo }` na mão, a única
+ * conferência possível na tela era vídeo-contra-imagem: qualquer frase sobre
+ * corte, ou sobre espaço que não pode ficar vazio, teria de ser chutada no
+ * cliente. Medida que o servidor tem e não manda é medida que alguém inventa do
+ * outro lado.
  */
 kitsRoute.get('/:id/contratos', (c) => {
   const kit = carregarKit(c.req.param('id'));
@@ -162,6 +172,7 @@ kitsRoute.get('/:id/contratos', (c) => {
     if (contrato === null) {
       return { ...base, disponivel: false, textos: 0, links: 0, logos: 0, midias: [] };
     }
+    // Logo sai da conta de mídia: ela vem da etapa de Marca e entra sozinha.
     const midias = contrato.slots.midias.filter((m) => !m.pareceLogo);
     return {
       ...base,
@@ -169,7 +180,7 @@ kitsRoute.get('/:id/contratos', (c) => {
       textos: contrato.slots.textos.length,
       links: contrato.slots.links.length,
       logos: contrato.slots.midias.length - midias.length,
-      midias: midias.map((m) => ({ tipo: m.tipo })),
+      midias,
     };
   });
   return c.json({ items });

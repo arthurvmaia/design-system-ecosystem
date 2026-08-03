@@ -29,9 +29,13 @@ const REGUAS: ReguasDeEscala = {
     [12, '--marca-espaco-2'],
     [24, '--marca-espaco-4'],
   ]),
+  raio: regua([
+    [8, '--marca-raio-1'],
+    [20, '--marca-raio-3'],
+  ]),
 };
 
-const VAZIAS: ReguasDeEscala = { tipografia: regua([]), espaco: regua([]) };
+const VAZIAS: ReguasDeEscala = { tipografia: regua([]), espaco: regua([]), raio: regua([]) };
 
 // ── A reescrita ──────────────────────────────────────────────────────────────
 
@@ -54,19 +58,21 @@ test('o fallback é o literal ORIGINAL — sem marca, a peça fica com o tamanho
 test('NUNCA declara --marca-*, só consome', () => {
   // O invariante que faz a herança funcionar: a origem não declara nada nesse
   // namespace, então não há proxy no caminho para interceptar o :root da marca.
-  const r = reescalarCss('h1{font-size:48px;padding:12px;gap:24px}', REGUAS);
-  assert.ok(!/--marca-(passo|espaco)-\d+\s*:/.test(r.css), `declarou o token: ${r.css}`);
+  const r = reescalarCss('h1{font-size:48px;padding:12px;gap:24px;border-radius:8px}', REGUAS);
+  assert.ok(!/--marca-(passo|espaco|raio)-\d+\s*:/.test(r.css), `declarou o token: ${r.css}`);
 });
 
 test('cada eixo só alcança as suas propriedades', () => {
-  // 24 está nas DUAS réguas, com tokens diferentes. Se o eixo vazasse, o respiro
-  // passaria a seguir a escala tipográfica (ou o contrário).
+  // 24 está nas TRÊS réguas, com tokens diferentes. Se um eixo vazasse, o
+  // respiro passaria a seguir a escala tipográfica, ou o canto passaria a seguir
+  // a do respiro — e ninguém veria o erro, só a peça torta.
   const cruzadas: ReguasDeEscala = {
     tipografia: regua([[24, '--marca-passo-4']]),
     espaco: regua([[24, '--marca-espaco-3']]),
+    raio: regua([[24, '--marca-raio-2']]),
   };
   const r = reescalarCss(
-    'h1{font-size:24px;padding:24px;padding-left:24px;margin-top:24px;gap:24px;row-gap:24px;column-gap:24px}',
+    'h1{font-size:24px;padding:24px;padding-left:24px;margin-top:24px;gap:24px;row-gap:24px;column-gap:24px;border-radius:24px}',
     cruzadas,
   );
   assert.match(r.css, /font-size:var\(--marca-passo-4, 24px\)/);
@@ -76,17 +82,20 @@ test('cada eixo só alcança as suas propriedades', () => {
   assert.match(r.css, /gap:var\(--marca-espaco-3, 24px\)/);
   assert.match(r.css, /row-gap:var\(--marca-espaco-3, 24px\)/);
   assert.match(r.css, /column-gap:var\(--marca-espaco-3, 24px\)/);
-  assert.equal(r.reescritas, 7);
+  assert.match(r.css, /border-radius:var\(--marca-raio-2, 24px\)/);
+  assert.equal(r.reescritas, 8);
 });
 
-test('layout e raio não são escala, e ficam de fora', () => {
-  // `width` é medida de caixa e `border-radius` tem régua própria. Escalar
-  // largura pelo respiro apertaria ou estouraria a peça na página.
+test('layout não é escala, e fica de fora', () => {
+  // `width`, `height` e `top` são medida de CAIXA: escalar largura pelo respiro
+  // apertaria ou estouraria a peça na página. `line-height` é proporção do
+  // texto, e trocá-la por um degrau de letra colaria as linhas.
   const cruzadas: ReguasDeEscala = {
     tipografia: regua([[24, '--marca-passo-4']]),
     espaco: regua([[24, '--marca-espaco-3']]),
+    raio: regua([[24, '--marca-raio-2']]),
   };
-  const css = '.x{width:24px;height:24px;top:24px;border-radius:24px;line-height:24px}';
+  const css = '.x{width:24px;height:24px;top:24px;line-height:24px}';
   const r = reescalarCss(css, cruzadas);
   assert.equal(r.css, css);
   assert.equal(r.reescritas, 0);
@@ -103,7 +112,7 @@ test('rem converte pela raiz de 16, e o fallback continua em rem', () => {
 });
 
 test('é idempotente: rodar duas vezes não aninha fallback', () => {
-  const uma = reescalarCss('h1{font-size:48px;padding:12px 24px}', REGUAS);
+  const uma = reescalarCss('h1{font-size:48px;padding:12px 24px;border-radius:8px}', REGUAS);
   const duas = reescalarCss(uma.css, REGUAS);
   assert.equal(duas.reescritas, 0);
   assert.equal(uma.css, duas.css);
@@ -122,6 +131,98 @@ test('shorthand reescreve cada comprimento por conta própria', () => {
 test('o !important sobrevive', () => {
   const r = reescalarCss('.x{padding:12px!important}', REGUAS);
   assert.match(r.css, /var\(--marca-espaco-2, 12px\)\s*!important/);
+});
+
+// ── O raio de canto ──────────────────────────────────────────────────────────
+
+test('o atalho e os quatro cantos consomem o degrau do raio', () => {
+  // Card com o atalho e barra com um canto só são a MESMA decisão de desenho.
+  // Tokenizar só uma delas deixaria a peça com dois cantos da marca e dois da
+  // origem, que é pior do que não ter mexido em nenhum.
+  const r = reescalarCss(
+    '.a{border-radius:8px}.b{border-top-left-radius:8px;border-top-right-radius:20px;border-bottom-right-radius:8px;border-bottom-left-radius:20px}',
+    REGUAS,
+  );
+  assert.match(r.css, /\.a\{border-radius:var\(--marca-raio-1, 8px\)\}/);
+  assert.match(r.css, /border-top-left-radius:var\(--marca-raio-1, 8px\)/);
+  assert.match(r.css, /border-top-right-radius:var\(--marca-raio-3, 20px\)/);
+  assert.match(r.css, /border-bottom-right-radius:var\(--marca-raio-1, 8px\)/);
+  assert.match(r.css, /border-bottom-left-radius:var\(--marca-raio-3, 20px\)/);
+  assert.equal(r.reescritas, 5);
+});
+
+test('O TESTE QUE IMPORTA: 50% é círculo, não degrau, e fica intocado', () => {
+  // `border-radius:50%` é a FORMA da peça — o avatar redondo, o ponto do
+  // carrossel. Trocar isso por um raio fixo viraria um quadrado de cantos
+  // mansos, e o defeito apareceria como desenho errado, nunca como erro.
+  const css = '.avatar{border-radius:50%}.ponto{border-radius:100%}';
+  const r = reescalarCss(css, REGUAS);
+  assert.equal(r.css, css);
+  assert.equal(r.reescritas, 0);
+  assert.equal(r.mantidas, 2, 'foram candidatos e foram recusados, e o placar diz isso');
+});
+
+test('a pílula (9999px) não casa com degrau nenhum e continua pílula', () => {
+  // O truque de raio gigante para "arredonda tudo" está longe de qualquer
+  // degrau medido, e a tolerância de meio pixel não o alcança. Fica literal.
+  const r = reescalarCss('.pilula{border-radius:9999px}', REGUAS);
+  assert.equal(r.css, '.pilula{border-radius:9999px}');
+  assert.equal(r.reescritas, 0);
+  assert.equal(r.mantidas, 1);
+});
+
+test('shorthand de raio reescreve cada canto por conta própria', () => {
+  // `8px 8px 0 0` é a aba de cima arredondada e a de baixo reta. Os zeros são
+  // canto vivo de propósito: tokenizá-los arredondaria o que o desenho queria
+  // reto.
+  const r = reescalarCss('.aba{border-radius:8px 8px 0 0}', REGUAS);
+  assert.equal(r.css, '.aba{border-radius:var(--marca-raio-1, 8px) var(--marca-raio-1, 8px) 0 0}');
+  assert.equal(r.reescritas, 2);
+  assert.equal(r.mantidas, 2);
+});
+
+test('o raio elíptico com barra separada reescreve os dois lados', () => {
+  // `8px / 20px` são os raios horizontal e vertical, e cada um é um comprimento.
+  // A barra não é candidata a nada e passa inteira.
+  const r = reescalarCss('.x{border-radius:8px / 20px}', REGUAS);
+  assert.equal(r.css, '.x{border-radius:var(--marca-raio-1, 8px) / var(--marca-raio-3, 20px)}');
+  assert.equal(r.reescritas, 2);
+});
+
+test('a barra grudada não é comprimento e o valor fica inteiro', () => {
+  // `8px/20px` chega como um pedaço só, que não casa com a forma de comprimento.
+  // Fica como está — degradar para "não reescreveu" é o certo aqui.
+  const css = '.x{border-radius:8px/20px}';
+  const r = reescalarCss(css, REGUAS);
+  assert.equal(r.css, css);
+  assert.equal(r.reescritas, 0);
+});
+
+test('sem régua de raio, o canto da origem continua valendo', () => {
+  // A degradação por eixo: kit antigo, sem raio medido, mantém o canto de origem
+  // enquanto tamanho e respiro seguem a marca. Perder um eixo não custa os
+  // outros.
+  const semRaio: ReguasDeEscala = {
+    tipografia: REGUAS.tipografia,
+    espaco: REGUAS.espaco,
+    raio: regua([]),
+  };
+  const r = reescalarCss('.x{border-radius:8px;padding:12px}', semRaio);
+  assert.equal(r.css, '.x{border-radius:8px;padding:var(--marca-espaco-2, 12px)}');
+  assert.equal(r.reescritas, 1);
+});
+
+test('só o raio medido já basta para a reescrita acontecer', () => {
+  // O atalho de saída antecipada olha os TRÊS eixos. Se olhasse só dois, uma
+  // origem que só tem raio medido sairia sem reescrita nenhuma, em silêncio.
+  const soRaio: ReguasDeEscala = {
+    tipografia: regua([]),
+    espaco: regua([]),
+    raio: regua([[8, '--marca-raio-1']]),
+  };
+  const r = reescalarCss('.x{border-radius:8px}', soRaio);
+  assert.equal(r.css, '.x{border-radius:var(--marca-raio-1, 8px)}');
+  assert.equal(r.reescritas, 1);
 });
 
 // ── O que ela se recusa a fazer ──────────────────────────────────────────────
@@ -219,6 +320,7 @@ test('entre dois degraus próximos ganha o mais perto, sempre o mesmo', () => {
       [16.4, '--marca-passo-3'],
     ]),
     espaco: regua([]),
+    raio: regua([]),
   };
   const r = reescalarCss('p{font-size:16px}', proximas);
   assert.match(r.css, /var\(--marca-passo-2, 16px\)/);

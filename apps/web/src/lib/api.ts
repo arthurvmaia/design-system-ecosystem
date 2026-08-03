@@ -7,6 +7,7 @@ import type {
   PaletaDoProjeto,
   ProjectLayout,
   RedeSocial,
+  SlotDeMidia,
   TipografiaDoProjeto,
   Violacao,
 } from '@ds/shared/schemas';
@@ -297,7 +298,17 @@ export type KitContratoResumo = {
   textos: number;
   links: number;
   logos: number;
-  midias: { tipo: string }[];
+  /**
+   * Os espaços de mídia INTEIROS, como o contrato os derivou (o tipo do
+   * elemento de origem, a proporção medida, se a peça perde o sentido sem
+   * aquela mídia). Não é `{ tipo }`: sem a proporção e sem o papel do espaço, a
+   * tela só conseguiria conferir vídeo contra imagem e teria de chutar o resto.
+   *
+   * O shape é o do shared, importado e não redigitado: o servidor devolve o
+   * `SlotDeMidia` do contrato tal como está, e uma cópia à mão aqui ficaria
+   * defasada em silêncio na primeira mudança do schema.
+   */
+  midias: SlotDeMidia[];
   /** Quanto desta peça a paleta da marca alcança. Ausente = não deu para medir. */
   marca?: Recolorabilidade;
 };

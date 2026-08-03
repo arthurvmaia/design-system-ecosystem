@@ -7,6 +7,7 @@ import {
   escalaDeReferencia,
   nomeDoEspaco,
   nomeDoPasso,
+  nomeDoRaio,
   reguaDaOrigem,
   reguasParaOrigem,
 } from './escala-do-site.js';
@@ -65,6 +66,15 @@ test('os tokens são numerados a partir de 1, não de 0', () => {
   assert.equal(nomeDoPasso(7), '--marca-passo-8');
   assert.equal(nomeDoEspaco(0), '--marca-espaco-1');
   assert.equal(nomeDoEspaco(3), '--marca-espaco-4');
+  assert.equal(nomeDoRaio(0), '--marca-raio-1');
+  assert.equal(nomeDoRaio(2), '--marca-raio-3');
+});
+
+test('os três eixos têm prefixos distintos', () => {
+  // Prefixo repetido faria um eixo declarar por cima do outro no `:root` do
+  // `marca.css`, e o degrau errado chegaria à peça sem erro nenhum aparecer.
+  const prefixos = [nomeDoPasso(0), nomeDoEspaco(0), nomeDoRaio(0)];
+  assert.equal(new Set(prefixos).size, 3);
 });
 
 // ── Quem rege a escala ───────────────────────────────────────────────────────
@@ -255,46 +265,103 @@ test('reguasParaOrigem: tipografia ancora no corpo, espaço vai por posição', 
   assert.equal(espaco.porValor.get(48), '--marca-espaco-5');
 });
 
+test('reguasParaOrigem devolve o terceiro eixo: o raio, também por posição', () => {
+  // Raio não tem "corpo" para ancorar, pela mesma razão do espaço. O que carrega
+  // a intenção é a POSIÇÃO na lista: o canto mais fechado da origem vira o mais
+  // fechado da referência, e o mais aberto vira o mais aberto.
+  const daOrigem = escala({ degraus: [16], corpo: 16, raios: [2, 6, 12] });
+  const daReferencia = escala({ degraus: [16], corpo: 16, raios: [4, 8, 16, 24, 32] });
+
+  const { raio } = reguasParaOrigem(daOrigem, daReferencia);
+
+  assert.equal(raio.porValor.get(2), '--marca-raio-1', 'o mais fechado no mais fechado');
+  assert.equal(raio.porValor.get(6), '--marca-raio-3');
+  assert.equal(raio.porValor.get(12), '--marca-raio-5', 'o mais aberto no mais aberto');
+});
+
+test('o raio não empresta a régua do espaço', () => {
+  // Os dois são comprimento em px e é tentador tratá-los juntos. Não são: 8px de
+  // respiro e 8px de canto não têm por que virar o mesmo degrau, e a medição
+  // entrega duas listas justamente porque a origem as usa com intenções
+  // diferentes. Aqui o MESMO valor cai em degraus diferentes de cada eixo.
+  const daOrigem = escala({ degraus: [16], corpo: 16, espacos: [8, 24], raios: [8, 24] });
+  const daReferencia = escala({
+    degraus: [16],
+    corpo: 16,
+    espacos: [4, 8, 16, 32],
+    raios: [6, 12],
+  });
+
+  const { espaco, raio } = reguasParaOrigem(daOrigem, daReferencia);
+
+  assert.equal(espaco.porValor.get(8), '--marca-espaco-1');
+  assert.equal(raio.porValor.get(8), '--marca-raio-1');
+  assert.equal(espaco.porValor.get(24), '--marca-espaco-4');
+  assert.equal(raio.porValor.get(24), '--marca-raio-2');
+});
+
 // ── A degradação que segura tudo ─────────────────────────────────────────────
 
-test('escala ausente devolve mapas VAZIOS dos dois lados', () => {
+test('escala ausente devolve mapas VAZIOS nos três eixos', () => {
   // É este teste que sustenta a promessa de que ligar o regime `da-marca` não
   // muda projeto que já existe: sem régua medida não há substituição nenhuma, e
   // o literal de tamanho da origem continua valendo.
-  const medida = escala({ degraus: [12, 16, 40], corpo: 16, espacos: [4, 12, 48] });
+  const medida = escala({ degraus: [12, 16, 40], corpo: 16, espacos: [4, 12, 48], raios: [2, 8] });
 
   for (const [a, b] of [
     [undefined, undefined],
     [medida, undefined],
     [undefined, medida],
   ] as const) {
-    const { tipografia, espaco } = reguasParaOrigem(a, b);
+    const { tipografia, espaco, raio } = reguasParaOrigem(a, b);
     assert.equal(tipografia.porValor.size, 0);
     assert.equal(espaco.porValor.size, 0);
+    assert.equal(raio.porValor.size, 0);
   }
 });
 
 test('escala presente mas sem degraus medidos também não substitui nada', () => {
   // `degraus: []` é medição que não achou nada, e não é o mesmo que uma régua.
-  const vazia = escala({ degraus: [], espacos: [] });
-  const medida = escala({ degraus: [12, 16, 40], corpo: 16, espacos: [4, 12, 48] });
+  const vazia = escala({ degraus: [], espacos: [], raios: [] });
+  const medida = escala({ degraus: [12, 16, 40], corpo: 16, espacos: [4, 12, 48], raios: [2, 8] });
 
   const semOrigem = reguasParaOrigem(vazia, medida);
   assert.equal(semOrigem.tipografia.porValor.size, 0);
   assert.equal(semOrigem.espaco.porValor.size, 0);
+  assert.equal(semOrigem.raio.porValor.size, 0);
 
   const semReferencia = reguasParaOrigem(medida, vazia);
   assert.equal(semReferencia.tipografia.porValor.size, 0);
   assert.equal(semReferencia.espaco.porValor.size, 0);
+  assert.equal(semReferencia.raio.porValor.size, 0);
 });
 
-test('só um dos eixos medido não derruba o outro', () => {
-  // Origem com tipografia medida e espaços não. A régua de tipografia sai; a de
-  // espaço sai vazia. Perder um eixo não pode custar o outro.
-  const daOrigem = escala({ degraus: [12, 16, 40], corpo: 16, espacos: [] });
-  const daReferencia = escala({ degraus: [10, 14, 18, 24, 40], corpo: 18, espacos: [8, 16, 32] });
+test('só um dos eixos medido não derruba os outros', () => {
+  // Origem com tipografia medida, espaços e raios não. A régua de tipografia
+  // sai; as outras duas saem vazias. Perder um eixo não pode custar os outros.
+  const daOrigem = escala({ degraus: [12, 16, 40], corpo: 16, espacos: [], raios: [] });
+  const daReferencia = escala({
+    degraus: [10, 14, 18, 24, 40],
+    corpo: 18,
+    espacos: [8, 16, 32],
+    raios: [4, 8],
+  });
 
-  const { tipografia, espaco } = reguasParaOrigem(daOrigem, daReferencia);
+  const { tipografia, espaco, raio } = reguasParaOrigem(daOrigem, daReferencia);
   assert.equal(tipografia.porValor.get(16), '--marca-passo-3');
   assert.equal(espaco.porValor.size, 0);
+  assert.equal(raio.porValor.size, 0);
+});
+
+test('origem com canto vivo e referência arredondada: a régua sai, e é essa a ideia', () => {
+  // O caso que motivou o eixo. A origem só tem um raio medido, e pequeno; a
+  // referência é arredondada. Régua de um degrau aponta para o primeiro da
+  // referência — a peça de canto quase vivo passa a consumir o canto da marca em
+  // vez de destoar do resto da página.
+  const daOrigem = escala({ degraus: [16], corpo: 16, raios: [2] });
+  const daReferencia = escala({ degraus: [16], corpo: 16, raios: [12, 24, 999] });
+
+  const { raio } = reguasParaOrigem(daOrigem, daReferencia);
+  assert.equal(raio.porValor.size, 1);
+  assert.equal(raio.porValor.get(2), '--marca-raio-1');
 });

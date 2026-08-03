@@ -72,7 +72,7 @@ const DS_COM_ESCALA: KitDesignSystem = {
         corpo: 16,
         display: 48,
         espacos: [8, 16, 32],
-        raios: [],
+        raios: [4, 12],
       },
     },
     {
@@ -85,7 +85,7 @@ const DS_COM_ESCALA: KitDesignSystem = {
         corpo: 14,
         display: 40,
         espacos: [6, 12, 24],
-        raios: [],
+        raios: [2, 6],
       },
     },
   ],
@@ -98,7 +98,7 @@ const montarComEscala = (raiz: string, regime: 'da-marca' | 'de-cada-origem') =>
     raiz,
     `b-${regime}`,
     '<section class="b">B</section>',
-    '.b{font-size:14px;padding:12px}.b h2{font-size:40px}',
+    '.b{font-size:14px;padding:12px;border-radius:6px}.b h2{font-size:40px}.b img{border-radius:50%}',
   );
   const out = join(raiz, `saida-${regime}`);
   const r = montarPaginaDoKit({
@@ -161,6 +161,13 @@ test('a marca rege o tamanho: o corpo das duas origens cai no mesmo degrau', () 
     // E a hierarquia sobrevive: o maior de ds_b vai para o maior da referência.
     assert.match(estilos, /font-size:\s*var\(--marca-passo-4,\s*40px\)/);
     assert.match(estilos, /padding:\s*var\(--marca-espaco-2,\s*12px\)/);
+
+    // Terceiro eixo: o raio mais aberto de ds_b (6px) vai para o mais aberto da
+    // referência (12px). E o `50%` do avatar NÃO é degrau — é forma, e virar
+    // canto manso quebraria o desenho em vez de alinhá-lo.
+    assert.match(marca, /--marca-raio-2:\s*12px/);
+    assert.match(estilos, /border-radius:\s*var\(--marca-raio-2,\s*6px\)/);
+    assert.match(estilos, /border-radius:\s*50%/, 'o círculo continua círculo');
 
     // O literal original é SEMPRE a reserva: sem o token, a peça degrada para o
     // tamanho de origem, nunca para quebrado.

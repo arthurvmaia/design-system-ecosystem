@@ -14,6 +14,10 @@ import postcss from 'postcss';
  * seção, 48px na seguinte. Ninguém escolheu isso. Dois designers escolheram, em
  * dois sites diferentes, e não havia onde conciliar.
  *
+ * O RAIO de canto é o terceiro eixo, e é o mais fácil de ver de longe: uma
+ * origem de canto vivo ao lado de uma de canto arredondado dá duas caras na
+ * mesma página, e o kit passa a parecer recortado de dois lugares.
+ *
  * ## A saída é a que a cor e a fonte já provaram
  *
  * Não disputar a cascata: reescrever a origem para CONSUMIR o token, com o
@@ -21,6 +25,7 @@ import postcss from 'postcss';
  *
  *   `font-size:3rem`      → `font-size:var(--marca-passo-5, 3rem)`
  *   `padding:12px 24px`   → `padding:var(--marca-espaco-2, 12px) var(--marca-espaco-4, 24px)`
+ *   `border-radius:8px`   → `border-radius:var(--marca-raio-2, 8px)`
  *
  * Quem diz qual degrau entra no lugar de qual valor é a `ReguaAlinhada` que
  * `escala-do-site.ts` monta (`reguasParaOrigem`). Aqui só se aplica o mapa.
@@ -47,7 +52,11 @@ import postcss from 'postcss';
  *
  * - `em` e `%` dependem de contexto que o CSS estático não dá (o `font-size` do
  *   pai, a largura do container). Converter exigiria resolver a cadeia inteira
- *   de ancestrais na hora de gerar, e um chute ali desloca a peça.
+ *   de ancestrais na hora de gerar, e um chute ali desloca a peça. No raio o `%`
+ *   tem um agravante: `border-radius:50%` não é um canto arredondado, é um
+ *   CÍRCULO — a forma da peça, não um degrau dela. Trocar isso por um raio fixo
+ *   transformaria o avatar redondo num quadrado de cantos mansos. A regra que
+ *   pula `%` já cobre o caso, e há teste preso nisso para que continue assim.
  * - `calc()`, `clamp()`, `min()`, `max()`: são expressões fluidas, e trocar um
  *   argumento quebraria a proporção que o autor construiu. Um `clamp()` já é uma
  *   decisão de escala — substituí-lo por um degrau fixo tiraria a
@@ -87,10 +96,11 @@ import postcss from 'postcss';
  * tolerância maior, sim, começaria a puxar valor para o degrau do vizinho.
  */
 
-/** As duas réguas que regem a reescrita, uma por eixo. */
+/** As três réguas que regem a reescrita, uma por eixo. */
 export type ReguasDeEscala = {
   tipografia: ReguaAlinhada;
   espaco: ReguaAlinhada;
+  raio: ReguaAlinhada;
 };
 
 export type ResultadoDeReescala = {
@@ -113,8 +123,9 @@ const PROPRIEDADES_DE_TIPOGRAFIA = new Set(['font-size']);
 /**
  * Onde mora o respiro. `width`, `height` e `top` ficam de fora de propósito: são
  * medidas de LAYOUT, e a escala da marca não tem opinião sobre a largura de uma
- * caixa. `border-radius` também não entra: o raio tem régua própria
- * (`EscalaDaOrigem.raios`), que este eixo não rege.
+ * caixa. `border-radius` também não entra aqui, mas por outro motivo: ele tem
+ * régua PRÓPRIA (`EscalaDaOrigem.raios`), logo abaixo. Um respiro de 8px e um
+ * canto de 8px não têm por que virar o mesmo degrau.
  *
  * As propriedades lógicas (`padding-inline`, `margin-block`) ainda não entram.
  * Não é decisão de desenho, é escopo: entram acrescentando o nome a este
@@ -134,6 +145,30 @@ const PROPRIEDADES_DE_ESPACO = new Set([
   'gap',
   'row-gap',
   'column-gap',
+]);
+
+/**
+ * Onde mora o raio de canto: o atalho e os quatro cantos.
+ *
+ * Os quatro cantos entram junto com o atalho porque a origem usa os dois no
+ * mesmo desenho — um card com `border-radius:12px` e a barra de cima com
+ * `border-top-left-radius:12px` são a MESMA decisão, e tokenizar só uma delas
+ * deixaria a peça com dois cantos da marca e dois da origem, que é pior do que
+ * não ter mexido em nenhum.
+ *
+ * As formas lógicas (`border-start-start-radius`) ficam de fora pela mesma razão
+ * de escopo que vale no respiro: entram quando houver medição mostrando que
+ * aparecem no acervo. `border-radius` com barra (`8px / 4px`, o canto elíptico)
+ * é aceito no que o parser consegue separar — com espaço em volta da barra cada
+ * comprimento é reescrito por conta própria; grudado (`8px/4px`) não casa com a
+ * forma de comprimento e fica inteiro, que é a degradação certa.
+ */
+const PROPRIEDADES_DE_RAIO = new Set([
+  'border-radius',
+  'border-top-left-radius',
+  'border-top-right-radius',
+  'border-bottom-right-radius',
+  'border-bottom-left-radius',
 ]);
 
 /** Número com unidade opcional e nada mais: `12px`, `-4px`, `1.5rem`, `0`. */
@@ -230,7 +265,11 @@ const converter = (token: string, regua: ReguaAlinhada): Conversao => {
 };
 
 export const reescalarCss = (css: string, reguas: ReguasDeEscala): ResultadoDeReescala => {
-  if (reguas.tipografia.porValor.size === 0 && reguas.espaco.porValor.size === 0) {
+  if (
+    reguas.tipografia.porValor.size === 0 &&
+    reguas.espaco.porValor.size === 0 &&
+    reguas.raio.porValor.size === 0
+  ) {
     return { css, reescritas: 0, mantidas: 0 };
   }
 
@@ -252,7 +291,9 @@ export const reescalarCss = (css: string, reguas: ReguasDeEscala): ResultadoDeRe
       ? reguas.tipografia
       : PROPRIEDADES_DE_ESPACO.has(prop)
         ? reguas.espaco
-        : null;
+        : PROPRIEDADES_DE_RAIO.has(prop)
+          ? reguas.raio
+          : null;
     if (regua === null) return;
 
     // Dentro de `@font-face` nada descreve o tamanho de um texto na página: é a

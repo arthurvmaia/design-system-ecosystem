@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type EscalaDaOrigem, type ProjectBranding, nomeDoEspaco, nomeDoPasso } from '@ds/shared';
+import {
+  type EscalaDaOrigem,
+  type ProjectBranding,
+  nomeDoEspaco,
+  nomeDoPasso,
+  nomeDoRaio,
+} from '@ds/shared';
 import { buildBrandingCss } from './index.js';
 
 const branding: ProjectBranding = {
@@ -35,13 +41,13 @@ test('buildBrandingCss aplica a paleta escolhida (identidade do site)', () => {
 
 // ── A escala da marca: quem DECLARA os degraus que as peças consomem ─────────
 
-/** Uma régua medida: quatro degraus de letra e três de respiro. */
+/** Uma régua medida: quatro degraus de letra, três de respiro e dois de raio. */
 const escala: EscalaDaOrigem = {
   degraus: [12, 16, 24, 40],
   corpo: 16,
   display: 40,
   espacos: [4, 8, 16],
-  raios: [8],
+  raios: [4, 8],
 };
 
 /** Quantas vezes um trecho literal aparece no CSS. */
@@ -64,6 +70,7 @@ test('buildBrandingCss sem régua medida produz o CSS de antes, byte a byte', ()
   assert.equal(reguaVazia, semEscala, 'régua sem degrau medido não muda o CSS');
   assert.ok(!semEscala.includes('--marca-passo'), 'nenhum passo declarado');
   assert.ok(!semEscala.includes('--marca-espaco'), 'nenhum espaço declarado');
+  assert.ok(!semEscala.includes('--marca-raio'), 'nenhum raio declarado');
 
   // Respiro sem degrau de letra também não declara nada: quem elege a régua de
   // referência (`escalaDeReferencia`) só olha para os degraus, então uma régua
@@ -73,9 +80,9 @@ test('buildBrandingCss sem régua medida produz o CSS de antes, byte a byte', ()
     corpo: null,
     display: null,
     espacos: [8, 16],
-    raios: [],
+    raios: [4, 8],
   });
-  assert.equal(soEspacos, semEscala, 'espaço sem degrau não é régua');
+  assert.equal(soEspacos, semEscala, 'espaço e raio sem degrau de letra não são régua');
 
   // E a prova de que a ÚNICA diferença que a régua introduz são as declarações
   // novas: tirando essas linhas, o CSS com escala volta a ser o de antes. Um
@@ -83,10 +90,7 @@ test('buildBrandingCss sem régua medida produz o CSS de antes, byte a byte', ()
   const comEscala = buildBrandingCss(branding, escala);
   const semAsLinhasNovas = comEscala
     .split('\n')
-    .filter(
-      (l) =>
-        !l.trimStart().startsWith('--marca-passo') && !l.trimStart().startsWith('--marca-espaco'),
-    )
+    .filter((l) => !/^--marca-(passo|espaco|raio)-/.test(l.trimStart()))
     .join('\n');
   assert.equal(semAsLinhasNovas, semEscala);
 });
@@ -103,6 +107,9 @@ test('buildBrandingCss declara um token por degrau, na ordem da régua', () => {
       1,
       `espaço ${i + 1} declarado uma vez`,
     );
+  }
+  for (const [i, px] of escala.raios.entries()) {
+    assert.equal(vezes(css, `${nomeDoRaio(i)}: ${px}px;`), 1, `raio ${i + 1} declarado uma vez`);
   }
 
   // A ordem é a da régua: o índice do token é a identidade do degrau, e ler o
@@ -122,7 +129,30 @@ test('buildBrandingCss usa o nome de token que a reescrita das peças consome', 
   // é como elas divergem sem ninguém perceber.
   assert.ok(css.includes(`${nomeDoPasso(0)}: 12px;`));
   assert.ok(css.includes(`${nomeDoEspaco(2)}: 16px;`));
+  assert.ok(css.includes(`${nomeDoRaio(1)}: 8px;`));
   assert.equal(nomeDoPasso(0), '--marca-passo-1', 'o token é 1-based, como a peça espera');
+});
+
+test('o raio ganha o próprio token, e não se confunde com o respiro de mesmo valor', () => {
+  // 4px é respiro e é raio nesta régua, com sentidos diferentes. Se um eixo
+  // declarasse por cima do outro, a peça consumiria o degrau errado e ninguém
+  // veria erro nenhum — só o canto fora do lugar.
+  const css = buildBrandingCss(branding, escala);
+
+  assert.ok(css.includes('--marca-espaco-1: 4px;'), 'o respiro de 4px sai como espaço');
+  assert.ok(css.includes('--marca-raio-1: 4px;'), 'o canto de 4px sai como raio');
+  assert.equal(vezes(css, '--marca-raio-'), escala.raios.length, 'um token de raio por degrau');
+});
+
+test('régua sem raio medido não declara raio nenhum', () => {
+  // Degradação honesta por eixo: kit com letra e respiro medidos mas sem canto
+  // sai sem `--marca-raio-*`, e a peça fica com o raio da origem. Declarar um
+  // raio inventado aqui arredondaria o site inteiro sem ninguém ter pedido.
+  const css = buildBrandingCss(branding, { ...escala, raios: [] });
+
+  assert.ok(css.includes('--marca-passo-1: 12px;'), 'os outros eixos continuam saindo');
+  assert.ok(css.includes('--marca-espaco-1: 4px;'));
+  assert.ok(!css.includes('--marca-raio'), 'nenhum raio declarado');
 });
 
 test('buildBrandingCss não desloca os vizinhos por causa de um degrau impossível', () => {

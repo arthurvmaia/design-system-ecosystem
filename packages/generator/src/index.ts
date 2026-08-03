@@ -13,6 +13,7 @@ import {
   explicarPapel,
   nomeDoEspaco,
   nomeDoPasso,
+  nomeDoRaio,
   projectGeneratedVersionDir,
   resolverSecoes,
 } from '@ds/shared';
@@ -301,7 +302,8 @@ Componha o site.`;
 };
 
 /**
- * Os tokens de ESCALA: os degraus de tamanho e de respiro que as peças consomem.
+ * Os tokens de ESCALA: os degraus de tamanho, de respiro e de raio que as peças
+ * consomem.
  *
  * ## O defeito, medido
  *
@@ -323,11 +325,11 @@ Componha o site.`;
  * Uma declaração por degrau da régua de referência, dentro do mesmo `:root` dos
  * tokens de cor e de fonte, na ordem em que a régua os mediu:
  *
- *   `--marca-passo-1: 12px;` … `--marca-espaco-1: 4px;` …
+ *   `--marca-passo-1: 12px;` … `--marca-espaco-1: 4px;` … `--marca-raio-1: 4px;`
  *
- * O nome sai de `nomeDoPasso`/`nomeDoEspaco` (@ds/shared), os MESMOS que a
- * reescrita das peças usa. Nome montado à mão nas duas pontas é exatamente como
- * elas divergem sem ninguém perceber.
+ * O nome sai de `nomeDoPasso`/`nomeDoEspaco`/`nomeDoRaio` (@ds/shared), os
+ * MESMOS que a reescrita das peças usa. Nome montado à mão nas duas pontas é
+ * exatamente como elas divergem sem ninguém perceber.
  *
  * ## Os invariantes
  *
@@ -356,6 +358,9 @@ const varsDaEscala = (escala: EscalaDaOrigem | null | undefined): string => {
   });
   escala.espacos.forEach((px, i) => {
     if (Number.isFinite(px)) linhas.push(`  ${nomeDoEspaco(i)}: ${px}px;`);
+  });
+  escala.raios.forEach((px, i) => {
+    if (Number.isFinite(px)) linhas.push(`  ${nomeDoRaio(i)}: ${px}px;`);
   });
   return linhas.length === 0 ? '' : `\n${linhas.join('\n')}`;
 };
