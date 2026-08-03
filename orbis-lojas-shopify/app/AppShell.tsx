@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- private user uploads are served by an authenticated media route */
 
 import {
+  ArrowLeft,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -42,6 +43,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BootstrapData, Project, Theme, Viewer } from "@/lib/types";
 import { normalizeCustomization } from "@/lib/business-rules.mjs";
+import { enderecoDoPortal } from "@/app/portal";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySectionSchema, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
 import { ShopifyLiveRender, ShopifyStorePreview } from "@/app/ShopifyStorePreview";
 import { Orbis as OrbisNucleo } from "@/app/Orbis";
@@ -206,7 +208,10 @@ export function AppShell({ identity }: { identity: Identity }) {
           <button className="icon-button mobile-menu" onClick={() => setMenuOpen(true)} aria-label="Abrir menu"><Menu size={20} /></button>
           <span className="ready-label"><span className="pulse-dot" /> ORBIS ONLINE</span>
           <strong>{tabTitle(tab)}</strong>
-          <div className="topbar-status"><button className="text-button flow-switch" onClick={() => setFlow(null)}>Trocar de fluxo</button><span><span className="online-dot" /> LOCAL</span></div>
+          {/* A saída para o portal fica ao lado de "Trocar de fluxo" porque as
+              duas respondem à mesma pergunta — "quero ir para outro lugar" —
+              e no modo --app do Chrome não há botão de voltar para socorrer. */}
+          <div className="topbar-status"><a className="text-button portal-switch" href={enderecoDoPortal()} title="Voltar ao portal da suíte Orbis" aria-label="Trocar de app: voltar ao portal"><ArrowLeft size={13} /><span>Trocar de app</span></a><button className="text-button flow-switch" onClick={() => setFlow(null)}>Trocar de fluxo</button><span><span className="online-dot" /> LOCAL</span></div>
         </header>
 
         <main id="main-content" className={tab === "editor" ? "main editor-main" : "main"}>

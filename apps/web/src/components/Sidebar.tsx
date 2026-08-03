@@ -8,7 +8,7 @@ import {
   secondaryNav,
 } from '@/lib/nav';
 import { useQuery } from '@tanstack/react-query';
-import { X } from 'lucide-react';
+import { ArrowLeft, X } from 'lucide-react';
 import type React from 'react';
 import { NavLink } from 'react-router-dom';
 import { BrandMark } from './BrandMark';
@@ -115,6 +115,9 @@ export function Sidebar({ aberta, aoFechar }: { aberta: boolean; aoFechar: () =>
                 )}
               </li>
             ))}
+            <li>
+              <VoltarAoPortal />
+            </li>
           </ul>
         </div>
       </aside>
@@ -168,6 +171,39 @@ function NavItem({
         </>
       )}
     </NavLink>
+  );
+}
+
+/**
+ * A saída para o portal da suíte.
+ *
+ * Este app é uma das três portas do Orbis, e o INICIAR abre a suíte no modo
+ * `--app` do Chrome — sem barra de endereço e sem botão de voltar. Sem este
+ * item, quem entra aqui não tem como escolher outra porta senão fechando a
+ * janela inteira.
+ *
+ * É um `<a>` de verdade, e não um `NavLink`: o destino é outra origem, e o
+ * roteador daqui não sabe (nem deve saber) nada sobre ela. O endereço sai do
+ * host atual porque quem abre a suíte pelo celular aponta para o IP da máquina,
+ * e um `localhost` cravado mandaria o telefone falar consigo mesmo.
+ *
+ * Vale lembrar o efeito colateral, que é decisão de produto e não descuido: sair
+ * daqui esconde a aba, e o portão encerra a sessão. O portal vai pedir a
+ * credencial de novo.
+ */
+function VoltarAoPortal() {
+  const destino = `${window.location.protocol}//${window.location.hostname}:4000`;
+  return (
+    <a
+      href={destino}
+      title="Voltar ao portal da suíte Orbis"
+      className={cn(ITEM_BASE, ITEM_INATIVO)}
+    >
+      <ArrowLeft size={15} strokeWidth={1.75} />
+      <span className="min-w-0 truncate" style={{ fontFamily: 'var(--font-body)' }}>
+        Trocar de app
+      </span>
+    </a>
   );
 }
 

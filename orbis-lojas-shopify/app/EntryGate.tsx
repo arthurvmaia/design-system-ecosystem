@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowRight, SlidersHorizontal, Store } from "lucide-react";
+import { ArrowLeft, ArrowRight, SlidersHorizontal, Store } from "lucide-react";
 import { Orbis } from "@/app/Orbis";
+import { enderecoDoPortal } from "@/app/portal";
 
 /**
  * O portão: a primeira tela de toda visita.
@@ -10,12 +11,19 @@ import { Orbis } from "@/app/Orbis";
  * o balcão (solicitar um site); ADM vai para o estúdio completo. Não há senha
  * nem persistência: cada entrada no app passa por aqui de novo, porque a mesma
  * máquina atende os dois papéis durante o protótipo.
+ *
+ * A saída para o portal fica AQUI, no alto, e não escondida num menu: esta é a
+ * primeira tela de quem chega vindo da suíte, e é onde a pessoa procura quando
+ * percebe que escolheu a porta errada.
  */
 export function EntryGate({ onChoose }: { onChoose: (flow: "client" | "admin") => void }) {
   return (
     <main className="entry-gate">
       <div className="entry-gate-brilho" aria-hidden="true" />
       <div className="crt-scanlines" aria-hidden="true" />
+      <a className="voltar-ao-portal" href={enderecoDoPortal()}>
+        <ArrowLeft size={14} /> Trocar de app
+      </a>
       <div className="entry-gate-caixa">
         <Orbis tamanho={72} alt="Orbis, o núcleo do sistema" />
         <div className="entry-gate-marca">ORBIS</div>
