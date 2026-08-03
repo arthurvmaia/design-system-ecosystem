@@ -46,3 +46,16 @@ scripts/_tmp-*
 # Prints e trace do navegador de inspeção (ferramenta de quem desenvolve, não do
 # projeto): a pasta enche a cada sessão e nada no app a lê.
 .playwright-mcp/
+
+# Planejamento interno. Este repositório é PÚBLICO, e estes dois documentos não
+# são feitos para ser lidos por quem chega pelo GitHub: trazem diagnóstico de
+# produto, ordem de execução, estratégia e conversa sobre sócios.
+#
+# Ficar de fora do git não é descuido — é a decisão. Eles moram na cópia privada
+# em `..\_privado\`, que é o que os protege de sumir. Versionar aqui resolveria
+# o sumiço criando um problema pior, porque o que vai para um repositório
+# público não volta: fica no histórico, nos forks e no cache de quem já clonou.
+#
+# Ancorados na raiz pelo mesmo motivo que os padrões de dado acima.
+/DIAGNOSTICO.md
+/_auditoria/
