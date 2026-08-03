@@ -37,7 +37,12 @@ Write-Host ''
 #   3. apps/server/.env. Tem a SUA chave da Anthropic. Mandar a pasta inteira
 #      por zip e entregar a chave junto, e quem receber gasta no seu nome.
 #
-# Este script resolve os tres: copia o projeto sem essas coisas e zipa o resto.
+#   4. orbis-lojas-shopify/.wrangler. E o estado do miniflare do app de lojas:
+#      o banco D1 e o R2 com os ZIPs dos temas que VOCE importou. Ali dentro ha
+#      tema comprado, com licenca, e mandar isso junto e redistribuir o tema de
+#      outra pessoa sem querer. Quem receber importa os proprios temas.
+#
+# Este script resolve os quatro: copia o projeto sem essas coisas e zipa o resto.
 # Quem receber roda o INICIAR, que instala as dependencias na maquina dele e
 # pede a chave dele.
 
@@ -51,7 +56,7 @@ Passo 'Copiando o projeto sem as partes que nao viajam'
 # robocopy devolve 0-7 para sucesso (8+ e falha de verdade). O /NJH /NJS tira
 # o cabecalho e o resumo, que so poluem.
 $saida = robocopy $raiz $temp /E /NFL /NDL /NJH /NJS /NP `
-    /XD node_modules .turbo .git dist coverage `
+    /XD node_modules .turbo .git dist coverage .wrangler .vinext .next `
     /XF .env .env.local *.tsbuildinfo *.log
 
 if ($LASTEXITCODE -ge 8) {
@@ -86,6 +91,7 @@ Write-Host ''
 Write-Host "  Arquivo: $destino" -ForegroundColor White
 Write-Host ''
 Write-Host '  Nao vai junto: node_modules, .env (sua chave), dist, .turbo, .git' -ForegroundColor Gray
+Write-Host '                 e .wrangler (os temas Shopify que voce importou)' -ForegroundColor Gray
 Write-Host ''
 Write-Host '  Diga para quem receber:' -ForegroundColor Cyan
 Write-Host '    1. Extrair o zip em qualquer pasta' -ForegroundColor Gray

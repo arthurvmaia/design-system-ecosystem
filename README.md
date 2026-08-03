@@ -1,7 +1,37 @@
-# Design System Ecosystem
+# Orbis
+
+Três produtos atrás de uma porta só. Um `INICIAR.bat` sobe tudo, uma credencial
+abre, e a primeira tela pergunta por onde começar.
+
+| Porta | O que faz | Onde mora | Porta TCP |
+|---|---|---|---|
+| **Criação de Design System** | engenharia reversa de sites, curadoria de peças e geração de sites novos a partir do acervo | `apps/web` + `apps/server` | 5173 + 8787 |
+| **Criação de Lojas Shopify** | importa o tema Shopify de verdade, edita com paridade ao editor da Shopify e devolve um ZIP instalável | [`orbis-lojas-shopify/`](orbis-lojas-shopify/README.md) | 3000 |
+| **Criativos** | geração de criativos para anúncio e redes — **ainda em construção**, o cartão abre um aviso | — | — |
+| *o portal* | a credencial e as três portas | `apps/portal` | 4000 |
+
+**Os dois apps são independentes de verdade** — código, interface e dados
+separados. O de lojas usa npm, vinext (Next-on-Vite) e Cloudflare Workers com D1
+e R2; nada disso combina com o pnpm + Turborepo daqui, então ele fica **fora**
+dos globs do workspace e fora do Biome, com lockfile, testes e lint próprios. O
+que os une é só o vestíbulo: um link de volta ao portal em cada um.
+
+A credencial é uma só e mora no servidor (`ORBIS_SENHA`). Como cookie ignora
+porta, entrar no portal já vale para o app de design system — você digita uma
+vez. O app de lojas não tem portão: local tudo bem, mas se um dia a suíte for
+publicada por túnel, a porta 3000 precisa ser resolvida antes.
+
+> O repositório ainda se chama `design-system-ecosystem` porque nasceu do
+> primeiro dos três. O nome ficou; o escopo cresceu.
+
+---
+
+## O app de design system
 
 Plataforma para engenharia reversa de sites, curadoria de componentes em uma
-biblioteca própria e geração de novos sites a partir dessa biblioteca.
+biblioteca própria e geração de novos sites a partir dessa biblioteca. **Daqui
+para baixo, este README fala dele** — o app de lojas Shopify tem o
+[seu próprio](orbis-lojas-shopify/README.md).
 
 **Fluxo:** Extrair → Galeria (triagem) → Biblioteca (acervo) → Design Systems
 (kits) → Gerar site (wizard com sua marca) → Meus sites (prévia, `.zip`, edição).
@@ -21,11 +51,11 @@ Só precisa do [Node.js LTS](https://nodejs.org) instalado.
      qualquer pasta.
 2. **Duplo clique no `INICIAR.bat`.**
 
-Ele cuida do resto: instala o pnpm se faltar, instala as dependências, cria o
-`.env`, cria o banco e abre o navegador em `http://localhost:5173`. Da segunda
-vez em diante, só sobe o app. Se a pasta for movida ou as dependências vierem
-de outra máquina, ele percebe e reinstala sozinho — não precisa apagar nada na
-mão.
+Ele cuida do resto: instala o pnpm se faltar, instala as dependências dos dois
+apps, cria o `.env`, cria o banco, confere se as quatro portas estão livres e
+abre o navegador no **portal**, em `http://localhost:4000`. Da segunda vez em
+diante, só sobe. Se a pasta for movida ou as dependências vierem de outra
+máquina, ele percebe e reinstala sozinho — não precisa apagar nada na mão.
 
 > **Avisos do Windows na primeira vez:** se o SmartScreen mostrar "o Windows
 > protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
@@ -94,6 +124,9 @@ lado:
   arquitetura de quem instalou.
 - `apps/server/.env` — **sua chave da Anthropic**, que passaria a ser usada e
   cobrada em seu nome.
+- `orbis-lojas-shopify/.wrangler` — o banco e os ZIPs dos **temas Shopify que
+  você importou**. Tem tema comprado ali dentro, e mandar junto é redistribuir a
+  licença de outra pessoa sem querer.
 
 Se não der para usar o GitHub, use o **`EMPACOTAR.bat`**: ele gera um zip limpo
 na Área de Trabalho, sem nada disso. Quem receber extrai em qualquer pasta e
@@ -127,7 +160,11 @@ chave de API não viajam.
 ```
 apps/
 ├── server/          API Hono + Drizzle + SQLite (EXECUTION_MODE=queue|api)
-└── web/             React 19 + Vite + Tailwind v4
+├── web/             React 19 + Vite + Tailwind v4
+└── portal/          O vestíbulo: a credencial e as três portas (Vite, :4000)
+
+orbis-lojas-shopify/ O app de lojas Shopify. FORA do workspace de propósito:
+                     npm, vinext, Cloudflare Workers, lockfile e testes próprios
 
 packages/
 ├── shared/          Schemas Zod, paths, fila — fonte da verdade dos contratos
@@ -171,7 +208,7 @@ Detalhes em [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Scripts
 
 ```powershell
-pnpm dev              # sobe server (8787) + web (5173)
+pnpm dev              # sobe server (8787) + web (5173) + portal (4000)
 pnpm build            # build de tudo
 pnpm lint             # biome
 pnpm typecheck        # tsc em todos os pacotes
@@ -186,6 +223,17 @@ pnpm acervo:importar  # importa um acervo exportado noutra máquina
 
 A lista completa dos comandos de fila está no [CLAUDE.md](CLAUDE.md).
 
+O app de lojas Shopify tem os seus, e não passam pelo pnpm — ele não pertence a
+este workspace:
+
+```powershell
+cd orbis-lojas-shopify
+npm install
+npm run dev                       # :3000 (ou o INICIAR.bat da raiz, que sobe tudo)
+npm run lint                      # eslint
+node --test tests/*.test.mjs      # 25 testes
+```
+
 ## Documentação
 
 | Documento | Para quê |
@@ -196,6 +244,9 @@ A lista completa dos comandos de fila está no [CLAUDE.md](CLAUDE.md).
 | [docs/MIGRAR-PARA-API.md](docs/MIGRAR-PARA-API.md) | Migração do modo `queue` para o modo `api` |
 | [docs/HANDOFF.md](docs/HANDOFF.md) | Histórico de decisões e estado do trabalho |
 | [CLAUDE.md](CLAUDE.md) | Instruções para o Claude Code processar a fila |
+| [HANDOFF.md](HANDOFF.md) | Estado atual da suíte, incluindo as três portas |
+| [orbis-lojas-shopify/README.md](orbis-lojas-shopify/README.md) | O app de lojas Shopify |
+| [orbis-lojas-shopify/HANDOFF.md](orbis-lojas-shopify/HANDOFF.md) | Estado do app de lojas |
 
 ## Limitações reconhecidas
 
