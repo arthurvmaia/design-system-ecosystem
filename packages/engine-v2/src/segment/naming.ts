@@ -128,6 +128,18 @@ export type EvidenciaNome = {
   particulas: boolean;
   /** Comportamentos de scroll associados. */
   scroll: readonly ScrollBehaviorKind[];
+  /**
+   * Contagens estruturais medidas — a última linha ANTES de cair no texto
+   * visível. "Grade de 6 itens" descreve; "Imobiliária Premiada 2023 R$…"
+   * é a manchete do site virando nome de peça, exatamente o que o prompt do
+   * classificador proíbe.
+   */
+  sinaisEstruturais?: {
+    itensRepetidos: number;
+    titulos: number;
+    acoes: number;
+    imagens: number;
+  };
   /** Estados capturados (menu aberto, aba trocada…). */
   estados: readonly string[];
   /** Forma de preservação — muda o vocabulário do nome. */
@@ -178,6 +190,16 @@ const baseDoNome = (ev: EvidenciaNome): { base: string; usouTitulo: boolean } =>
   if (ev.representacao === 'capsula-runtime') return { base: 'Cena', usouTitulo: false };
   if (ev.representacao === 'referencia-visual')
     return { base: 'Referência visual', usouTitulo: false };
+  // Descrição ESTRUTURAL antes do texto visível: o que o bloco É, medido,
+  // vale mais do que as primeiras palavras do conteúdo dele.
+  const est = ev.sinaisEstruturais;
+  if (est !== undefined) {
+    if (est.itensRepetidos >= 2)
+      return { base: `Grade de ${est.itensRepetidos} itens`, usouTitulo: false };
+    // Imagens NÃO entram aqui de propósito: o qualificador de fundo distintivo
+    // ("… com imagem de fundo") já nomeia melhor esse caso, e é testado.
+    if (est.acoes >= 1 && est.titulos >= 1) return { base: 'Chamada com ação', usouTitulo: false };
+  }
   // Última linha antes do genérico: o texto visível do bloco. É o que a pessoa
   // vê no card — "Bloco" não diz nada; as primeiras palavras do conteúdo dizem.
   if (ev.textoVisivel && ev.textoVisivel.trim().length >= 3) {

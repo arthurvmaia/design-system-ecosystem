@@ -44,7 +44,7 @@ import { zValidator } from '@hono/zod-validator';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { getModels } from '../lib/anthropic.js';
+import { MENSAGEM_API_BLOQUEADA, apiPagaPermitida, getModels } from '../lib/anthropic.js';
 import { type ChaveDeBundle, type RepresentacaoBundle, lerBundleInfo } from '../lib/bundle-v2.js';
 import { isQueueMode } from '../lib/execution-mode.js';
 import { exigeSenhaDeAcao } from '../lib/exige-senha-de-acao.js';
@@ -842,6 +842,8 @@ designSystemsRoute.post('/', zValidator('json', CreateDesignSystemInput), (c) =>
     return c.json({ queued: true, job }, 202);
   }
 
+  if (!apiPagaPermitida())
+    return c.json({ error: 'api_paga_bloqueada', message: MENSAGEM_API_BLOQUEADA }, 403);
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return c.json({ error: 'anthropic_not_configured' }, 500);
@@ -1019,6 +1021,8 @@ designSystemsRoute.post('/:id/classify', async (c) => {
     return c.json({ queued: true, job }, 202);
   }
 
+  if (!apiPagaPermitida())
+    return c.json({ error: 'api_paga_bloqueada', message: MENSAGEM_API_BLOQUEADA }, 403);
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return c.json({ error: 'anthropic_not_configured' }, 500);
 

@@ -988,6 +988,12 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       representacao: representacao.type,
       posicao: entrada.pageHeight > 0 ? secao.pageBox.y / entrada.pageHeight : undefined,
       textoVisivel: sinais.texto,
+      sinaisEstruturais: {
+        itensRepetidos: sinais.itensRepetidos,
+        titulos: sinais.titulos,
+        acoes: sinais.acoes,
+        imagens: sinais.imagens,
+      },
       fundos: fundosDistintivos,
     });
 
