@@ -24,7 +24,7 @@ import type {
   TemporalObservation,
   VisualLayer,
 } from '@ds/shared';
-import { contido, intersecao } from '../mapper/build-maps.js';
+import { LIMIAR_CONTENCAO, contido, intersecao } from '../mapper/build-maps.js';
 import type { BoxPx } from '../mapper/raw.js';
 import type { CamadasDePagina } from './camadas-de-pagina.js';
 import type { ComportamentoCandidato } from './comportamentos.js';
@@ -74,13 +74,22 @@ const AREA_MINIMA_DE_SECAO = 0.06;
  * Uma seção que contém outra e **não acrescenta nada** é embrulho. O teste não é
  * de tamanho: é de conteúdo próprio. Se todo o texto e toda a mídia do candidato
  * estão dentro de filhos que também são seções, ele é só a caixa.
+ *
+ * PROPORCIONAL, não absoluto. O limiar de 24 caracteres errava nos dois
+ * sentidos, medido no acervo: um hero de 900 px sumiu calado por ter texto
+ * próprio de 22 (dois caracteres abaixo do corte), um rodapé de 766 px sumiu
+ * batendo exatamente no 24 — e, no sentido inverso, o `<body>` inteiro virou
+ * "peça" em 2 de 7 sites porque o texto solto fora das filhas passava do
+ * absoluto. A proporção pergunta a coisa certa: o candidato mostra algo que as
+ * filhas não mostram?
  */
 const ehEmbrulho = (candidato: StructuralNode, filhas: readonly StructuralNode[]): boolean => {
   if (filhas.length === 0) return false;
   const textoDasFilhas = filhas.reduce((s, f) => s + f.subtreeTextLength, 0);
-  const textoProprio = candidato.subtreeTextLength - textoDasFilhas;
-  // `main` com uma `<section>` dentro: nenhum texto próprio ⇒ embrulho.
-  return textoProprio <= 24 && candidato.ownText.trim().length === 0;
+  const textoProprio = Math.max(0, candidato.subtreeTextLength - textoDasFilhas);
+  const proporcao =
+    candidato.subtreeTextLength <= 0 ? 1 : textoProprio / candidato.subtreeTextLength;
+  return proporcao < 0.05 && candidato.ownText.trim().length === 0;
 };
 
 export type SecaoEscolhida = {
@@ -94,7 +103,11 @@ export type SecaoEscolhida = {
  * `<div>` que se comporta como seção (faixa de tela com conteúdo) — que é a
  * maioria dos sites modernos, onde nada é `<section>`.
  */
-export const escolherSecoes = (mapa: readonly StructuralNode[]): SecaoEscolhida[] => {
+export const escolherSecoes = (
+  mapa: readonly StructuralNode[],
+  /** Sai preenchido com o que foi descartado e POR QUÊ. Descarte mudo apagava heros inteiros. */
+  descartes?: Array<{ node: StructuralNode; motivo: string }>,
+): SecaoEscolhida[] => {
   const porHash = new Map(mapa.map((n) => [n.fingerprint.hash, n]));
   const filhasDe = new Map<string, StructuralNode[]>();
   for (const n of mapa) {
@@ -104,12 +117,20 @@ export const escolherSecoes = (mapa: readonly StructuralNode[]): SecaoEscolhida[
     else lista.push(n);
   }
 
-  /** Descendentes que também são candidatos a seção. */
+  /**
+   * Descendentes que também são candidatos a seção. Landmark conta SEM o corte
+   * de área, com a MESMA isenção do laço principal: a assimetria fazia um
+   * `<nav>` de 1,4% da viewport não contar como descendente do `<header>`, o
+   * header não ser embrulho, e os DOIS saírem — o mesmo bloco duas vezes na
+   * Galeria (medido: 23% dos bytes dos segmentos contidos em outro segmento).
+   */
   const secoesDescendentes = (hash: string, profundidade = 0): StructuralNode[] => {
     if (profundidade > 12) return [];
     const out: StructuralNode[] = [];
     for (const f of filhasDe.get(hash) ?? []) {
-      if (PAPEIS_DE_SECAO.has(f.role) && f.areaShare >= AREA_MINIMA_DE_SECAO) out.push(f);
+      const landmark = f.role === 'nav' || f.role === 'header' || f.role === 'footer';
+      if (PAPEIS_DE_SECAO.has(f.role) && (landmark || f.areaShare >= AREA_MINIMA_DE_SECAO))
+        out.push(f);
       else out.push(...secoesDescendentes(f.fingerprint.hash, profundidade + 1));
     }
     return out;
@@ -124,7 +145,31 @@ export const escolherSecoes = (mapa: readonly StructuralNode[]): SecaoEscolhida[
     // navegação de 60px de altura é um componente legítimo.
     const landmark = n.role === 'nav' || n.role === 'header' || n.role === 'footer';
     if (!landmark && n.areaShare < AREA_MINIMA_DE_SECAO) continue;
-    if (ehEmbrulho(n, secoesDescendentes(n.fingerprint.hash))) continue;
+    // `<main>`, `<body>` e `<html>` são A PÁGINA, nunca uma peça — desde que
+    // haja seções dentro para representá-la. Medido no acervo: o <main> quase
+    // inteiro saiu como "hero" de 28 KB, e o <body> como "pricing" de 23,8 KB,
+    // duplicando todos os outros segmentos do site na triagem.
+    const tagN = n.fingerprint.tag.toLowerCase();
+    if (tagN === 'main' || tagN === 'body' || tagN === 'html') {
+      if (secoesDescendentes(n.fingerprint.hash).length > 0) {
+        descartes?.push({
+          node: n,
+          motivo:
+            'A página inteira não é uma peça: as seções de dentro já mostram tudo o que ela tem.',
+        });
+        continue;
+      }
+    }
+    if (ehEmbrulho(n, secoesDescendentes(n.fingerprint.hash))) {
+      // NUNCA calado: o descarte vai para a Revisão com o motivo. Um hero e um
+      // rodapé inteiros sumiram do acervo sem deixar rastro nenhum.
+      descartes?.push({
+        node: n,
+        motivo:
+          'Esta faixa é só a caixa das seções de dentro: o que ela mostra já está nelas. Se alguma peça sumiu da Galeria, é aqui que ela se recupera.',
+      });
+      continue;
+    }
     escolhidas.push({ node: n, hash: n.fingerprint.hash, pageBox: n.pageBox });
   }
 
@@ -246,11 +291,10 @@ export const inferirCategoria = (
     return { categoria: 'overlay', evidencia: 'conteúdo em portal' };
   }
 
-  const vocabulario = [
-    node.fingerprint.id ?? '',
-    ...node.fingerprint.stableClasses,
-    node.fingerprint.text,
-  ].join(' ');
+  // SÓ id e classes: o texto VISÍVEL entrava no vocabulário e o rodapé do
+  // Google virou "team: Equipe" porque o texto continha "Sobre". Palavra que o
+  // usuário lê é conteúdo, não anotação de estrutura.
+  const vocabulario = [node.fingerprint.id ?? '', ...node.fingerprint.stableClasses].join(' ');
   for (const [cat, re] of PISTAS) {
     if (re.test(vocabulario)) return { categoria: cat, evidencia: `vocabulário:${cat}` };
   }
@@ -556,7 +600,13 @@ export const camadasQuePassamAtras = (opts: {
       saida.push(h);
       continue;
     }
-    if (intersecao(caixaDaCamada, caixaDaDobra) > 0) saida.push(h);
+    // A dobra precisa estar CONTIDA na camada, não apenas tocá-la. Interseção
+    // maior que zero colava o fundo do hero atrás do nav: medido no acervo, 44
+    // das 111 ligações tinham camada mais de 2x mais alta que a dobra, e o nav
+    // recebia camada 7 a 58x mais alta em TODAS as 7 capturas — era a causa
+    // raiz do "nav virou dobra inteira". A primitiva já existia, testada, no
+    // mesmo pacote (mapper/build-maps.ts), decidindo posse de camada.
+    if (contido(caixaDaDobra, caixaDaCamada) >= LIMIAR_CONTENCAO) saida.push(h);
   }
   return saida;
 };
@@ -709,7 +759,8 @@ const confiancaPorPeso = (total: number): Confidence =>
  * da representação escolhida.
  */
 export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSegmentacaoV2 => {
-  const secoes = escolherSecoes(entrada.structuralMap);
+  const descartes: Array<{ node: StructuralNode; motivo: string }> = [];
+  const secoes = escolherSecoes(entrada.structuralMap, descartes);
   const porHash = new Map(entrada.structuralMap.map((n) => [n.fingerprint.hash, n]));
 
   /** Os degraus que aparecem dentro de um conjunto de membros, sem repetir. */
@@ -1059,9 +1110,14 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
 
   // ── Fundo da página ────────────────────────────────────────────────────────
   // Depois das dobras, e não dentro de nenhuma: estas camadas atravessam todas.
+  // Os três laços deste arquivo (dobras, camadas, comportamentos) não se
+  // falavam, e o MESMO nó saía como até 4 itens da Galeria: cabeçalho, "Fundo
+  // da página" e dois comportamentos, com o htmlSnippet idêntico. Quem já é
+  // segmento não vira segmento de novo.
+  const hashesJaEmitidos = new Set(segmentos.map((s) => s.hash));
   for (const grupo of ['comRuntime', 'soCss'] as const) {
-    const hashes = (entrada.camadasDePagina?.[grupo] ?? []).filter((h) =>
-      entrada.htmlPorHash.has(h),
+    const hashes = (entrada.camadasDePagina?.[grupo] ?? []).filter(
+      (h) => entrada.htmlPorHash.has(h) && !hashesJaEmitidos.has(h),
     );
     if (hashes.length === 0) continue;
 
@@ -1239,10 +1295,21 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
   // Galeria, com os alvos reais lado a lado e o `scrollIds` preenchido — é ele
   // que liga o item ao modo "Ver ao rolar" do preview, que já existia.
   for (const comp of entrada.comportamentos ?? []) {
-    const comHtml = comp.hashes.filter((h) => entrada.htmlPorHash.has(h));
+    // Comportamento cujo alvo JÁ é um segmento não vira item próprio: o
+    // movimento já viaja no scrollIds da dobra, e o item extra era duplicata
+    // pura na triagem (medido: o mesmo HTML em até 4 itens).
+    const comHtml = comp.hashes.filter(
+      (h) => entrada.htmlPorHash.has(h) && !hashesJaEmitidos.has(h),
+    );
     if (comHtml.length === 0) continue;
     const html = comHtml.map((h) => entrada.htmlPorHash.get(h) ?? '').join('\n');
     if (html.trim().length === 0) continue;
+    // E comportamento cujo alvo EMBRULHA uma dobra inteira também não: o item
+    // "Parallax ao rolar" carregava a galeria de 13,6 KB dentro dele — a
+    // pessoa via a mesma galeria duas vezes, uma com o nome do efeito. O
+    // efeito continua registrado no scrollIds da dobra; o embrulho não.
+    if (segmentos.some((seg) => seg.htmlSnippet.length > 200 && html.includes(seg.htmlSnippet)))
+      continue;
 
     const scrollDoComp = entrada.scrollObservations.filter((s) => comp.scrollIds.includes(s.id));
     const representacao = classificarRepresentacao({
@@ -1328,7 +1395,48 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     posicao++;
   }
 
-  return { segmentos, rejeitados };
+  // ── Raiz é DOBRA; o que viaja inteiro dentro de outra raiz é amostra ──────
+  // O formulário dentro do cabeçalho, os cards dentro do rodapé, o card dentro
+  // do card: medido no acervo, 23% a 46% dos bytes das raízes eram o HTML de
+  // outra raiz, e a triagem mostrava o mesmo bloco duas vezes com nomes
+  // diferentes. O conteúdo NÃO some daqui: a subdivisão da dobra dona já o
+  // oferece como peça filha. Landmarks e hero nunca saem do primeiro nível —
+  // nav dentro do header é peça por direito próprio, e é a mais promovida do
+  // acervo.
+  const NUNCA_VIRA_AMOSTRA = new Set(['nav', 'header', 'footer', 'hero']);
+  const manter = new Set(segmentos);
+  for (const seg of segmentos) {
+    if (NUNCA_VIRA_AMOSTRA.has(seg.category)) continue;
+    if (seg.htmlSnippet.length < 200) continue;
+    const dono = segmentos.find(
+      (outro) =>
+        outro !== seg &&
+        manter.has(outro) &&
+        outro.htmlSnippet.length > seg.htmlSnippet.length &&
+        outro.htmlSnippet.includes(seg.htmlSnippet),
+    );
+    if (dono !== undefined) manter.delete(seg);
+  }
+  const finais = segmentos.filter((s) => manter.has(s));
+  finais.forEach((s, i) => {
+    s.position = i;
+  });
+
+  // Os descartes de embrulho entram na Revisão com o HTML e o motivo: o
+  // conserto da Fase 3 existe porque um hero e um rodapé inteiros sumiram do
+  // acervo sem deixar rastro em lugar NENHUM.
+  for (const d of descartes) {
+    const html = entrada.htmlPorHash.get(d.node.fingerprint.hash) ?? '';
+    if (html.trim().length === 0) continue;
+    rejeitados.push({
+      hash: d.node.fingerprint.hash,
+      category: CATEGORIA_POR_PAPEL[d.node.role] ?? 'other',
+      name: `Faixa descartada (${d.node.role})`,
+      htmlSnippet: html,
+      motivos: [d.motivo],
+    });
+  }
+  return { segmentos: finais, rejeitados };
 };
 
 /**

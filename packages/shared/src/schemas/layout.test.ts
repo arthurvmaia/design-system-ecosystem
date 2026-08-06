@@ -8,6 +8,7 @@ import {
   SectionRole,
   ehPecaDeFundo,
   normalizarProjectLayout,
+  papelParaCategoria,
   separarCamadasDePagina,
 } from './layout.js';
 
@@ -151,4 +152,16 @@ test('separarCamadasDePagina: a ordem das seções restantes preserva, e camada 
     ['sec_a', 'sec_c'],
   );
   assert.deepEqual(r.camadas, [fundo], 'o mesmo fundo em duas seções vira uma camada só');
+});
+
+test('fase 3: toda categoria que a segmentação produz tem destino na geração', () => {
+  // 45 de 190 segmentos do acervo (24%) não tinham papel de destino: team com
+  // lista vazia, gallery sem papel, logo-cloud e stats órfãos. Classificar
+  // melhor não adianta enquanto a classe não tiver para onde ir.
+  assert.equal(papelParaCategoria('team'), 'team');
+  assert.equal(papelParaCategoria('logo-cloud'), 'logos');
+  assert.equal(papelParaCategoria('stats'), 'stats');
+  assert.equal(papelParaCategoria('gallery'), 'gallery');
+  assert.equal(papelParaCategoria('accordion'), 'faq');
+  assert.equal(papelParaCategoria('timeline'), 'about');
 });

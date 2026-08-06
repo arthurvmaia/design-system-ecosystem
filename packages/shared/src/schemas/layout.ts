@@ -79,16 +79,21 @@ export type LayoutDensity = z.infer<typeof LayoutDensity>;
 export const ROLE_CATEGORIES: Record<SectionRole, string[]> = {
   nav: ['nav', 'header'],
   hero: ['hero'],
-  logos: [],
+  // As listas vazias eram fiação solta entre dois vocabulários escritos
+  // separados: a segmentação produzia `team`, `logo-cloud`, `stats` e
+  // `gallery` e nenhum papel os aceitava — 24% dos segmentos do acervo (45 de
+  // 190) não tinham destino nenhum na geração. Classificar melhor não adianta
+  // enquanto a classe não tiver para onde ir.
+  logos: ['logo-cloud'],
   features: ['feature', 'card'],
   showcase: ['card'],
-  stats: [],
+  stats: ['stats'],
   pricing: ['pricing'],
   testimonials: ['testimonial'],
-  faq: ['faq'],
-  about: [],
-  team: [],
-  gallery: ['card'],
+  faq: ['faq', 'accordion'],
+  about: ['timeline'],
+  team: ['team'],
+  gallery: ['gallery', 'card'],
   catalog: ['card'],
   contact: ['form'],
   cta: ['cta', 'button'],

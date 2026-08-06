@@ -264,3 +264,5 @@ export {
   gifAnimado,
   iniciarServidorFixture,
 } from './testing/fixture-server.js';
+
+export { escolherCamadasDePagina } from './segment/camadas-de-pagina.js';

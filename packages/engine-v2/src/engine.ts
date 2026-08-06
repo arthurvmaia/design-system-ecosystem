@@ -803,6 +803,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       camadas: visualLayers,
       nos: structuralMap,
       viewport,
+      pageHeight: coletaFinal.pageHeight,
       // Mídia é o que liga uma camada a runtime: canvas/WebGL/vídeo têm
       // detecção com elemento. `RuntimeDetection` é por script, sem elemento.
       hashesComRuntime: new Set(mediaDetections.map((m) => m.fingerprint.hash)),

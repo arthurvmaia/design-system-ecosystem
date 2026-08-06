@@ -932,14 +932,27 @@ test('camada absoluta que não encosta na dobra fica de fora', () => {
   assert.deepEqual(atras, [], 'levar um blob que fica 2km acima seria ruído, não fidelidade');
 });
 
-test('camada absoluta que intersecta a dobra entra', () => {
-  const atras = camadasQuePassamAtras({
+test('camada absoluta entra quando a dobra está CONTIDA nela, não quando só encosta', () => {
+  // A semântica antiga (interseção > 0) colava o fundo do hero atrás do nav:
+  // medido no acervo, o nav recebia camada 7 a 58x mais alta em 7 de 7 sites.
+  // Agora a dobra precisa estar dentro da camada (contido >= 0,72).
+  const dentro = camadasQuePassamAtras({
     no: dobraEm(800),
     camadas: { comRuntime: [], soCss: ['blob'] },
+    // A camada cobre a dobra inteira (400..4400 numa dobra 800..1700).
+    visualLayers: [camadaCom('blob', { pageBox: { x: 0, y: 400, w: 1440, h: 4000 } })],
+    htmlPorHash: new Map([['blob', '<div class="blob"></div>']]),
+  });
+  assert.deepEqual(dentro, ['blob']);
+
+  const soEncosta = camadasQuePassamAtras({
+    no: dobraEm(800),
+    camadas: { comRuntime: [], soCss: ['blob'] },
+    // Termina em 1300: pega só a metade de cima da dobra. Encostar não basta.
     visualLayers: [camadaCom('blob', { pageBox: { x: 0, y: 400, w: 1440, h: 900 } })],
     htmlPorHash: new Map([['blob', '<div class="blob"></div>']]),
   });
-  assert.deepEqual(atras, ['blob']);
+  assert.deepEqual(soEncosta, []);
 });
 
 test('camada sem HTML capturado não entra: não há o que materializar', () => {
@@ -1164,4 +1177,126 @@ test('quando o CSS compilado NÃO veio, o fundo também diz isso', () => {
   assert.ok(
     fundo.representation.limitations.some((l) => l.includes('o CSS resultante não foi capturado')),
   );
+});
+
+// ── Fase 3: o corte que apagava heros e duplicava cabeçalhos ────────────────
+
+test('o embrulho é PROPORCIONAL: um hero com texto próprio pequeno mas relevante fica', () => {
+  // O caso real: o <header> de 900 px do luxury-real-estate, com a foto e o
+  // h1, tinha textoProprio 22 e o corte absoluto de 24 o apagou calado — o
+  // site ficou sem hero. Com 22 de 180 (12%), ele contribui de verdade.
+  const header = fp({ tag: 'header', id: 'hero' });
+  const navDentro = fp({ tag: 'nav' });
+  const secoes = escolherSecoes([
+    node({
+      fingerprint: header,
+      role: 'header',
+      ownText: 'Viva o extraordinário',
+      subtreeTextLength: 180,
+    }),
+    node({
+      fingerprint: navDentro,
+      role: 'nav',
+      parent: header.hash,
+      subtreeTextLength: 158,
+      areaShare: 0.014,
+      pageBox: { x: 0, y: 0, w: 1440, h: 80 },
+    }),
+  ]);
+  assert.ok(
+    secoes.some((s) => s.hash === header.hash),
+    'o hero de 900 px não pode sumir por uma constante de 24 caracteres',
+  );
+});
+
+test('cabeçalho que é SÓ a caixa do nav é descartado, e o descarte é REGISTRADO', () => {
+  // O outro lado do mesmo defeito: em antigravity, 98 dos 118 caracteres do
+  // header viajavam DUAS vezes (header + nav) porque o nav pequeno não contava
+  // como descendente. Agora landmark conta, o header vira embrulho, e o
+  // descarte sai com motivo em vez de sumir mudo.
+  const header = fp({ tag: 'header' });
+  const navDentro = fp({ tag: 'nav' });
+  const descartes: Array<{ node: StructuralNode; motivo: string }> = [];
+  const secoes = escolherSecoes(
+    [
+      node({ fingerprint: header, role: 'header', ownText: '', subtreeTextLength: 118 }),
+      node({
+        fingerprint: navDentro,
+        role: 'nav',
+        parent: header.hash,
+        subtreeTextLength: 116,
+        areaShare: 0.014,
+        pageBox: { x: 0, y: 0, w: 1440, h: 80 },
+      }),
+    ],
+    descartes,
+  );
+  assert.deepEqual(
+    secoes.map((s) => s.hash),
+    [navDentro.hash],
+    'só o nav: o header era a caixa dele',
+  );
+  assert.equal(descartes.length, 1);
+  assert.equal(descartes[0]?.node.fingerprint.hash, header.hash);
+  assert.ok(descartes[0]?.motivo.includes('caixa'), 'o motivo explica, não só carimba');
+});
+
+test('o <body> com texto solto NÃO vira peça: proporção pega o sentido inverso', () => {
+  // Medido no acervo: o <body> inteiro (23,8 KB, nav + 8 seções + footer) foi
+  // apresentado como "pricing: Planos com hover magnético" porque o texto
+  // solto fora das filhas passava do corte absoluto.
+  const body = fp({ tag: 'div', classes: ['page'] });
+  const filha1 = fp({ tag: 'section', id: 's1' });
+  const filha2 = fp({ tag: 'section', id: 's2' });
+  const descartes: Array<{ node: StructuralNode; motivo: string }> = [];
+  const secoes = escolherSecoes(
+    [
+      node({ fingerprint: body, role: 'section', ownText: '', subtreeTextLength: 8000 }),
+      node({
+        fingerprint: filha1,
+        role: 'section',
+        parent: body.hash,
+        subtreeTextLength: 4000,
+        pageBox: { x: 0, y: 0, w: 1440, h: 2000 },
+      }),
+      node({
+        fingerprint: filha2,
+        role: 'section',
+        parent: body.hash,
+        subtreeTextLength: 3900,
+        pageBox: { x: 0, y: 2000, w: 1440, h: 2000 },
+      }),
+    ],
+    descartes,
+  );
+  // 100 caracteres soltos de 8000 (1,25%): é a caixa, não uma peça.
+  assert.ok(!secoes.some((s) => s.hash === body.hash));
+  assert.equal(descartes.length, 1);
+});
+
+test('o texto VISÍVEL não classifica: rodapé com "Sobre" não é equipe', () => {
+  // O bloco de links do rodapé do Google virou "team: Equipe" porque a pista
+  // /sobre|about/ casava com o TEXTO. Palavra que o usuário lê é conteúdo.
+  const rodape = node({
+    fingerprint: fp({ tag: 'div', classes: ['footer-links'], text: 'Sobre o Google Produtos' }),
+    role: 'unknown',
+  });
+  const sinais = {
+    texto: 'Sobre o Google Produtos Privacidade Termos',
+    titulos: 0,
+    itensRepetidos: 0,
+    imagens: 0,
+    campos: 0,
+    precos: 0,
+    perguntas: 0,
+    acoes: 1,
+  };
+  const r = inferirCategoria(rodape, sinais, [], false);
+  assert.notEqual(r.categoria, 'team');
+  // Mas classe de estrutura continua valendo.
+  const comClasse = node({
+    fingerprint: fp({ tag: 'div', classes: ['team-grid'] }),
+    role: 'unknown',
+  });
+  assert.equal(inferirCategoria(comClasse, sinais, [], false).categoria, 'team');
 });
