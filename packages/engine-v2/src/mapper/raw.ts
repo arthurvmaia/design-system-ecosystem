@@ -176,6 +176,10 @@ export type RawInstrumentacao = {
   observers: { intersection: number; mutation: number; resize: number };
   animationApis: string[];
   graphicsContexts: Record<string, number>;
+  /** Pedidos de contexto que o navegador RECUSOU (devolveu null), por tipo. */
+  contextosRecusados?: Record<string, number>;
+  /** Pedidos com failIfMajorPerformanceCaveat normalizado para a captura ver a cena. */
+  contextosNormalizados?: Record<string, number>;
   shadowRoots: { open: number; closed: number };
   shadowFechados: number;
   dynamicInserts: Record<string, number>;

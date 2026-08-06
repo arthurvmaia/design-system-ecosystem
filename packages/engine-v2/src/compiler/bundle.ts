@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   type CapturedAsset,
@@ -151,6 +151,53 @@ const escrever = (dir: string, relativo: string, conteudo: string | Uint8Array):
   else writeFileSync(destino, conteudo);
   return relativo;
 };
+
+/**
+ * Asset por CONTEÚDO: uma cópia no store `_assets/` ao lado dos bundles, um
+ * hardlink em cada bundle que o usa.
+ *
+ * Cada bundle carregava a cópia integral dos mesmos bytes: medido no acervo,
+ * 184 MB de bundles para 29 MB de conteúdo único (88% no pior site — a mesma
+ * fonte de 1,37 MB copiada 24 vezes). O nome do arquivo JÁ é o hash
+ * (`<kind>/<sha16>.<ext>`), então o store é content-addressed de graça. O
+ * bundle continua um diretório completo e autossuficiente: hardlink É o
+ * arquivo (NTFS suporta no mesmo volume), o `.zip` materializa os bytes, e a
+ * promoção para a Biblioteca copia conteúdo. Quando o link falhar (outro
+ * volume, FS sem suporte), cai na cópia de sempre — nunca num bundle furado.
+ *
+ * Edição NUNCA acontece nesses arquivos dentro do bundle (o app edita cópias
+ * na Biblioteca), então o compartilhamento não vaza escrita entre irmãos.
+ */
+const escreverAssetCompartilhado = (
+  dirBundle: string,
+  relativo: string,
+  bytes: Uint8Array,
+): string => {
+  const store = join(dirname(dirBundle), '_assets', relativo);
+  const destino = join(dirBundle, relativo);
+  mkdirSync(dirname(store), { recursive: true });
+  mkdirSync(dirname(destino), { recursive: true });
+  try {
+    if (!existsSync(store)) writeFileSync(store, bytes);
+    if (!existsSync(destino)) linkSync(store, destino);
+  } catch {
+    writeFileSync(destino, bytes);
+  }
+  return relativo;
+};
+
+/**
+ * Estado de runtime que impede REINICIALIZAÇÃO não viaja no bundle.
+ *
+ * O HTML capturado vem DEPOIS de o runtime da origem ter rodado, e o
+ * UnicornStudio marca cada cena com `data-us-initialized="true"` — no init ele
+ * pula qualquer elemento com essa marca. O canvas viajava morto para a
+ * Galeria, a Biblioteca, a prévia do kit e o .zip, e nenhuma reclassificação
+ * mudava isso. A lista é curta e explícita de propósito: o que identifica a
+ * cena (`data-us-project`) é essencial e FICA.
+ */
+export const limparEstadoDeRuntime = (html: string): string =>
+  html.replace(/\s(?:data-us-initialized)(?:="[^"]*")?(?=[\s>])/g, '');
 
 /**
  * Processa os SVGs inline do HTML: classifica, isola os ids e (quando a
@@ -310,6 +357,19 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
       ? reescreverParaLocal(svg.html, mapaDeAssets, 'assets/')
       : { text: svg.html, locais: 0, externos: 0, externosUrls: [] as string[] };
   const corpoLocalizado = reescrita.text;
+  // As camadas passam pela MESMA reescrita para local do corpo. Elas eram
+  // concatenadas cruas: 28 referências remotas em 4 sites do acervo, com o
+  // arquivo já baixado sendo ignorado — o fundo da dobra (a assinatura visual
+  // da peça) virava caixa cinza sem internet, e o defeito foi promovido à
+  // Biblioteca. E o estado de runtime congelado sai daqui e do corpo.
+  const camadas = (entrada.camadasDeFundo ?? [])
+    .filter((c) => c.trim().length > 0)
+    .map((c) =>
+      limparEstadoDeRuntime(
+        mapaDeAssets.size > 0 ? reescreverParaLocal(c, mapaDeAssets, 'assets/').text : c,
+      ),
+    );
+
   if (reescrita.externos > 0) {
     avisos.push(
       `${reescrita.externos} asset(s) continuam apontando para a origem (ex.: ${reescrita.externosUrls[0]}): não foram baixados na captura.`,
@@ -320,12 +380,13 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
   // para um caminho local que nao existe troca uma imagem remota por uma imagem
   // quebrada, o que e pior.
   if (mapaDeAssets.size > 0 && entrada.dirAssetsCaptura !== undefined) {
+    const textoComAssets = corpoLocalizado + camadas.join('\n');
     for (const [, localPath] of mapaDeAssets) {
-      if (!corpoLocalizado.includes(localPath)) continue;
+      if (!textoComAssets.includes(localPath)) continue;
       if (jaCopiadosAssets.has(localPath)) continue;
       try {
         const bytes = readFileSync(join(entrada.dirAssetsCaptura, localPath));
-        arquivos.push(escrever(dir, `assets/${localPath}`, bytes));
+        arquivos.push(escreverAssetCompartilhado(dir, `assets/${localPath}`, bytes));
         jaCopiadosAssets.add(localPath);
       } catch {
         avisos.push(`Asset referenciado e ausente da captura: ${localPath}.`);
@@ -366,7 +427,7 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
     if (entrada.dirAssetsCaptura === undefined) continue;
     try {
       const bytes = readFileSync(join(entrada.dirAssetsCaptura, a.localPath));
-      arquivos.push(escrever(dir, `assets/${a.localPath}`, bytes));
+      arquivos.push(escreverAssetCompartilhado(dir, `assets/${a.localPath}`, bytes));
       jaCopiados.add(a.localPath);
     } catch {
       avisos.push(`Asset de CSS sem arquivo na captura: ${a.localPath}.`);
@@ -452,7 +513,6 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
   // As camadas de fundo primeiro, o conteúdo depois — a ordem do documento
   // original. Uma referência visual não recebe camada: ela é um frame, e
   // sobrepor um fundo a uma imagem só produziria confusão.
-  const camadas = (entrada.camadasDeFundo ?? []).filter((c) => c.trim().length > 0);
   const fundo =
     camadas.length > 0
       ? `<div data-ds-camadas-de-fundo="${camadas.length}">\n${camadas.join('\n')}\n</div>\n`
@@ -500,7 +560,7 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
             ? `<img src="${frameNoBundle}" alt="${segmento.name.replace(/"/g, '&quot;')}" style="display:block;max-width:100%;height:auto">`
             : '<p style="font:14px system-ui;padding:16px">Sem frame de fallback disponível.</p>',
         ].join('\n')
-      : `${fundo}${corpoLocalizado}`;
+      : `${fundo}${limparEstadoDeRuntime(corpoLocalizado)}`;
 
   // ── Os scripts da página, com o destino decidido ────────────────────────
   //
@@ -523,7 +583,7 @@ export const escreverBundle = (dir: string, entrada: EntradaBundle): BundleEscri
       if (!jaCopiados.has(d.localPath) && entrada.dirAssetsCaptura !== undefined) {
         try {
           const bytes = readFileSync(join(entrada.dirAssetsCaptura, d.localPath));
-          arquivos.push(escrever(dir, `assets/${d.localPath}`, bytes));
+          arquivos.push(escreverAssetCompartilhado(dir, `assets/${d.localPath}`, bytes));
           jaCopiados.add(d.localPath);
         } catch {
           // O arquivo sumiu entre a captura e a compilação: cai para remoto em

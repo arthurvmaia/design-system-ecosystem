@@ -249,6 +249,11 @@ export const abrirSessao = async (opts: OpcoesSessao): Promise<SessaoV2> => {
   page.on('console', (m) => {
     if (m.type() === 'error' && consoleErros.length < 100)
       consoleErros.push(m.text().slice(0, 300));
+    // Aviso tambem: a biblioteca que degrada em silencio (o curtains avisa
+    // "WebGL context could not be created" como WARN, nao como erro) era
+    // descartada e o diagnostico dependia do TypeError que vinha depois.
+    if (m.type() === 'warning' && consoleErros.length < 100)
+      consoleErros.push(`aviso: ${m.text().slice(0, 300)}`);
   });
   page.on('pageerror', (e) => {
     if (consoleErros.length < 100) consoleErros.push(`pageerror: ${e.message.slice(0, 300)}`);

@@ -37,7 +37,8 @@
     "verificar": "pnpm lint && pnpm typecheck && pnpm test && pnpm medir-fidelidade --falhar-se-piorar",
     "voz": "tsx scripts/voz-orbis.ts",
     "pagina": "tsx scripts/pagina-montar.ts",
-    "publicar": "tsx scripts/publicar.ts"
+    "publicar": "tsx scripts/publicar.ts",
+    "resegmentar": "tsx scripts/resegmentar.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

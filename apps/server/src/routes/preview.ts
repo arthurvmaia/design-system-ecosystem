@@ -150,8 +150,17 @@ export const previewRoute = new Hono();
  * credencial) e o `connect-src 'none'` (nada sai por fetch). A alternativa era
  * abrir os arquivos do acervo para quem não entrou, e essa é pior.
  */
-const CSP_PREVIA =
-  "connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'";
+/**
+ * Hosts de DADOS de runtime que a prévia pode buscar — lista fechada e curta,
+ * de propósito. O `connect-src 'none'` absoluto matava qualquer runtime de
+ * cena que busca a própria cena por fetch (o UnicornStudio busca em
+ * assets.unicorn.studio), e a prévia nunca podia mostrar o que prometia: o
+ * operador julgava a peça por um render que não tinha como acontecer ali.
+ * Só host EXPLICITAMENTE declarado entra; o resto continua bloqueado.
+ */
+const HOSTS_DE_RUNTIME = ['https://assets.unicorn.studio'];
+
+const CSP_PREVIA = `connect-src ${HOSTS_DE_RUNTIME.join(' ')}; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'`;
 
 /**
  * Estilo neutro que entra ANTES do head do site, para perder de qualquer regra

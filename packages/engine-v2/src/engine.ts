@@ -34,6 +34,7 @@ import { type FolhaExternaBundle, escreverBundle } from './compiler/bundle.js';
 import { atributosDoDocumento, scriptsExternosDoDocumento } from './compiler/documento.js';
 import { decidirScripts, runtimesQueViajam } from './compiler/runtime-local.js';
 import { detectarFerramentas, montarStack } from './compiler/stack.js';
+import type { EvidenciaDaCaptura } from './evidencia.js';
 import { type Candidato, descobrirCandidatos } from './explore/candidates.js';
 import { TRAJETORIAS_COMPLEMENTARES, TRAJETORIA_COBERTURA } from './explore/pointer-paths.js';
 import {
@@ -52,6 +53,7 @@ import {
   COLETAR_MAPA_FN,
   DESTACAR_FUNDO_FN,
   ESPERAR_ICONES_FN,
+  FORCAR_ICONES_FN,
   HTML_DO_REF_FN,
   INIT_SCRIPT,
   LIMPAR_DESTAQUE_FN,
@@ -286,6 +288,11 @@ export type ResultadoCaptura = {
   segmentos: SegmentoV2[];
   /** Reprovados COM categoria e HTML — a Revisão mostra a prévia e os motivos. */
   rejeitados: RejeitadoV2[];
+  /**
+   * O insumo bruto que a Refinaria consome: com ele em disco, resegmentar e
+   * recompilar bundles NÃO exige navegador. Ausente só em capturas antigas.
+   */
+  evidencia?: EvidenciaDaCaptura;
 };
 
 const noop: LogV2 = () => {};
@@ -637,6 +644,18 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     const instrumentacao = await page.evaluate<RawInstrumentacao>(
       chamar(COLETAR_INSTRUMENTACAO_FN),
     );
+    // Contexto RECUSADO é causa raiz escrita, não 100% de diferença sem
+    // explicação: era assim que o fundo do unicorn.studio morria em silêncio.
+    for (const [tipo, n] of Object.entries(instrumentacao.contextosRecusados ?? {})) {
+      limitacoes.push(
+        `A página pediu ${n} contexto(s) ${tipo} e o navegador recusou: a cena desse canvas não desenhou na captura.`,
+      );
+    }
+    for (const [tipo, n] of Object.entries(instrumentacao.contextosNormalizados ?? {})) {
+      limitacoes.push(
+        `${n} pedido(s) de contexto ${tipo} vieram com failIfMajorPerformanceCaveat e foram normalizados para a captura conseguir ver a cena (headless desenha por software).`,
+      );
+    }
     const folhas = await page.evaluate<RawCss[]>(chamar(COLETAR_CSS_FN));
     const scriptsInline = await page.evaluate<RawJsInline[]>(chamar(COLETAR_JS_INLINE_FN));
     const htmlBruto = await s.pw.content();
@@ -872,6 +891,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             // element e o traçado voltar de uma API. Aqui a espera é pelo FATO — e
             // com teto, porque um ícone que a API não devolve não pode segurar a
             // captura inteira. O que não vier é declarado, não escondido.
+            // Primeiro DESTRAVA (noobserver + render forçado), depois espera:
+            // o iconify apaga o SVG de quem sai da tela, e esperar por um
+            // ícone que o runtime removeu era queimar 1500 ms por nó.
+            await page.evaluate(chamar(FORCAR_ICONES_FN, n.ref));
             const icones = await page.evaluate<{ total: number; pendentes: number }>(
               chamar(ESPERAR_ICONES_FN, n.ref, 1500),
             );
@@ -1653,12 +1676,39 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       compilerVersion: 1,
     };
 
+    // A evidência que a Refinaria consome. Serializada AQUI porque é o único
+    // ponto onde tudo existe junto; o custo é um JSON do tamanho do manifesto.
+    const evidencia: EvidenciaDaCaptura = {
+      versao: 1,
+      htmlPorHash: Object.fromEntries(htmlPorHash),
+      framePorHash: Object.fromEntries(framePorHash),
+      tokensPorHash: Object.fromEntries(
+        [...tokensPorHash.entries()].map(([h, ids]) => [h, [...ids]]),
+      ),
+      assetsLocais: [...assetsLocais],
+      scriptsNaoLocalizados,
+      cssExternoFaltando: externasSemCopia.length > 0,
+      animacoesCssQueRodaram: animacoesCss,
+      shadowFechados: instrumentacao.shadowRoots.closed,
+      cssInline,
+      cssInlineOrdenado,
+      cssExternos,
+      assetsDeCss,
+      scriptsInline,
+      scriptsDecididos,
+      assets,
+      localPorUrl: [...localPorUrl.entries()],
+      stack,
+      finalUrl,
+    };
+
     return {
       manifesto,
       html,
       finalUrl,
       segmentos,
       rejeitados,
+      evidencia,
     };
   } finally {
     await tel.medir(FASE_V2.fechar, () => s.fechar());

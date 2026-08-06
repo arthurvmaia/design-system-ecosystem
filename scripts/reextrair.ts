@@ -226,7 +226,9 @@ export const reextrair = async (
       verificarVisual,
     });
   } catch (err) {
-    rmSync(tmp, { recursive: true, force: true });
+    // A coleta parcial fica para autópsia; a próxima passada sobrescreve.
+    console.log(`
+    coleta parcial preservada em ${tmp}`);
     return { ...base, erro: err instanceof Error ? err.message : String(err) };
   }
 

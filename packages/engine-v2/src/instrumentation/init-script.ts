@@ -140,6 +140,8 @@ export const INIT_SCRIPT = `
     /** Contextos gráficos: canvas → tipo. */
     contextos: new WeakMap(),
     contextosPorTipo: Object.create(null),
+    contextosRecusados: Object.create(null),
+    contextosNormalizados: Object.create(null),
     canvases: [],
     shadowRoots: { open: 0, closed: 0 },
     /** Hosts com shadow root aberto (percorríveis). */
@@ -289,28 +291,52 @@ export const INIT_SCRIPT = `
   try {
     var origGetContext = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function (tipo, attrs) {
+      var t = String(tipo || '').toLowerCase();
+      var normal =
+        t === 'webgl' || t === 'experimental-webgl'
+          ? 'webgl'
+          : t === 'webgl2'
+            ? 'webgl2'
+            : t === '2d'
+              ? '2d'
+              : t === 'bitmaprenderer'
+                ? 'bitmaprenderer'
+                : t;
+      // failIfMajorPerformanceCaveat normalizado: em headless por software o
+      // navegador RECUSA o contexto quando a flag esta ligada, e o
+      // unicorn.studio/curtains a liga por padrao — a cena nunca desenhava na
+      // captura, o fundo saia morto e a comparacao acusava 100% sem causa.
+      // Mesma familia de intervencao do reducedMotion: capturar exige ver.
+      var attrsUsados = attrs;
       try {
-        var t = String(tipo || '').toLowerCase();
-        var normal =
-          t === 'webgl' || t === 'experimental-webgl'
-            ? 'webgl'
-            : t === 'webgl2'
-              ? 'webgl2'
-              : t === '2d'
-                ? '2d'
-                : t === 'bitmaprenderer'
-                  ? 'bitmaprenderer'
-                  : t;
-        var anterior = R.contextos.get(this);
-        if (!anterior) {
-          R.contextos.set(this, normal);
-          if (R.canvases.length < 200) R.canvases.push(this);
-          conta(R.contextosPorTipo, normal);
+        if (attrs && attrs.failIfMajorPerformanceCaveat === true) {
+          attrsUsados = {};
+          for (var k in attrs) attrsUsados[k] = attrs[k];
+          attrsUsados.failIfMajorPerformanceCaveat = false;
+          conta(R.contextosNormalizados, normal);
+        }
+      } catch (e) { attrsUsados = attrs; }
+      var ctx = origGetContext.call(this, tipo, attrsUsados);
+      try {
+        // So o SUCESSO conta como contexto criado. A contagem antiga registrava
+        // a TENTATIVA: um getContext('webgl2') que devolvia null entrava como
+        // "contexto webgl2 criado, confianca alta" e contaminava stack e
+        // atribuicao de movimento (medido: 14 de 14 fundos de uma captura com
+        // causa "WebGL" que nao existia).
+        if (ctx) {
+          var anterior = R.contextos.get(this);
+          if (!anterior) {
+            R.contextos.set(this, normal);
+            if (R.canvases.length < 200) R.canvases.push(this);
+            conta(R.contextosPorTipo, normal);
+          }
+        } else {
+          conta(R.contextosRecusados, normal);
         }
       } catch (e) {
         registrarFalha('getContext', e);
       }
-      return origGetContext.call(this, tipo, attrs);
+      return ctx;
     };
   } catch (e) {
     registrarFalha('patch:getContext', e);

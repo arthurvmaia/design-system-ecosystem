@@ -898,6 +898,8 @@ export const COLETAR_INSTRUMENTACAO_FN = `
     observers: R.observers || { intersection: 0, mutation: 0, resize: 0 },
     animationApis: apis,
     graphicsContexts: mapaSimples(R.contextosPorTipo),
+    contextosRecusados: mapaSimples(R.contextosRecusados),
+    contextosNormalizados: mapaSimples(R.contextosNormalizados),
     shadowRoots: R.shadowRoots || { open: 0, closed: 0 },
     shadowFechados: (R.shadowFechados || []).length,
     dynamicInserts: mapaSimples(R.dynamicInserts),
@@ -1491,6 +1493,39 @@ export const ROLAR_ATE_REF_FN = `
  *
  * Assinatura: `(ref, tetoMs) => { total, desenhados, pendentes }`.
  */
+/**
+ * Desliga o modo preguiçoso dos ícones de um escopo ANTES da leitura.
+ *
+ * O iconify-icon REMOVE o SVG do shadow root quando sai da viewport (um
+ * IntersectionObserver por ícone, confirmado nos bytes do runtime no acervo), e
+ * esperar não faz um ícone fora da tela renderizar: o teto de 1500 ms era gasto
+ * inteiro, por nó, e a casca vazia virava conteúdo definitivo da peça — 7 de 14
+ * ícones do pricing do luxury-desert, inclusive numa peça já promovida. A
+ * biblioteca oferece a saída (`noobserver` + render forçado); aqui ela é usada.
+ *
+ * Assinatura: `(ref) => number` (quantos ícones foram destravados).
+ */
+export const FORCAR_ICONES_FN = `
+(ref) => {
+  var R = window['${REGISTRO_GLOBAL}'] || {};
+  var raiz = (R.els || [])[ref] || document.querySelector('[${ATTR_REF}="' + ref + '"]');
+  if (!raiz) return 0;
+  var lista;
+  try { lista = raiz.querySelectorAll('iconify-icon, ion-icon, lord-icon'); } catch (e) { return 0; }
+  var n = 0;
+  for (var i = 0; i < lista.length && i < 400; i++) {
+    var el = lista[i];
+    try {
+      el.setAttribute('noobserver', '');
+      if (typeof el.stopObserver === 'function') el.stopObserver();
+      if (typeof el._forceRender === 'function') el._forceRender();
+      n++;
+    } catch (e) {}
+  }
+  return n;
+}
+`;
+
 export const ESPERAR_ICONES_FN = `
 async (ref, tetoMs) => {
   var TAGS = ['iconify-icon', 'ion-icon', 'lord-icon'];

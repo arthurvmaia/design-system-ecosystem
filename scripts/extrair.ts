@@ -136,8 +136,13 @@ const capturarV2 = async (jobId: string, url: string): Promise<CapturaV2 | null>
     });
     return { captura, dirCaptura, dirBundles, tmpBase };
   } catch (err) {
-    rmSync(tmpBase, { recursive: true, force: true });
+    // A coleta NÃO é apagada na falha: frames, assets e o que mais já desceu
+    // ficam em .tmp para autópsia (a proxima extração do mesmo job sobrescreve
+    // sozinha). Apagar transformava qualquer erro tardio em perda total de
+    // minutos de navegador — era o "tudo ou nada" da auditoria.
+    console.log(`  A coleta parcial ficou em ${tmpBase} para inspeção.`);
     if (err instanceof PlaywrightIndisponivel) {
+      rmSync(tmpBase, { recursive: true, force: true });
       console.log('  Playwright indisponível — caindo para o motor V1 (fetch estático).');
       console.log('  Para a captura completa, instale uma vez:');
       console.log('    pnpm --filter @ds/explorer exec playwright install chromium');
