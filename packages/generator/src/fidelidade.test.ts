@@ -9,6 +9,7 @@ import {
   contarInstrumentacao,
   contarRegras,
   contarSeletoresMortos,
+  cssDaOrigem,
   medirBundle,
   medirIcones,
   medirScripts,
@@ -197,4 +198,34 @@ test('vivo nos dois não conta em lugar nenhum', () => {
   const css = 'html.dark .card{color:#fff}';
   const doc = '<html class="dark"><body><div class="card"></div></body></html>';
   assert.equal(contarSeletoresMortos(css, doc, doc), 0);
+});
+
+test('cssDaOrigem ignora as cópias .orig.css: contá-las dobrava o denominador', () => {
+  // Medido no acervo real: um site com 4 folhas + 4 cópias .orig.css saía com
+  // retenção "50,0%" cravada em todos os 24 bundles (920 regras = 2 × 460).
+  const dir = mkdtempSync(join(tmpdir(), 'fid-orig-'));
+  mkdirSync(join(dir, 'css'), { recursive: true });
+  writeFileSync(join(dir, 'css', 'a.css'), '.x{color:red}.y{color:blue}', 'utf8');
+  writeFileSync(join(dir, 'css', 'a.orig.css'), '.x{color:red}.y{color:blue}', 'utf8');
+  const origem = cssDaOrigem({ dirAssetsCaptura: dir });
+  assert.equal(contarRegras(origem), 2, 'a cópia não pode contar de novo');
+});
+
+test('retenção nunca passa de 100: acima disso o número não mede nada', () => {
+  // O compilador divide regras ao reescrever as folhas, então o bundle pode
+  // contar MAIS regras que a origem. "106,5%" era aritmética, não fidelidade.
+  const dir = mkdtempSync(join(tmpdir(), 'fid-teto-'));
+  writeFileSync(
+    join(dir, 'index.html'),
+    '<html><head><link rel="stylesheet" href="b.css"></head><body></body></html>',
+    'utf8',
+  );
+  writeFileSync(join(dir, 'b.css'), '.a{color:red}.b{color:blue}.c{color:green}', 'utf8');
+  const captura = mkdtempSync(join(tmpdir(), 'fid-teto-origem-'));
+  mkdirSync(join(captura, 'css'), { recursive: true });
+  writeFileSync(join(captura, 'css', 'unica.css'), '.a{color:red}', 'utf8');
+  const m = medirBundle(dir, { dirAssetsCaptura: captura });
+  assert.ok(m !== null);
+  assert.equal(m.regrasNaOrigem, 1);
+  assert.equal(m.retencao, 100, 'três regras sobre uma seria 300; o teto segura em 100');
 });

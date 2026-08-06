@@ -588,6 +588,16 @@ export const previewKitUrl = (
   return `/api/preview/kit/${kitId}?${q.toString()}`;
 };
 
+/**
+ * Os avisos da última montagem da prévia do kit: o que degradou, sumiu ou não
+ * pôde ser reproduzido. Buscar DEPOIS do iframe carregar, porque é a navegação
+ * do iframe que dispara a montagem que os grava.
+ */
+export const kitPreviewAvisos = (
+  kitId: string,
+): Promise<{ avisos: string[]; faltando: string[] }> =>
+  jsonFetch<{ avisos: string[]; faltando: string[] }>(`/api/preview/kit/${kitId}/avisos`);
+
 export const previewComponentUrl = (cmpId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/component/${cmpId}${bg ? `?bg=${bg}` : ''}`;
 export const previewRejeitadoUrl = (dsId: string, segId: string, bg?: 'claro' | 'escuro'): string =>
@@ -632,6 +642,8 @@ export const api = {
     jsonFetch<{
       items: SegmentRecord[];
       capturaParcial?: { fase: string; motivo?: string; totalMs: number };
+      /** O que a captura declarou não ter conseguido medir, nas palavras dela. */
+      limitacoesDaCaptura?: string[];
     }>(`/api/design-systems/${dsId}/segments`),
   deleteSegment: (dsId: string, segId: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/design-systems/${dsId}/segments/${segId}`, {

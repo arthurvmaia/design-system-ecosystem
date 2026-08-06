@@ -49,6 +49,7 @@ import {
   vaultDsDir,
   vaultExtractedDir,
   vaultSegmentBundlesDir,
+  vaultSegmentValidation,
 } from '@ds/shared';
 import { tamanhoDe } from './acervo-limpar-orfas.js';
 import { executadoDireto } from './executado-direto.js';
@@ -236,6 +237,12 @@ export const reextrair = async (
 
     persistirCapturaV2(dsId, r);
     const { total } = segmentarEIndexar(dsId);
+
+    // A validacao em navegador pertence a captura que acabou de ser trocada.
+    // Medido no acervo: depois de uma reextracao, 0 de 49 resultados casavam
+    // com os segmentos novos, e o arquivo velho ficava fingindo cobrir a
+    // captura nova. Sai junto com a troca; revalidar recria quando quiser.
+    rmSync(vaultSegmentValidation(dsId), { force: true });
 
     return {
       ...base,

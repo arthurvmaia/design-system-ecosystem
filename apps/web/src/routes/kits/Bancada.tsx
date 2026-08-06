@@ -1,5 +1,5 @@
 import { Mascote } from '@/components/Mascote';
-import { api, previewKitUrl } from '@/lib/api';
+import { api, kitPreviewAvisos, previewKitUrl } from '@/lib/api';
 import { TRATAMENTO, conta } from '@/lib/orbis';
 import { useNomeDaOrigem } from '@/lib/origem';
 import { useQuery } from '@tanstack/react-query';
@@ -92,6 +92,16 @@ export function Bancada({
   // responde pelo proxy do Vite), então dá para ler direto; se um dia deixar de
   // ser, o `catch` mantém a altura padrão e a prévia rola por dentro.
   const [alturaConteudo, setAlturaConteudo] = useState(900);
+
+  // O que a montagem declarou: peça sem pacote em disco, seção vazia, fundo que
+  // não anima, substituição que não casou. O montador sempre escreveu isso e a
+  // tela jogava fora; sem os avisos, o senhor julgava o kit sem saber o que
+  // ficou de fora. A busca acontece DEPOIS de o iframe carregar, porque é a
+  // navegação dele que dispara a montagem que grava os avisos.
+  const [ressalvas, setRessalvas] = useState<{ avisos: string[]; faltando: string[] }>({
+    avisos: [],
+    faltando: [],
+  });
   const medir = (el: HTMLIFrameElement | null) => {
     try {
       const doc = el?.contentDocument;
@@ -99,6 +109,9 @@ export function Bancada({
     } catch {
       /* origem diferente: fica com a altura padrão */
     }
+    kitPreviewAvisos(kitId)
+      .then(setRessalvas)
+      .catch(() => setRessalvas({ avisos: [], faltando: [] }));
   };
 
   // Quantas origens entram. É a informação que decide se vale olhar com
@@ -176,6 +189,40 @@ export function Bancada({
           </button>
         </div>
       </div>
+
+      {(ressalvas.avisos.length > 0 || ressalvas.faltando.length > 0) && (
+        <div
+          className="border-t px-5 py-2.5"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(255,180,60,0.04)' }}
+        >
+          <span
+            className="text-[10px] uppercase tracking-[0.2em]"
+            style={{ color: 'var(--color-fg-muted)', fontFamily: 'var(--font-display)' }}
+          >
+            o que esta montagem não conseguiu entregar inteiro
+          </span>
+          <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-4">
+            {ressalvas.faltando.map((f) => (
+              <li
+                key={`faltando-${f}`}
+                className="text-[11px] leading-relaxed"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                {f}
+              </li>
+            ))}
+            {ressalvas.avisos.map((a) => (
+              <li
+                key={`aviso-${a}`}
+                className="text-[11px] leading-relaxed"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                {a}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div
         ref={areaRef}

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { montarPaginaDoKit } from '@ds/generator';
 import { getDb, tables } from '@ds/indexer';
@@ -148,6 +148,19 @@ export const montarPrevia = (entrada: EntradaDaPrevia): ResultadoDaPrevia => {
       branding,
       outputDir: dir,
     });
+    // Os avisos ficam ao lado da pagina montada. A rota da previa termina num
+    // redirect e nao tem como carrega-los na resposta; sem este arquivo eles
+    // morriam ali e a Bancada mostrava a pagina sem nenhuma ressalva sobre o
+    // que degradou, sumiu ou nao pode ser reproduzido.
+    try {
+      writeFileSync(
+        join(dir, 'avisos.json'),
+        JSON.stringify({ avisos: r.avisos, faltando: r.faltando, geradoEm: Date.now() }),
+        'utf8',
+      );
+    } catch {
+      // a previa vale mesmo sem o arquivo de avisos
+    }
     return { ok: true, dir: r.outputDir, avisos: r.avisos, faltando: r.faltando };
   } catch (err) {
     return {

@@ -30,6 +30,7 @@
     "clean": "turbo run clean",
     "comparar": "tsx scripts/comparar-motores.ts",
     "reextrair": "tsx scripts/reextrair.ts",
+    "stack:backfill": "tsx scripts/stack-backfill.ts",
     "acervo:limpar-orfas": "tsx scripts/acervo-limpar-orfas.ts",
     "test:navegador": "node --import tsx --test --test-concurrency=1 \"packages/**/src/**/*.browser.test.ts\" \"apps/**/src/**/*.browser.test.ts\"",
     "test:tudo": "pnpm test && pnpm test:navegador",
@@ -55,6 +56,7 @@
     "@ds/segmenter": "workspace:^",
     "@ds/server": "workspace:^",
     "@ds/shared": "workspace:^",
-    "@ds/engine-v2": "workspace:^"
+    "@ds/engine-v2": "workspace:^",
+    "@ds/generator": "workspace:^"
   }
 }

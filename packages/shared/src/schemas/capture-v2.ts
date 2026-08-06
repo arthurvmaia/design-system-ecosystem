@@ -1049,6 +1049,19 @@ export type ValidationReport = z.infer<typeof ValidationReport>;
 export const VisualComparison = z.object({
   a: z.enum(['original', 'captura', 'bundle', 'preview']),
   b: z.enum(['original', 'captura', 'bundle', 'preview']),
+  /**
+   * O DONO da comparação: o hash do segmento comparado e a posição dele (o
+   * bundle mora em `seg_<position>`).
+   *
+   * Sem estes campos, a associação era pela ordem do array e exigia
+   * `comparações == segmentos com print` — condição medida FALSA em 7 de 7
+   * capturas do acervo (itens pulados por orçamento não deixam marca na
+   * lista). O resultado: 8 de 10 reprovações gravadas no manifesto e nenhuma
+   * chegando à tela. Opcionais porque o acervo antigo não os tem; captura nova
+   * sempre escreve os dois.
+   */
+  segmentHash: z.string().optional(),
+  position: z.number().int().nonnegative().optional(),
   /** Região comparada. Ausente = viewport inteira. */
   region: NormalizedBox.optional(),
   /** Natureza da região — decide o limiar. */

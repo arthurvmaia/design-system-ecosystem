@@ -33,8 +33,10 @@ import type {
 } from '@ds/shared';
 import {
   ancorasDeMidia,
+  confiancaAposVereditos,
   enqueueJob,
   explicarAncora,
+  geracaoDeSegmentos,
   procedenciaDaPrevia,
   vereditosDoSegmento,
 } from '@ds/shared';
@@ -125,7 +127,16 @@ const lerManifesto = (
 type ConferenciaDePixel = { delta: number; limiar: number; passou: boolean };
 
 /** Uma comparação como está no manifesto V2, sem round-trip de schema. */
-type ComparacaoBruta = { a: string; b: string; delta: number; threshold: number; ok: boolean };
+type ComparacaoBruta = {
+  a: string;
+  b: string;
+  delta: number;
+  threshold: number;
+  ok: boolean;
+  /** O dono, quando a captura o gravou (capturas novas sempre gravam). */
+  position?: number;
+  segmentHash?: string;
+};
 
 /**
  * As comparações de pixel do manifesto V2, lidas UMA vez por design system.
@@ -139,16 +150,51 @@ const lerComparacoesV2 = (dsId: string): ComparacaoBruta[] => {
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as { visualComparisons?: unknown };
     if (!Array.isArray(raw.visualComparisons)) return [];
-    return raw.visualComparisons.filter(
-      (c): c is ComparacaoBruta =>
-        typeof c === 'object' &&
-        c !== null &&
-        typeof (c as ComparacaoBruta).a === 'string' &&
-        typeof (c as ComparacaoBruta).b === 'string' &&
-        typeof (c as ComparacaoBruta).delta === 'number' &&
-        typeof (c as ComparacaoBruta).threshold === 'number' &&
-        typeof (c as ComparacaoBruta).ok === 'boolean',
-    );
+    return raw.visualComparisons.flatMap((c): ComparacaoBruta[] => {
+      if (
+        typeof c !== 'object' ||
+        c === null ||
+        typeof (c as ComparacaoBruta).a !== 'string' ||
+        typeof (c as ComparacaoBruta).b !== 'string' ||
+        typeof (c as ComparacaoBruta).delta !== 'number' ||
+        typeof (c as ComparacaoBruta).threshold !== 'number' ||
+        typeof (c as ComparacaoBruta).ok !== 'boolean'
+      )
+        return [];
+      const bruta = c as ComparacaoBruta & { position?: unknown; segmentHash?: unknown };
+      return [
+        {
+          a: bruta.a,
+          b: bruta.b,
+          delta: bruta.delta,
+          threshold: bruta.threshold,
+          ok: bruta.ok,
+          ...(typeof bruta.position === 'number' ? { position: bruta.position } : {}),
+          ...(typeof bruta.segmentHash === 'string' ? { segmentHash: bruta.segmentHash } : {}),
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * As limitações que a CAPTURA declarou, lidas do manifesto V2.
+ *
+ * Este array é o único lugar onde o motor explica por escrito o que não
+ * conseguiu medir ("189 de 351 ícones não puderam ser lidos", o erro de WebGL
+ * no console, a restauração de estado contaminada) — e nenhuma rota o lia. O
+ * sistema escrevia o diagnóstico em português e o jogava fora na leitura.
+ * Parse cru pelo mesmo motivo dos outros leitores: o manifesto passa de 1 MB.
+ */
+const lerLimitacoesV2 = (dsId: string): string[] => {
+  const path = vaultCaptureV2Manifest(dsId as `ds_${string}`);
+  if (!existsSync(path)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as { limitations?: unknown };
+    if (!Array.isArray(raw.limitations)) return [];
+    return raw.limitations.filter((l): l is string => typeof l === 'string');
   } catch {
     return [];
   }
@@ -286,20 +332,22 @@ const lerBundleParaListagem = (
 /**
  * Liga cada comparação de pixel ao segmento dela — só quando dá para AFIRMAR.
  *
- * O schema `VisualComparison` não tem chave por segmento (decisão antiga,
- * confirmada em `validate-preview.ts`), então a única associação possível é
- * pela ordem de escrita:
+ * O caminho principal é por IDENTIDADE: capturas novas gravam `position` (o
+ * bundle mora em `seg_<position>`) dentro de cada comparação, e o lookup é
+ * direto. Foi o conserto do defeito medido no acervo: a associação anterior
+ * era pela ordem do array e exigia `comparações == segmentos com print`,
+ * condição falsa em 7 de 7 capturas porque item pulado por orçamento não deixa
+ * marca. O manifesto tinha 8 de 10 reprovações e a tela dizia que nada rodou.
  *
- * - Na captura, o motor compara os bundles na ordem de posição dos segmentos
- *   que têm print da dobra, e um item pulado NÃO deixa marca no array. A ordem
- *   só é confiável quando a cobertura foi completa: mesmo tamanho dos dois
- *   lados, tudo `captura`×`bundle`.
- * - Na validação por preview, só cápsulas de runtime são comparadas, em ordem
- *   de conclusão (workers concorrentes). Com uma única cápsula não há o que
- *   confundir; com mais de uma, a ordem não diz nada.
+ * Para o acervo antigo (sem `position`) sobram os dois casos em que a ordem
+ * ainda permite afirmar:
  *
- * Fora desses dois casos a medição existe mas não tem dono identificável, e
- * atribuí-la por palpite seria pintar número de medição. Fica sem dono.
+ * - Na captura, quando a cobertura foi completa: mesmo tamanho dos dois lados,
+ *   tudo `captura`×`bundle`.
+ * - Na validação por preview com uma única cápsula: não há o que confundir.
+ *
+ * Fora disso a medição existe mas não tem dono identificável, e atribuí-la por
+ * palpite seria pintar número de medição. Fica sem dono.
  */
 const associarConferencias = (opts: {
   comparacoes: ComparacaoBruta[];
@@ -307,6 +355,8 @@ const associarConferencias = (opts: {
   comFrame: string[];
   /** Ids dos segmentos cuja representação é cápsula de runtime, em ordem. */
   capsulas: string[];
+  /** position → id do segmento, para o lookup por identidade. */
+  porPosicao?: Map<number, string>;
 }): Map<string, ConferenciaDePixel> => {
   const out = new Map<string, ConferenciaDePixel>();
   const cs = opts.comparacoes;
@@ -317,6 +367,18 @@ const associarConferencias = (opts: {
     limiar: c.threshold,
     passou: c.ok,
   });
+
+  // Identidade primeiro. Uma captura ou grava o dono em tudo ou em nada (o
+  // campo nasceu junto com o compilador que o escreve), então a presença em
+  // qualquer item indica manifesto novo e a ordem deixa de importar.
+  const comDono = cs.filter((c) => c.position !== undefined);
+  if (comDono.length > 0 && opts.porPosicao !== undefined) {
+    for (const c of comDono) {
+      const id = c.position !== undefined ? opts.porPosicao.get(c.position) : undefined;
+      if (id !== undefined) out.set(id, resumo(c));
+    }
+    return out;
+  }
 
   const daCaptura = cs.every((c) => c.a === 'captura' && c.b === 'bundle');
   if (daCaptura && cs.length === opts.comFrame.length) {
@@ -347,12 +409,23 @@ const associarConferencias = (opts: {
  * mostrar `validated` na Galeria — mas só onde a reprodução foi de fato
  * executada e conferida. Ausente → nada é promovido (tudo continua no máximo
  * `replayable`, que é a verdade honesta).
+ *
+ * O arquivo carrega a GERAÇÃO da captura que o produziu (`geracao`), e um
+ * arquivo de outra geração é tratado como inexistente: validação de captura
+ * morta não pode promover nem rebaixar a captura viva. Arquivos antigos sem o
+ * carimbo caem no casamento por id, que nunca acerta entre gerações — o mesmo
+ * efeito, só que mudo.
  */
-const lerValidacoes = (dsId: string): Map<string, ResultadoValidacaoSegmento[]> => {
+const lerValidacoes = (
+  dsId: string,
+  idsAtuais: readonly string[],
+): Map<string, ResultadoValidacaoSegmento[]> => {
   const path = vaultSegmentValidation(dsId as `ds_${string}`);
   if (!existsSync(path)) return new Map();
   try {
     const file = SegmentValidationFile.parse(JSON.parse(readFileSync(path, 'utf8')));
+    if (file.geracao !== undefined && file.geracao !== geracaoDeSegmentos(idsAtuais))
+      return new Map();
     const mapa = new Map<string, ResultadoValidacaoSegmento[]>();
     for (const r of file.results) {
       const atual = mapa.get(r.segmentId);
@@ -435,7 +508,10 @@ designSystemsRoute.get('/:id/segments', (c) => {
     .orderBy(asc(tables.segments.position))
     .all();
   const { insights, naoAssociados, capturaParcial, segmentos } = lerManifesto(id);
-  const validacoes = lerValidacoes(id);
+  const validacoes = lerValidacoes(
+    id,
+    segmentos.map((s) => s.id),
+  );
 
   // A medição que ficava invisível: a conferência de pixel do manifesto V2 e as
   // limitações que cada bundle declarou. O manifesto de captura é lido UMA vez;
@@ -461,6 +537,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
     capsulas: ordenados
       .filter((s) => bundles.get(s.id)?.representacao === 'capsula-runtime')
       .map((s) => s.id),
+    porPosicao: new Map(ordenados.map((s) => [s.position, s.id])),
   });
 
   // Resumo na listagem (contagens por estado de interação); o detalhe pesado —
@@ -486,8 +563,22 @@ designSystemsRoute.get('/:id/segments', (c) => {
       representacao: bundle?.representacao ?? null,
       paiTemPacote: r.parentId !== null && bundles.has(r.parentId),
     });
-    const insight = bruto
-      ? { ...comValidacoes(bruto, validacoes.get(r.id), vereditos), procedencia }
+    // A confiança pode CAIR com o que a verificação encontrou. Antes ela só
+    // somava sinais coletados e valia "alta" em 90 de 92 peças do acervo,
+    // inclusive na que divergiu 100% do print. Rebaixa, nunca promove.
+    const ajustado = bruto ? comValidacoes(bruto, validacoes.get(r.id), vereditos) : null;
+    const insight = ajustado
+      ? {
+          ...ajustado,
+          ...(ajustado.confidence !== undefined
+            ? {
+                confidence: confiancaAposVereditos(ajustado.confidence, vereditos, {
+                  capturaParcial: capturaParcial !== undefined,
+                }),
+              }
+            : {}),
+          procedencia,
+        }
       : null;
     // Mídia presa à rolagem: nesta peça a imagem não é "uma imagem", é "esta
     // imagem neste ponto da página". Quem for trocar o arquivo precisa saber o
@@ -514,7 +605,9 @@ designSystemsRoute.get('/:id/segments', (c) => {
       vereditos,
     };
   });
-  return c.json({ items, naoAssociados, capturaParcial });
+  // O diagnóstico que a captura escreveu e ninguém lia. Vai para a tela como
+  // veio: o motor já escreve em português, com número e causa.
+  return c.json({ items, naoAssociados, capturaParcial, limitacoesDaCaptura: lerLimitacoesV2(id) });
 });
 
 /**

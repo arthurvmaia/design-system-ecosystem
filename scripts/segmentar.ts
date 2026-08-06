@@ -51,6 +51,29 @@ const lerSegmentosV2 = (dsId: `ds_${string}`): SegmentRecord[] => {
 };
 
 /**
+ * A stack detectada pela captura, pronta para a coluna `stack_json`.
+ *
+ * O motor sempre mediu isso (WebGL, Tailwind, GSAP, iconify, com evidência) e o
+ * manifesto sempre carregou — mas quem gravava no banco era só o caminho `api`,
+ * que nunca roda. No modo fila a coluna ficava NULL em todas as capturas: o
+ * dado existia em disco e a Galeria não tinha como filtrar por tecnologia.
+ *
+ * Parse cru de propósito, no mesmo padrão dos leitores do servidor: o manifesto
+ * passa de 1 MB e daqui só interessa um array.
+ */
+export const lerStackDoManifesto = (dsId: `ds_${string}`): string | null => {
+  const path = vaultCaptureV2Manifest(dsId);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as { stack?: unknown };
+    if (!Array.isArray(raw.stack) || raw.stack.length === 0) return null;
+    return JSON.stringify(raw.stack);
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Abaixo disso, quase sempre o que foi extraído é a moldura de uma página que
  * monta o conteúdo por JavaScript — uma listagem, um app de página única.
  *
@@ -85,8 +108,12 @@ export const segmentarEIndexar = (dsId: `ds_${string}`): ResultadoSegmentacao =>
     for (const seg of segments) {
       tx.insert(tables.segments).values(seg).run();
     }
+    // O fechamento do job é o único UPDATE que o modo fila faz nesta linha, e
+    // era aqui que o fio do stack estava cortado: gravar junto custa uma
+    // leitura de arquivo que já foi conferido acima.
+    const stackJson = v2 ? lerStackDoManifesto(dsId) : null;
     tx.update(tables.designSystems)
-      .set({ status: 'segmented' })
+      .set({ status: 'segmented', ...(stackJson !== null ? { stackJson } : {}) })
       .where(eq(tables.designSystems.id, dsId))
       .run();
   });

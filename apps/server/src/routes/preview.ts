@@ -1206,6 +1206,36 @@ previewRoute.get('/kit/:kitId', (c) => {
   return c.redirect(`/api/preview/kit-arquivo/${kitId}/index.html?v=${Date.now()}`, 302);
 });
 
+/**
+ * Os avisos da ÚLTIMA montagem da prévia deste kit.
+ *
+ * `montarPaginaDoKit` sempre produziu avisos ricos (peça sem bundle em disco,
+ * seção vazia, CSS sem escopo por falha de parse, fundo que não anima) e a
+ * rota da prévia os descartava no redirect: a Bancada mostrava a página sem
+ * nenhuma ressalva, e a pessoa julgava o kit sem saber o que degradou. A
+ * montagem grava `avisos.json` ao lado do `index.html`; aqui só se lê.
+ */
+previewRoute.get('/kit/:kitId/avisos', (c) => {
+  const kitId = c.req.param('kitId');
+  if (!/^kit_[A-Za-z0-9]+$/.test(kitId)) return new Response(null, { status: 404 });
+  const path = join(dirDaPrevia(kitId), 'avisos.json');
+  if (!existsSync(path)) return c.json({ avisos: [], faltando: [] });
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as {
+      avisos?: unknown;
+      faltando?: unknown;
+    };
+    return c.json({
+      avisos: Array.isArray(raw.avisos) ? raw.avisos.filter((a) => typeof a === 'string') : [],
+      faltando: Array.isArray(raw.faltando)
+        ? raw.faltando.filter((f) => typeof f === 'string')
+        : [],
+    });
+  } catch {
+    return c.json({ avisos: [], faltando: [] });
+  }
+});
+
 /** Arquivos da prévia montada. Mesma disciplina de caminho dos bundles. */
 previewRoute.get('/kit-arquivo/:kitId/:caminho{.+}', (c) => {
   const kitId = c.req.param('kitId');

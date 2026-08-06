@@ -1426,7 +1426,20 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       validation: {},
       visualComparisons: comparacoes,
       telemetry: tel.relatorio(),
-      confidence: viewportReativa || houveMovimento ? 'alta' : 'media',
+      // A confiança da captura deriva do que deu ERRADO, não só do que se
+      // mexeu. Medido no acervo: a fórmula antiga (`reativa || movimento`)
+      // dava 'alta' em 7 de 7 capturas, inclusive nas 5 parciais e na que teve
+      // 8 de 10 bundles reprovados no pixel. Corte por tempo segura em
+      // 'media'; maioria das comparações reprovada rebaixa mais um degrau.
+      confidence: (() => {
+        const base = viewportReativa || houveMovimento ? 'alta' : 'media';
+        const medidas = comparacoes.length;
+        const reprovadas = comparacoes.filter((c) => !c.ok).length;
+        const maioriaReprovou = medidas > 0 && reprovadas * 2 > medidas;
+        if (tel.parcial && maioriaReprovou) return 'baixa';
+        if (tel.parcial || maioriaReprovou) return 'media';
+        return base;
+      })(),
       limitations: [
         ...new Set([...limitacoes, ...s.consoleErros.slice(0, 5).map((e) => `Console: ${e}`)]),
       ],

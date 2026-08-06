@@ -21,6 +21,7 @@ import {
   type VisualComparison,
   assetRoutePrefix,
   construirIndiceAssets,
+  geracaoDeSegmentos,
   reescreverParaLocal,
   vaultCaptureManifest,
   vaultCaptureV2Dir,
@@ -259,6 +260,23 @@ const lerExistente = (dsId: `ds_${string}`): SegmentValidationFile | null => {
   }
 };
 
+/**
+ * A geracao da captura vigente: o carimbo que liga `validation.json` aos
+ * segmentos que existiam quando a validacao rodou. Leitor e escritor calculam
+ * dos MESMOS ids (os do segments/manifest.json), entao geracao igual significa
+ * mesma captura, sem depender de relogio nem de contagem.
+ */
+const geracaoDaCapturaAtual = (dsId: `ds_${string}`): string | undefined => {
+  const path = vaultSegmentsManifest(dsId);
+  if (!existsSync(path)) return undefined;
+  try {
+    const m = SegmentsManifest.parse(JSON.parse(readFileSync(path, 'utf8')));
+    return geracaoDeSegmentos(m.segments.map((s) => s.id));
+  } catch {
+    return undefined;
+  }
+};
+
 const lerEstadosJson = (dsId: `ds_${string}`, segId: string): string => {
   const path = vaultSegmentStates(dsId, segId);
   if (!existsSync(path)) return '[]';
@@ -447,6 +465,10 @@ export const validarPreviews = async (
 
   const candidatos = montarCandidatos(dsId);
   const existente = lerExistente(dsId);
+  // A qual captura estes resultados pertencem. Sem o carimbo, o arquivo
+  // sobrevivia a uma reextracao fingindo cobrir a captura nova: medido no
+  // acervo, 0 de 49 resultados casavam com os segmentos vigentes.
+  const geracao = geracaoDaCapturaAtual(dsId);
   const plano = planejarValidacao(candidatos, existente, limits);
   const porId = new Map(candidatos.map((c) => [c.segmentId, c]));
 
@@ -459,6 +481,7 @@ export const validarPreviews = async (
   const base: SegmentValidationFile = {
     designSystemId: dsId,
     generatedAt: Date.now(),
+    ...(geracao !== undefined ? { geracao } : {}),
     status: 'em-andamento',
     pipelineVersion: PIPELINE_VERSION,
     validatorVersion: VALIDATOR_VERSION,
@@ -564,6 +587,7 @@ export const validarPreviews = async (
   const finalFile: SegmentValidationFile = {
     designSystemId: dsId,
     generatedAt: Date.now(),
+    ...(geracao !== undefined ? { geracao } : {}),
     status: agregarStatus(processadosOk, comErro),
     pipelineVersion: PIPELINE_VERSION,
     validatorVersion: VALIDATOR_VERSION,

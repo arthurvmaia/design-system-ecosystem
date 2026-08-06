@@ -1,4 +1,5 @@
 import type { SupportLevel } from './capture.js';
+import type { Confidence } from './interaction-support.js';
 import type { ResultadoValidacaoSegmento } from './segment.js';
 
 /**
@@ -73,20 +74,19 @@ export const vereditosDoSegmento = (opts: {
   const { resultados, pixel, temBundle, capturaParcial } = opts;
   const semBundle = 'esta peça não tem pacote próprio, então não havia o que abrir';
 
-  // O corte por tempo explica UM canal, e não todos.
-  //
-  // O portão da comparação de pixel é literalmente a captura ter saído parcial
-  // (`engine.ts`: `else if (tel.parcial)` pula a fase inteira), então ali a
-  // frase é a causa. Nos outros três a causa é outra — não há resultado gravado
-  // para este segmento —, e usar o corte como explicação para tudo seria
-  // inventar um motivo plausível no lugar do verdadeiro. Um canal que mente com
-  // confiança é pior que um canal calado.
+  // A comparação de pixel RODA mesmo em captura parcial (decidir-comparacao.ts
+  // mudou isso), então "só roda em captura completa" virou mentira e foi
+  // removida daqui. O que este estado significa hoje é: nenhum resultado foi
+  // ATRIBUÍDO a esta peça — ou ela ficou sem print da dobra, ou o item foi
+  // pulado pelo corte de tempo, ou a captura é antiga e gravou as comparações
+  // sem dono. O corte por tempo entra como contexto quando existe, porque é a
+  // causa mais comum de item pulado; afirmar mais que isso seria inventar.
   const semResultado = 'não há registro de conferência para esta peça';
   const naoRodouPixel = !temBundle
     ? semBundle
     : capturaParcial === true
-      ? 'a captura foi cortada por tempo, e a comparação de pixel só roda em captura completa'
-      : 'a comparação de pixel não rodou nesta captura';
+      ? 'não há resultado de comparação atribuído a esta peça: a captura foi cortada por tempo, e item pulado pelo corte não deixa registro'
+      : 'não há resultado de comparação de pixel atribuído a esta peça';
   const naoRodou = temBundle ? semResultado : semBundle;
 
   const doTipo = (aceita: (kind: string) => boolean): ResultadoValidacaoSegmento[] =>
@@ -163,4 +163,47 @@ export const suporteAposVereditos = (
   );
   if (!reprovouNoNavegador) return atual;
   return atual === 'nao-suportado' ? atual : 'visual';
+};
+
+/**
+ * A confiança depois dos vereditos — o mesmo padrão do selo, aplicado ao campo
+ * que faltava.
+ *
+ * O defeito medido: `confidence` era uma soma de tipos de sinal COLETADO, e
+ * coleta é monotônica — quanto mais o motor mede, maior a nota, mesmo quando o
+ * que ele mediu foi uma falha. Resultado no acervo: "alta" em 90 de 92
+ * segmentos, inclusive numa peça cujo bundle divergiu 100% do print. Um campo
+ * que quase nunca varia não carrega informação.
+ *
+ * Aqui a verificação REBAIXA, e só rebaixa:
+ * - captura parcial segura em `media` (o que não foi explorado não sustenta
+ *   "alta");
+ * - qualquer canal reprovado segura em `media`;
+ * - dois ou mais canais reprovados, ou o pixel reprovado com metade dos pixels
+ *   diferentes, seguram em `baixa`.
+ *
+ * Nunca promove. Promover por conferência é como a ausência de medição virou
+ * aprovação — o defeito que este arquivo inteiro existe para não repetir.
+ */
+export const confiancaAposVereditos = (
+  atual: Confidence,
+  vereditos: readonly Veredito[],
+  opts: { capturaParcial?: boolean } = {},
+): Confidence => {
+  const ORDEM: Confidence[] = ['nenhuma', 'baixa', 'media', 'alta'];
+  const menor = (a: Confidence, b: Confidence): Confidence =>
+    ORDEM.indexOf(a) <= ORDEM.indexOf(b) ? a : b;
+
+  let teto: Confidence = 'alta';
+  if (opts.capturaParcial === true) teto = menor(teto, 'media');
+
+  const falhas = vereditos.filter((v) => v.estado === 'falhou');
+  if (falhas.length >= 1) teto = menor(teto, 'media');
+
+  const pixelMuitoLonge = falhas.some(
+    (v) => v.canal === 'pixel' && v.delta !== undefined && v.delta >= 0.5,
+  );
+  if (falhas.length >= 2 || pixelMuitoLonge) teto = menor(teto, 'baixa');
+
+  return menor(atual, teto);
 };

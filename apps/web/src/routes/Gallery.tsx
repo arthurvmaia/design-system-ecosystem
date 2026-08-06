@@ -824,6 +824,26 @@ function SegmentsView({
   const rejeitados = useQuery({ queryKey: ['rejeitados'], queryFn: api.listRejeitados });
   const rejDoDs = rejeitados.data?.grupos.find((g) => g.designSystemId === dsId)?.itens.length ?? 0;
 
+  // A stack detectada, sem os palpites: confiança baixa é "vi o script", não
+  // "medi o comportamento". Nomes deduplicados porque o detector às vezes
+  // escreve a mesma tecnologia por dois caminhos (medida e provável).
+  const stackDoDs = useMemo(() => {
+    const cru = dsInfo.data?.item.stackJson;
+    if (cru == null || cru === '') return [];
+    try {
+      const lista = JSON.parse(cru) as Array<{ name?: string; confidence?: string }>;
+      return [
+        ...new Set(
+          lista
+            .filter((s) => typeof s.name === 'string' && s.confidence !== 'baixa')
+            .map((s) => (s.name as string).replace(/ \(provável\)$/, '')),
+        ),
+      ].slice(0, 6);
+    } catch {
+      return [];
+    }
+  }, [dsInfo.data?.item.stackJson]);
+
   const qc = useQueryClient();
   const classify = useMutation({
     mutationFn: () => api.classify(dsId),
@@ -1034,6 +1054,24 @@ function SegmentsView({
           >
             {dsInfo.data?.item.name ?? '...'}
           </h1>
+          {/* A stack que a captura detectou por comportamento observado. O dado
+              sempre existiu no manifesto; o que faltava era o fio até o banco e
+              daqui até a tela. Só as detecções com confiança de verdade: as de
+              confiança baixa são palpite de script visto, não medição. */}
+          {stackDoDs.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {stackDoDs.map((nome) => (
+                <span
+                  key={nome}
+                  className="ds-data rounded-sm border px-1.5 py-0.5 text-[9px]"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+                  title="Tecnologia detectada na captura, por comportamento observado"
+                >
+                  {nome}
+                </span>
+              ))}
+            </div>
+          )}
           {/* Leitura de instrumento: os números em mono, com o denominador à
               vista. "12 de 35" diz muito mais que "12 peças" quando um filtro
               está ligado. As de dentro contam à parte porque são de outra
@@ -1061,6 +1099,20 @@ function SegmentsView({
           {segments.data?.capturaParcial && (
             <Aviso resumo="Não terminei esta captura dentro do tempo">
               <CapturaParcial parcial={segments.data.capturaParcial} dsId={dsId} />
+            </Aviso>
+          )}
+          {(segments.data?.limitacoesDaCaptura?.length ?? 0) > 0 && (
+            <Aviso
+              resumo={`O que não consegui medir nesta captura (${segments.data?.limitacoesDaCaptura?.length})`}
+            >
+              {/* O diagnóstico vem do motor, já escrito em português, com número
+                  e causa. Escondê-lo faria uma captura pela metade parecer
+                  inteira, que é exatamente a impressão que este bloco evita. */}
+              <ul className="flex list-disc flex-col gap-1.5 pl-4">
+                {(segments.data?.limitacoesDaCaptura ?? []).map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
             </Aviso>
           )}
           {(dsInfo.data?.assetsFaltando.length ?? 0) > 0 && (

@@ -1199,7 +1199,11 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
         assetKeys: [],
         tokenIds: tokensDe(hashes),
         nameEvidence: ['camada fixa que cobre a viewport em toda a página'],
-        confidence: 'alta',
+        // 'media', não 'alta': uma camada não passa pela escada de evidência
+        // das dobras (peso somado por sinal), e cravar 'alta' aqui era um dos
+        // dois pontos que deixavam 23 de 92 segmentos do acervo com confiança
+        // máxima sem nenhuma verificação. Confiança se ganha, não se declara.
+        confidence: 'media',
       },
       representation: representacao,
       fidelity,
@@ -1302,7 +1306,9 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
         assetKeys: [],
         tokenIds: tokensDe(comHtml),
         nameEvidence: [comp.explicacao],
-        confidence: 'alta',
+        // Mesmo motivo da camada de fundo: comportamento de scroll não passa
+        // pela escada de evidência, e 'alta' cravada era declaração, não medida.
+        confidence: 'media',
       },
       representation: representacao,
       fidelity,

@@ -283,6 +283,10 @@ export const compararBundlesComOriginal = async (opts: {
       saida.push({
         a: 'captura',
         b: 'bundle',
+        // O dono, escrito na hora em que ele é conhecido. Sem isto a leitura
+        // dependia da ordem do array, que qualquer item pulado quebra calado.
+        segmentHash: e.segmento.hash,
+        position: e.segmento.position,
         nature: natureza,
         threshold: limiar,
         delta: Math.min(1, Math.max(0, r.delta)),

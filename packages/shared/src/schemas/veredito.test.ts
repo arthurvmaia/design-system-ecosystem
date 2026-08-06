@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { suporteAposVereditos, vereditosDoSegmento } from './veredito.js';
+import type { Veredito } from './veredito.js';
+import { confiancaAposVereditos, suporteAposVereditos, vereditosDoSegmento } from './veredito.js';
 
 /**
  * O canal existe porque a medição rodava e era jogada fora na leitura: um
@@ -97,4 +98,64 @@ test('o clamp só desce, nunca promove', () => {
   assert.equal(suporteAposVereditos('parcial', bom), 'parcial');
   const ruim = vereditosDoSegmento({ resultados: [r('capsula', false)], temBundle: true });
   assert.equal(suporteAposVereditos('nao-suportado', ruim), 'nao-suportado');
+});
+
+// ── A confiança depois dos vereditos ─────────────────────────────────────────
+//
+// O defeito medido no acervo: `confidence` só somava sinais coletados e valia
+// "alta" em 90 de 92 segmentos, inclusive numa peça cujo bundle divergiu 100%
+// do print. Verificação tem de poder DERRUBAR a nota.
+
+const falhaDePixel = (delta: number): Veredito => ({
+  canal: 'pixel',
+  estado: 'falhou',
+  motivo: 'o pacote desenhou diferente do print da captura',
+  delta,
+  limiar: 0.02,
+});
+
+const passou = (canal: Veredito['canal']): Veredito => ({
+  canal,
+  estado: 'passou',
+  motivo: 'conferido',
+});
+
+test('sem falha e sem corte, a confiança medida fica de pé', () => {
+  const v = [passou('pixel'), passou('navegador'), passou('scroll'), passou('interacao')];
+  assert.equal(confiancaAposVereditos('alta', v), 'alta');
+});
+
+test('captura parcial segura a confiança em media', () => {
+  // O que não foi explorado não sustenta "alta".
+  assert.equal(confiancaAposVereditos('alta', [], { capturaParcial: true }), 'media');
+});
+
+test('uma reprovação segura em media; metade dos pixels diferentes derruba para baixa', () => {
+  assert.equal(confiancaAposVereditos('alta', [falhaDePixel(0.1)]), 'media');
+  // O caso do acervo real: delta 0,99 e a tela dizendo "alta".
+  assert.equal(confiancaAposVereditos('alta', [falhaDePixel(0.99)]), 'baixa');
+});
+
+test('duas reprovações derrubam para baixa mesmo com deltas pequenos', () => {
+  const v: Veredito[] = [
+    falhaDePixel(0.05),
+    { canal: 'navegador', estado: 'falhou', motivo: 'não bateu' },
+  ];
+  assert.equal(confiancaAposVereditos('alta', v), 'baixa');
+});
+
+test('a confiança nunca sobe: quem já era baixa continua baixa', () => {
+  assert.equal(confiancaAposVereditos('baixa', [passou('pixel')]), 'baixa');
+  assert.equal(confiancaAposVereditos('nenhuma', []), 'nenhuma');
+});
+
+test('a frase de pixel sem resultado não nega a comparação que rodou', () => {
+  // A comparação RODA em captura parcial desde decidir-comparacao.ts. A frase
+  // antiga ("só roda em captura completa") negava medição existente: 8 de 10
+  // reprovações no manifesto e a tela dizendo que ninguém conferiu.
+  const parcial = vereditosDoSegmento({ resultados: [], temBundle: true, capturaParcial: true });
+  const pixel = parcial.find((v) => v.canal === 'pixel');
+  assert.equal(pixel?.estado, 'nao-rodou');
+  assert.ok(!(pixel?.motivo ?? '').includes('só roda em captura completa'));
+  assert.ok((pixel?.motivo ?? '').includes('não há resultado de comparação atribuído'));
 });

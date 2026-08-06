@@ -271,6 +271,11 @@ export const cssDaOrigem = (opts: {
   if (dirCss !== undefined && existsSync(dirCss)) {
     for (const nome of readdirSync(dirCss)) {
       if (!nome.endsWith('.css')) continue;
+      // As cópias `.orig.css` são a MESMA folha antes da localização de url():
+      // contá-las dobra o denominador. Medido no acervo: era daí que saíam o
+      // "50,0%" cravado nos 24 bundles de um site (920 = 2 × 460) e a média
+      // rebaixada em todos os outros. Cópia de depuração não é CSS da página.
+      if (nome.endsWith('.orig.css')) continue;
       try {
         out += `\n${readFileSync(join(dirCss, nome), 'utf8')}`;
       } catch {
@@ -315,8 +320,14 @@ export const medirBundle = (
     nome: opts.nome ?? dir.split(/[\\/]/).slice(-1)[0] ?? dir,
     regras,
     regrasNaOrigem: naOrigem !== null && naOrigem > 0 ? naOrigem : null,
+    // Preso a 100. O bundle pode contar MAIS regras que a origem medida (as
+    // folhas organizadas do compilador dividem regras ao reescrever), e uma
+    // "retenção de 106,5%" não significa nada: acima do teto, a informação é
+    // só "levou tudo", e é isso que o número passa a dizer.
     retencao:
-      naOrigem !== null && naOrigem > 0 ? Math.round((regras / naOrigem) * 1000) / 10 : null,
+      naOrigem !== null && naOrigem > 0
+        ? Math.min(100, Math.round((regras / naOrigem) * 1000) / 10)
+        : null,
     seletoresMortos: contarSeletoresMortos(
       css,
       html,

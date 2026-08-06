@@ -201,10 +201,40 @@ export const SegmentValidationMeta = z.object({
 });
 export type SegmentValidationMeta = z.infer<typeof SegmentValidationMeta>;
 
+/**
+ * A geração de uma captura, derivada dos ids de segmento que ela produziu.
+ *
+ * Existe porque a validação em navegador pertence à CAPTURA que a gerou, e o
+ * arquivo dela não dizia de qual captura era. Medido no acervo: depois de uma
+ * reextração, 0 de 49 resultados de validação casavam com os segmentos novos,
+ * e o arquivo velho ficava no lugar fingindo cobrir a captura nova. Ninguém
+ * promovia, ninguém rebaixava, e nada acusava o porquê.
+ *
+ * FNV-1a sobre os ids ordenados: determinístico, sem dependência de crypto
+ * (este módulo também roda no navegador), e barato o bastante para calcular
+ * na leitura toda vez.
+ */
+export const geracaoDeSegmentos = (ids: readonly string[]): string => {
+  const texto = [...ids].sort().join('|');
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < texto.length; i++) {
+    hash ^= texto.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
+
 /** validation.json em vault/{ds}/segments/ — o registro do que foi validado em navegador. */
 export const SegmentValidationFile = z.object({
   designSystemId: z.string().startsWith('ds_'),
   generatedAt: z.number().int().positive(),
+  /**
+   * De QUAL captura estes resultados são: `geracaoDeSegmentos` dos ids que
+   * existiam quando a validação rodou. Leitor que encontrar outra geração deve
+   * tratar o arquivo como inexistente. Ausente em arquivos antigos, que caem
+   * no casamento por id (ids de captura antiga nunca batem com os novos).
+   */
+  geracao: z.string().optional(),
   /** Estado geral da validação desta extração. Default para arquivos antigos. */
   status: ValidationStatus.default('concluida'),
   pipelineVersion: z.number().int().optional(),
