@@ -48,6 +48,24 @@ test('CSS truncado é preservado em vez de descartado', () => {
   assert.equal(blocos.length, 2, 'a regra sem `}` não pode simplesmente desaparecer');
 });
 
+test('aspas ESCAPADAS no seletor arbitrário do Tailwind não abrem string fantasma', () => {
+  // O caso real que matou a folha da prévia do kit: `.bg-\[url\(\'data\:…\'\)\]`
+  // tem `\'` no NOME DA CLASSE. Sem tratar `\` fora de string, o fatiador
+  // entrava numa string que não existe, engolia o `{` de verdade dentro dela e
+  // cortava o bloco no `;` do url() — colando `\n\n` no meio de uma string CSS,
+  // o que mata o parse do navegador dali até o fim do arquivo.
+  const seletor = String.raw`.bg-\[url\(\'data\:image\/svg\+xml\;base64\2c QUJD\'\)\]`;
+  const css = `${seletor}{background-image:url('data:image/svg+xml;base64,QUJD')}.depois{color:red}`;
+  const blocos = fatiarCss(css);
+  assert.equal(blocos.length, 2, 'o bloco arbitrário e o seguinte, nada fatiado no meio');
+  assert.equal(blocos[0]?.prelude, seletor);
+  assert.ok(
+    blocos[0]?.corpo?.includes("url('data:image/svg+xml;base64,QUJD')"),
+    'a declaração atravessa inteira, sem corte no `;` interno',
+  );
+  assert.equal(blocos[1]?.prelude, '.depois');
+});
+
 // ── Classificação ───────────────────────────────────────────────────────────
 
 test('classificação: tokens, animações, interações, runtime e layout', () => {

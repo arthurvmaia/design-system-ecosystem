@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { lerCssDoBundle } from './cascata.js';
 
 /**
  * O que sobrou da ponte entre o bundle e o `@ds/composer`.
@@ -39,12 +40,43 @@ import { join } from 'node:path';
  * do arquivo muda por captura. Falso positivo exigiria um script de site que
  * cite "tailwindcss" no código — e ser removido do site GERADO (o bundle em si
  * não muda) é degradação aceitável, declarada no aviso.
+ *
+ * A remoção é VERIFICADA, não assumida: só acontece quando o CSS do bundle da
+ * peça carrega de fato a saída do compilador (a marca `--tw-` do preflight).
+ * O aviso antigo afirmava "o CSS compilado já viaja nos arquivos do bundle"
+ * como texto fixo — numa peça promovida antes de o coletor capturar o CSSOM,
+ * remover o script era remover o ÚNICO estilo que ela tinha. Sem a marca, o
+ * script fica, e o chamador declara a permanência (`mantidos`).
+ *
+ * O que sai no lugar não é um comentário: é um STUB que define `window.tailwind`.
+ * O runtime do CDN cria esse global, e o script de CONFIGURAÇÃO da página
+ * (`tailwind.config = {…}`) vive em OUTRO arquivo local que roda logo depois —
+ * medido na prévia do kit: sem o stub, esse arquivo morre em
+ * `ReferenceError: tailwind is not defined` na linha 5 e leva junto todo o
+ * runtime da peça que vinha depois dele no mesmo arquivo (reveals, animações).
  */
+const STUB_DO_COMPILADOR = (src: string): string =>
+  `<!-- script de compilação de CSS removido na composição: ${src} --><script>window.tailwind=window.tailwind||{config:{}};</script>`;
+
 export const removerScriptsQueCompilamCss = (
   corpo: string,
   bundlePath: string,
-): { corpo: string; removidos: string[] } => {
+): { corpo: string; removidos: string[]; mantidos: string[] } => {
   const removidos: string[] = [];
+  const mantidos: string[] = [];
+  // Preguiçoso: a maioria das peças não tem compilador nenhum, e ler o CSS do
+  // bundle só paga quando um candidato a remoção aparece.
+  let cssCompilado: boolean | null = null;
+  const bundleTemCssCompilado = (): boolean => {
+    if (cssCompilado === null) {
+      try {
+        cssCompilado = /--tw-/.test(lerCssDoBundle(bundlePath).css);
+      } catch {
+        cssCompilado = false;
+      }
+    }
+    return cssCompilado;
+  };
   const saida = corpo.replace(
     /<script\b[^>]*\bsrc\s*=\s*"([^"]+)"[^>]*>\s*<\/script>/gi,
     (tag, src: string) => {
@@ -53,8 +85,12 @@ export const removerScriptsQueCompilamCss = (
       try {
         const conteudo = readFileSync(join(bundlePath, src), 'utf8');
         if (/tailwindcss/i.test(conteudo)) {
-          removidos.push(src);
-          return `<!-- script de compilação de CSS removido na composição: ${src} -->`;
+          if (bundleTemCssCompilado()) {
+            removidos.push(src);
+            return STUB_DO_COMPILADOR(src);
+          }
+          mantidos.push(src);
+          return tag;
         }
       } catch {
         // arquivo ausente: o aviso de asset faltando já cobre
@@ -62,5 +98,5 @@ export const removerScriptsQueCompilamCss = (
       return tag;
     },
   );
-  return { corpo: saida, removidos };
+  return { corpo: saida, removidos, mantidos };
 };

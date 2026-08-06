@@ -359,6 +359,32 @@ export const MIME_BUNDLE: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+/**
+ * Content-Type de um arquivo de bundle: extensão conhecida primeiro; extensão
+ * DESCONHECIDA com cara de JavaScript vira `text/javascript`.
+ *
+ * O caso real: capturas antigas guardaram o runtime do Tailwind CDN como
+ * `assets/other/<hash>.17` — a extensão veio da URL de origem e o faro de
+ * conteúdo do coletor ainda não existia. Servido como `octet-stream` com
+ * `nosniff`, o navegador RECUSA executar o script e a peça abre sem estilo,
+ * sem nenhum erro apontando a causa. O faro aqui espelha o `pareceJs` do
+ * coletor (`packages/explorer/src/assets.ts`), que hoje já grava `.js` — isto
+ * cobre o acervo antigo e qualquer bundle exportado que ainda carregue o `.17`.
+ */
+export const mimeDoBundle = (ext: string, bytes: Uint8Array): string => {
+  const porExtensao = MIME_BUNDLE[ext];
+  if (porExtensao !== undefined) return porExtensao;
+  const inicio = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 512)).trimStart();
+  if (
+    /^(\(|!|"use strict"|'use strict'|\/\*|\/\/|(?:function|var|let|const|import|export)\s|window\.|globalThis)/.test(
+      inicio,
+    )
+  ) {
+    return 'text/javascript; charset=utf-8';
+  }
+  return 'application/octet-stream';
+};
+
 // ── Imagem (validação por representação) ─────────────────────────────────────
 
 /**

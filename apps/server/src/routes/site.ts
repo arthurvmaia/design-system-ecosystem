@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { extname, isAbsolute, join, normalize, relative } from 'node:path';
 import { ehNomeDeVersao, ehProjectId, projectGeneratedDir } from '@ds/shared';
 import { Hono } from 'hono';
+import { mimeDoBundle } from '../lib/bundle-v2.js';
 
 /**
  * Serve as versões geradas de um site, direto do disco.
@@ -68,7 +69,10 @@ siteRoute.get('/:prjId/:versao/*', (c) => {
   }
 
   const buf = readFileSync(abs);
-  const mime = MIME[extname(abs).toLowerCase()] ?? 'application/octet-stream';
+  // Extensão desconhecida com cara de JS (o `.17` de capturas antigas copiado
+  // para o site gerado) é servida como script — mesmo faro da rota de bundle.
+  const ext = extname(abs).toLowerCase();
+  const mime = MIME[ext] ?? mimeDoBundle(ext, buf);
   return new Response(new Uint8Array(buf), {
     headers: { 'Content-Type': mime, 'Cache-Control': 'private, max-age=300' },
   });

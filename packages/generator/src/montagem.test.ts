@@ -27,9 +27,12 @@ test('reescreverRefs: assets ganham o namespace do componente', () => {
     reescreverRefsHtml('<img src="assets/img/a.png"><video poster="assets/p.jpg">', 'cmp_x'),
     '<img src="assets/cmp_x/img/a.png"><video poster="assets/cmp_x/p.jpg">',
   );
+  // Relativo à FOLHA (assets/styles.css), não à página: `assets/cmp_x/…` aqui
+  // resolveria para `assets/assets/…` e toda fonte/imagem do CSS composto
+  // respondia 404 em silêncio.
   assert.equal(
     reescreverRefsCss('a{background:url(../img/b.png)}b{mask:url("assets/m.svg")}', 'cmp_x'),
-    'a{background:url(assets/cmp_x/img/b.png)}b{mask:url("assets/cmp_x/m.svg")}',
+    'a{background:url(cmp_x/img/b.png)}b{mask:url("cmp_x/m.svg")}',
   );
 });
 

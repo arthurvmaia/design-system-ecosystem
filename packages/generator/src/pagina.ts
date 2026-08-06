@@ -280,6 +280,19 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
           `[${rotulo}] ${leitura.faltando.length} folha(s) do bundle de ${cmpId} não existem em disco.`,
         );
       }
+      // O silêncio aqui já custou uma prévia inteira sem diagnóstico: peça sem
+      // folha nenhuma renderiza crua e nada dizia por quê. Os dois casos da
+      // cascata viram voz: bundle SEM CSS, e CSS achado por chute alfabético
+      // (o index.html do bundle não declara a ordem das folhas).
+      if (leitura.css.trim().length === 0) {
+        avisos.push(
+          `[${rotulo}] o bundle de ${cmpId} não tem CSS nenhum: a peça vai aparecer sem estilo.`,
+        );
+      } else if (leitura.origem === 'vazio') {
+        avisos.push(
+          `[${rotulo}] o index.html do bundle de ${cmpId} não declara as folhas: o CSS entrou em ordem alfabética, que pode não ser a cascata original.`,
+        );
+      }
       let css = leitura.css;
       const mapa = manterCores ? undefined : mapasPorOrigem.get(origemBase);
       if (mapa !== undefined && css.trim().length > 0) {
@@ -359,7 +372,12 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     );
     for (const src of semCompilador.removidos) {
       avisos.push(
-        `[${rotulo}] o script ${src} compila CSS em runtime e foi removido do site composto: o CSS compilado já viaja nos arquivos do bundle.`,
+        `[${rotulo}] o script ${src} compila CSS em runtime e foi removido do site composto: o CSS compilado viaja nos arquivos do bundle (verificado pela marca do compilador).`,
+      );
+    }
+    for (const src of semCompilador.mantidos) {
+      avisos.push(
+        `[${rotulo}] o script ${src} compila CSS em runtime e foi MANTIDO: o bundle desta peça não traz o CSS compilado, e removê-lo deixaria a peça sem estilo. As cores de origem podem vazar por cima da marca nesta peça.`,
       );
     }
     let corpo = semCompilador.corpo;

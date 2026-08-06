@@ -31,11 +31,11 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
-  MIME_BUNDLE,
   framePathDoSegmento,
   framesDoMovimento,
   lerBundleInfo,
   lerRepresentacaoDeDir,
+  mimeDoBundle,
 } from '../lib/bundle-v2.js';
 import { resolverEstadosV2 } from '../lib/estados-v2.js';
 import { montarDemoDeHover } from '../lib/hover-demo.js';
@@ -982,10 +982,14 @@ const servirArquivoDeBundle = (
     return responderHtml(html);
   }
 
-  return new Response(readFileSync(alvo), {
+  const bytes = readFileSync(alvo);
+  return new Response(bytes, {
     status: 200,
     headers: {
-      'Content-Type': MIME_BUNDLE[ext] ?? 'application/octet-stream',
+      // Extensão desconhecida com cara de JS (o `.17` do Tailwind em capturas
+      // antigas) é servida como script: com `nosniff`, o Content-Type é a
+      // ÚNICA chance de o navegador aceitar executá-lo.
+      'Content-Type': mimeDoBundle(ext, bytes),
       'Content-Security-Policy': CSP_PREVIA,
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'private, max-age=60',

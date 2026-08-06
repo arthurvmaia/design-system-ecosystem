@@ -119,6 +119,17 @@ export const fatiarCss = (
       i += 2;
       continue;
     }
+    // Escape FORA de string: seletor arbitrário do Tailwind escapa aspas e
+    // pontuação no nome da classe (`.bg-\[url\(\'data\:image…\'\)\]`). Sem
+    // pular o par, o `\'` abria um estado de string fantasma, o `{` real era
+    // engolido dentro dela e o `;` do `url()` verdadeiro virava "fim de
+    // at-rule": o bloco era fatiado NO MEIO da string e recolado com `\n\n`,
+    // produzindo um CSS que mata o parse do navegador dali em diante — medido
+    // na prévia do kit: 129 KB de folha mortos depois da primeira ocorrência.
+    if (c === '\\') {
+      i += 2;
+      continue;
+    }
     if (c === '"' || c === "'") {
       emString = c;
       i++;

@@ -403,7 +403,15 @@ const ancorarContratoDoComponente = (
   }
 };
 
-const montarComponente = (seg: SegmentRow, midiasPorExtracao: MidiasPorExtracao = new Map()) => {
+// Exportada para `scripts/biblioteca-atualizar-bundles.ts`: o refresh de uma
+// peça promovida reusa a promoção INTEIRA (bundle, estados, contrato, insight)
+// e depois troca o resultado para dentro do componente existente — duplicar
+// esta lógica num script seria a segunda implementação que a seção acima do
+// arquivo `pecas.ts` do generator já enterrou uma vez.
+export const montarComponente = (
+  seg: SegmentRow,
+  midiasPorExtracao: MidiasPorExtracao = new Map(),
+) => {
   const componentId = newComponentId();
   const bundleHash = createHash('sha256').update(seg.htmlSnippet).digest('hex');
 

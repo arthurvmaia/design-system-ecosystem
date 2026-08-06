@@ -105,16 +105,22 @@ export const reescreverRefsHtml = (html: string, cmpId: string): string =>
   html.replace(/(src|href|poster)=(["'])assets\//gi, `$1=$2assets/${cmpId}/`);
 
 /**
- * Reescreve url() do CSS concatenado (que passa a viver na raiz de assets/):
- * `url(../x)` (relativo a assets/css/) e `url(assets/x)` apontam para
- * `assets/<cmpId>/x`.
+ * Reescreve url() do CSS concatenado para caminhos relativos À PRÓPRIA FOLHA.
+ *
+ * A folha composta vive em `assets/styles.css`, e url() de CSS resolve contra
+ * a URL DA FOLHA, não contra a página. A versão anterior escrevia
+ * `url(assets/<cmpId>/x)` — que o navegador resolvia para `assets/assets/…`,
+ * e TODA fonte e imagem referenciada pelo CSS composto respondia 404 em
+ * silêncio (fonte cai no fallback sem erro na tela; medido na prévia do kit:
+ * 129 refs quebradas). Relativo à folha, `<cmpId>/x` resolve para
+ * `assets/<cmpId>/x`, que é onde os assets da peça foram copiados.
  */
 export const reescreverRefsCss = (css: string, cmpId: string): string =>
-  // `assets/` primeiro; `../` depois — a saída do segundo introduz `assets/`
-  // já com namespace e não pode ser reprocessada pelo primeiro.
+  // `assets/` primeiro; `../` depois — a saída do segundo introduz o namespace
+  // e não pode ser reprocessada pelo primeiro.
   css
-    .replace(/url\(\s*(["']?)assets\//gi, `url($1assets/${cmpId}/`)
-    .replace(/url\(\s*(["']?)\.\.\//gi, `url($1assets/${cmpId}/`);
+    .replace(/url\(\s*(["']?)assets\//gi, `url($1${cmpId}/`)
+    .replace(/url\(\s*(["']?)\.\.\//gi, `url($1${cmpId}/`);
 
 /**
  * Envelopa a seção com a proveniência explícita que o produto exige.
