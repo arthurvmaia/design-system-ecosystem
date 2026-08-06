@@ -1409,11 +1409,59 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         await tel.faseCooperativa(
           FASE_V2.comparar,
           async (signal) => {
+            // As regiões dinâmicas MEDIDAS, convertidas do espaço da parada
+            // (viewport + scrollY) para o espaço do recorte de cada segmento.
+            // Elas sempre existiram no manifesto e `masked` saía [] em 58 de
+            // 58 comparações do acervo. Movimento medido também decide o
+            // limiar: um site aprovava 45% de diferença a 0,75 enquanto outro
+            // reprovava 3% a 0,02, porque a natureza era cega à medição.
+            const scrollDaParada = new Map(passes.map((p) => [p.index, p.scrollY]));
+            const regioesMoveisNaPagina = temporais.flatMap((t) => {
+              if (!t.moving) return [];
+              const idx = t.target.startsWith('viewport:')
+                ? Number(t.target.slice('viewport:'.length))
+                : Number.NaN;
+              const sy = scrollDaParada.get(idx);
+              if (sy === undefined) return [];
+              return t.dynamicRegions.map((reg) => ({
+                x: reg.x * viewport.width,
+                y: reg.y * viewport.height + sy,
+                w: reg.w * viewport.width,
+                h: reg.h * viewport.height,
+              }));
+            });
+            const nodePorHash = new Map(structuralMap.map((n) => [n.fingerprint.hash, n] as const));
             const entradas = segmentos.flatMap((seg) => {
               const framePath = framePorHash.get(seg.hash);
               if (framePath === undefined) return [];
+              const caixa = nodePorHash.get(seg.hash)?.pageBox;
+              const sobrepoe =
+                caixa === undefined
+                  ? []
+                  : regioesMoveisNaPagina.filter(
+                      (reg) =>
+                        reg.x < caixa.x + caixa.w &&
+                        reg.x + reg.w > caixa.x &&
+                        reg.y < caixa.y + caixa.h &&
+                        reg.y + reg.h > caixa.y,
+                    );
+              const mascaras =
+                caixa === undefined
+                  ? []
+                  : sobrepoe.slice(0, 8).map((reg) => ({
+                      x: Math.max(0, (reg.x - caixa.x) / Math.max(1, caixa.w)),
+                      y: Math.max(0, (reg.y - caixa.y) / Math.max(1, caixa.h)),
+                      w: Math.min(1, reg.w / Math.max(1, caixa.w)),
+                      h: Math.min(1, reg.h / Math.max(1, caixa.h)),
+                    }));
               return [
-                { segmento: seg, dirBundle: join(dirBundles, `seg_${seg.position}`), framePath },
+                {
+                  segmento: seg,
+                  dirBundle: join(dirBundles, `seg_${seg.position}`),
+                  framePath,
+                  mascaras,
+                  temMovimentoMedido: sobrepoe.length > 0,
+                },
               ];
             });
             // Sem print da dobra não há contra o que comparar, e isso é a maior
@@ -1429,7 +1477,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             if (entradas.length === 0) return;
 
             const iniciouComparacao = Date.now();
-            const aba = await s.contexto.newPage();
+            // Contexto LIMPO: sem init script e sem interceptação de rotas. A
+            // comparação decide reprovação; medi-la com a instrumentação
+            // dentro era medir um ambiente que o usuário nunca terá.
+            const aba = await s.abaLimpa();
             try {
               await aba.setViewportSize(viewport);
               const resultado = await compararBundlesComOriginal({

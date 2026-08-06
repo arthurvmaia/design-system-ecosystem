@@ -159,7 +159,7 @@ export const localizeCss = async (
       return existente.localPath;
     }
     const kind = classifyByMime(fetched.mimeType, absUrl);
-    const ext = extPara(absUrl, fetched.mimeType);
+    const ext = extPara(absUrl, fetched.mimeType, fetched.bytes);
     const localPath = hashedLocalPath(h, kind, ext);
     sink(localPath, fetched.bytes);
     const asset: CapturedAsset = {

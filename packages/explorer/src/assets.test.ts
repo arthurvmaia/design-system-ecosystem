@@ -4,6 +4,7 @@ import {
   type AssetFetcher,
   absolutizeRefs,
   classifyByUrl,
+  extPara,
   extractAssetRefs,
   localizeAssets,
   parseSrcset,
@@ -133,4 +134,27 @@ test('localizeAssets: pula o que passa do teto de tamanho', async () => {
   });
   assert.equal(res.stats.saved, 0);
   assert.equal(res.stats.skipped, 1);
+});
+
+// ── Fase 2: extensão que o navegador aceita executar ────────────────────────
+
+test('URL terminando em VERSÃO não vira extensão: o conteúdo decide', () => {
+  // O runtime do Tailwind (`…/3.4.17`) chegava com octet-stream, ganhava ext
+  // "17" e era servido com nosniff: o navegador RECUSAVA executar o bundle
+  // principal do site em 23 bundles do acervo.
+  const js = new TextEncoder().encode('(()=>{var a=Object.create(null)})()');
+  assert.equal(
+    extPara('https://cdn.jsdelivr.net/npm/tailwindcss/3.4.17', 'application/octet-stream', js),
+    'js',
+  );
+  // Binário desconhecido continua honesto: bin, nunca um palpite executável.
+  assert.equal(
+    extPara('https://cdn.test/coisa/9.9.9', 'application/octet-stream', new Uint8Array([0, 1, 2])),
+    'bin',
+  );
+});
+
+test('extensão CONHECIDA na URL continua valendo; MIME continua mandando', () => {
+  assert.equal(extPara('https://f/x.woff2', 'application/octet-stream'), 'woff2');
+  assert.equal(extPara('https://f/x.17', 'text/css'), 'css');
 });

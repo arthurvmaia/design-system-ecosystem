@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { VisualComparison } from '@ds/shared';
+import type { NormalizedBox, VisualComparison } from '@ds/shared';
 import type { SegmentoV2 } from '../segment/segment-v2.js';
-import { LIMIAR_POR_NATUREZA, diffPng } from './pixel.js';
+import { LIMIAR_POR_NATUREZA, diffPng, melhorJanela } from './pixel.js';
+import { decodePng } from './png.js';
 
 /**
  * A pergunta que o resto da medição não responde: **parece igual?**
@@ -29,9 +30,18 @@ import { LIMIAR_POR_NATUREZA, diffPng } from './pixel.js';
  * é. Quando o recorte não fecha, a comparação simplesmente não entra.
  */
 
-/** A natureza da região decide o limiar — nunca um número único para tudo. */
+/**
+ * A natureza da região decide o limiar — nunca um número único para tudo.
+ *
+ * `temMovimentoMedido` é a observação temporal DESTA região: um pixel em
+ * movimento medido vale mais que qualquer classificação. Sem ele, a decisão
+ * era cega ao que o próprio motor mediu, e o acervo tinha os dois regimes
+ * errados ao mesmo tempo: um site com tudo em 0,75 aprovando 45% de diferença
+ * e outro com tudo em 0,02 reprovando 3%.
+ */
 export const naturezaDoSegmento = (
   seg: SegmentoV2,
+  temMovimentoMedido?: boolean,
 ): 'estatica' | 'animada' | 'video' | 'canvas' | 'runtime-externo' => {
   const modo = seg.representation.renderMode;
   if (modo === 'video') return 'video';
@@ -46,6 +56,7 @@ export const naturezaDoSegmento = (
   if (dependeDeRuntimeExterno) return 'runtime-externo';
   if (modo === 'lottie' || modo === 'svg-animado' || modo === 'misto') return 'animada';
   if (seg.interactions.length > 0 && modo === 'html-js') return 'animada';
+  if (temMovimentoMedido === true) return 'animada';
   return 'estatica';
 };
 
@@ -74,6 +85,16 @@ export type EntradaComparacao = {
   dirBundle: string;
   /** Caminho do print da dobra, relativo ao diretório de captura. */
   framePath: string;
+  /**
+   * Regiões dinâmicas MEDIDAS pela observação temporal, já convertidas para o
+   * espaço do recorte (0..1). Vídeo, marquee e canvas mudam entre dois
+   * instantes por natureza — sem a máscara, o item reprovava por um motivo que
+   * não é defeito. Elas eram medidas, tinham schema, e `masked` saía `[]` nas
+   * 58 comparações do acervo.
+   */
+  mascaras?: NormalizedBox[];
+  /** A observação temporal viu movimento cobrindo esta região? */
+  temMovimentoMedido?: boolean;
 };
 
 /**
@@ -104,7 +125,14 @@ export const ORIGEM_DA_REGIAO_FN = `
     break;
   }
   if (!alvo) return null;
-  try { window.scrollTo(0, 0); } catch (e) {}
+  // O MESMO estado do print de referência: a referência foi tirada com a
+  // seção rolada para dentro da viewport e o reveal assentado. Fotografar o
+  // bundle em scroll zero comparava dois instantes diferentes por construção,
+  // e toda peça com animação de entrada reprovava pelo estado, não pelo
+  // conteúdo.
+  try { alvo.scrollIntoView({ block: 'start', behavior: 'instant' }); } catch (e) {
+    try { window.scrollTo(0, 0); } catch (e2) {}
+  }
   var r = alvo.getBoundingClientRect();
   return {
     x: Math.round(r.x),
@@ -143,6 +171,12 @@ export type MotivoDePular =
   | 'print-ilegivel'
   | 'sem-regiao'
   | 'tamanho-diferente'
+  /**
+   * Referência visual é O PRÓPRIO frame embrulhado num <img>: compará-la com o
+   * frame aprovaria de graça exatamente a classe que o motor declarou não
+   * reproduzível, inflando a cobertura. Tautologia não é verificação.
+   */
+  | 'referencia-visual'
   /**
    * O orçamento acabou antes de a lista terminar.
    *
@@ -185,6 +219,7 @@ export const compararBundlesComOriginal = async (opts: {
     'print-ilegivel': 0,
     'sem-regiao': 0,
     'tamanho-diferente': 0,
+    'referencia-visual': 0,
     orcamento: 0,
     erro: 0,
   };
@@ -210,6 +245,11 @@ export const compararBundlesComOriginal = async (opts: {
       break;
     }
     const inicioDoItem = Date.now();
+
+    if (e.segmento.representation.type === 'referencia-visual') {
+      pulados['referencia-visual']++;
+      continue;
+    }
 
     const indexPath = join(e.dirBundle, 'index.html');
     const framePath = join(opts.dirCaptura, e.framePath);
@@ -238,6 +278,13 @@ export const compararBundlesComOriginal = async (opts: {
       // da fonte, não a do bundle.
       await opts.pagina.esperarFontes(900);
 
+      // Duas leituras com 400 ms entre elas, DE PROPÓSITO: a primeira rola a
+      // região para dentro da viewport (dispara o reveal por scroll), a espera
+      // é a MESMA que o print de referência recebeu na origem, e a segunda
+      // mede a região já assentada. Sem isso a comparação media estado, não
+      // fidelidade: print pós-reveal contra bundle em scroll zero.
+      await opts.pagina.evaluate<unknown>(`(${ORIGEM_DA_REGIAO_FN})()`);
+      await opts.pagina.esperar(400);
       const origem = await opts.pagina.evaluate<{
         x: number;
         y: number;
@@ -272,12 +319,45 @@ export const compararBundlesComOriginal = async (opts: {
         clip: { x, y, w: dim.w, h: dim.h },
       });
 
-      const natureza = naturezaDoSegmento(e.segmento);
+      const natureza = naturezaDoSegmento(e.segmento, e.temMovimentoMedido);
       const limiar = LIMIAR_POR_NATUREZA[natureza];
-      const r = diffPng(original, doBundle);
+      const mascaras = e.mascaras ?? [];
+      const r = diffPng(original, doBundle, { mascaras });
       if (r.incomparavel) {
         pulados['tamanho-diferente']++;
         continue;
+      }
+
+      // Se reprovou, procurar a MENOR diferença numa janela de ±8 px antes de
+      // condenar. Em tira fina (frames de 80 px no acervo), um deslocamento de
+      // nada altera quase todas as linhas — e "3 px mais baixo" é enquadramento
+      // que vira DADO (`offset`), não infidelidade.
+      let delta = Math.min(1, Math.max(0, r.delta));
+      let offset: { x: number; y: number } | undefined;
+      if (delta > limiar && !r.degradado) {
+        try {
+          const MARGEM = 8;
+          const ex = Math.max(0, x - MARGEM);
+          const ey = Math.max(0, y - MARGEM);
+          const ew = Math.min(origem.vw - ex, dim.w + 2 * MARGEM);
+          const eh = Math.min(origem.vh - ey, dim.h + 2 * MARGEM);
+          const expandida = decodePng(
+            await opts.pagina.screenshot({ clip: { x: ex, y: ey, w: ew, h: eh } }),
+          );
+          const offsets: Array<{ dx: number; dy: number }> = [];
+          for (let dy = -MARGEM; dy <= MARGEM; dy += 4) {
+            for (let dx = -MARGEM; dx <= MARGEM; dx += 4) offsets.push({ dx, dy });
+          }
+          const m = melhorJanela(decodePng(original), expandida, x - ex, y - ey, offsets, {
+            mascaras,
+          });
+          if (m.delta < delta) {
+            delta = Math.min(1, Math.max(0, m.delta));
+            if (m.dx !== 0 || m.dy !== 0) offset = { x: m.dx, y: m.dy };
+          }
+        } catch {
+          // a busca de deslocamento é refinamento; sem ela vale o delta direto
+        }
       }
 
       saida.push({
@@ -289,9 +369,10 @@ export const compararBundlesComOriginal = async (opts: {
         position: e.segmento.position,
         nature: natureza,
         threshold: limiar,
-        delta: Math.min(1, Math.max(0, r.delta)),
-        ok: r.delta <= limiar,
-        masked: [],
+        delta,
+        ok: delta <= limiar,
+        masked: mascaras,
+        ...(offset !== undefined ? { offset } : {}),
       });
     } catch {
       // Bundle que não abre, recorte fora da viewport, decode que falhou: a

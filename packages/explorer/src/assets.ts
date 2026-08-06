@@ -131,12 +131,66 @@ export const extractAssetRefs = (html: string, css: string, baseUrl: string | nu
   return [...vistos.values()];
 };
 
-/** Extensão preferida a partir do MIME ou da URL, sem o ponto. */
-export const extPara = (url: string, mime: string): string => {
+/**
+ * Extensões que significam alguma coisa. URL que termina fora desta lista está
+ * terminando em VERSÃO, não em extensão: o runtime do Tailwind
+ * (`…tailwindcss/3.4.17`) chegava com MIME octet-stream, a URL dava ext "17",
+ * e toda rota servia o arquivo como octet-stream com nosniff — o navegador
+ * RECUSAVA executar o bundle principal do site (medido: 23 bundles de 2 sites
+ * do acervo com `<script src="assets/other/….17">` morto).
+ */
+const EXT_CONHECIDA = new Set([
+  'js',
+  'mjs',
+  'cjs',
+  'css',
+  'map',
+  'json',
+  'txt',
+  'xml',
+  'html',
+  'svg',
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'avif',
+  'gif',
+  'ico',
+  'bmp',
+  'woff',
+  'woff2',
+  'ttf',
+  'otf',
+  'eot',
+  'mp4',
+  'webm',
+  'ogv',
+  'mp3',
+  'ogg',
+  'wav',
+  'flac',
+  'pdf',
+  'wasm',
+]);
+
+/** Os primeiros bytes parecem JavaScript? Para quando MIME e URL não dizem nada. */
+export const pareceJs = (bytes: Uint8Array): boolean => {
+  const inicio = new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, 512)).trimStart();
+  return /^(\(|!|"use strict"|'use strict'|\/\*|\/\/|(?:function|var|let|const|import|export)\s|window\.|globalThis)/.test(
+    inicio,
+  );
+};
+
+/** Extensão preferida: MIME primeiro, URL com extensão CONHECIDA, faro no conteúdo. */
+export const extPara = (url: string, mime: string, bytes?: Uint8Array): string => {
   const porMime = MIME_EXT[mime.split(';')[0]?.trim().toLowerCase() ?? ''];
   if (porMime) return porMime;
   const m = url.split(/[?#]/)[0]?.match(/\.([a-z0-9]{2,5})$/i);
-  return (m?.[1] ?? 'bin').toLowerCase();
+  const daUrl = (m?.[1] ?? '').toLowerCase();
+  if (daUrl !== '' && EXT_CONHECIDA.has(daUrl)) return daUrl;
+  if (bytes !== undefined && pareceJs(bytes)) return 'js';
+  return 'bin';
 };
 
 /** Nome de arquivo por conteúdo: `<kind>/<sha8>.<ext>`. Deduplica sozinho. */
@@ -330,7 +384,7 @@ export const localizeAssets = async (
         continue;
       }
       const kind = classifyByMime(fetched.mimeType, ref.absolute);
-      const ext = extPara(ref.absolute, fetched.mimeType);
+      const ext = extPara(ref.absolute, fetched.mimeType, fetched.bytes);
       const localPath = hashedLocalPath(sha256, kind, ext);
       sink(localPath, fetched.bytes);
       const asset: CapturedAsset = {

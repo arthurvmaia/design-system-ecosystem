@@ -7,6 +7,8 @@ import {
   diffImagens,
   diffPng,
   hashBytes,
+  melhorJanela,
+  recortarImagem,
 } from './pixel.js';
 import { PngNaoSuportado, decodePng } from './png.js';
 
@@ -188,4 +190,59 @@ test('o limiar de comparação visual depende da natureza da região', () => {
   assert.ok(LIMIAR_POR_NATUREZA.animada < LIMIAR_POR_NATUREZA.video);
   assert.ok(LIMIAR_POR_NATUREZA.video < LIMIAR_POR_NATUREZA.canvas);
   assert.ok(LIMIAR_POR_NATUREZA.canvas < LIMIAR_POR_NATUREZA['runtime-externo']);
+});
+
+// ── Fase 2: alinhamento antes de condenar ───────────────────────────────────
+
+const rgba = (
+  w: number,
+  h: number,
+  pinta: (x: number, y: number) => number,
+): import('./png.js').ImagemRaw => {
+  const data = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = pinta(x, y);
+      const i = (y * w + x) * 4;
+      data[i] = v;
+      data[i + 1] = v;
+      data[i + 2] = v;
+      data[i + 3] = 255;
+    }
+  }
+  return { width: w, height: h, channels: 4, data };
+};
+
+test('recortarImagem devolve exatamente a janela pedida', () => {
+  const img = rgba(8, 8, (x, y) => (y * 8 + x) % 256);
+  const r = recortarImagem(img, 2, 3, 4, 2);
+  assert.equal(r.width, 4);
+  assert.equal(r.height, 2);
+  assert.equal(r.data[0], (3 * 8 + 2) % 256, 'primeiro pixel é o (2,3) da origem');
+});
+
+test('melhorJanela acha o deslocamento onde a imagem realmente está', () => {
+  // A base é uma faixa clara em y=8..11. Na expandida, a MESMA faixa está 4 px
+  // mais abaixo. Sem alinhamento, o diff em (0,0) reprova; a busca encontra
+  // dy=4 com delta ~0 — que é a diferença entre "bundle errado" e "bundle
+  // 4 px mais baixo", o caso das tiras finas do acervo (frames de 80 px).
+  const base = rgba(32, 16, (_x, y) => (y >= 8 && y < 12 ? 255 : 0));
+  // Janela sem deslocamento cobre y=8..24 da expandida; a faixa em 20..24
+  // cai 4 px abaixo de onde a base a espera (relativa 8..12 → absoluta 16..20).
+  const expandida = rgba(32, 32, (_x, y) => (y >= 20 && y < 24 ? 255 : 0));
+  const offsets: Array<{ dx: number; dy: number }> = [];
+  for (let dy = -8; dy <= 8; dy += 4) for (let dx = -8; dx <= 8; dx += 4) offsets.push({ dx, dy });
+  // A janela sem deslocamento começa em (0, 8) dentro da expandida.
+  const semAlinhar = diffImagens(base, recortarImagem(expandida, 0, 8, 32, 16));
+  assert.ok(semAlinhar.delta > 0.1, 'crua, a faixa deslocada reprova');
+  const m = melhorJanela(base, expandida, 0, 8, offsets);
+  assert.equal(m.dy, 4, 'a faixa está 4 px abaixo, e a busca diz isso');
+  assert.ok(m.delta < 0.01, 'alinhada, a diferença some');
+});
+
+test('melhorJanela sem janela possível devolve delta 1, nunca inventa', () => {
+  const base = rgba(16, 16, () => 0);
+  const pequena = rgba(8, 8, () => 0);
+  const m = melhorJanela(base, pequena, 0, 0, [{ dx: 0, dy: 0 }]);
+  assert.equal(m.delta, 1);
 });

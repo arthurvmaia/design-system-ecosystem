@@ -158,6 +158,14 @@ export type SessaoV2 = {
   /** A página Playwright crua, para o que a interface não cobre (rede, eventos). */
   pw: PwPage;
   contexto: PwContext;
+  /**
+   * Uma aba num contexto LIMPO: sem o init script e sem a interceptação de
+   * rotas. É onde o bundle é conferido — a comparação media "bundle + 614
+   * linhas de patch de DOM", num ambiente que o usuário final nunca terá, e é
+   * essa comparação que decide reprovação. O contexto fica vivo até o fim da
+   * sessão (o browser.close() derruba tudo).
+   */
+  abaLimpa: () => Promise<PwPage>;
   fechar: () => Promise<void>;
   /** Erros de console e de página, para a validação e para o relatório. */
   consoleErros: string[];
@@ -341,6 +349,10 @@ export const abrirSessao = async (opts: OpcoesSessao): Promise<SessaoV2> => {
     page: adaptada,
     pw: page,
     contexto,
+    abaLimpa: async () => {
+      const limpo = await browser.newContext({ viewport });
+      return limpo.newPage();
+    },
     consoleErros,
     bloqueados,
     fechar: async () => {

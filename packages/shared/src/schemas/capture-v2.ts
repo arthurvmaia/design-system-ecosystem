@@ -1085,6 +1085,12 @@ export const VisualComparison = z.object({
   ok: z.boolean(),
   /** Máscaras aplicadas. */
   masked: z.array(NormalizedBox).default([]),
+  /**
+   * Deslocamento (px) em que a MENOR diferença foi encontrada, quando a busca
+   * de alinhamento rodou e achou algo melhor que a posição crua. "A peça está
+   * 4 px mais baixa" é dado de enquadramento, não infidelidade.
+   */
+  offset: z.object({ x: z.number().int(), y: z.number().int() }).optional(),
 });
 export type VisualComparison = z.infer<typeof VisualComparison>;
 

@@ -277,6 +277,7 @@ test('o resumo conta o que foi olhado E o que ficou de fora', async () => {
       'print-ilegivel': 0,
       'sem-regiao': 0,
       'tamanho-diferente': 1,
+      'referencia-visual': 0,
       orcamento: 0,
       erro: 0,
     },
@@ -487,4 +488,85 @@ test('body só com aviso e camadas não tem região: a comparação não acontec
     elemento('aside', ['data-ds-aviso'], { x: 0, y: 8, w: 1440, h: 52 }),
   ]);
   assert.equal(r, null);
+});
+
+// ── Fase 2: a verificação passa a falar de fidelidade ───────────────────────
+
+test('referência visual NUNCA é comparada consigo mesma: vira item pulado com motivo', async () => {
+  // O bundle dela é o PRÓPRIO frame embrulhado num <img>. Medido no acervo:
+  // 5 dos 24 bundles de um site eram referência visual e entravam na cobertura
+  // como aprovados de graça, exatamente na classe declarada não reproduzível.
+  const img = pngSolido(20, 20, 10, 20, 30);
+  const { dir, dirCaptura } = montarEntrada(img);
+  const r = await compararBundlesComOriginal({
+    pagina: paginaFalsa({ imagem: img }),
+    entradas: [
+      {
+        segmento: seg({
+          representation: {
+            type: 'referencia-visual',
+            reasons: [],
+            rejected: [],
+            runtimes: [],
+            renderMode: 'html',
+            editable: false,
+            confidence: 'alta',
+            limitations: [],
+          } as unknown as SegmentoV2['representation'],
+        }),
+        dirBundle: dir,
+        framePath: 'frame.png',
+      },
+    ],
+    dirCaptura,
+  });
+  assert.equal(r.comparacoes.length, 0);
+  assert.equal(r.pulados['referencia-visual'], 1);
+});
+
+test('movimento MEDIDO muda a natureza para animada: a decisão deixa de ser cega', () => {
+  // O acervo tinha os dois regimes errados ao mesmo tempo: 45% de diferença
+  // aprovada a 0,75 num site e 3% reprovada a 0,02 noutro. O que faltava era a
+  // observação temporal entrar na decisão.
+  const estatico = seg();
+  assert.equal(naturezaDoSegmento(estatico), 'estatica');
+  assert.equal(naturezaDoSegmento(estatico, true), 'animada');
+  // Quem já tem natureza mais forte não é rebaixado pelo movimento.
+  const emCanvas = seg({
+    representation: {
+      ...seg().representation,
+      renderMode: 'canvas',
+    } as SegmentoV2['representation'],
+  });
+  assert.equal(naturezaDoSegmento(emCanvas, true), 'canvas');
+});
+
+test('as máscaras medidas são APLICADAS e registradas, não gravadas vazias', async () => {
+  // Duas imagens que diferem só na metade esquerda; a máscara cobre a metade
+  // esquerda. Sem máscara reprova; com máscara passa, e `masked` deixa de ser [].
+  const original = pngSolido(20, 20, 0, 0, 0);
+  const { dir, dirCaptura } = montarEntrada(original);
+  const metadeDiferente = (() => {
+    // 20x20: esquerda branca, direita preta — o diff fica ~50% sem máscara.
+    const crcFake = pngSolido(20, 20, 255, 255, 255);
+    return crcFake;
+  })();
+  const mascaraEsquerda = [{ x: 0, y: 0, w: 1, h: 1 }];
+  const r = await compararBundlesComOriginal({
+    pagina: paginaFalsa({ imagem: metadeDiferente }),
+    entradas: [
+      {
+        segmento: seg(),
+        dirBundle: dir,
+        framePath: 'frame.png',
+        mascaras: mascaraEsquerda,
+      },
+    ],
+    dirCaptura,
+  });
+  assert.equal(r.comparacoes.length, 1);
+  const c = r.comparacoes[0];
+  assert.ok(c !== undefined);
+  assert.equal(c.ok, true, 'com a região dinâmica mascarada, o resto é igual');
+  assert.equal(c.masked.length, 1, 'masked deixa de sair vazio quando há máscara');
 });

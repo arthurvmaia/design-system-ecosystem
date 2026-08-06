@@ -445,7 +445,12 @@ const principal = async (): Promise<void> => {
 
   // Um site é conserto e vai ser olhado agora; uma fila é manutenção em lote.
   // `DS_SEM_VERIFICACAO=1` desliga nos dois casos, como no `pnpm extrair`.
-  const verificarVisual = pendentes.length === 1 && process.env.DS_SEM_VERIFICACAO !== '1';
+  // `--verificar` liga a comparação de pixel também em lote: é o que permite
+  // conferir o acervo INTEIRO depois de uma mudança no compilador, sem abrir
+  // site por site na mão.
+  const verificarVisual =
+    (pendentes.length === 1 || process.argv.includes('--verificar')) &&
+    process.env.DS_SEM_VERIFICACAO !== '1';
 
   const relatos: Relato[] = [];
   for (const [i, id] of pendentes.entries()) {
