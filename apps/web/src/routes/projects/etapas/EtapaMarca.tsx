@@ -62,21 +62,26 @@ export function StepMarca({
 }) {
   const status = marcaSectionStatus(branding);
   const [aberto, setAberto] = useState<MarcaSubId | null>(null);
+  const [nicho, setNicho] = useState('');
   const qc = useQueryClient();
 
   // Marca automática para TESTES de geração: o servidor cria a identidade
-  // inteira (receita curada) e as mídias dela; o patch entra pelo mesmo setB
-  // dos painéis, e o autosave grava como se a pessoa tivesse preenchido.
+  // inteira (receita curada, dirigida pelo nicho quando informado) e as mídias
+  // dela: logos + imagens POR SEÇÃO, na conta que cada seção aceita. O patch
+  // entra pelo mesmo setB dos painéis, e o autosave grava como se a pessoa
+  // tivesse preenchido.
   const marcaAutomatica = useMutation({
     mutationFn: () => {
       if (projectId === null)
         throw new Error('Salve o projeto primeiro: a mídia precisa de um lugar.');
-      return api.criarMarcaAutomatica(projectId);
+      return api.criarMarcaAutomatica(projectId, nicho.trim() === '' ? undefined : nicho.trim());
     },
-    onSuccess: ({ branding: b }) => {
+    onSuccess: ({ branding: b, media }) => {
       setB(b);
       qc.invalidateQueries({ queryKey: ['project', projectId] });
-      toast.ok(`Criei a marca "${b.brandName}" com logos e imagens de teste. Revise os painéis.`);
+      toast.ok(
+        `Criei a marca "${b.brandName}" com ${media.length} mídia(s), incluindo as das seções. Revise os painéis.`,
+      );
     },
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui criar a marca.'),
   });
@@ -130,7 +135,7 @@ export function StepMarca({
   return (
     <div className="ds-fade-in mx-auto max-w-[760px]">
       <ConviteOrbisCriativos />
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <button
           type="button"
           disabled={marcaAutomatica.isPending || projectId === null}
@@ -140,14 +145,27 @@ export function StepMarca({
           title={
             projectId === null
               ? 'Salve o projeto primeiro: a mídia precisa de um lugar.'
-              : 'Preencho a bancada inteira com uma marca de teste e crio os logos e as imagens dela.'
+              : 'Preencho a bancada inteira com uma marca de teste e crio os logos e as imagens por seção.'
           }
         >
           <Sparkles size={12} />
           {marcaAutomatica.isPending ? 'Criando a marca…' : 'Criar uma marca para mim'}
         </button>
+        <input
+          type="text"
+          value={nicho}
+          onChange={(e) => setNicho(e.target.value)}
+          placeholder="nicho do produto (opcional)"
+          className="rounded-none border px-3 py-2 text-[12px] outline-none focus:border-[var(--color-signal)]"
+          style={{
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-fg)',
+            background: 'transparent',
+          }}
+          title="Ex.: barbearia, cafeteria, app de treino. Dirige o nome, o logo e as mídias."
+        />
         <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-          Para testar a geração sem preencher nada: identidade completa + mídias.
+          Identidade completa + mídias por seção, na conta que cada seção aceita.
         </span>
       </div>
       <p className="mb-4 text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>

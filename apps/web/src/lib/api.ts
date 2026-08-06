@@ -823,10 +823,10 @@ export const api = {
    * completa e as mídias dela (logos + imagens); a tela aplica o patch na
    * bancada e o autosave grava.
    */
-  criarMarcaAutomatica: (projectId: string) =>
+  criarMarcaAutomatica: (projectId: string, nicho?: string) =>
     jsonFetch<{ branding: MarcaAutomaticaBranding; media: MediaItem[] }>(
       `/api/projects/${projectId}/marca-automatica`,
-      { method: 'POST' },
+      { method: 'POST', body: JSON.stringify({ nicho: nicho ?? null }) },
     ),
 
   // ── Projetos ────────────────────────────────────────────────────────────

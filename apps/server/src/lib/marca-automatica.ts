@@ -144,6 +144,41 @@ const svgImagem = (r: Receita, indice: number, w: number, h: number): string => 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><defs>${g1}</defs><rect width="${w}" height="${h}" fill="url(#g)"/>${forma}<text x="${w / 2}" y="${h / 2}" text-anchor="middle" font-family="${r.body}" font-size="${h * 0.05}" fill="#ffffff" opacity="0.55">${r.nome} — mídia de teste ${indice + 1}</text></svg>`;
 };
 
+/** Uma seção do projeto que ACEITA mídia, já com a conta feita pela rota. */
+export type SecaoParaMidia = {
+  id: string;
+  nome: string;
+  papel?: string;
+  /** Quantas imagens a seção pede (contrato das peças + etapa de marketing). */
+  quantas: number;
+  /** O que enviar, na linguagem da etapa — vira o alt da mídia gerada. */
+  oQue: string;
+};
+
+const capitalizar = (t: string): string =>
+  t
+    .trim()
+    .split(/\s+/)
+    .map((p) => (p.length > 2 ? p[0]?.toUpperCase() + p.slice(1) : p))
+    .join(' ');
+
+/** Receita para um nicho: casa por palavra; sem casamento, sorteio estável. */
+const receitaParaNicho = (nicho: string): Receita => {
+  const alvo = nicho.toLowerCase();
+  const casada = RECEITAS.find(
+    (r) =>
+      r.segmento
+        .toLowerCase()
+        .split(/\s+/)
+        .some((p) => p.length > 3 && alvo.includes(p)) ||
+      alvo.split(/\s+/).some((p) => p.length > 3 && r.segmento.toLowerCase().includes(p)),
+  );
+  if (casada !== undefined) return casada;
+  let h = 0;
+  for (const ch of alvo) h = (h * 31 + ch.charCodeAt(0)) % 997;
+  return RECEITAS[h % RECEITAS.length] as Receita;
+};
+
 export type MarcaAutomatica = {
   brandName: string;
   tone: string;
@@ -168,18 +203,54 @@ export type MarcaAutomatica = {
 /** Gera a marca, grava as mídias no projeto e devolve o patch pronto da tela. */
 export const criarMarcaAutomatica = (
   projectId: `prj_${string}`,
+  opts?: {
+    /** Nicho do produto (opcional): dirige receita, nome, logo e mídias. */
+    nicho?: string | null;
+    /** Seções que aceitam mídia, já contadas pela rota. Vazio = pacote genérico. */
+    secoes?: readonly SecaoParaMidia[];
+  },
 ): { branding: MarcaAutomatica; media: MediaItem[] } => {
-  const receita = RECEITAS[Math.floor(Math.random() * RECEITAS.length)] as Receita;
+  const nicho = opts?.nicho?.trim() || null;
+  const base =
+    nicho !== null
+      ? receitaParaNicho(nicho)
+      : (RECEITAS[Math.floor(Math.random() * RECEITAS.length)] as Receita);
+  // Nicho que não casa com receita nenhuma vira o NOME da marca: é dele que
+  // saem a inicial do logo e a marca d'água das mídias.
+  const casouComReceita =
+    nicho !== null &&
+    base.segmento.toLowerCase().includes(nicho.toLowerCase().split(/\s+/)[0] ?? '');
+  const receita: Receita =
+    nicho === null
+      ? base
+      : {
+          ...base,
+          segmento: nicho,
+          nome: casouComReceita ? base.nome : capitalizar(nicho),
+        };
   const [background, surface, heading, body, primary, primaryFg, accent] = receita.cores;
 
   const dir = projectMediaDir(projectId);
   mkdirSync(dir, { recursive: true });
   const prefixo = `${Date.now().toString(36)}-${randomBytes(2).toString('hex')}`;
   const media: MediaItem[] = [];
-  const gravar = (nome: string, svg: string, kind: MediaItem['kind'], alt: string): string => {
+  const gravar = (
+    nome: string,
+    svg: string,
+    kind: MediaItem['kind'],
+    alt: string,
+    secaoId?: string,
+  ): string => {
     const stored = `${prefixo}-${nome}.svg`;
     writeFileSync(join(dir, stored), svg, 'utf8');
-    media.push({ path: stored, mimeType: 'image/svg+xml', kind, originalName: `${nome}.svg`, alt });
+    media.push({
+      path: stored,
+      mimeType: 'image/svg+xml',
+      kind,
+      originalName: `${nome}.svg`,
+      alt,
+      ...(secaoId !== undefined ? { secaoId } : {}),
+    });
     return stored;
   };
 
@@ -190,17 +261,43 @@ export const criarMarcaAutomatica = (
     transparente: tipo === 'clara' || tipo === 'escura',
   }));
 
-  // Imagens de apoio: um hero largo, três de galeria e uma faixa.
-  gravar(
-    'imagem-hero',
-    svgImagem(receita, 0, 1600, 900),
-    'image',
-    `Imagem de abertura de ${receita.nome}`,
-  );
-  gravar('imagem-galeria-1', svgImagem(receita, 1, 1200, 1500), 'image', 'Imagem de galeria 1');
-  gravar('imagem-galeria-2', svgImagem(receita, 2, 1200, 1500), 'image', 'Imagem de galeria 2');
-  gravar('imagem-galeria-3', svgImagem(receita, 3, 1200, 1500), 'image', 'Imagem de galeria 3');
-  gravar('imagem-faixa', svgImagem(receita, 2, 1920, 640), 'image', 'Faixa decorativa');
+  // ── Mídias POR SEÇÃO, quando o projeto tem estrutura ─────────────────────
+  // A conta vem da rota (contrato das peças + etapa de marketing): seção que
+  // não aceita mídia não ganha nada — zero é resposta, não omissão. Cada
+  // imagem nasce ANCORADA na seção (`secaoId`), como um upload manual.
+  const secoes = (opts?.secoes ?? []).filter((s) => s.quantas > 0);
+  if (secoes.length > 0) {
+    let indice = 0;
+    for (const secao of secoes) {
+      const quantas = Math.min(secao.quantas, 8);
+      for (let i = 0; i < quantas; i++) {
+        const hero = /hero|abertura/i.test(secao.papel ?? secao.nome);
+        const slugSecao = secao.nome
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .slice(0, 30);
+        gravar(
+          `secao-${slugSecao}-${i + 1}`,
+          svgImagem(receita, indice++, hero ? 1600 : 1200, hero ? 900 : 900),
+          'image',
+          `Imagem ${i + 1} para a seção "${secao.nome}": ${secao.oQue}`.slice(0, 180),
+          secao.id,
+        );
+      }
+    }
+  } else {
+    // Sem estrutura ainda: pacote genérico, útil do mesmo jeito para testes.
+    gravar(
+      'imagem-hero',
+      svgImagem(receita, 0, 1600, 900),
+      'image',
+      `Imagem de abertura de ${receita.nome}`,
+    );
+    gravar('imagem-galeria-1', svgImagem(receita, 1, 1200, 1500), 'image', 'Imagem de galeria 1');
+    gravar('imagem-galeria-2', svgImagem(receita, 2, 1200, 1500), 'image', 'Imagem de galeria 2');
+    gravar('imagem-galeria-3', svgImagem(receita, 3, 1200, 1500), 'image', 'Imagem de galeria 3');
+    gravar('imagem-faixa', svgImagem(receita, 2, 1920, 640), 'image', 'Faixa decorativa');
+  }
 
   const distribuicao = distribuirLogos(logos);
   const logosLocais: Partial<Record<LocalDeLogo, string>> = {};

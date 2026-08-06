@@ -11,6 +11,7 @@ import {
   type ProjectBranding,
   type ProjectContent,
   ProjectLayout,
+  ROTULO_DE_PAPEL,
   type SlotDeMidia,
   analisarVideo,
   ehProjectId,
@@ -21,10 +22,12 @@ import {
   newProjectId,
   normalizarProjectBranding,
   normalizarProjectContent,
+  normalizarProjectLayout,
   projectBrandingDir,
   projectContentDir,
   projectDir,
   projectMediaDir,
+  sugerirMidiaDaSecao,
 } from '@ds/shared';
 import { zValidator } from '@hono/zod-validator';
 import { asc, desc, eq, inArray } from 'drizzle-orm';
@@ -244,14 +247,56 @@ projectsRoute.patch('/:id', zValidator('json', PatchProjectInput), (c) => {
  * bancada de Marca; quem aplica e salva é a tela — o projeto não é alterado
  * aqui além da mídia, que já nasce no manifesto.
  */
-projectsRoute.post('/:id/marca-automatica', (c) => {
+projectsRoute.post('/:id/marca-automatica', async (c) => {
   const id = c.req.param('id');
   if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const db = getDb();
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
   if (!row) return c.json({ error: 'not_found' }, 404);
 
-  const r = criarMarcaAutomatica(id);
+  let nicho: string | null = null;
+  try {
+    const corpo = (await c.req.json()) as { nicho?: unknown };
+    if (typeof corpo.nicho === 'string' && corpo.nicho.trim() !== '') nicho = corpo.nicho.trim();
+  } catch {
+    // sem corpo é uso legítimo: nicho é opcional
+  }
+
+  // As seções que ACEITAM mídia, com a mesma régua da etapa de Mídia: o
+  // contrato das peças manda no número, a etapa de marketing explica o quê.
+  const layout = normalizarProjectLayout(row.layoutJson);
+  const kitCmps =
+    row.kitId === null
+      ? []
+      : db
+          .select()
+          .from(tables.kitComponents)
+          .where(eq(tables.kitComponents.kitId, row.kitId))
+          .all();
+  const espacos = kitCmps.map((l) => {
+    const contrato = lerOuDerivarContrato(
+      libraryComponentBundleDir(l.componentId as `cmp_${string}`),
+    );
+    return {
+      id: l.componentId,
+      disponivel: contrato !== null,
+      midias: (contrato?.slots.midias ?? [])
+        .filter((m) => !m.pareceLogo)
+        .map((m) => ({ tipo: m.tipo })),
+    };
+  });
+  const secoes = layout.secoes.map((s) => {
+    const sugestao = sugerirMidiaDaSecao(s, espacos, layout.objetivo);
+    return {
+      id: s.id,
+      nome: s.nome || (s.papel !== undefined ? ROTULO_DE_PAPEL[s.papel] : 'Seção'),
+      papel: s.papel,
+      quantas: sugestao.quantas,
+      oQue: sugestao.oQue,
+    };
+  });
+
+  const r = criarMarcaAutomatica(id, { nicho, secoes });
   const media = [...lerManifest(row.mediaManifestJson), ...r.media];
   db.update(tables.projects)
     .set({ mediaManifestJson: JSON.stringify(media), updatedAt: Date.now() })
