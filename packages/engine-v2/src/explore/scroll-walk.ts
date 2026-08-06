@@ -45,6 +45,14 @@ export type OpcoesPercurso = {
   ascendente?: boolean;
   /** Teto de paradas na passagem ascendente (resumida de propósito). */
   maxParadasAscendente?: number;
+  /**
+   * Ainda cabe mais uma parada ASCENDENTE? A subida é opcional por desenho, e
+   * começar uma parada que não cabe fazia a fase estourar o teto e a captura
+   * inteira sair carimbada de PARCIAL por causa de um bônus — medido: descida
+   * 100% completa e o corte caindo na subida. Não vale para a descida: descida
+   * interrompida É parcialidade, e tem de continuar aparecendo como tal.
+   */
+  deveContinuarSubida?: () => boolean;
   signal?: AbortSignal;
   /** O trabalho de cada parada. Devolve o que o manifesto registra. */
   trabalho: (ctx: ParadaContexto) => Promise<{
@@ -196,7 +204,12 @@ export const percorrerComScroll = async (
   // reveal que reverte, `scroll-direction` que troca de tema. Resumida de
   // propósito — a descida já mapeou a estrutura; aqui só se procura o que muda
   // com a direção.
-  if (opts.ascendente !== false && passes.length > 1 && !abortado()) {
+  if (
+    opts.ascendente !== false &&
+    passes.length > 1 &&
+    !abortado() &&
+    (opts.deveContinuarSubida?.() ?? true)
+  ) {
     const alvos: number[] = [];
     const total = pos.pageHeight - pos.viewportHeight;
     const quantas = Math.min(maxAscendente, passes.length);
@@ -206,6 +219,7 @@ export const percorrerComScroll = async (
     let j = 0;
     for (const y of alvos) {
       if (abortado()) break;
+      if (opts.deveContinuarSubida?.() === false) break;
       const p = await rolarPara(y);
       const progresso =
         p.pageHeight <= p.viewportHeight

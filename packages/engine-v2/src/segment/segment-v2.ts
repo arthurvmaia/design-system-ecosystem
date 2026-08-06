@@ -757,9 +757,13 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       if (p.fingerprint !== undefined && hashesMembros.has(p.fingerprint.hash)) return true;
       // Reação sem DOM: pertence à seção se a região cai dentro dela.
       if (p.region === undefined || node.pageBox === undefined) return false;
+      // A região é relativa à VIEWPORT; o pageBox é coordenada de PÁGINA. O
+      // scroll da parada é o que liga os dois — sem ele, medido no acervo,
+      // 100% das reações caíam nos segmentos do topo e tudo abaixo tinha zero.
+      // Resposta antiga (sem scrollY) continua com o comportamento de sempre.
       const emPx: BoxPx = {
         x: p.region.x * entrada.viewport.width,
-        y: p.region.y * entrada.viewport.height,
+        y: p.region.y * entrada.viewport.height + (p.scrollY ?? 0),
         w: p.region.w * entrada.viewport.width,
         h: p.region.h * entrada.viewport.height,
       };

@@ -11,7 +11,8 @@ import type {
 import { type PaginaV2, moverPara } from '../browser/page.js';
 import { SONDAR_PONTO_FN, chamar } from '../instrumentation/index.js';
 import type { RawMedida } from '../mapper/raw.js';
-import { diffPng } from '../observe/pixel.js';
+import { diffImagens, diffPng } from '../observe/pixel.js';
+import { type ImagemRaw, decodePng } from '../observe/png.js';
 import { construirTrajetoria, trajetoriaRefinamento, unirRegioes } from './pointer-paths.js';
 
 /**
@@ -117,6 +118,12 @@ export type OpcoesVarredura = {
   regiao?: NormalizedBox;
   /** Prefixo de id, para os ids não colidirem entre viewports. */
   idPrefixo?: string;
+  /**
+   * O scroll da parada em que a varredura rodou. Sem ele, a região da resposta
+   * (relativa à viewport) era intersectada com coordenadas de PÁGINA — medido
+   * no acervo: 100% das reações atribuídas a segmentos do topo, zero abaixo.
+   */
+  scrollY?: number;
 };
 
 export type ResultadoVarredura = {
@@ -165,11 +172,18 @@ export const varrerPonteiro = async (
   const pontos = pontosBrutos;
 
   // Linha de base com o ponteiro FORA: é contra ela que a sonda visual compara.
+  //
+  // Em ESCALA REDUZIDA e decodificada UMA vez. A sonda compara por bloco de
+  // 32 px, então 1/4 da resolução não muda a decisão — e muda tudo no custo:
+  // o decode de PNG é JavaScript puro na mesma thread que dirige o navegador,
+  // e a base era redecodificada a cada sonda (medido: 80 a 103 ms por decode,
+  // ~43 s de CPU por captura, dentro da fase cortada em 5 de 7 capturas).
   await moverPara(page, NEUTRO, { passos: 1 });
   await page.esperar(120);
-  let baseVisual: Uint8Array | null = null;
+  const ESCALA_SONDA = 0.25;
+  let baseVisual: ImagemRaw | null = null;
   try {
-    baseVisual = await page.screenshot();
+    baseVisual = decodePng(await page.screenshot({ escala: ESCALA_SONDA }));
   } catch {
     baseVisual = null;
   }
@@ -228,8 +242,9 @@ export const varrerPonteiro = async (
     // cena WebGL no topo que gira conforme o cursor no rodapé, por exemplo.
     if (sondaCada > 0 && baseVisual !== null && i > 0 && i % sondaCada === 0) {
       try {
-        const agora = await page.screenshot();
-        const d = diffPng(baseVisual, agora, { bloco: 32 });
+        const agora = decodePng(await page.screenshot({ escala: ESCALA_SONDA }));
+        // Bloco 8 na imagem a 1/4 = bloco 32 na resolução cheia: mesma decisão.
+        const d = diffImagens(baseVisual, agora, { bloco: 8 });
         if (d.delta > limiarPixel) {
           viewportReativa = true;
           for (const r of d.regioes) regioesPixel.push(r);
@@ -322,6 +337,11 @@ export const varrerPonteiro = async (
       pathId,
       at: v.ponto,
       region: v.sonda.normalizedBox,
+      // A identidade e a posição de página viajam JUNTO com a medição. Sem
+      // elas, o acervo tinha 344 respostas que não se ligavam a elemento
+      // nenhum, e todo comportamento era atribuído ao topo da página.
+      ...(ref !== null ? { ref } : {}),
+      ...(opts.scrollY !== undefined ? { scrollY: opts.scrollY } : {}),
       domless: v.sonda.semDomInterno,
       reactions: [...reacoes],
       pixelDelta: deltaPixel,

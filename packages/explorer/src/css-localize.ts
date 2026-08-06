@@ -89,7 +89,16 @@ export type CssLocalizeResult = {
   /** cssUrl (absoluta) → localPath do CSS REESCRITO (servido). */
   cssMap: Map<string, string>;
   warnings: string[];
+  /**
+   * Fontes declaradas no CSS que NÃO foram baixadas porque o navegador nunca
+   * as pediu ao renderizar. O chamador declara isso como limitação — pular
+   * calado leria como cobertura.
+   */
+  fontesPuladas: number;
 };
+
+/** Extensões de fonte: são elas que o filtro de uso real alcança. */
+const EXT_DE_FONTE = /\.(woff2?|ttf|otf|eot)(\?|#|$)/i;
 
 /**
  * Processa CSS externo recursivamente. `sink` grava cada arquivo (CSS reescrito,
@@ -101,6 +110,15 @@ export const localizeCss = async (
   sink: (localPath: string, bytes: Uint8Array) => void,
   limits: CssLimits,
   signal?: AbortSignal,
+  opts: {
+    /**
+     * A fonte foi pedida pelo NAVEGADOR durante a captura? O CSS de um site
+     * declara dezenas de subconjuntos por unicode-range e o render só pede os
+     * que o texto usa — medido no acervo: 374 url() declarados, 99 únicos, 37
+     * pedidos. Baixar o resto comia 85% do teto da fase de assets.
+     */
+    fonteFoiUsada?: (url: string) => boolean;
+  } = {},
 ): Promise<CssLocalizeResult> => {
   const emProgresso = new Set<string>(); // detecção de ciclo A→B→A
   const cssMap = new Map<string, string>();
@@ -108,9 +126,28 @@ export const localizeCss = async (
   const assets: CapturedAsset[] = [];
   const warnings: string[] = [];
   const enc = new TextEncoder();
+  let fontesPuladas = 0;
 
-  const baixarAsset = async (absUrl: string): Promise<string | null> => {
+  // Memo por URL, ANTES dos bytes. A dedup existente é por hash de conteúdo,
+  // que só age depois do download — medido no acervo: 374 url() com 99 URLs
+  // únicas geravam 275 downloads redundantes da MESMA URL, um por vez, e a
+  // fase de assets gastava 38 s dos 45 s permitidos.
+  const localPorUrl = new Map<string, Promise<string | null>>();
+
+  const baixarAsset = (absUrl: string): Promise<string | null> => {
+    const memo = localPorUrl.get(absUrl);
+    if (memo !== undefined) return memo;
+    const promessa = baixarAssetDireto(absUrl);
+    localPorUrl.set(absUrl, promessa);
+    return promessa;
+  };
+
+  const baixarAssetDireto = async (absUrl: string): Promise<string | null> => {
     if (!urlAssetSegura(absUrl)) return null;
+    if (EXT_DE_FONTE.test(absUrl) && opts.fonteFoiUsada?.(absUrl) === false) {
+      fontesPuladas++;
+      return null;
+    }
     const fetched = await fetcher(absUrl);
     if (fetched === null || fetched.bytes.byteLength > limits.maxAssetBytes) return null;
     const h = sha(fetched.bytes);
@@ -175,11 +212,20 @@ export const localizeCss = async (
         const impLocal = await processarCss(imp.absolute, depth + 1);
         if (impLocal) rewriteMap.set(imp.raw, relDeCss(impLocal));
       }
-      for (const u of urls) {
-        if (!u.absolute) continue;
-        const [semFrag, frag] = separarFragmento(u.absolute);
-        const localPath = await baixarAsset(semFrag);
-        if (localPath) rewriteMap.set(u.raw, relDeCss(localPath) + frag);
+      // Em paralelo, com a mesma concorrência dos demais assets. O laço era
+      // sequencial (um await por url dentro de um await por folha) enquanto o
+      // pool de 6 workers já existia ao lado, em assets.ts.
+      const LOTE = 6;
+      for (let i0 = 0; i0 < urls.length; i0 += LOTE) {
+        if (signal?.aborted) break;
+        await Promise.all(
+          urls.slice(i0, i0 + LOTE).map(async (u) => {
+            if (!u.absolute) return;
+            const [semFrag, frag] = separarFragmento(u.absolute);
+            const localPath = await baixarAsset(semFrag);
+            if (localPath) rewriteMap.set(u.raw, relDeCss(localPath) + frag);
+          }),
+        );
       }
 
       const cssRw = reescreverCss(cssText, rewriteMap);
@@ -211,5 +257,5 @@ export const localizeCss = async (
     if (signal?.aborted) break;
     await processarCss(u, 0);
   }
-  return { assets, cssMap, warnings };
+  return { assets, cssMap, warnings, fontesPuladas };
 };

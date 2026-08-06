@@ -33,8 +33,14 @@ export class PlaywrightIndisponivel extends Error {
 export type PaginaV2 = {
   /** Avalia uma expressão string no contexto da página. */
   evaluate: <T>(expressao: string) => Promise<T>;
-  /** Screenshot da viewport, ou de um recorte em px. PNG. */
-  screenshot: (opts?: { clip?: BoxPx }) => Promise<Uint8Array>;
+  /**
+   * Screenshot da viewport, ou de um recorte em px. PNG.
+   *
+   * `escala` reduz a imagem NO NAVEGADOR (CDP), antes de qualquer byte chegar
+   * ao Node. É o que barateia a sonda visual do ponteiro: 1/4 da resolução é
+   * 1/16 do trabalho de decode, e a comparação por bloco decide igual.
+   */
+  screenshot: (opts?: { clip?: BoxPx; escala?: number }) => Promise<Uint8Array>;
   mouse: {
     move: (x: number, y: number, opts?: { steps?: number }) => Promise<void>;
     click: (x: number, y: number) => Promise<void>;
@@ -280,26 +286,32 @@ export const abrirSessao = async (opts: OpcoesSessao): Promise<SessaoV2> => {
    */
   const cdp = await contexto.newCDPSession(page).catch(() => null);
 
-  const capturar = async (o?: { clip?: BoxPx }): Promise<Uint8Array> => {
+  const capturar = async (o?: { clip?: BoxPx; escala?: number }): Promise<Uint8Array> => {
     if (cdp !== null) {
       try {
         const params: Record<string, unknown> = { format: 'png', captureBeyondViewport: false };
-        if (o?.clip !== undefined) {
+        if (o?.clip !== undefined || o?.escala !== undefined) {
           const scroll = (await page.evaluate(
             '({x: window.scrollX || 0, y: window.scrollY || 0})',
           )) as { x: number; y: number };
+          // Sem clip mas com escala: o recorte é a viewport inteira — o CDP só
+          // aceita `scale` dentro de `clip`.
+          const vp = page.viewportSize() ?? viewport;
+          const base = o?.clip ?? { x: 0, y: 0, w: vp.width, h: vp.height };
           params.clip = {
-            x: o.clip.x + scroll.x,
-            y: o.clip.y + scroll.y,
-            width: Math.max(1, o.clip.w),
-            height: Math.max(1, o.clip.h),
-            scale: 1,
+            x: base.x + scroll.x,
+            y: base.y + scroll.y,
+            width: Math.max(1, base.w),
+            height: Math.max(1, base.h),
+            scale: o?.escala ?? 1,
           };
         }
         const res = (await cdp.send('Page.captureScreenshot', params)) as { data: string };
         return new Uint8Array(Buffer.from(res.data, 'base64'));
       } catch {
         // CDP indisponível ou clip inválido: cai no caminho do Playwright.
+        // Sem CDP não há como escalar; a imagem sai em resolução cheia e o
+        // comparador acusa `incomparavel` em vez de comparar errado.
       }
     }
     return page.screenshot({

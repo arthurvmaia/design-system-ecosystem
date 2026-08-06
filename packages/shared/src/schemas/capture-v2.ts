@@ -582,6 +582,18 @@ export const PointerResponse = z.object({
   region: NormalizedBox.optional(),
   /** Elemento sob o ponteiro, quando havia um identificável. */
   fingerprint: ElementFingerprint.optional(),
+  /**
+   * O endereço (`data-dsx2`) do elemento no momento da sonda. Os endereços são
+   * estáveis dentro da captura, então é por ele que o motor preenche o
+   * fingerprint depois do mapa final. Ausente em capturas antigas.
+   */
+  ref: z.number().int().nonnegative().optional(),
+  /**
+   * O scroll da parada em que a resposta foi medida. `region` é relativa à
+   * viewport; sem o scroll, a intersecção com coordenadas de página atribuía
+   * TODO comportamento aos segmentos do topo (medido: 100% em 3 de 3 sites).
+   */
+  scrollY: z.number().nonnegative().optional(),
   /** Não há DOM interno (cena em canvas/WebGL). */
   domless: z.boolean().default(false),
   reactions: z.array(PointerReaction).default([]),

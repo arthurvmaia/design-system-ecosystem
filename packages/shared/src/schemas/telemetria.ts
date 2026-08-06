@@ -68,5 +68,18 @@ export const TelemetriaRelatorio = z.object({
   motivo: z.string().optional(),
   fases: z.array(FaseTiming).default([]),
   contadores: TelemetriaContadores.default({}),
+  /**
+   * Como o teto das fases foi calculado NESTA captura: reserva medida do
+   * histórico do acervo, ou a fração fixa (primeira captura, acervo vazio).
+   * Sem isto, ninguém sabe por que o percurso ganhou o tempo que ganhou, e a
+   * sugestão de orçamento da tela vira palpite sobre uma conta invisível.
+   */
+  orcamento: z
+    .object({
+      origem: z.enum(['historico', 'fracao']),
+      /** Quanto ficou prometido às fases depois do percurso (ms). */
+      reservaAposPercursoMs: z.number().int().nonnegative(),
+    })
+    .optional(),
 });
 export type TelemetriaRelatorio = z.infer<typeof TelemetriaRelatorio>;

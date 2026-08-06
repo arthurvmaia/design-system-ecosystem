@@ -1,4 +1,4 @@
-import { type ElementDescriptor, ehSeguroClicar } from '@ds/explorer';
+import { type ElementDescriptor, ehCandidatoInterativo, ehSeguroClicar } from '@ds/explorer';
 import type { NormalizedBox, SafeActionKind } from '@ds/shared';
 
 /**
@@ -362,9 +362,15 @@ export const descobrirCandidatos = (
 ): Candidato[] => {
   const out: Candidato[] = [];
   for (const s of sinais) {
+    // Piso de INTERAÇÃO, não de existência. O piso antigo (score >= 2) não
+    // filtrava nada, porque "visível" sozinho já valia 2: medido no acervo, o
+    // pool tinha 160 a 283 elementos com 93 a 232 EMPATADOS no score mínimo, e
+    // o corte de 120 era decidido pela ordem do DOM — sistematicamente o topo
+    // da página. A porta é a mesma política testada do V1: tag/role/tabindex/
+    // ARIA/cursor com conteúdo/listener relevante — mais quem provou reação na
+    // varredura de ponteiro, que nenhum atributo anuncia.
+    if (!ehCandidatoInterativo(s.descriptor) && !s.reagiuAoPonteiro) continue;
     const { score, evidencias } = pontuarCandidato(s);
-    // Piso: sem evidência nenhuma não é candidato. `2` deixa passar quem só tem
-    // `cursor:pointer` ou só está visível, e corta o resto do documento.
     if (score < 2 || evidencias.length === 0) continue;
     const provaveis = acoesProvaveis(s);
     const { permitidas, barradas } = filtrarAcoes(s, provaveis, baseUrl);

@@ -53,6 +53,7 @@ import {
 } from '@ds/shared';
 import { tamanhoDe } from './acervo-limpar-orfas.js';
 import { executadoDireto } from './executado-direto.js';
+import { historicoDeFasesDoAcervo } from './historico-de-fases.js';
 import { segmentarEIndexar } from './segmentar.js';
 
 type Relato = {
@@ -106,12 +107,37 @@ const segmentosDe = (dsId: DesignSystemId): number => {
   }
 };
 
+/**
+ * Rename com paciência para o Windows.
+ *
+ * EPERM transitório é rotina aqui: antivírus e indexador seguram por instantes
+ * um arquivo recém-escrito, e o rename da troca falhou EXATAMENTE assim na
+ * primeira fila real desta máquina — a exceção derrubou o processo no site 5
+ * de 7 e deixou um vault meio-trocado (capture-v2 nova, bundles ausentes).
+ * Esperar e tentar de novo resolve o transitório; o erro persistente sobe.
+ */
+const renomearComPaciencia = async (origem: string, destino: string): Promise<void> => {
+  const esperasMs = [200, 400, 800, 1600, 3200];
+  for (let i = 0; ; i++) {
+    try {
+      renameSync(origem, destino);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      const transitorio = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES';
+      const espera = esperasMs[i];
+      if (!transitorio || espera === undefined) throw err;
+      await new Promise((r) => setTimeout(r, espera));
+    }
+  }
+};
+
 /** Guarda o diretório atual como `.anterior`, substituindo o guardado antes. */
-const arquivar = (dir: string): void => {
+const arquivar = async (dir: string): Promise<void> => {
   if (!existsSync(dir)) return;
   const anterior = `${dir}.anterior`;
   rmSync(anterior, { recursive: true, force: true });
-  renameSync(dir, anterior);
+  await renomearComPaciencia(dir, anterior);
 };
 
 /** Conta o que saiu nos bundles novos — é o relatório que interessa. */
@@ -194,6 +220,7 @@ export const reextrair = async (
   let r: Awaited<ReturnType<typeof capturarComV2>>;
   try {
     r = await capturarComV2(url, {
+      historicoDeFases: historicoDeFasesDoAcervo(),
       dirCaptura: tmpCaptura,
       dirBundles: tmpBundles,
       verificarVisual,
@@ -221,11 +248,11 @@ export const reextrair = async (
   // restaurado antes de o erro subir.
   const capturaDir = vaultCaptureV2Dir(dsId);
   const bundlesDir = vaultSegmentBundlesDir(dsId);
-  arquivar(capturaDir);
-  arquivar(bundlesDir);
+  await arquivar(capturaDir);
+  await arquivar(bundlesDir);
   mkdirSync(dirname(capturaDir), { recursive: true });
-  renameSync(tmpCaptura, capturaDir);
-  renameSync(tmpBundles, bundlesDir);
+  await renomearComPaciencia(tmpCaptura, capturaDir);
+  await renomearComPaciencia(tmpBundles, bundlesDir);
   rmSync(tmp, { recursive: true, force: true });
 
   const desfazer = (): void => restaurarAnterior([capturaDir, bundlesDir]);
