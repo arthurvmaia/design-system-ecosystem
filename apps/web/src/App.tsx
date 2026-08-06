@@ -14,6 +14,7 @@ import { PADRAO_DA_ROTA_DA_FORMULA } from '@/routes/kits/rota-da-formula';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { ExpressoPage } from './routes/Expresso';
 import { HomePage } from './routes/Home';
 import { ProjectsPage } from './routes/projects';
 
@@ -60,6 +61,7 @@ export function App() {
             <Route element={<Shell />}>
               <Route index element={<Navigate to="/inicio" replace />} />
               <Route path="inicio" element={<HomePage />} />
+              <Route path="/expresso" element={<ExpressoPage />} />
               <Route path="/extract" element={<ExtractPage />} />
               <Route path="/gallery" element={<GalleryPage />} />
               <Route path="/revisao" element={<RevisaoPage />} />

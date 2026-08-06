@@ -19,6 +19,7 @@ import {
   jobsAbertosDoProjeto,
   lerOuDerivarContrato,
   libraryComponentBundleDir,
+  newKitId,
   newProjectId,
   normalizarProjectBranding,
   normalizarProjectContent,
@@ -34,10 +35,13 @@ import { asc, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { MENSAGEM_API_BLOQUEADA, apiPagaPermitida, getModels } from '../lib/anthropic.js';
+import { consolidarEGravar } from '../lib/consolidar-kit.js';
 import { isQueueMode } from '../lib/execution-mode.js';
 import { exigeSenhaDeAcao } from '../lib/exige-senha-de-acao.js';
 import { montarContextoDeGeracao } from '../lib/generate-context.js';
 import { criarMarcaAutomatica, criarMidiasDasSecoes } from '../lib/marca-automatica.js';
+import { montarKitAutomatico } from '../lib/montar-kit-automatico.js';
+import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
 import { enqueueTask } from '../lib/task-queue.js';
 
 export const projectsRoute = new Hono();
@@ -136,6 +140,181 @@ projectsRoute.get('/:id/media/:name', (c) => {
     headers: { 'Content-Type': mime, 'Cache-Control': 'private, max-age=300' },
   });
 });
+
+/**
+ * VIA EXPRESSA: kit, marca e projeto num pedido só — para quem não quer as
+ * etapas e quer clicar para gerar. O servidor faz o que já sabe fazer separado,
+ * na ordem certa: monta o kit pela sequência do objetivo, cria o projeto com a
+ * estrutura que a montagem decidiu, veste a marca automática (com as mídias por
+ * seção, porque aqui a estrutura já existe) e devolve o projectId — a tela
+ * dispara a geração em seguida, pelo mesmo caminho de sempre.
+ *
+ * Trancada pela credencial de ação: é o portão de tudo que dispara gasto, e um
+ * clique que faz três coisas caras merece a mesma assinatura das três.
+ */
+projectsRoute.post(
+  '/expresso',
+  zValidator(
+    'json',
+    z.object({
+      objetivo: z.enum([
+        'captar-contato',
+        'vender-produto',
+        'apresentar-servico',
+        'mostrar-trabalho',
+      ]),
+      nicho: z.string().optional(),
+      nome: z.string().optional(),
+    }),
+  ),
+  (c) => {
+    const recusa = exigeSenhaDeAcao(c);
+    if (recusa !== null) return recusa;
+    const { objetivo, nicho, nome } = c.req.valid('json');
+    const db = getDb();
+
+    const pecas = db.select().from(tables.libraryComponents).all();
+    if (pecas.length === 0) {
+      return c.json(
+        {
+          error: 'biblioteca_vazia',
+          message:
+            'A Biblioteca está vazia: a via expressa monta o kit com as suas peças. Capture um site e promova peças primeiro.',
+        },
+        422,
+      );
+    }
+
+    const montagem = montarKitAutomatico(
+      objetivo,
+      pecas.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        kind: p.kind,
+        designSystemId: p.designSystemId ?? 'sem-origem',
+      })),
+      (cmpId) =>
+        recolorabilidadeDoBundle(libraryComponentBundleDir(cmpId as `cmp_${string}`))?.taxa ?? null,
+    );
+    if (montagem.componentIds.length === 0) {
+      return c.json(
+        {
+          error: 'sem_pecas_para_o_objetivo',
+          message:
+            'Nenhuma peça da Biblioteca cobre a sequência deste objetivo. Promova mais peças ou monte o kit à mão.',
+        },
+        422,
+      );
+    }
+
+    const agora = Date.now();
+    const nomeDoProjeto =
+      nome?.trim() || `Site expresso ${new Date(agora).toLocaleDateString('pt-BR')}`;
+
+    // 1. O kit, como o POST /api/kits faria.
+    const kitId = newKitId();
+    db.transaction((tx) => {
+      tx.insert(tables.kits)
+        .values({
+          id: kitId,
+          name: `${nomeDoProjeto} · kit`,
+          description: `Montado pela via expressa (${objetivo}).`,
+          createdAt: agora,
+          updatedAt: agora,
+        })
+        .run();
+      montagem.componentIds.forEach((componentId, position) => {
+        tx.insert(tables.kitComponents).values({ kitId, componentId, position }).run();
+      });
+    });
+    consolidarEGravar(db, kitId);
+
+    // 2. O projeto, com a estrutura que a montagem decidiu — inclusive as
+    // etapas SEM peça, que a geração cria no estilo (permissões ligadas).
+    const projectId = newProjectId();
+    mkdirSync(projectContentDir(projectId), { recursive: true });
+    mkdirSync(projectBrandingDir(projectId), { recursive: true });
+    mkdirSync(projectMediaDir(projectId), { recursive: true });
+    const layout = ProjectLayout.parse({
+      ...DEFAULT_LAYOUT,
+      objetivo,
+      permissoes: { criarSecoesFaltantes: true, criarArteDeApoio: true },
+      secoes: montagem.passos.map((p, i) => ({
+        id: `sec-exp-${i + 1}`,
+        nome: p.etapa,
+        papel: p.papel,
+        componentIds: p.componentId === null ? [] : [p.componentId],
+      })),
+    });
+    db.insert(tables.projects)
+      .values({
+        id: projectId,
+        name: nomeDoProjeto,
+        createdAt: agora,
+        updatedAt: agora,
+        kitId,
+        contentJson: JSON.stringify(DEFAULT_PROJECT_CONTENT),
+        brandingJson: JSON.stringify(DEFAULT_PROJECT_BRANDING),
+        mediaManifestJson: '[]',
+        layoutJson: JSON.stringify(layout),
+        status: 'draft',
+      })
+      .run();
+
+    // 3. A marca automática — aqui a estrutura JÁ existe, então as mídias
+    // nascem ancoradas nas seções.
+    const marca = criarMarcaAutomatica(projectId, {
+      nicho: nicho?.trim() || null,
+      secoes: secoesQueAceitamMidia({ layoutJson: JSON.stringify(layout), kitId }),
+    });
+    const b = marca.branding;
+    const branding = normalizarProjectBranding(
+      JSON.stringify({
+        brandName: b.brandName,
+        tone: b.tone,
+        logoPath: b.logoPath,
+        palette: {
+          primary: b.primary,
+          background: b.background,
+          foreground: b.foreground,
+          accent: b.accent,
+        },
+        typography: { display: b.fontDisplay, body: b.fontBody },
+        contact: b.contact,
+        social: b.social,
+        mainCta: b.mainCta,
+        identidadeVerbal: b.identidadeVerbal,
+        logos: b.logos,
+        logosLocais: b.logosLocais,
+        paleta: b.paleta,
+        tipografia: b.tipografia,
+        sociais: b.sociais,
+      }),
+    );
+    db.update(tables.projects)
+      .set({
+        brandingJson: JSON.stringify(branding),
+        mediaManifestJson: JSON.stringify(marca.media),
+        updatedAt: Date.now(),
+      })
+      .where(eq(tables.projects.id, projectId))
+      .run();
+    gravarConfig(projectId, DEFAULT_PROJECT_CONTENT, branding);
+
+    return c.json(
+      {
+        projectId,
+        kitId,
+        marca: b.brandName,
+        midias: marca.media.length,
+        passos: montagem.passos,
+        avisos: montagem.avisos,
+      },
+      201,
+    );
+  },
+);
 
 const CreateProjectInput = z.object({
   name: z.string().min(1),

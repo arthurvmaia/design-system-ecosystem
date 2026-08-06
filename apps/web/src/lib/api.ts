@@ -824,6 +824,27 @@ export const api = {
    * bancada e o autosave grava.
    */
   /**
+   * Via expressa: kit + projeto + marca num pedido só, trancado pela
+   * credencial de ação. Devolve o projectId; a tela dispara a geração em
+   * seguida pelo generateProject de sempre, com a mesma credencial.
+   */
+  expresso: (
+    input: { objetivo: ObjetivoDoSite; nicho?: string; nome?: string },
+    senhaDeAcao?: string,
+  ) =>
+    jsonFetch<{
+      projectId: string;
+      kitId: string;
+      marca: string;
+      midias: number;
+      passos: KitAutomaticoSugestao['passos'];
+      avisos: string[];
+    }>('/api/projects/expresso', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: senhaDeAcao === undefined ? undefined : { [CABECALHO_DA_ACAO]: senhaDeAcao },
+    }),
+  /**
    * Gera as imagens das SEÇÕES a partir da marca já salva do projeto — o
    * fecho do ciclo Marca→Estrutura: cada seção que aceita mídia recebe as
    * suas, ancoradas por secaoId.

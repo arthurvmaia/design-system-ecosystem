@@ -29,6 +29,7 @@ import { type NavItemDef, primaryNav, secondaryNav } from './nav';
  */
 const PROPOSITO: Record<string, string> = {
   '/inicio': 'Estou pronto',
+  '/expresso': 'Eu monto tudo de uma vez',
   '/extract': 'Me traga referências',
   '/gallery': 'O que eu capturei',
   '/library': 'Peças guardadas',
