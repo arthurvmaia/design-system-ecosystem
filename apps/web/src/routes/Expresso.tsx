@@ -35,6 +35,7 @@ type Resultado = {
 export function ExpressoPage() {
   const [objetivo, setObjetivo] = useState<ObjetivoDoSite | null>(null);
   const [nicho, setNicho] = useState('');
+  const [marca, setMarca] = useState('');
   const [nome, setNome] = useState('');
   const [pedindoSenha, setPedindoSenha] = useState(false);
   const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export function ExpressoPage() {
         {
           objetivo,
           nicho: nicho.trim() === '' ? undefined : nicho.trim(),
+          marca: marca.trim() === '' ? undefined : marca.trim(),
           nome: nome.trim() === '' ? undefined : nome.trim(),
         },
         senhaDeAcao,
@@ -157,7 +159,22 @@ export function ExpressoPage() {
               />
             </div>
             <div>
-              <span className="ds-label">3 · nome do projeto (opcional)</span>
+              <span className="ds-label">3 · nome da marca (opcional)</span>
+              <input
+                type="text"
+                value={marca}
+                onChange={(e) => setMarca(e.target.value)}
+                placeholder="dele saem o logo e as imagens"
+                className="mt-2 w-full rounded-none border px-3 py-2 text-[13px] outline-none focus:border-[var(--color-signal)]"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  color: 'var(--color-fg)',
+                  background: 'transparent',
+                }}
+              />
+            </div>
+            <div>
+              <span className="ds-label">4 · nome do projeto (opcional)</span>
               <input
                 type="text"
                 value={nome}

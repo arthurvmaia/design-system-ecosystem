@@ -165,12 +165,13 @@ projectsRoute.post(
       ]),
       nicho: z.string().optional(),
       nome: z.string().optional(),
+      marca: z.string().optional(),
     }),
   ),
   (c) => {
     const recusa = exigeSenhaDeAcao(c);
     if (recusa !== null) return recusa;
-    const { objetivo, nicho, nome } = c.req.valid('json');
+    const { objetivo, nicho, nome, marca: nomeDaMarca } = c.req.valid('json');
     const db = getDb();
 
     const pecas = db.select().from(tables.libraryComponents).all();
@@ -266,6 +267,7 @@ projectsRoute.post(
     // nascem ancoradas nas seções.
     const marca = criarMarcaAutomatica(projectId, {
       nicho: nicho?.trim() || null,
+      nomeDaMarca: nomeDaMarca?.trim() || null,
       secoes: secoesQueAceitamMidia({ layoutJson: JSON.stringify(layout), kitId }),
     });
     const b = marca.branding;

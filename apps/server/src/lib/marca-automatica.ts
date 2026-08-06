@@ -263,6 +263,9 @@ export const criarMarcaAutomatica = (
   opts?: {
     /** Nicho do produto (opcional): dirige receita, nome, logo e mídias. */
     nicho?: string | null;
+    /** Nome da marca (opcional): vence receita e nicho; dele saem a inicial
+     * do logo e a marca d'água das imagens. */
+    nomeDaMarca?: string | null;
     /** Seções que aceitam mídia, já contadas pela rota. Vazio = pacote genérico. */
     secoes?: readonly SecaoParaMidia[];
   },
@@ -277,14 +280,12 @@ export const criarMarcaAutomatica = (
   const casouComReceita =
     nicho !== null &&
     base.segmento.toLowerCase().includes(nicho.toLowerCase().split(/\s+/)[0] ?? '');
-  const receita: Receita =
-    nicho === null
-      ? base
-      : {
-          ...base,
-          segmento: nicho,
-          nome: casouComReceita ? base.nome : capitalizar(nicho),
-        };
+  const nomeEscolhido = opts?.nomeDaMarca?.trim() || null;
+  const receita: Receita = {
+    ...base,
+    segmento: nicho ?? base.segmento,
+    nome: nomeEscolhido ?? (nicho !== null && !casouComReceita ? capitalizar(nicho) : base.nome),
+  };
   const [background, surface, heading, body, primary, primaryFg, accent] = receita.cores;
 
   const dir = projectMediaDir(projectId);

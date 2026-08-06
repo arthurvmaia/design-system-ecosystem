@@ -829,7 +829,7 @@ export const api = {
    * seguida pelo generateProject de sempre, com a mesma credencial.
    */
   expresso: (
-    input: { objetivo: ObjetivoDoSite; nicho?: string; nome?: string },
+    input: { objetivo: ObjetivoDoSite; nicho?: string; nome?: string; marca?: string },
     senhaDeAcao?: string,
   ) =>
     jsonFetch<{
