@@ -3,6 +3,7 @@ import { Mascote } from '@/components/Mascote';
 import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import {
+  type KitAutomaticoSugestao,
   type KitDesignSystem,
   type KitEmUso,
   type KitRecord,
@@ -17,7 +18,12 @@ import { usePreferencias } from '@/lib/preferencias';
 import { isAllSelected, prune, toggleAllVisible, toggle as toggleSel } from '@/lib/selection';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
-import { CONFIANCA_MINIMA_PARA_RECOLORIR, rotuloDaCategoria } from '@ds/shared/schemas';
+import {
+  CONFIANCA_MINIMA_PARA_RECOLORIR,
+  OBJETIVOS,
+  type ObjetivoDoSite,
+  rotuloDaCategoria,
+} from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
@@ -580,6 +586,25 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
     setSelected(copia);
   };
 
+  // Montagem automática: escolhe o objetivo, o servidor sugere a sequência e
+  // as peças, e a sugestão entra NO EDITOR — nada é salvo sem revisão.
+  const [escolhendoObjetivo, setEscolhendoObjetivo] = useState(false);
+  const [montagem, setMontagem] = useState<KitAutomaticoSugestao | null>(null);
+  const montar = useMutation({
+    mutationFn: (objetivo: ObjetivoDoSite) => api.montarKitAutomatico(objetivo),
+    onSuccess: ({ sugestao }) => {
+      setSelected(sugestao.componentIds);
+      if (name.trim() === '') setName(sugestao.nomeSugerido);
+      setMontagem(sugestao);
+      setEscolhendoObjetivo(false);
+      setPainel('previa');
+      toast.ok(
+        `Montei ${sugestao.componentIds.length} peça(s) na ordem da sequência. Revise e salve.`,
+      );
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui montar o kit.'),
+  });
+
   return (
     // Colunas com rolagem própria: o corpo do modal não deve rolar por fora.
     <Modal
@@ -610,6 +635,101 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
             className="rounded-md border px-3 py-2 text-[13px] outline-none transition-all focus:border-[var(--color-signal)]"
             style={fieldStyle}
           />
+        </div>
+
+        {/* Montagem automática: o objetivo do site decide a sequência; as peças
+            entram na ordem certa e a pessoa revisa antes de salvar. */}
+        <div className="border-b px-5 py-2" style={{ borderColor: 'var(--color-border)' }}>
+          {!escolhendoObjetivo ? (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setEscolhendoObjetivo(true)}
+                className="rounded-md border px-3 py-1.5 text-[12px] uppercase tracking-wide transition-colors hover:border-[var(--color-signal)]"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
+              >
+                Montar para mim
+              </button>
+              <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+                Eu escolho as peças que combinam, na ordem da sequência do seu objetivo.
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className="text-[12px] uppercase tracking-wide"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                Qual é o objetivo do site?
+              </span>
+              {(Object.keys(OBJETIVOS) as ObjetivoDoSite[]).map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  disabled={montar.isPending}
+                  onClick={() => montar.mutate(o)}
+                  className="rounded-md border px-3 py-1.5 text-[12px] transition-colors hover:border-[var(--color-signal)] disabled:opacity-50"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg)' }}
+                  title={OBJETIVOS[o].explica}
+                >
+                  {OBJETIVOS[o].rotulo}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setEscolhendoObjetivo(false)}
+                className="px-2 py-1.5 text-[12px]"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                cancelar
+              </button>
+            </div>
+          )}
+          {montagem !== null && (
+            <div
+              className="mt-2 rounded-md border px-3 py-2"
+              style={{ borderColor: 'var(--color-border)' }}
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className="text-[12px] uppercase tracking-wide"
+                  style={{ color: 'var(--color-fg-muted)' }}
+                >
+                  Como eu montei
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMontagem(null)}
+                  className="text-[12px]"
+                  style={{ color: 'var(--color-fg-muted)' }}
+                >
+                  fechar
+                </button>
+              </div>
+              <ul className="mt-1 space-y-0.5">
+                {montagem.passos.map((p) => (
+                  <li
+                    key={`${p.papel}-${p.etapa}`}
+                    className="text-[12px]"
+                    style={{ color: 'var(--color-fg)' }}
+                  >
+                    <span style={{ color: 'var(--color-fg-muted)' }}>{p.etapa}:</span>{' '}
+                    {p.nome ?? (
+                      <em style={{ color: 'var(--color-fg-muted)' }}>sem peça: {p.motivo}</em>
+                    )}
+                    {p.nome !== null && (
+                      <span style={{ color: 'var(--color-fg-muted)' }}> · {p.motivo}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {montagem.avisos.map((a) => (
+                <p key={a} className="mt-1 text-[12px]" style={{ color: 'var(--color-ion-3)' }}>
+                  {a}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* As regras de mistura. Só em kit salvo: um kit novo não tem peça, e
@@ -764,10 +884,10 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
                   type="button"
                   onClick={() => setPainel(id)}
                   aria-pressed={painel === id}
-                  disabled={id === 'previa' && kit === null}
+                  disabled={id === 'previa' && kit === null && selected.length === 0}
                   title={
-                    id === 'previa' && kit === null
-                      ? 'Crie o kit primeiro; depois monto a prévia dele.'
+                    id === 'previa' && kit === null && selected.length === 0
+                      ? 'Escolha peças primeiro; depois monto a prévia.'
                       : undefined
                   }
                   className="border-b px-2 pb-2 text-[10px] uppercase tracking-[0.24em] disabled:opacity-30"
@@ -782,10 +902,12 @@ function KitEditor({ kit, onClose }: { kit: KitRecord | null; onClose: () => voi
               ))}
             </div>
 
-            {painel === 'previa' && kit !== null ? (
+            {painel === 'previa' && (kit !== null || selected.length > 0) ? (
+              // Kit ainda não salvo compõe como RASCUNHO: o id fixo dá a ele a
+              // pasta de cache; a seleção viaja na URL como no kit salvo.
               <Bancada
-                kitId={kit.id}
-                kitNome={name.trim() === '' ? kit.name : name.trim()}
+                kitId={kit?.id ?? 'kit_rascunho'}
+                kitNome={name.trim() === '' ? (kit?.name ?? 'Rascunho') : name.trim()}
                 selecionados={selected}
                 origemDe={(id) => porId.get(id)?.designSystemId ?? null}
               />

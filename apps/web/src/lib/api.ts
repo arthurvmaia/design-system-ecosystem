@@ -5,15 +5,55 @@ import type {
   KitDesignSystem,
   LocalDeLogo,
   LogoVariante,
+  ObjetivoDoSite,
   PaletaDoProjeto,
   ProjectLayout,
   RedeSocial,
+  SectionRole,
   SlotDeMidia,
   TipografiaDoProjeto,
   Violacao,
 } from '@ds/shared/schemas';
 
 export type { KitDesignSystem, ProjectLayout };
+
+/** O patch de marca da geração automática — espelho da resposta do servidor. */
+export type MarcaAutomaticaBranding = {
+  brandName: string;
+  tone: string;
+  primary: string;
+  background: string;
+  foreground: string;
+  accent: string;
+  fontDisplay: string;
+  fontBody: string;
+  logoPath: string | null;
+  contact: { email: string; phone: string; whatsapp: string; address: string };
+  social: Record<string, string>;
+  mainCta: { label: string; href: string };
+  identidadeVerbal: IdentidadeVerbal;
+  logos: LogoVariante[];
+  logosLocais: Partial<Record<LocalDeLogo, string>>;
+  paleta: PaletaDoProjeto;
+  tipografia: TipografiaDoProjeto;
+  sociais: RedeSocial[];
+};
+
+/** A sugestão da montagem automática de kit — espelho da resposta do servidor. */
+export type KitAutomaticoSugestao = {
+  componentIds: string[];
+  passos: Array<{
+    papel: SectionRole;
+    etapa: string;
+    faz: string;
+    componentId: string | null;
+    nome: string | null;
+    motivo: string;
+  }>;
+  origemPrincipal: string | null;
+  nomeSugerido: string;
+  avisos: string[];
+};
 
 /**
  * A âncora de rolagem de um slot de mídia, reexportada do shared para a tela
@@ -768,6 +808,26 @@ export const api = {
     ),
   duplicateKit: (id: string) =>
     jsonFetch<{ item: KitRecord }>(`/api/kits/${id}/duplicate`, { method: 'POST' }),
+  /**
+   * Montagem automática de kit a partir do objetivo do site. Leitura pura: o
+   * servidor sugere (ordem da sequência de marketing + peças que combinam) e a
+   * tela aplica no editor — quem salva é a pessoa, depois de revisar.
+   */
+  montarKitAutomatico: (objetivo: ObjetivoDoSite) =>
+    jsonFetch<{ sugestao: KitAutomaticoSugestao }>('/api/kits/montar-automatico', {
+      method: 'POST',
+      body: JSON.stringify({ objetivo }),
+    }),
+  /**
+   * Marca automática para testes de geração: o servidor cria a identidade
+   * completa e as mídias dela (logos + imagens); a tela aplica o patch na
+   * bancada e o autosave grava.
+   */
+  criarMarcaAutomatica: (projectId: string) =>
+    jsonFetch<{ branding: MarcaAutomaticaBranding; media: MediaItem[] }>(
+      `/api/projects/${projectId}/marca-automatica`,
+      { method: 'POST' },
+    ),
 
   // ── Projetos ────────────────────────────────────────────────────────────
   listProjects: () => jsonFetch<{ items: ProjectRecord[] }>('/api/projects'),

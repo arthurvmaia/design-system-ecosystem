@@ -16,6 +16,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { consolidarEGravar } from '../lib/consolidar-kit.js';
 import { conferirRegras, governancaDoKit } from '../lib/governanca.js';
+import { montarKitAutomatico } from '../lib/montar-kit-automatico.js';
 import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
 
 /**
@@ -190,6 +191,56 @@ kitsRoute.get('/:id/contratos', (c) => {
   });
   return c.json({ items });
 });
+
+/**
+ * Montagem automática: a sequência de marketing do objetivo, vestida com as
+ * peças da Biblioteca que mais combinam (papel→categoria, coerência de origem,
+ * alcance de marca). Leitura pura — não grava kit nenhum: a tela aplica a
+ * sugestão no editor e quem salva é a pessoa, revisando antes.
+ */
+kitsRoute.post(
+  '/montar-automatico',
+  zValidator(
+    'json',
+    z.object({
+      objetivo: z.enum([
+        'captar-contato',
+        'vender-produto',
+        'apresentar-servico',
+        'mostrar-trabalho',
+      ]),
+    }),
+  ),
+  (c) => {
+    const { objetivo } = c.req.valid('json');
+    const db = getDb();
+    const pecas = db.select().from(tables.libraryComponents).all();
+    if (pecas.length === 0) {
+      return c.json(
+        {
+          error: 'biblioteca_vazia',
+          message: 'A Biblioteca está vazia: promova peças da Galeria antes de montar um kit.',
+        },
+        422,
+      );
+    }
+    const r = montarKitAutomatico(
+      objetivo,
+      pecas.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        kind: p.kind,
+        // Peça sem origem registrada compete num balde próprio: nunca é a
+        // "origem principal", mas continua elegível quando é a única do papel.
+        designSystemId: p.designSystemId ?? 'sem-origem',
+      })),
+      (id) =>
+        recolorabilidadeDoBundle(libraryComponentBundleDir(id as `cmp_${string}`))?.taxa ?? null,
+    );
+    return c.json({ sugestao: r });
+  },
+);
 
 kitsRoute.post('/', zValidator('json', CreateKitInput), (c) => {
   const input = c.req.valid('json');

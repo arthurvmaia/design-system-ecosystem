@@ -34,6 +34,7 @@ import { MENSAGEM_API_BLOQUEADA, apiPagaPermitida, getModels } from '../lib/anth
 import { isQueueMode } from '../lib/execution-mode.js';
 import { exigeSenhaDeAcao } from '../lib/exige-senha-de-acao.js';
 import { montarContextoDeGeracao } from '../lib/generate-context.js';
+import { criarMarcaAutomatica } from '../lib/marca-automatica.js';
 import { enqueueTask } from '../lib/task-queue.js';
 
 export const projectsRoute = new Hono();
@@ -236,6 +237,30 @@ projectsRoute.patch('/:id', zValidator('json', PatchProjectInput), (c) => {
 });
 
 /** Upload de uma mídia. Guarda em media/ e anexa ao manifest com o slotRole. */
+/**
+ * Marca automática para testes de geração: gera uma identidade completa
+ * (receita curada — voz, paleta, tipografia, contato) e as mídias dela (logos
+ * e imagens SVG), gravadas como qualquer upload. Devolve o patch pronto da
+ * bancada de Marca; quem aplica e salva é a tela — o projeto não é alterado
+ * aqui além da mídia, que já nasce no manifesto.
+ */
+projectsRoute.post('/:id/marca-automatica', (c) => {
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
+  const db = getDb();
+  const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
+  if (!row) return c.json({ error: 'not_found' }, 404);
+
+  const r = criarMarcaAutomatica(id);
+  const media = [...lerManifest(row.mediaManifestJson), ...r.media];
+  db.update(tables.projects)
+    .set({ mediaManifestJson: JSON.stringify(media), updatedAt: Date.now() })
+    .where(eq(tables.projects.id, id))
+    .run();
+
+  return c.json({ branding: r.branding, media }, 201);
+});
+
 projectsRoute.post('/:id/media', async (c) => {
   const id = c.req.param('id');
   if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);

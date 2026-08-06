@@ -70,8 +70,22 @@ const dirDaPrevia = (kitId: string): string => join(getRoot(), 'cache', 'previa-
 export const montarPrevia = (entrada: EntradaDaPrevia): ResultadoDaPrevia => {
   const db = getDb();
 
-  const kit = db.select().from(tables.kits).where(eq(tables.kits.id, entrada.kitId)).get();
-  if (!kit) return { ok: false, motivo: 'Este kit não existe mais.' };
+  const salvo = db.select().from(tables.kits).where(eq(tables.kits.id, entrada.kitId)).get();
+  // Kit AINDA NÃO SALVO: a tela de montar precisa da mesma prévia do kit
+  // salvo — quem está escolhendo peças decide olhando o site composto, não
+  // uma grade de miniaturas. O rascunho compõe pela seleção enviada, sem
+  // linha no banco e sem design system consolidado (a consolidação nasce no
+  // salvar); o id fixo `kit_rascunho` dá a ele a pasta de cache dele.
+  const ehRascunho = !salvo && entrada.kitId === 'kit_rascunho';
+  if (!salvo && !ehRascunho) return { ok: false, motivo: 'Este kit não existe mais.' };
+  if (ehRascunho && (entrada.componentIds?.length ?? 0) === 0) {
+    return { ok: false, motivo: 'Escolha peças para eu montar a prévia do rascunho.' };
+  }
+  const kit = salvo ?? {
+    id: entrada.kitId,
+    name: 'Rascunho',
+    tokensJson: null,
+  };
 
   const ids =
     entrada.componentIds ??
