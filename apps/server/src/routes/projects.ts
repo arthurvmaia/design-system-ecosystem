@@ -210,8 +210,9 @@ projectsRoute.post(
     }
 
     const agora = Date.now();
+    const base = nomeDaMarca?.trim() || nicho?.trim() || objetivo.replace(/-/g, ' ');
     const nomeDoProjeto =
-      nome?.trim() || `Site expresso ${new Date(agora).toLocaleDateString('pt-BR')}`;
+      nome?.trim() || `Teste · ${base} · ${Math.random().toString(36).slice(2, 6)}`;
 
     // 1. O kit, como o POST /api/kits faria.
     const kitId = newKitId();

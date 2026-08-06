@@ -3,6 +3,7 @@ import { Mascote } from '@/components/Mascote';
 import { type KitAutomaticoSugestao, PrecisaDaSenhaDeAcao, api } from '@/lib/api';
 import { TRATAMENTO } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
+import { useTrabalho } from '@/lib/trabalho';
 import { useReveal } from '@/lib/use-reveal';
 import { OBJETIVOS, type ObjetivoDoSite } from '@ds/shared/schemas';
 import { useMutation } from '@tanstack/react-query';
@@ -36,10 +37,10 @@ export function ExpressoPage() {
   const [objetivo, setObjetivo] = useState<ObjetivoDoSite | null>(null);
   const [nicho, setNicho] = useState('');
   const [marca, setMarca] = useState('');
-  const [nome, setNome] = useState('');
   const [pedindoSenha, setPedindoSenha] = useState(false);
   const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
   const [resultado, setResultado] = useState<Resultado | null>(null);
+  const { acompanhar } = useTrabalho();
 
   useReveal([resultado]);
 
@@ -51,7 +52,6 @@ export function ExpressoPage() {
           objetivo,
           nicho: nicho.trim() === '' ? undefined : nicho.trim(),
           marca: marca.trim() === '' ? undefined : marca.trim(),
-          nome: nome.trim() === '' ? undefined : nome.trim(),
         },
         senhaDeAcao,
       );
@@ -59,6 +59,7 @@ export function ExpressoPage() {
       return { prep, geracao };
     },
     onSuccess: ({ prep, geracao }) => {
+      if ('task' in geracao) acompanhar(geracao.task.id, 'Gerando o seu site');
       setPedindoSenha(false);
       setErroDaSenha(null);
       setResultado({
@@ -165,21 +166,6 @@ export function ExpressoPage() {
                 value={marca}
                 onChange={(e) => setMarca(e.target.value)}
                 placeholder="dele saem o logo e as imagens"
-                className="mt-2 w-full rounded-none border px-3 py-2 text-[13px] outline-none focus:border-[var(--color-signal)]"
-                style={{
-                  borderColor: 'var(--color-border)',
-                  color: 'var(--color-fg)',
-                  background: 'transparent',
-                }}
-              />
-            </div>
-            <div>
-              <span className="ds-label">4 · nome do projeto (opcional)</span>
-              <input
-                type="text"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                placeholder="eu invento um se ficar vazio"
                 className="mt-2 w-full rounded-none border px-3 py-2 text-[13px] outline-none focus:border-[var(--color-signal)]"
                 style={{
                   borderColor: 'var(--color-border)',

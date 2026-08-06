@@ -3,6 +3,7 @@ import { Mascote } from '@/components/Mascote';
 import { QueuePanel } from '@/components/QueuePanel';
 import { type ProjectRecord, type StartWorkResponse, type TaskRecord, api } from '@/lib/api';
 import { toast } from '@/lib/toast';
+import { useTrabalho } from '@/lib/trabalho';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, Pencil, Trash2, Wand2 } from 'lucide-react';
@@ -44,10 +45,13 @@ export function ProjectsPage() {
   const kitCount = kits.data?.items.length ?? 0;
   useReveal([items.length]);
 
+  const { acompanhar } = useTrabalho();
   const onWork = (res: StartWorkResponse) => {
     setWizard(null);
-    if ('task' in res) setActiveTaskId(res.task.id);
-    else toast.ok('Geração adicionada à fila. Rode o PROCESSAR.bat para produzir o site.');
+    if ('task' in res) {
+      setActiveTaskId(res.task.id);
+      acompanhar(res.task.id, 'Gerando o seu site');
+    } else toast.ok('Geração adicionada à fila. Rode o PROCESSAR.bat para produzir o site.');
   };
 
   return (
