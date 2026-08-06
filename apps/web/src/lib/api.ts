@@ -823,6 +823,16 @@ export const api = {
    * completa e as mídias dela (logos + imagens); a tela aplica o patch na
    * bancada e o autosave grava.
    */
+  /**
+   * Gera as imagens das SEÇÕES a partir da marca já salva do projeto — o
+   * fecho do ciclo Marca→Estrutura: cada seção que aceita mídia recebe as
+   * suas, ancoradas por secaoId.
+   */
+  gerarMidiasAutomaticas: (projectId: string) =>
+    jsonFetch<{ criadas: MediaItem[]; media: MediaItem[] }>(
+      `/api/projects/${projectId}/midias-automaticas`,
+      { method: 'POST' },
+    ),
   criarMarcaAutomatica: (projectId: string, nicho?: string) =>
     jsonFetch<{ branding: MarcaAutomaticaBranding; media: MediaItem[] }>(
       `/api/projects/${projectId}/marca-automatica`,

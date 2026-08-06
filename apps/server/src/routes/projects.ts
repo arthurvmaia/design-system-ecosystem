@@ -37,7 +37,7 @@ import { MENSAGEM_API_BLOQUEADA, apiPagaPermitida, getModels } from '../lib/anth
 import { isQueueMode } from '../lib/execution-mode.js';
 import { exigeSenhaDeAcao } from '../lib/exige-senha-de-acao.js';
 import { montarContextoDeGeracao } from '../lib/generate-context.js';
-import { criarMarcaAutomatica } from '../lib/marca-automatica.js';
+import { criarMarcaAutomatica, criarMidiasDasSecoes } from '../lib/marca-automatica.js';
 import { enqueueTask } from '../lib/task-queue.js';
 
 export const projectsRoute = new Hono();
@@ -247,23 +247,12 @@ projectsRoute.patch('/:id', zValidator('json', PatchProjectInput), (c) => {
  * bancada de Marca; quem aplica e salva é a tela — o projeto não é alterado
  * aqui além da mídia, que já nasce no manifesto.
  */
-projectsRoute.post('/:id/marca-automatica', async (c) => {
-  const id = c.req.param('id');
-  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
+/** As seções que ACEITAM mídia, com a mesma régua da etapa de Mídia. */
+const secoesQueAceitamMidia = (row: {
+  layoutJson: string | null;
+  kitId: string | null;
+}): Array<{ id: string; nome: string; papel?: string; quantas: number; oQue: string }> => {
   const db = getDb();
-  const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
-  if (!row) return c.json({ error: 'not_found' }, 404);
-
-  let nicho: string | null = null;
-  try {
-    const corpo = (await c.req.json()) as { nicho?: unknown };
-    if (typeof corpo.nicho === 'string' && corpo.nicho.trim() !== '') nicho = corpo.nicho.trim();
-  } catch {
-    // sem corpo é uso legítimo: nicho é opcional
-  }
-
-  // As seções que ACEITAM mídia, com a mesma régua da etapa de Mídia: o
-  // contrato das peças manda no número, a etapa de marketing explica o quê.
   const layout = normalizarProjectLayout(row.layoutJson);
   const kitCmps =
     row.kitId === null
@@ -285,7 +274,7 @@ projectsRoute.post('/:id/marca-automatica', async (c) => {
         .map((m) => ({ tipo: m.tipo })),
     };
   });
-  const secoes = layout.secoes.map((s) => {
+  return layout.secoes.map((s) => {
     const sugestao = sugerirMidiaDaSecao(s, espacos, layout.objetivo);
     return {
       id: s.id,
@@ -295,8 +284,24 @@ projectsRoute.post('/:id/marca-automatica', async (c) => {
       oQue: sugestao.oQue,
     };
   });
+};
 
-  const r = criarMarcaAutomatica(id, { nicho, secoes });
+projectsRoute.post('/:id/marca-automatica', async (c) => {
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
+  const db = getDb();
+  const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
+  if (!row) return c.json({ error: 'not_found' }, 404);
+
+  let nicho: string | null = null;
+  try {
+    const corpo = (await c.req.json()) as { nicho?: unknown };
+    if (typeof corpo.nicho === 'string' && corpo.nicho.trim() !== '') nicho = corpo.nicho.trim();
+  } catch {
+    // sem corpo é uso legítimo: nicho é opcional
+  }
+
+  const r = criarMarcaAutomatica(id, { nicho, secoes: secoesQueAceitamMidia(row) });
   const media = [...lerManifest(row.mediaManifestJson), ...r.media];
   db.update(tables.projects)
     .set({ mediaManifestJson: JSON.stringify(media), updatedAt: Date.now() })
@@ -304,6 +309,67 @@ projectsRoute.post('/:id/marca-automatica', async (c) => {
     .run();
 
   return c.json({ branding: r.branding, media }, 201);
+});
+
+/**
+ * Gera as imagens das SEÇÕES a partir da marca que o projeto já tem.
+ *
+ * A ordem do wizard é Marca antes de Estrutura, então a marca automática roda
+ * quando as seções ainda não existem. Este caminho fecha o ciclo: com a
+ * estrutura de pé, lê a identidade SALVA (da automática ou preenchida à mão) e
+ * veste cada seção que aceita mídia, ancorando por `secaoId`.
+ */
+projectsRoute.post('/:id/midias-automaticas', (c) => {
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
+  const db = getDb();
+  const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
+  if (!row) return c.json({ error: 'not_found' }, 404);
+
+  const secoes = secoesQueAceitamMidia(row).filter((s) => s.quantas > 0);
+  if (secoes.length === 0) {
+    return c.json(
+      {
+        error: 'sem_secoes_com_midia',
+        message:
+          'Nenhuma seção aceita mídia ainda. Monte a estrutura (e escolha as peças) primeiro; seção sem espaço de imagem não recebe imagem.',
+      },
+      422,
+    );
+  }
+
+  // A identidade visual sai do branding SALVO: paleta semântica quando existe,
+  // legado quando não. Cores fora da atribuição caem no legado correspondente.
+  const b = normalizarProjectBranding(row.brandingJson);
+  const hexDe = (token: string, fallback: string): string => {
+    const idCor = b.paleta?.atribuicoes[token];
+    return b.paleta?.cores.find((c2) => c2.id === idCor)?.hex ?? fallback;
+  };
+  const criadas = criarMidiasDasSecoes(
+    id,
+    {
+      nome: b.brandName ?? 'Marca',
+      display: b.tipografia?.display ?? b.typography.display,
+      body: b.tipografia?.body ?? b.typography.body,
+      cores: [
+        hexDe('background', b.palette.background),
+        hexDe('surface', b.palette.background),
+        hexDe('heading', b.palette.foreground),
+        hexDe('body', b.palette.foreground),
+        hexDe('primary', b.palette.primary),
+        hexDe('primary-foreground', '#ffffff'),
+        hexDe('accent', b.palette.accent ?? b.palette.primary),
+      ],
+    },
+    secoes,
+  );
+  const media = [...lerManifest(row.mediaManifestJson), ...criadas];
+  db.update(tables.projects)
+    .set({ mediaManifestJson: JSON.stringify(media), updatedAt: Date.now() })
+    .where(eq(tables.projects.id, id))
+    .run();
+
+  return c.json({ criadas, media }, 201);
 });
 
 projectsRoute.post('/:id/media', async (c) => {

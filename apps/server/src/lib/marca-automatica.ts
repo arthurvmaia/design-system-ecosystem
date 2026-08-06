@@ -200,6 +200,63 @@ export type MarcaAutomatica = {
   sociais: RedeSocial[];
 };
 
+/**
+ * Gera SÓ as imagens das seções, a partir da marca que o projeto JÁ TEM.
+ *
+ * Existe porque a ordem do wizard é Marca antes de Estrutura: na hora em que a
+ * marca automática roda, as seções ainda não existem, e mídia por seção só faz
+ * sentido depois que a estrutura nasce. Este caminho lê a identidade salva
+ * (nome, paleta, fontes — vinda da marca automática OU preenchida à mão) e
+ * veste as seções que aceitam mídia, ancorando cada imagem em `secaoId`.
+ */
+export const criarMidiasDasSecoes = (
+  projectId: `prj_${string}`,
+  visual: { nome: string; display: string; body: string; cores: Receita['cores'] },
+  secoes: readonly SecaoParaMidia[],
+): MediaItem[] => {
+  const receita: Receita = {
+    nome: visual.nome,
+    segmento: '',
+    tons: [],
+    arquetipos: [],
+    display: visual.display,
+    body: visual.body,
+    cores: visual.cores,
+    escura: false,
+    cta: { label: '', href: '' },
+  };
+  const dir = projectMediaDir(projectId);
+  mkdirSync(dir, { recursive: true });
+  const prefixo = `${Date.now().toString(36)}-${randomBytes(2).toString('hex')}`;
+  const media: MediaItem[] = [];
+  let indice = 0;
+  for (const secao of secoes.filter((s) => s.quantas > 0)) {
+    const quantas = Math.min(secao.quantas, 8);
+    const hero = /hero|abertura/i.test(secao.papel ?? secao.nome);
+    const slugSecao = secao.nome
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .slice(0, 30);
+    for (let i = 0; i < quantas; i++) {
+      const stored = `${prefixo}-secao-${slugSecao}-${i + 1}.svg`;
+      writeFileSync(
+        join(dir, stored),
+        svgImagem(receita, indice++, hero ? 1600 : 1200, 900),
+        'utf8',
+      );
+      media.push({
+        path: stored,
+        mimeType: 'image/svg+xml',
+        kind: 'image',
+        originalName: `secao-${slugSecao}-${i + 1}.svg`,
+        alt: `Imagem ${i + 1} para a seção "${secao.nome}": ${secao.oQue}`.slice(0, 180),
+        secaoId: secao.id,
+      });
+    }
+  }
+  return media;
+};
+
 /** Gera a marca, grava as mídias no projeto e devolve o patch pronto da tela. */
 export const criarMarcaAutomatica = (
   projectId: `prj_${string}`,
