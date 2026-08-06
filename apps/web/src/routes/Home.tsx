@@ -99,6 +99,7 @@ export function HomePage() {
 
   /** O que cada etapa faz, e como ela está agora. */
   const estado: Record<string, string | null> = {
+    '/expresso': null,
     '/extract': null,
     '/gallery': conta(ds.data?.items.length, 'captura para triar', 'capturas para triar'),
     '/library': conta(lib.data?.items.length, 'peça guardada', 'peças guardadas'),
@@ -108,6 +109,8 @@ export function HomePage() {
   };
 
   const oQueFaz: Record<string, string> = {
+    '/expresso':
+      'O atalho: me diga o objetivo e eu monto o kit, crio uma marca de teste e gero o site de uma vez. Tudo fica salvo para ajustar depois.',
     '/extract': 'Me dê o endereço. Abro a página num navegador de verdade e capturo o visual dela.',
     '/gallery': 'Mostro peça por peça o que capturei, e o que ficou de fora. A escolha é sua.',
     '/library': 'Guardo aqui as peças escolhidas, com nome e etiqueta.',
