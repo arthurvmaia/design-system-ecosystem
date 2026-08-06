@@ -228,9 +228,16 @@ export const tetoDaFase = (
   // que precisava deles era cortada. Com histórico (p95 real por fase), a
   // promessa passa a ser o que as fases CUSTAM, com folga de metade e piso de
   // 8% do total — a captura nova nunca fica sem reserva nenhuma.
+  // Piso de 8% e TETO na própria fração: o histórico serve para devolver
+  // tempo ao percurso, nunca para reservar MAIS que a regra antiga — sem o
+  // teto, o p95 dos sites pesados realimentava a reserva a cada rodada
+  // (medido: 125 s → 217 s num dia) e o percurso de todos passava fome.
   const prometidoMs =
     medidoAdianteMs !== undefined
-      ? Math.max(Math.round(medidoAdianteMs * 1.5), Math.round(totalMs * 0.08))
+      ? Math.min(
+          Math.max(Math.round(medidoAdianteMs * 1.5), Math.round(totalMs * 0.08)),
+          Math.round(totalMs * prometidoAdiante),
+        )
       : Math.round(totalMs * prometidoAdiante);
   const livre = Math.round(restanteMs - prometidoMs - margem);
   return Math.max(daFracao, livre);
@@ -623,6 +630,19 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       } else if (subidas > 0 && subidas < esperadas) {
         limitacoes.push(
           `A passagem ascendente do scroll parou em ${subidas} de ${esperadas} parada(s) pelo orçamento: parte dos efeitos de rolar para cima pode não ter sido medida.`,
+        );
+      }
+    }
+    // O corte que cai DENTRO da última parada da descida não custou cobertura:
+    // a página inteira foi percorrida e o que ficou de fora é o rabo da última
+    // varredura. É a simétrica do bônus da subida acima — em páginas que enchem
+    // qualquer teto por construção (WebGL varrendo mais a cada cota maior), o
+    // carimbo de parcial punia justamente o teto mais generoso. Fecho gracioso:
+    // perdoa o corte e declara o encurtamento como limitação.
+    if (passes.some((p) => p.direction === 'descendo' && p.progress >= 0.99)) {
+      if (tel.perdoarCorte(FASE_V2.percurso)) {
+        limitacoes.push(
+          'A varredura da última dobra foi encurtada pelo orçamento: a descida chegou ao fim da página, mas parte das trajetórias de ponteiro da última parada pode não ter sido medida.',
         );
       }
     }

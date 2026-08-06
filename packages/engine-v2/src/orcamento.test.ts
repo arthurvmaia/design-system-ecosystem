@@ -103,3 +103,12 @@ test('sem histórico, nada muda: a fração continua mandando', () => {
     tetoDaFase(FASE_V2.percurso, TOTAL, 595_000),
   );
 });
+
+test('a reserva medida tem TETO na fração: histórico gordo não esfomeia o percurso', () => {
+  // O laço real: p95 crescente reservava 217 s onde a fração reservava 201 s,
+  // e o teto do percurso caía abaixo até da fórmula antiga.
+  const gordo = tetoDaFase(FASE_V2.percurso, TOTAL, 595_000, 400_000);
+  const soFracao = tetoDaFase(FASE_V2.percurso, TOTAL, 595_000);
+  assert.ok(gordo !== undefined && soFracao !== undefined);
+  assert.equal(gordo, soFracao, 'medido acima da fração vale a fração, nunca menos que isso');
+});

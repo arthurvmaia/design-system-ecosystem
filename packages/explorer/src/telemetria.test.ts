@@ -60,6 +60,26 @@ test('marcarParcial: a primeira interrupção define fase e motivo', () => {
   assert.equal(r.motivo, 'timeout');
 });
 
+test('perdoarCorte: desfaz o parcial da fase perdoada e só dela', () => {
+  const tel = new Telemetria({ total: 5000, fases: {} });
+  tel.marcarParcial('v2-percurso', 'orçamento da fase esgotado');
+  assert.equal(tel.perdoarCorte('v2-compilar'), false, 'outra fase não perdoa este corte');
+  assert.equal(tel.parcial, true);
+  assert.equal(tel.perdoarCorte('v2-percurso'), true);
+  assert.equal(tel.parcial, false);
+  assert.equal(tel.relatorio().faseInterrompida, undefined);
+});
+
+test('perdoarCorte: sem corte não perdoa nada; corte posterior volta a marcar', () => {
+  const tel = new Telemetria({ total: 5000, fases: {} });
+  assert.equal(tel.perdoarCorte('v2-percurso'), false);
+  tel.marcarParcial('v2-percurso', 'orçamento');
+  tel.perdoarCorte('v2-percurso');
+  tel.marcarParcial('v2-compilar', 'orçamento');
+  assert.equal(tel.parcial, true, 'o perdão não imuniza cortes futuros');
+  assert.equal(tel.faseCortada, 'v2-compilar');
+});
+
 test('fase que termina normalmente devolve valor e não é parcial', async () => {
   const tel = new Telemetria({ total: 5000, fases: { a: 1000 } });
   const r = await tel.fase('a', async () => 42);

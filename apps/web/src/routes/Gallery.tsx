@@ -2040,8 +2040,15 @@ function SegmentDetail({
   const abreNoPrint =
     print !== undefined &&
     (segment.fidelity?.support === 'visual' || segment.category === 'background');
+  // Peça cuja NATUREZA é o movimento abre DEMONSTRANDO. "Aparecer conforme
+  // rola" no modo plano é o estado pré-reveal: uma caixa preta que parecia
+  // defeito. O mesmo princípio da referência visual, que já abre no replay.
+  const ehAnimacao =
+    (segment.kind === 'animation' || segment.category === 'interaction') &&
+    segment.fidelity?.support !== 'visual' &&
+    (segment.fidelity?.scroll?.length ?? 0) > 0;
   const [modo, setModo] = useState<'plano' | 'estados' | 'scroll' | 'print' | 'hover'>(
-    abreNoPrint ? 'print' : 'plano',
+    abreNoPrint ? 'print' : ehAnimacao ? 'scroll' : 'plano',
   );
   const temEstados = (segment.fidelity?.states?.length ?? 0) > 0;
   // Hover medido na captura: é o que justifica oferecer a demonstração.

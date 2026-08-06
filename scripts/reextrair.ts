@@ -53,7 +53,7 @@ import {
 } from '@ds/shared';
 import { tamanhoDe } from './acervo-limpar-orfas.js';
 import { executadoDireto } from './executado-direto.js';
-import { historicoDeFasesDoAcervo } from './historico-de-fases.js';
+import { comPisoDoSite, historicoDeFasesDoAcervo } from './historico-de-fases.js';
 import { segmentarEIndexar } from './segmentar.js';
 
 type Relato = {
@@ -220,7 +220,10 @@ export const reextrair = async (
   let r: Awaited<ReturnType<typeof capturarComV2>>;
   try {
     r = await capturarComV2(url, {
-      historicoDeFases: historicoDeFasesDoAcervo(),
+      // Recaptura sabe quanto ESTE site custou da última vez: a mediana do
+      // acervo reserva pelo site típico, e o site pesado saía cortado nas
+      // fases finais rodada após rodada. Ver `comPisoDoSite`.
+      historicoDeFases: comPisoDoSite(historicoDeFasesDoAcervo(), dsId),
       dirCaptura: tmpCaptura,
       dirBundles: tmpBundles,
       verificarVisual,

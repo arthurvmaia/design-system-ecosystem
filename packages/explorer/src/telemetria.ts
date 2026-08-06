@@ -150,6 +150,21 @@ export class Telemetria {
   }
 
   /**
+   * Desfaz a marca de parcial de UMA fase, quando o chamador provou que o corte
+   * não custou cobertura — ex.: o percurso cortado com a descida já em 100% da
+   * página. Só perdoa se a fase interrompida for exatamente esta (um corte
+   * anterior em outra fase continua valendo). Quem perdoa assume o dever de
+   * declarar o que o corte encurtou como limitação.
+   */
+  perdoarCorte(fase: string): boolean {
+    if (!this.parcialFlag || this.faseInterrompida !== fase) return false;
+    this.parcialFlag = false;
+    this.faseInterrompida = undefined;
+    this.motivoInterrupcao = undefined;
+    return true;
+  }
+
+  /**
    * Em que fase o corte aconteceu, quando houve corte.
    *
    * Quem decide o que fazer depois de um corte precisa saber ONDE ele foi. Um
