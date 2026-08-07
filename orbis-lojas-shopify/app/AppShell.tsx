@@ -52,6 +52,7 @@ import { PreviewCard } from "@/app/PreviewCard";
 import { previewFromProject, previewFromTheme } from "@/app/preview-model";
 import { FontCatalog, catalogFontFor } from "@/app/FontCatalog";
 import type { CatalogFont } from "@/lib/google-fonts";
+import { CONTRAST_MINIMUM, contextBackgroundColor, contrastRatio, formatColorValue, isTextColorSetting, parseColorValue } from "@/lib/color-tools";
 import { Orbis as OrbisNucleo } from "@/app/Orbis";
 import { EntryGate } from "@/app/EntryGate";
 import { ClientFlow } from "@/app/ClientFlow";
@@ -1030,15 +1031,15 @@ function ShopifyProperties({ theme, pageIndex, section, sectionIndex, global, fo
     }, 80);
     return () => window.clearTimeout(timeout);
   }, [focusBlockId]);
-  if (global) return <div className="shopify-properties"><div className="shopify-import-summary"><FileArchive size={18} /><div><b>{theme.themeName}</b><span>{theme.compatibility?.architecture ?? "Tema Shopify"} · {theme.summary.fileCount} arquivos · {theme.summary.editableSettingCount} ajustes · {theme.compatibility?.preservedSource ? "ZIP preservado" : "estrutura preservada"}</span></div></div>{theme.globalGroups.map((group, index) => <PropertyGroup key={`${group.name}-${index}`} icon={Settings2} title={group.name} open={index === 0}>{group.settings.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={theme.globalValues[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "globalValues", setting.id], value)} context={theme.globalValues} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />)}</PropertyGroup>)}</div>;
+  if (global) return <div className="shopify-properties"><div className="shopify-import-summary"><FileArchive size={18} /><div><b>{theme.themeName}</b><span>{theme.compatibility?.architecture ?? "Tema Shopify"} · {theme.summary.fileCount} arquivos · {theme.summary.editableSettingCount} ajustes · {theme.compatibility?.preservedSource ? "ZIP preservado" : "estrutura preservada"}</span></div></div>{theme.globalGroups.map((group, index) => <PropertyGroup key={`${group.name}-${index}`} icon={Settings2} title={group.name} open={index === 0}>{group.settings.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={theme.globalValues[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "globalValues", setting.id], value)} context={theme.globalValues} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} scope="no tema inteiro" />)}</PropertyGroup>)}</div>;
   if (!section || sectionIndex < 0) return <div className="property-empty">Selecione uma seção da página.</div>;
   const schema = theme.sectionSchemas.find((item) => item.type === section.type);
   const sectionDefinitions = mergeShopifyDefinitions(schema?.settings ?? [], section.settings);
   return <div className="shopify-properties">
     <div className="shopify-import-summary"><Layers3 size={18} /><div><b>{section.name}</b><span>{section.type} · {section.blocks.length} blocos</span></div></div>
     <div className="shopify-section-visibility"><ToggleField label="Exibir esta seção na loja" checked={!section.disabled} onChange={(visible) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "disabled"], !visible)} /></div>
-    <PropertyGroup icon={Type} title="Configurações da seção" open>{sectionDefinitions.length ? sectionDefinitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={section.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "settings", setting.id], value)} context={section.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />) : <p className="property-note">Esta seção não possui campos próprios; use os blocos abaixo.</p>}</PropertyGroup>
-    {section.blocks.map((block, blockIndex) => { const blockSchema = schema?.blocks.find((item) => item.type === block.type); const definitions = mergeShopifyDefinitions(blockSchema?.settings ?? [], block.settings); return <PropertyGroup key={block.id} anchorId={`bloco-${block.id}`} icon={Layers3} title={`Bloco · ${blockSchema?.name ?? humanizeShopify(block.type)}`} open={blockIndex === 0 || block.id === focusBlockId}>{definitions.length ? definitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={block.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "blocks", String(blockIndex), "settings", setting.id], value)} context={block.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />) : <p className="property-note">Bloco sem configurações editáveis.</p>}</PropertyGroup>; })}
+    <PropertyGroup icon={Type} title="Configurações da seção" open>{sectionDefinitions.length ? sectionDefinitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={section.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "settings", setting.id], value)} context={section.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} scope="nesta seção" />) : <p className="property-note">Esta seção não possui campos próprios; use os blocos abaixo.</p>}</PropertyGroup>
+    {section.blocks.map((block, blockIndex) => { const blockSchema = schema?.blocks.find((item) => item.type === block.type); const definitions = mergeShopifyDefinitions(blockSchema?.settings ?? [], block.settings); return <PropertyGroup key={block.id} anchorId={`bloco-${block.id}`} icon={Layers3} title={`Bloco · ${blockSchema?.name ?? humanizeShopify(block.type)}`} open={blockIndex === 0 || block.id === focusBlockId}>{definitions.length ? definitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={block.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "blocks", String(blockIndex), "settings", setting.id], value)} context={block.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} scope="neste bloco" />) : <p className="property-note">Bloco sem configurações editáveis.</p>}</PropertyGroup>; })}
   </div>;
 }
 
@@ -1062,7 +1063,7 @@ function visibleIfSatisfied(expression: string | undefined, context: Record<stri
 
 const RESOURCE_SETTING_TYPES = ["collection", "product", "page", "blog", "article", "link_list", "menu", "metaobject"];
 
-function ShopifySettingControl({ setting, value, onChange, context = {}, suggestions = [], assetUrls, globalValues }: { setting: ShopifySettingDefinition; value: ShopifyValue | undefined; onChange: (value: EditableValue) => void; context?: Record<string, ShopifyValue>; suggestions?: string[]; assetUrls?: Record<string, string>; globalValues?: Record<string, ShopifyValue> }) {
+function ShopifySettingControl({ setting, value, onChange, context = {}, suggestions = [], assetUrls, globalValues, scope = "neste nível" }: { setting: ShopifySettingDefinition; value: ShopifyValue | undefined; onChange: (value: EditableValue) => void; context?: Record<string, ShopifyValue>; suggestions?: string[]; assetUrls?: Record<string, string>; globalValues?: Record<string, ShopifyValue>; scope?: string }) {
   const type = setting.type;
   const uid = useId();
   if (!visibleIfSatisfied(setting.visibleIf, context)) return null;
@@ -1097,7 +1098,12 @@ function ShopifySettingControl({ setting, value, onChange, context = {}, suggest
   if (type === "checkbox") return <div className="shopify-setting"><ToggleField label={setting.label} checked={Boolean(value)} onChange={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
   if (type === "range") return <div className="shopify-setting"><RangeField label={setting.label} value={typeof value === "number" ? value : Number(setting.default ?? setting.min ?? 0)} min={setting.min ?? 0} max={setting.max ?? 100} step={setting.step} suffix={setting.unit ?? ""} onChange={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
   if (type === "font_picker") return <div className="shopify-setting"><ShopifyFontPickerControl setting={setting} value={stringValue} onChange={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
-  if (type === "color" && normalizeHexColor(stringValue)) return <div className="shopify-setting"><ColorField label={setting.label} value={normalizeHexColor(stringValue) ?? "#000000"} onChange={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
+  if ((type === "color" || type === "color_background") && !/gradient\(/i.test(stringValue) && (parseColorValue(stringValue) || (!stringValue && typeof setting.default === "string" && parseColorValue(setting.default)))) {
+    return <ShopifyColorField setting={setting} value={stringValue} onChange={onChange} scope={scope} globalValues={globalValues} context={context} />;
+  }
+  if (type === "color_background" && /gradient\(/i.test(stringValue)) {
+    return <Field label={setting.label}><textarea value={stringValue} rows={3} onChange={(event) => onChange(event.target.value)} /><small>Gradiente do tema, preservado como está; edite o CSS do gradiente diretamente.</small>{setting.info && <small>{setting.info}</small>}</Field>;
+  }
   if (["select", "radio"].includes(type) && setting.options?.length) return <Field label={setting.label}><select value={stringValue} onChange={(event) => onChange(event.target.value)}>{setting.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{setting.info && <small>{setting.info}</small>}</Field>;
   if (type === "image_picker") return <div className="shopify-setting"><MediaField label={setting.label} value={stringValue} assetUrls={assetUrls} onUploaded={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
   if (["textarea", "richtext", "html", "liquid", "inline_richtext"].includes(type) || (value && typeof value === "object")) return <Field label={setting.label}><textarea value={stringValue} rows={4} onChange={(event) => { if (value && typeof value === "object") { try { onChange(JSON.parse(event.target.value)); } catch { /* mantém o último JSON válido */ } } else onChange(event.target.value); }} />{setting.info && <small>{setting.info}</small>}</Field>;
@@ -1163,6 +1169,61 @@ function ShopifyFontPickerControl({ setting, value, onChange }: { setting: Shopi
       }} />
     </Modal>}
   </Field>;
+}
+
+const RECENT_COLORS_KEY = "orbis-cores-recentes";
+function readRecentColors(): string[] {
+  try { return JSON.parse(localStorage.getItem(RECENT_COLORS_KEY) ?? "[]") as string[]; } catch { return []; }
+}
+function rememberRecentColor(value: string) {
+  try { localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify([value, ...readRecentColors().filter((item) => item !== value)].slice(0, 8))); } catch { /* sem localStorage, sem recentes */ }
+}
+
+/** As cores REAIS do tema (settings globais + esquemas) como amostras rápidas. */
+function themeColorSwatches(globalValues: Record<string, ShopifyValue>): string[] {
+  const out = new Set<string>();
+  for (const [id, value] of Object.entries(globalValues)) {
+    if (typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value) && /color|colour|cl_|_bg|background|text|accent|button|gradient/i.test(id)) out.add(value.toLowerCase());
+  }
+  for (const key of Object.keys(shopifyObject(globalValues.color_schemes))) {
+    const palette = schemePalette(globalValues, key);
+    for (const color of [palette?.background, palette?.text, palette?.accent]) {
+      if (typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color)) out.add(color.toLowerCase());
+    }
+  }
+  return Array.from(out).slice(0, 14);
+}
+
+/**
+ * Controle de cor do inspetor (Fase 9): valor com alfa, paleta do tema,
+ * recentes, origem do valor (padrão do schema × editado neste nível),
+ * restauração e alerta de contraste — que avisa, nunca troca sozinho.
+ */
+function ShopifyColorField({ setting, value, onChange, scope, globalValues, context }: { setting: ShopifySettingDefinition; value: string; onChange: (value: EditableValue) => void; scope: string; globalValues?: Record<string, ShopifyValue>; context: Record<string, ShopifyValue> }) {
+  const defaultRaw = typeof setting.default === "string" ? setting.default : "";
+  const effective = value || defaultRaw;
+  const parsed = parseColorValue(effective) ?? { hex: "#000000", alpha: 1 };
+  const isDefault = !defaultRaw ? !value : effective === defaultRaw;
+  const swatches = themeColorSwatches(globalValues ?? {});
+  const recents = readRecentColors().filter((item) => parseColorValue(item));
+  const supportsAlpha = setting.type === "color_background" || parsed.alpha < 1;
+  const commit = (hex: string, alpha: number) => { const next = formatColorValue(hex, alpha); rememberRecentColor(next); onChange(next); };
+  const background = isTextColorSetting(setting.id) ? contextBackgroundColor(context) : null;
+  const ratio = background ? contrastRatio(parsed.hex, background) : null;
+  return <div className="shopify-setting shopify-color-setting">
+    <ColorField label={setting.label} value={parsed.hex} onChange={(hex) => commit(hex, parsed.alpha)} />
+    {supportsAlpha && <label className="alpha-row"><span>Transparência</span><input type="range" min={0} max={100} value={Math.round(parsed.alpha * 100)} onChange={(event) => commit(parsed.hex, Number(event.target.value) / 100)} aria-label={`${setting.label}: transparência`} /><b>{Math.round(parsed.alpha * 100)}%</b></label>}
+    {(swatches.length > 0 || recents.length > 0) && <div className="color-swatch-rows">
+      {swatches.length > 0 && <div className="color-swatch-row" role="group" aria-label="Cores do tema">{swatches.map((swatch) => <button key={swatch} type="button" className={swatch === parsed.hex ? "selected" : ""} style={{ background: swatch }} title={`Cor do tema ${swatch}`} aria-label={`Usar ${swatch}`} onClick={() => commit(swatch, parsed.alpha)} />)}</div>}
+      {recents.length > 0 && <div className="color-swatch-row" role="group" aria-label="Cores recentes">{recents.map((recent) => { const parsedRecent = parseColorValue(recent); return <button key={recent} type="button" className="recent" style={{ background: parsedRecent?.hex }} title={`Recente ${recent}`} aria-label={`Usar ${recent}`} onClick={() => onChange(recent)} />; })}</div>}
+    </div>}
+    <div className="color-origin">
+      <span>{isDefault ? "Usando o padrão do tema" : `Editado ${scope}`}</span>
+      {!isDefault && defaultRaw && <button type="button" className="text-button" onClick={() => onChange(defaultRaw)} title={`Voltar para ${defaultRaw}`}>Restaurar padrão</button>}
+    </div>
+    {ratio !== null && ratio < CONTRAST_MINIMUM && <p className="contrast-warning" role="alert">Contraste {ratio}:1 com o fundo deste contexto; abaixo de {CONTRAST_MINIMUM}:1 a leitura fica difícil. A cor NÃO foi alterada.</p>}
+    {setting.info && <small>{setting.info}</small>}
+  </div>;
 }
 
 /**
