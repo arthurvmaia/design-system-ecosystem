@@ -1,5 +1,5 @@
 import type { ReguaAlinhada } from '@ds/shared';
-import postcss from 'postcss';
+import postcss, { type AtRule, type Container, type Document as Document_ } from 'postcss';
 
 /**
  * Reescala: troca os comprimentos de origem por degraus que a marca controla.
@@ -301,8 +301,25 @@ export const reescalarCss = (css: string, reguas: ReguasDeEscala): ResultadoDeRe
     // marca mexeria na SELEÇÃO do arquivo, não no tamanho de algo que se lê. É o
     // mesmo guarda que `retipografar.ts` tem para `font-family`, pela mesma
     // razão: at-rule de definição não é ponto de uso.
-    const pai = decl.parent;
-    if (pai?.type === 'atrule' && pai.name.toLowerCase() === 'font-face') return;
+    //
+    // E dentro de `@keyframes` o valor não é tamanho nenhum: é a AMPLITUDE de um
+    // movimento. Um passo em `padding-left:8px` e outro em `16px` descrevem o
+    // quanto a coisa anda, não o quanto ela respira — e a régua da marca, que é
+    // grossa de propósito, pode mandar os dois para o MESMO degrau. Aí os dois
+    // passos ficam iguais e a animação vira uma linha reta: o elemento não sai
+    // do lugar. Foi um dos motivos de as páginas saírem paradas, e some sem
+    // erro nenhum, porque o CSS continua válido.
+    //
+    // O passo de `@keyframes` é uma regra (`0%`, `from`) DENTRO da at-rule, então
+    // não basta olhar o pai imediato como no `@font-face`: tem de subir.
+    let no: Container | Document_ | undefined = decl.parent;
+    while (no !== undefined) {
+      if (no.type === 'atrule') {
+        const nome = (no as AtRule).name.toLowerCase();
+        if (nome === 'font-face' || /^(-\w+-)?keyframes$/.test(nome)) return;
+      }
+      no = no.parent;
+    }
 
     let valor = '';
     let mudou = false;

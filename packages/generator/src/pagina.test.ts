@@ -266,8 +266,13 @@ test('a página inteira: recoloração, fundo em camada, seção criada, cascata
     // papel, continua — e sai com o slug genérico "secao", que é dela).
     assert.ok(!index.includes('data-secao-id="sec_2"'), 'a seção que só tinha o fundo saiu');
 
-    // 3. O fundo mantém as cores originais (origem-apelido ::original).
-    assert.ok(styles.includes('::original'), 'escopo próprio do fundo');
+    // 3. O fundo mantém as cores originais (origem-apelido `__original`).
+    //
+    // O apelido já foi `::original` e mudou porque este mesmo texto vira sufixo
+    // de nome global: `@keyframes girar--ds_b::original` não é identificador
+    // CSS válido, o navegador descarta a at-rule e a animação do fundo não roda.
+    assert.ok(styles.includes('__original'), 'escopo próprio do fundo');
+    assert.ok(!styles.includes('::original'), 'e sem dois-pontos, que mata a at-rule');
     assert.ok(styles.includes('#ff00ff'), 'o neon continua neon');
     assert.ok(!styles.includes('var(--marca-primary, #ff00ff)'), 'fundo não recolore');
 

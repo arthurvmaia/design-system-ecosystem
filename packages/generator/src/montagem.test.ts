@@ -6,6 +6,7 @@ import {
   envolverSecao,
   extrairCamadasDeFundo,
   extrairCorpo,
+  limparEstadoRevelado,
   limparParaComposicao,
   limparTransformCongelado,
   reescreverRefsCss,
@@ -211,4 +212,44 @@ test('envolverSecao: nav sticky de origem declara data-fixa-no-topo', () => {
     componentIds: ['cmp_nav'],
   });
   assert.ok(!sem.includes('data-fixa-no-topo'), 'sem sticky na origem, nada muda');
+});
+
+test('a classe de revelação só sai quando o script que a reaplica viaja junto', () => {
+  const html = '<div class="reveal is-visible"><p class="fade in-view">oi</p></div>';
+
+  // 1. Sem script nenhum: NADA sai. Este é o caso perigoso — o CSS deixa
+  //    `.reveal` em `opacity:0`, e sem observador o elemento ficaria invisível
+  //    para sempre. Página parada é ruim; página vazia é pior.
+  const semScript = limparEstadoRevelado(html, []);
+  assert.equal(semScript.limpas, 0);
+  assert.equal(semScript.html, html, 'o HTML sai intocado');
+
+  // 2. Com script que observa mas NÃO cita a classe: também não sai. Observador
+  //    existe para muita coisa — contador, lazy-load, menu que muda no scroll.
+  const outroObservador = limparEstadoRevelado(html, [
+    'new IntersectionObserver((e)=>{ e.forEach(x=>x.target.dataset.visto=1) })',
+  ]);
+  assert.equal(outroObservador.limpas, 0);
+
+  // 3. Com as duas provas: a classe sai e o observador volta a ter o que fazer.
+  const comScript = limparEstadoRevelado(html, [
+    "const o=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('is-visible')}));",
+  ]);
+  assert.equal(comScript.limpas, 1, 'só o elemento que tinha a classe');
+  assert.deepEqual(comScript.classes, ['is-visible']);
+  assert.ok(!comScript.html.includes('is-visible'), 'o estado final saiu');
+  assert.ok(comScript.html.includes('class="reveal"'), 'e o resto da classe fica');
+  assert.ok(comScript.html.includes('in-view'), 'classe que o script não cita permanece');
+});
+
+test('a limpeza não mexe em classe de aba, menu ou carrossel', () => {
+  // `active`/`show`/`open` também são estado, e de propósito ficaram fora da
+  // lista: tirar uma delas não devolveria movimento, fecharia o que devia
+  // estar aberto.
+  const html = '<div class="tab active"><ul class="menu show open"></ul></div>';
+  const r = limparEstadoRevelado(html, [
+    "new IntersectionObserver(()=>{}); el.classList.add('active'); el.classList.add('show');",
+  ]);
+  assert.equal(r.limpas, 0);
+  assert.equal(r.html, html);
 });

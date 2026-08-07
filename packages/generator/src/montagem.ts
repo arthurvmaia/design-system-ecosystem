@@ -124,6 +124,74 @@ export const limparTransformCongelado = (html: string): string =>
   );
 
 /**
+ * As classes que um observador de rolagem ACRESCENTA quando o elemento aparece.
+ *
+ * A lista é curta de propósito. `active`, `show`, `open` e `selected` também são
+ * classes de estado, e ficaram DE FORA porque abrem aba, menu e carrossel: tirar
+ * uma delas não devolveria movimento nenhum, fecharia o menu que devia estar
+ * aberto. Aqui só entra nome que, na prática, um site usa para uma coisa só.
+ */
+const CLASSES_DE_REVELACAO = [
+  'is-visible',
+  'is-inview',
+  'in-view',
+  'aos-animate',
+  'revealed',
+  'scroll-visible',
+  'animate-in',
+] as const;
+
+/**
+ * Devolve ao elemento o estado ANTES da revelação — mas só se alguém for revelá-lo.
+ *
+ * ## O defeito, medido
+ *
+ * O coletor grava o DOM no instante do print, e nesse instante o observador de
+ * rolagem já correu a página inteira. Todo elemento de reveal chega com a classe
+ * final aplicada: 9 marcas de `is-visible` num dos sites do acervo, 18 em outro.
+ * O CSS que faz o movimento (`.reveal{opacity:0}` / `.reveal.is-visible{opacity:1}`)
+ * viaja inteiro e correto, o script viaja, o observador registra os elementos —
+ * e não tem o que fazer, porque todos já estão no estado final. A página nasce
+ * pronta e nunca se mexe. Nada disso aparece como erro.
+ *
+ * ## Por que a limpeza é CONDICIONAL
+ *
+ * Tirar a classe sem mais nada é pior que deixar. Medido num site gerado: com a
+ * classe removida à mão, o elemento fica em `opacity:0` — e se o script que a
+ * reaplica não estiver na página, ele fica invisível PARA SEMPRE. A página
+ * parada vira a página vazia.
+ *
+ * Então a classe só sai quando as duas provas estão na mão: algum script local
+ * da página cita aquele nome, e algum script local usa `IntersectionObserver`.
+ * É a mesma disciplina de `limparTransformCongelado`, que só limpa o transform
+ * de quem tem `data-parallax` porque é esse atributo que prova que existe script
+ * para reaplicá-lo.
+ */
+export const limparEstadoRevelado = (
+  html: string,
+  scripts: readonly string[],
+): { html: string; limpas: number; classes: string[] } => {
+  const todo = scripts.join('\n');
+  if (!todo.includes('IntersectionObserver')) return { html, limpas: 0, classes: [] };
+  // O nome tem de aparecer como STRING no script — é assim que `classList.add`
+  // o recebe. Procurar solto casaria com um comentário ou com outra palavra.
+  const reveladas = CLASSES_DE_REVELACAO.filter(
+    (c) => todo.includes(`'${c}'`) || todo.includes(`"${c}"`) || todo.includes(`\`${c}\``),
+  );
+  if (reveladas.length === 0) return { html, limpas: 0, classes: [] };
+
+  const alvo = new Set<string>(reveladas);
+  let limpas = 0;
+  const saida = html.replace(/\bclass\s*=\s*"([^"]*)"/gi, (inteiro, valor: string) => {
+    const mantidas = valor.split(/\s+/).filter((c) => c.length > 0 && !alvo.has(c));
+    if (mantidas.length === valor.split(/\s+/).filter((c) => c.length > 0).length) return inteiro;
+    limpas += 1;
+    return mantidas.length > 0 ? `class="${mantidas.join(' ')}"` : 'class=""';
+  });
+  return { html: saida, limpas, classes: reveladas };
+};
+
+/**
  * Prepara o corpo do bundle para virar parte de uma página.
  *
  * Três coisas saem:

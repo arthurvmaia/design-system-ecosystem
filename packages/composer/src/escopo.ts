@@ -296,6 +296,21 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
   }
 
   // ── Nomes globais: renomear só o que colide ──────────────────────────────
+  /**
+   * O sufixo virado IDENTIFICADOR CSS.
+   *
+   * O mesmo texto serve para duas coisas de gramáticas diferentes: valor de
+   * atributo (`[data-ds-corpo="…"]`), onde quase tudo passa, e nome global
+   * (`@keyframes girar--<sufixo>`), que é `<custom-ident>` e só aceita letra,
+   * dígito, hífen, sublinhado e escape.
+   *
+   * Um apelido de origem com dois-pontos (`ds_a::original`) produzia
+   * `@keyframes girar--ds_a::original`: o navegador não parseia o nome,
+   * DESCARTA a at-rule inteira, e a animação da peça some sem erro nenhum
+   * visível. O saneamento fica aqui, e não em quem chama, porque é aqui que se
+   * sabe que o texto vai virar identificador.
+   */
+  const sufixoIdent = opts.sufixo.replace(/[^\w-]/g, '_');
   const mapaKeyframes = new Map<string, string>();
   /** Chave em minúsculas: nome de fonte não diferencia caixa em CSS. */
   const mapaFontes = new Map<string, string>();
@@ -321,7 +336,7 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       if (decl === undefined || decl.type !== 'decl') return;
       const nome = decl.value.trim().replace(/^["']|["']$/g, '');
       if (nome.length === 0 || !usadosFonte.has(nome.toLowerCase())) return;
-      const novo = `${nome}--${opts.sufixo}`;
+      const novo = `${nome}--${sufixoIdent}`;
       mapaFontes.set(nome.toLowerCase(), novo);
       decl.value = `"${novo}"`;
       renomeados.push({ tipo: 'font-face', de: nome, para: novo });
@@ -330,7 +345,7 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
     if (/^(-\w+-)?keyframes$/i.test(at.name)) {
       const nome = at.params.trim();
       if (nome.length === 0 || !usadosKf.has(nome)) return;
-      const novo = `${nome}--${opts.sufixo}`;
+      const novo = `${nome}--${sufixoIdent}`;
       mapaKeyframes.set(nome, novo);
       at.params = novo;
       renomeados.push({ tipo: 'keyframes', de: nome, para: novo });
@@ -344,7 +359,7 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       if (nomes.length === 0) return;
       const trocados = nomes.map((n) => {
         if (!usadosLayer.has(n)) return n;
-        const novo = `${n}--${opts.sufixo}`;
+        const novo = `${n}--${sufixoIdent}`;
         renomeados.push({ tipo: 'layer', de: n, para: novo });
         return novo;
       });

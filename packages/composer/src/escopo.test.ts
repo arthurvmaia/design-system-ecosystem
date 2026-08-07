@@ -340,3 +340,19 @@ test('nomesGlobaisDe lê keyframes, font-family de @font-face e layers', () => {
   assert.ok(n.layer.has('base'));
   assert.ok(n.layer.has('tema'));
 });
+
+test('sufixo com dois-pontos não vaza para o nome de @keyframes nem de @layer', () => {
+  // `@keyframes girar--ds_a::original` não é um identificador CSS válido: o
+  // navegador não parseia o nome e DESCARTA a at-rule inteira. A animação some
+  // sem erro nenhum — o CSS carrega, a regra simplesmente não existe. Era um
+  // dos motivos de as páginas geradas saírem paradas.
+  const r = escoparCss('@keyframes girar{from{opacity:0}to{opacity:1}}@layer base{.a{color:red}}', {
+    raiz: 'data-ds-raiz="x"',
+    corpo: 'data-ds-corpo="x"',
+    sufixo: 'ds_a::original',
+    nomesUsados: { keyframes: new Set(['girar']), layer: new Set(['base']) },
+  });
+  assert.doesNotMatch(r.css, /::original/, 'nenhum nome global carrega dois-pontos');
+  assert.match(r.css, /@keyframes girar--ds_a__original/, 'o sufixo virou identificador válido');
+  assert.match(r.css, /@layer base--ds_a__original/, 'e a camada também');
+});

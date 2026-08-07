@@ -325,3 +325,19 @@ test('entre dois degraus próximos ganha o mais perto, sempre o mesmo', () => {
   const r = reescalarCss('p{font-size:16px}', proximas);
   assert.match(r.css, /var\(--marca-passo-2, 16px\)/);
 });
+
+test('dentro de @keyframes nada é reescalado: passo é amplitude, não tamanho', () => {
+  // O risco não é estético, é a animação PARAR. A régua da marca é grossa de
+  // propósito; dois passos vizinhos de um movimento podem cair no mesmo degrau,
+  // e aí o começo e o fim ficam iguais — o elemento não sai do lugar. E o CSS
+  // continua perfeitamente válido, então nada denuncia.
+  const r = reescalarCss(
+    '@keyframes desliza{from{padding-left:12px}to{padding-left:24px}}.t{padding-left:12px}',
+    REGUAS,
+  );
+  // Os dois passos continuam DIFERENTES entre si — que é o movimento.
+  assert.match(r.css, /from\{padding-left:12px\}/, 'o passo inicial fica no valor de origem');
+  assert.match(r.css, /to\{padding-left:24px\}/, 'e o final também');
+  // Fora da at-rule a reescala segue valendo: o guarda é cirúrgico.
+  assert.match(r.css, /\.t\{padding-left:var\(--marca-espaco-2/, 'o ponto de uso é reescalado');
+});

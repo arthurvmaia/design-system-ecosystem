@@ -43,6 +43,7 @@ import {
   envolverSecao,
   extrairCamadasDeFundo,
   extrairCorpo,
+  limparEstadoRevelado,
   limparParaComposicao,
   limparTransformCongelado,
   reescreverRefsCss,
@@ -703,6 +704,8 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    * todos os elementos que ele procura já existem.
    */
   const scriptsLocais: string[] = [];
+  /** O texto de cada script local — a prova de quem reaplica o quê. */
+  const corpoDosScriptsLocais: string[] = [];
   const chavesDeScriptLocal = new Set<string>();
   /** Origem → respiro do container que ela tinha e a captura não trouxe. */
   const containerPorOrigem = new Map<string, { base: number; desktop: number }>();
@@ -777,9 +780,16 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
 
     // Fundo/efeito mantém as cores originais: a peça foi escolhida PELA cor.
     // A origem-apelido dá a ela um escopo próprio sem recoloração.
+    //
+    // O apelido usa `__`, e não `::` como usava, porque este mesmo texto vira
+    // SUFIXO de nome global no escopo: `@keyframes girar` renomeia para
+    // `girar--<origem>`. Com dois-pontos ali sai `girar--ds_a::original`, que
+    // não é um identificador CSS válido — o navegador descarta a at-rule
+    // inteira e a animação da peça de fundo simplesmente não roda. Era um dos
+    // motivos de as páginas saírem paradas.
     const manterCores = ehPecaDeFundo(cmp);
     const origemBase = cmp.designSystemId ?? cmp.id;
-    const origem = manterCores ? `${origemBase}::original` : origemBase;
+    const origem = manterCores ? `${origemBase}__original` : origemBase;
 
     if (!origensComCss.has(origem)) {
       origensComCss.add(origem);
@@ -1005,6 +1015,16 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
         if (chavesDeScriptLocal.has(chave)) return '';
         chavesDeScriptLocal.add(chave);
         scriptsLocais.push(tag);
+        // O CONTEÚDO, além da tag: é nele que se lê se existe observador de
+        // rolagem na página e quais classes de estado ele reaplica. Sem essa
+        // prova, tirar a classe congelada deixaria o elemento invisível para
+        // sempre em vez de devolver o movimento.
+        if (src !== undefined) {
+          const arquivo = join(outputDir, src);
+          if (existsSync(arquivo)) corpoDosScriptsLocais.push(readFileSync(arquivo, 'utf8'));
+        } else {
+          corpoDosScriptsLocais.push(conteudo);
+        }
         return '';
       },
     );
@@ -1339,6 +1359,19 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     faviconHref === null
       ? ''
       : `<link rel="icon"${faviconHref.endsWith('.svg') ? ' type="image/svg+xml"' : ''} href="${faviconHref}"/>\n`;
+  /**
+   * O movimento devolvido: as classes de revelação saem, e o observador reage.
+   *
+   * Roda AQUI, e não peça a peça, porque a prova é da PÁGINA: o script que
+   * reaplica a classe pode ter vindo de outra peça da mesma origem, e no
+   * momento em que a peça foi processada ele ainda não tinha sido coletado.
+   */
+  const revelacao = limparEstadoRevelado(`${camadasHtml}${bodyHtml}`, corpoDosScriptsLocais);
+  if (revelacao.limpas > 0) {
+    avisos.push(
+      `Movimento devolvido: ${revelacao.limpas} elemento(s) tinham a classe de revelação (${revelacao.classes.join(', ')}) já aplicada pela captura — o observador de rolagem viajou junto e não tinha o que revelar. Eles voltam ao estado inicial e a página se anima ao rolar.`,
+    );
+  }
   const finalHtml = `<!doctype html>
 <html lang="${entrada.lang ?? 'pt-BR'}">
 <head>
@@ -1350,7 +1383,7 @@ ${faviconLink}${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
 <link rel="stylesheet" href="assets/responsivo.css"/>
 <link rel="stylesheet" href="assets/marca.css"/>
 </head>
-<body>${camadasHtml}${bodyHtml}
+<body>${revelacao.html}
 ${scriptsHtml}
 </body>
 </html>`;
