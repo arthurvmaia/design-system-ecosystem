@@ -265,6 +265,40 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .preview-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 10px var(--font-geist-mono); color: #7f9797; }
 .preview-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .preview-card-skeleton .pcs-line { height: 10px; margin: 4px 0; background: #142424; }
+/* Prévia do fluxo do cliente (Fase 5) */
+.cf-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; width: min(1180px, 100%); margin: 0 auto; }
+.cf-layout > .cf-panel { width: 100%; }
+.cf-preview { position: sticky; top: 18px; display: grid; gap: 8px; }
+.cf-preview-title { font: 600 10px var(--font-geist-mono); letter-spacing: 0.1em; color: #7f9797; text-transform: uppercase; }
+.client-site-preview { border: 1px solid #1d3232; background: #0a1414; padding: 10px; display: grid; gap: 8px; }
+.csp-browser { display: flex; gap: 4px; align-items: center; padding: 4px 6px; background: #10201f; }
+.csp-browser span { width: 6px; height: 6px; border-radius: 50%; background: #2b4040; }
+.csp-browser i { flex: 1; height: 6px; margin-left: 8px; border-radius: 3px; background: #142424; }
+.csp-frame { display: grid; background: var(--csp-bg, #f6f8f7); color: #10231c; overflow: hidden; }
+.csp-announcement { height: 14px; background: var(--csp-accent, #0e7490); display: grid; place-items: center; }
+.csp-announcement i { width: 45%; height: 4px; background: rgba(255, 255, 255, 0.75); }
+.csp-header { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: color-mix(in srgb, var(--csp-bg) 80%, white); }
+.csp-header img { height: 20px; max-width: 40%; object-fit: contain; }
+.csp-header b { font-size: 11px; }
+.csp-header > span { margin-left: auto; display: flex; gap: 5px; }
+.csp-header > span i { width: 16px; height: 4px; background: color-mix(in srgb, #10231c 40%, transparent); }
+.csp-hero { display: grid; gap: 6px; padding: 18px 14px; background: color-mix(in srgb, var(--csp-accent) 12%, var(--csp-bg)); }
+.csp-hero strong { font-size: 15px; }
+.csp-hero em { font-size: 10px; font-style: normal; opacity: 0.85; }
+.csp-hero p { font-size: 9px; line-height: 1.5; opacity: 0.7; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.csp-hero u { width: 74px; height: 16px; background: var(--csp-accent); text-decoration: none; }
+.csp-section { display: grid; gap: 6px; padding: 10px 14px; border-top: 1px solid color-mix(in srgb, #10231c 8%, transparent); }
+.csp-section small { font: 600 8px var(--font-geist-mono); letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.55; }
+.csp-section span { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.csp-section span i { height: 22px; background: color-mix(in srgb, var(--csp-accent) 16%, white); }
+.csp-section[data-kind="testimonials"] span i, .csp-section[data-kind="faq"] span i { height: 14px; }
+.csp-footer { display: grid; gap: 4px; padding: 10px 14px; background: #10231c; color: #f0f6f4; }
+.csp-footer b { font-size: 10px; }
+.csp-footer p { font-size: 8px; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.csp-placeholder { opacity: 0.5; font-style: italic; }
+.csp-note { font-size: 10px; color: #7f9797; line-height: 1.5; }
+@media (max-width: 900px) { .cf-layout { grid-template-columns: 1fr; } .cf-preview { position: static; } }
+
 .themes-shelf { display: grid; gap: 18px; }
 .preview-card-grande .preview-card-media { aspect-ratio: 21 / 10; }
 .preview-card-grande .preview-card-head h3 { font-size: 17px; }

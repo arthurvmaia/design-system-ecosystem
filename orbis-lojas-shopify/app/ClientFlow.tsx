@@ -3,6 +3,7 @@
 import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, FolderOpen, RefreshCw, Store } from "lucide-react";
 import { useState } from "react";
 import { Orbis } from "@/app/Orbis";
+import { ClientSitePreview } from "@/app/ClientSitePreview";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 
 /**
@@ -167,6 +168,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   return (
     <main className="client-flow">
       <div className="entry-gate-brilho" aria-hidden="true" />
+      <div className="cf-layout">
       <div className="cf-panel">
         <header className="cf-head">
           <Orbis tamanho={40} alt="" />
@@ -279,6 +281,11 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             <button className="primary-button" onClick={() => void requestSite()}>Solicitar meu site <ArrowRight size={15} /></button>
           )}
         </footer>
+      </div>
+      <aside className="cf-preview" aria-label="Prévia do site">
+        <span className="cf-preview-title">Prévia ao vivo</span>
+        <ClientSitePreview brand={brand} sections={template.sections} />
+      </aside>
       </div>
     </main>
   );

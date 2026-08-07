@@ -161,6 +161,14 @@ de seções, preview central, inspector à direita, seletor de página no topo.
   atualização, progresso quando houver).
 - **Fase 5 — Preview no ClientFlow**: preview ao vivo do tema com a marca
   aplicada nos 4 passos; fonte dos dados = decisão da seção 3.2.
+  **Executada com bloqueio documentado**: a API de Marca do design system
+  (`apps/server/src/routes/projects.ts`, `branding.json` por projeto) exige a
+  sessão do portal (cookie de `ORBIS_SENHA`) e o worker de lojas não tem a
+  credencial nem acesso a disco; integrar exigiria mexer no app de design
+  system (fora do escopo autorizado). O preview usa a marca do próprio wizard
+  — a MESMA fonte que o `sanitizeBrand` do gerador consome (uma fonte de
+  verdade, sem duplicação). Recomendação registrada: endpoint read-only de
+  branding no `apps/server` quando aquela frente for autorizada.
 - **Fase 6 — Catálogo Google Fonts**: manifest + busca/filtros/categorias,
   virtualização, preview do nome na própria fonte via css2 `text=`,
   pesos/estilos, recentes; sem carregar catálogo inteiro.
