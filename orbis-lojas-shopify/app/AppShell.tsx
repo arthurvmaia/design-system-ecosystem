@@ -89,13 +89,14 @@ type Tab = "home" | "extract" | "code" | "themes" | "projects" | "editor";
 type Device = "desktop" | "tablet" | "mobile";
 type Customization = ReturnType<typeof normalizeCustomization>;
 
-/* Ordem deliberada (programa de fases, Fase 1): o Editor em destaque acima de
-   Temas, Projetos SEMPRE por último; Importar/Editar código são apoio. */
+/* ORDEM DEFINIDA PELO PRODUTO (recuperação, fase 1) — não reorganizar por
+   preferência de UX: Início, Importar temas, Temas, Editor, Editar código e
+   Projetos SEMPRE por último. */
 const navItems = [
   { id: "home" as const, label: "Início", icon: Home, index: "01" },
-  { id: "editor" as const, label: "Editor", icon: SlidersHorizontal, index: "02" },
+  { id: "extract" as const, label: "Importar temas", icon: FileArchive, index: "02" },
   { id: "themes" as const, label: "Temas", icon: LayoutTemplate, index: "03" },
-  { id: "extract" as const, label: "Importar temas", icon: FileArchive, index: "04" },
+  { id: "editor" as const, label: "Editor", icon: SlidersHorizontal, index: "04" },
   { id: "code" as const, label: "Editar código", icon: FileCode2, index: "05" },
   { id: "projects" as const, label: "Projetos", icon: FolderKanban, index: "06" },
 ];
@@ -342,7 +343,7 @@ function ExtractThemeView({ onImported }: { onImported: (payload: { data: Bootst
   }
 
   return <div className="content-wrap page-view extract-view">
-    <PageIntro eyebrow="IMPORTAR · 04" title="Entregue-me o tema, senhor." body="Escolha o ZIP uma única vez. Eu encontro o tema dentro do pacote, instalo banners, imagens e todos os recursos, e abro a prévia da loja pronta para o senhor editar." />
+    <PageIntro eyebrow="IMPORTAR · 02" title="Entregue-me o tema, senhor." body="Escolha o ZIP uma única vez. Eu encontro o tema dentro do pacote, instalo banners, imagens e todos os recursos, e abro a prévia da loja pronta para o senhor editar." />
     <div className={`theme-dropzone ${dragging ? "dragging" : ""} ${file ? "has-file" : ""} ${importing ? "loading-theme" : ""}`} onDragEnter={(event) => { event.preventDefault(); if (!importing) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); if (!importing) choose(event.dataTransfer.files[0]); }}>
       <Orbis className="orbis-sm" girando={importing} />
       <span className="eyebrow">ORBIS · CARREGAMENTO AUTOMÁTICO</span>
