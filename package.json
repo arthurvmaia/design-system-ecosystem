@@ -15,6 +15,7 @@
     "acervo:importar": "tsx scripts/acervo-importar.ts",
     "acervo:lote": "tsx scripts/acervo-lote.ts",
     "curar": "tsx scripts/curar-biblioteca.ts",
+    "kits": "tsx scripts/montar-kits.ts",
     "fila": "tsx scripts/fila.ts",
     "extrair": "tsx scripts/extrair.ts",
     "explorar": "tsx scripts/explorar.ts",
