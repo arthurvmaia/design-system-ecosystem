@@ -81,6 +81,10 @@ test("RECUPERAÇÃO F2: a miniatura é a home REAL pelo motor existente, não um
   assert.match(card, /\/api\/theme-render/.source ? /fetch\(src\)/ : /fetch\(src\)/, "busca o HTML real da rota de render");
   assert.match(card, /homeHtmlCache/, "cache por URL, sem regenerar a cada render");
   assert.match(card, /IntersectionObserver/, "carregamento tardio: só quando o card aparece");
+  /* o observer sozinho não basta: em aba oculta ele nunca reporta e a
+     miniatura ficaria presa em carregando — a geometria é quem decide */
+  assert.match(card, /getBoundingClientRect\(\)/, "verificação geométrica como rede de segurança");
+  assert.match(card, /addEventListener\("scroll", checar/, "rolagem reavalia sem depender do observer");
   assert.match(card, /pointer-events/.source ? /tabIndex=\{-1\}/ : /tabIndex=\{-1\}/, "iframe inerte para foco");
   assert.match(card, /Tentar de novo/, "erro real com nova tentativa, sem imagem falsa");
   assert.match(card, /homeSrc \? \(\s*<RealHomeThumbnail/, "quando a home real existe, o mock NUNCA aparece");
@@ -89,4 +93,13 @@ test("RECUPERAÇÃO F2: a miniatura é a home REAL pelo motor existente, não um
   const route = await readFile(new URL("../app/api/theme-render/route.ts", import.meta.url), "utf8");
   assert.match(route, /projectId/, "a MESMA rota de render serve projetos");
   assert.match(route, /WHERE id = \? AND user_id = \?/, "projeto escopado ao dono");
+});
+
+test("RECUPERAÇÃO F3: cada tema mostra a home real DELE na área de Temas", async () => {
+  const source = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
+  /* a URL carrega o id do PRÓPRIO tema — nada de preview compartilhado */
+  assert.match(source, /homeSrc = model\.renderable \? `\/api\/theme-render\?themeId=\$\{encodeURIComponent\(theme\.id\)\}&page=index`/);
+  assert.match(source, /homeSrc=\{homeSrc\}/, "o card recebe a home real");
+  assert.match(source, /unavailableReason=/, "sem ZIP preservado, o motivo é declarado");
+  assert.doesNotMatch(source, /previewFromTheme\(theme\)[\s\S]{0,400}PreviewMock/, "o mock não é o preview final de tema");
 });

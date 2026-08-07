@@ -26,15 +26,32 @@ export function RealHomeThumbnail({ src, title, baseWidth = 1280 }: { src: strin
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
+  /**
+   * Carregamento tardio que NÃO depende só do IntersectionObserver: em aba
+   * oculta ou sem composição de quadros ele nunca reporta interseção, e a
+   * miniatura ficaria presa em "carregando" para sempre. A geometria decide;
+   * o observer é só o gatilho barato para quem entra depois.
+   */
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
-    }, { rootMargin: "300px" });
+    if (!host || visible) return;
+    const MARGEM = 300;
+    const perto = () => {
+      const rect = host.getBoundingClientRect();
+      return rect.bottom > -MARGEM && rect.top < (window.innerHeight || 0) + MARGEM;
+    };
+    const checar = () => { if (perto()) setVisible(true); };
+    checar();
+    const observer = new IntersectionObserver(checar, { rootMargin: `${MARGEM}px` });
     observer.observe(host);
-    return () => observer.disconnect();
-  }, []);
+    window.addEventListener("scroll", checar, { passive: true, capture: true });
+    window.addEventListener("resize", checar, { passive: true });
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", checar, { capture: true });
+      window.removeEventListener("resize", checar);
+    };
+  }, [visible]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -97,7 +114,7 @@ export function RealHomeThumbnail({ src, title, baseWidth = 1280 }: { src: strin
  * Estados cobertos: imagem carregando (skeleton), imagem com erro ou ausente
  * (mock de vitrine pintado com a paleta REAL), sem dados (mock neutro).
  */
-export function PreviewCard({ model, size = "media", actions, onOpen, homeSrc, children }: {
+export function PreviewCard({ model, size = "media", actions, onOpen, homeSrc, unavailableReason, children }: {
   model: PreviewCardModel;
   size?: "grande" | "media" | "lista";
   actions?: ReactNode;
@@ -105,6 +122,8 @@ export function PreviewCard({ model, size = "media", actions, onOpen, homeSrc, c
   /** URL do render REAL da home (GET /api/theme-render?…). Quando presente, a
    *  mídia é a home verdadeira em escala — nunca o mock. */
   homeSrc?: string;
+  /** Sem home renderizável: o motivo aparece declarado — nada de wireframe fingindo ser preview. */
+  unavailableReason?: string;
   children?: ReactNode;
 }) {
   const [imageState, setImageState] = useState<"loading" | "ok" | "erro">("loading");
@@ -127,6 +146,8 @@ export function PreviewCard({ model, size = "media", actions, onOpen, homeSrc, c
           onLoad={() => setImageState("ok")}
           onError={() => setImageState("erro")}
         />
+      ) : unavailableReason ? (
+        <div className="home-thumb-error preview-unavailable"><p>{unavailableReason}</p></div>
       ) : (
         <PreviewMock title={model.title} />
       )}

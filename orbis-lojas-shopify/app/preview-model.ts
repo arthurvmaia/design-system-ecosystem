@@ -17,8 +17,10 @@ export type PreviewCardModel = {
   id: string;
   title: string;
   subtitle?: string;
-  /** URL da imagem real (assetPreview eleito na importação); ausente = mock com a paleta real. */
+  /** URL da imagem real (assetPreview eleito na importação); usada só quando a home não é renderizável. */
   image?: string;
+  /** A home REAL pode ser renderizada pelo motor Liquid (ZIP preservado)? */
+  renderable: boolean;
   palette: PreviewPalette;
   badge?: string;
   status?: { label: string; tone: PreviewStatusTone };
@@ -43,6 +45,7 @@ export function previewFromTheme(theme: Theme): PreviewCardModel {
     title: theme.name,
     subtitle: shopify?.compatibility?.architecture ?? theme.category,
     image: shopify?.assetPreview,
+    renderable: Boolean(shopify?.compatibility?.preservedSource),
     palette: paletteOf(shopify, customization),
     badge: theme.badge ?? undefined,
     status: shopify
@@ -68,6 +71,7 @@ export function previewFromProject(project: Project): PreviewCardModel {
     title: project.name,
     subtitle: project.themeName,
     image: shopify?.assetPreview,
+    renderable: Boolean(shopify?.compatibility?.preservedSource),
     palette: paletteOf(shopify, customization),
     status: PROJECT_STATUS[project.status],
     meta: shopify ? [`${shopify.pages.length} páginas`, `${shopify.summary.sectionDefinitionCount} seções`] : [],

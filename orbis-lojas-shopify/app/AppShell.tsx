@@ -545,8 +545,10 @@ function ThemesView({ data, onPreview, onUse, onEditCode, onFavorite, onDelete, 
 
 function ThemeCard({ theme, size, favorite, onPreview, onUse, onEditCode, onFavorite, onDelete, deleting }: { theme: Theme; size: "grande" | "media"; favorite: boolean; onPreview: () => void; onUse: () => void; onEditCode: () => void; onFavorite: () => void; onDelete: () => void; deleting: boolean }) {
   const model = previewFromTheme(theme);
+  /* a miniatura é a HOME REAL deste tema, pelo mesmo motor que o editor usa */
+  const homeSrc = model.renderable ? `/api/theme-render?themeId=${encodeURIComponent(theme.id)}&page=index` : undefined;
   return (
-    <PreviewCard model={model} size={size} onOpen={onPreview} actions={<>
+    <PreviewCard model={model} size={size} onOpen={onPreview} homeSrc={homeSrc} unavailableReason={model.renderable ? undefined : "O ZIP original deste tema não foi preservado, então a página inicial não pode ser renderizada. Reimporte o tema para gerar a prévia."} actions={<>
       <button className="secondary-button" onClick={onPreview}><Eye size={15} /> Visualizar</button>
       <button className="primary-button" onClick={onUse}>Editar tema <ArrowUpRight size={15} /></button>
       <button className="secondary-button" onClick={onEditCode} title="Abrir os arquivos do tema (layout, sections, snippets, assets…)"><FileCode2 size={15} /> Editar código</button>
