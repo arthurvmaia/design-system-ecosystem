@@ -833,6 +833,25 @@ export const COLETAR_INSTRUMENTACAO_FN = `
     registrar(ctxs['webgl2'] ? 'webgl-cru' : 'webgl-cru', 'WebGL', 'contexto ' + (ctxs['webgl2'] ? 'webgl2' : 'webgl') + ' criado');
   }
   if (ctxs['2d']) registrar('canvas-2d', 'canvas 2D', 'contexto 2d criado');
+  // E o script que CRIOU o contexto vira o bootstrap da cena.
+  //
+  // A ligacao runtime-script so existia por padrao de nome, e cena em WebGL cru
+  // nao casa com nome nenhum: o runtime saia sem script nenhum, o motor concluia
+  // que a inicializacao nao foi identificada e entregava um PNG. A pilha de
+  // chamada de getContext diz quem foi, e e a mesma evidencia direta.
+  var deContexto = R.scriptsDeContexto || [];
+  if (deContexto.length > 0) {
+    for (var rc = 0; rc < runtimes.length; rc++) {
+      var k = runtimes[rc].kind;
+      if (k !== 'webgl-cru' && k !== 'canvas-2d') continue;
+      for (var dc = 0; dc < deContexto.length; dc++) {
+        if (runtimes[rc].scripts.indexOf(deContexto[dc]) === -1) {
+          runtimes[rc].scripts.push(deContexto[dc]);
+        }
+      }
+      runtimes[rc].evidence.push('contexto criado por ' + deContexto[0]);
+    }
+  }
 
   // Lottie sem global: elemento próprio ou JSON de animação carregado.
   try {

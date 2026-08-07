@@ -140,6 +140,8 @@ export const INIT_SCRIPT = `
     /** Contextos gráficos: canvas → tipo. */
     contextos: new WeakMap(),
     contextosPorTipo: Object.create(null),
+    /** URLs de script na pilha de quem criou um contexto grafico. */
+    scriptsDeContexto: [],
     contextosRecusados: Object.create(null),
     contextosNormalizados: Object.create(null),
     canvases: [],
@@ -329,6 +331,28 @@ export const INIT_SCRIPT = `
             R.contextos.set(this, normal);
             if (R.canvases.length < 200) R.canvases.push(this);
             conta(R.contextosPorTipo, normal);
+            // QUEM pediu o contexto — a pergunta que decide entre "cena
+            // reproduzivel" e "foto congelada".
+            //
+            // O detector achava a cena pela criacao do contexto e gravava
+            // \`scripts: []\`, porque ligar runtime a script so acontecia por
+            // PADRAO DE NOME (three.js, lottie...) e uma cena em WebGL cru nao
+            // casa com nome nenhum. Sem script atribuido, o motor conclui que a
+            // inicializacao nao foi identificada, recusa a capsula e entrega um
+            // PNG — mesmo com o bootstrap inteiro no acervo. Aconteceu: um hero
+            // cuja cena era inicializada por 604 bytes auto-documentados ao lado
+            // do runtime de 407 KB, os dois baixados, os dois inuteis.
+            //
+            // A pilha de chamada responde de graca: o frame de quem chamou
+            // \`getContext\` carrega a URL do script.
+            try {
+              var pilha = String((new Error()).stack || '');
+              var urls = pilha.match(/https?:\\/\\/[^\\s)'"]+\\.js/g) || [];
+              for (var u = 0; u < urls.length && R.scriptsDeContexto.length < 20; u++) {
+                var lu = sanitizar(urls[u]);
+                if (lu && R.scriptsDeContexto.indexOf(lu) === -1) R.scriptsDeContexto.push(lu);
+              }
+            } catch (e) {}
           }
         } else {
           conta(R.contextosRecusados, normal);

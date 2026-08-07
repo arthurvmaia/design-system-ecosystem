@@ -912,7 +912,19 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       if (m.poster !== undefined && m.poster.length > 0) assetsDoSegmento.add(m.poster);
       for (const s of m.sources) assetsDoSegmento.add(s);
     }
-    const externos = [...assetsDoSegmento].filter((u) => !entrada.assetsLocais.has(u));
+    /**
+     * `data:` e `blob:` NÃO são assets externos: eles já são o conteúdo.
+     *
+     * A conta era "está na lista de baixados? não → continua na origem", e um
+     * data URI nunca entra nessa lista porque não há nada para baixar — ele
+     * viaja dentro do próprio HTML. O efeito medido: um hero em WebGL foi
+     * recusado como cápsula por "1 asset(s) continuam na origem — a cápsula
+     * quebraria fora dela", e esse asset era um `data:image/svg+xml;base64`.
+     * Virou PNG por causa de um SVG que estava ali o tempo todo.
+     */
+    const externos = [...assetsDoSegmento].filter(
+      (u) => !/^(?:data|blob):/i.test(u) && !entrada.assetsLocais.has(u),
+    );
 
     // ── Representação ──────────────────────────────────────────────────────
     const midiaKinds: MediaKind[] = [...new Set(midias.map((m) => m.kind))];
