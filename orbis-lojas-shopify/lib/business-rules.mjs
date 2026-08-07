@@ -424,12 +424,29 @@ function cleanSocial(value) {
   return value.replace(/[<>]/g, "").trim().slice(0, 120);
 }
 
+// Acima disso, a lista de auditoria (sourceFiles) é enxugada antes de desistir.
+const SHOPIFY_DATA_SOFT_LIMIT = 3_000_000;
+// Teto absoluto: proteger o worker, não punir temas grandes.
+const SHOPIFY_DATA_HARD_LIMIT = 24_000_000;
+
 function cleanShopifyData(value) {
   if (!isRecord(value)) return null;
   try {
-    const serialized = JSON.stringify(value);
-    if (serialized.length > 3_000_000) return null;
-    return JSON.parse(serialized);
+    let data = JSON.parse(JSON.stringify(value));
+    let size = JSON.stringify(data).length;
+    if (size > SHOPIFY_DATA_SOFT_LIMIT && Array.isArray(data.sourceFiles) && data.sourceFiles.length > 60) {
+      /* o inventário de arquivos é o único campo dispensável de tamanho
+         ilimitado; o schema e os valores do tema nunca são cortados */
+      data = { ...data, sourceFiles: data.sourceFiles.slice(0, 60) };
+      size = JSON.stringify(data).length;
+    }
+    if (size > SHOPIFY_DATA_HARD_LIMIT) {
+      /* descartar em silêncio fazia o editor cair na simulação genérica sem
+         explicação; o aviso dá o rastro do porquê */
+      console.warn(`cleanShopifyData: tema com ${size} bytes excede o teto de ${SHOPIFY_DATA_HARD_LIMIT}; dados descartados`);
+      return null;
+    }
+    return data;
   } catch {
     return null;
   }

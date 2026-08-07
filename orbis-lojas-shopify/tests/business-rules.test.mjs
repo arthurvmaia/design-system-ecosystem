@@ -85,3 +85,18 @@ test("interface expõe ShrinePro, importação local e não possui área Admin",
   assert.match(previewSource, /header-group/);
   assert.match(previewSource, /footer-group/);
 });
+
+test("tema Shopify grande é enxugado, não descartado em silêncio", () => {
+  const heavyFiles = Array.from({ length: 9000 }, (_, index) => ({ path: `assets/arquivo-${index}-${"x".repeat(400)}.png`, kind: "asset", size: index }));
+  const shopify = {
+    themeName: "Tema Grande",
+    globalValues: { colors_accent_1: "#6d388b" },
+    sourceFiles: heavyFiles,
+    pages: [],
+  };
+  assert.ok(JSON.stringify(shopify).length > 3_000_000, "o cenário precisa passar do limite brando");
+  const result = normalizeCustomization({ shopify });
+  assert.ok(result.shopify, "o tema deve sobreviver à normalização");
+  assert.equal(result.shopify.globalValues.colors_accent_1, "#6d388b");
+  assert.equal(result.shopify.sourceFiles.length, 60, "só o inventário de arquivos é cortado");
+});

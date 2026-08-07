@@ -1,9 +1,126 @@
 # HANDOFF — Orbis · Criação de lojas Shopify
 
-> Documento de passagem de trabalho. Última atualização: **2026-08-03 (rodada
-> Suíte Orbis: o app mudou de casa, de nome e passou a caber no celular)**.
+> Documento de passagem de trabalho. Última atualização: **2026-08-06 (rodada
+> fidelidade: cores, esquemas e fontes do tema saem iguais aos da Shopify)**.
 > Mora em `orbis-lojas-shopify/`, dentro do repositório
 > `design-system-ecosystem`. Sessões conduzidas com Claude no Claude Code.
+
+## 🗂️ Rodada 2026-08-06 (3) — navegação por link no preview e Editar código
+
+1. **Links do tema navegam a prévia** (pedido: "clico em Produtos e nada
+   acontece"). As rotas simuladas deixaram de ser âncoras mortas (`#`) e
+   viraram caminhos reais (`/cart`, `/collections/all`, `/products/<handle>`,
+   `/pages/…` — [lib/theme-render.ts](lib/theme-render.ts)); o bridge posta
+   `orbisNavigate` no clique em `<a>`, e `resolvePreviewPageId`
+   ([app/ShopifyStorePreview.tsx](app/ShopifyStorePreview.tsx)) traduz o href
+   para a página do editor — mesmo gesto do editor da Shopify. Validado:
+   clicar em "Produtos" no render real troca o editor de `index` para
+   `collection`.
+2. **Editar código**, como o "Edit code" da Shopify. Entradas: item na sidebar
+   logo abaixo de Importar temas E botão no card do tema. Explorer com as
+   pastas reais (layout/templates/sections/blocks/snippets/assets/config/
+   locales), filtro, editor monospace com Salvar. A fonte é o ZIP preservado
+   no R2: `updateThemeSourceFile`
+   ([lib/shopify-theme.ts](lib/shopify-theme.ts)) regrava UM arquivo e mantém
+   o resto byte a byte; a rota
+   [app/api/theme-code/route.ts](app/api/theme-code/route.ts) lê/lista/grava
+   e, para `assets/`, atualiza também a cópia instalada que a prévia serve.
+   Salvar já vale no render e no ZIP exportado. Binários (imagens, fontes)
+   são listados mas não editáveis — preservados como estão. Tema aninhado em
+   pacote (depth>0) é recusado com `SHOPIFY_CODE_NESTED` em vez de corromper.
+   Validado ao vivo: editar `sections/announcement-bar.liquid` refletiu no
+   render, binário recusado, restauração byte-idêntica; UI com 284 arquivos em
+   7 pastas.
+3. **Testes**: 37/37 (`tests/shopify-theme-code.test.mjs` cobre regravação,
+   criação, guardas de caminho e o mapa href→página; o teste de fallback
+   ganhou as âncoras da navegação e da aba de código). Lint e build limpos.
+
+## 🧭 Rodada 2026-08-06 (2) — editor com lógica Shopify, conteúdo 100% do tema
+
+Princípio desta rodada: **nenhum conteúdo inventado pelo app no fluxo Shopify**
+— tudo que aparece vem do tema importado (settings, blocos, schemas, schemes).
+
+1. **Fallback simulado reconstruído**
+   ([app/ShopifyStorePreview.tsx](app/ShopifyStorePreview.tsx)): a paleta agora
+   nasce dos `color_schemes` REAIS (`schemePalette`/`themePalette`, exportados)
+   e cada seção respeita o próprio `color_scheme`; as listas de nomes de chave
+   viraram último recurso. Menu do header e colunas do rodapé derivam dos
+   blocos da seção; blog/artigo usam títulos do tema; fallbacks de
+   título/corpo/botão vêm dos defaults do schema ou somem — as frases próprias
+   ("GUIA SHRINE", "Envios e entregas", trust badges…) foram removidas. A barra
+   de frete grátis só existe se o tema declarar meta (`freeShippingGoalFrom`).
+   Dados de loja que não existem no ZIP (avaliações, variantes) ganharam a
+   badge `DEMONSTRAÇÃO` — declarados, não disfarçados.
+2. **Controles de paridade** ([app/AppShell.tsx](app/AppShell.tsx)):
+   `color_scheme` virou seletor visual com amostras dos schemes
+   (`ShopifySchemeSelect`); adicionar seção lista CADA preset do schema
+   (`tipo::índice`, aplicado de verdade); contador `x/y` de blocos quando há
+   `max_blocks`; `url`/`video_url`/`video` com campos próprios;
+   `product_list`/`collection_list` editados como handles e salvos como array
+   (`ShopifyHandleListField`); `radio` virou grupo de radios; as sugestões de
+   handles só usam sementes demo quando o tema não referencia recurso nenhum.
+3. **Sincronia árvore→preview**: o bridge do render
+   ([lib/theme-render.ts](lib/theme-render.ts)) escuta `orbisScrollTo` e rola
+   até a seção com destaque; `ShopifyLiveRender` posta a seleção no iframe.
+   Nota de validação: com `scroll-behavior: smooth` o movimento só anima com a
+   aba visível (comportamento do Chrome), o outline sempre aplica.
+4. **Miniaturas e guardas**: cards de tema/projeto pintam com a paleta real do
+   tema importado; o estado vazio do editor perdeu a menção fixa ao ShrinePro;
+   tema com `pages` vazio mostra aviso em vez de cair calado no editor legado.
+5. **Validação**: 34/34 testes (novo `tests/shopify-preview-fallback.test.mjs`
+   trava o retorno das strings inventadas), lint e build limpos; no app real:
+   miniatura `#6d388b`, contador `1/12` na Barra de avisos, outline via clique
+   na árvore, export sem edições = 283/284 arquivos byte-idênticos (só
+   `settings_data.json` ganha os defaults do schema — comportamento herdado).
+
+## 🎨 Rodada 2026-08-06 — fidelidade de cores e fontes no render
+
+O preview saía com as cores e fontes erradas para qualquer tema Dawn-based
+(ShrinePro incluso). Diagnóstico feito contra o tema REAL da loja
+(`shrinepro-1-1`, id 151301193798) com um harness executável.
+
+**Causas raiz encontradas e corrigidas:**
+
+1. **Cores resolviam como string, não como o drop da Shopify.** Os temas geram
+   as variáveis CSS com `{{ settings.colors_text.red }}, {{ ...green }}` — com
+   string, cada canal saía vazio e TODAS as variáveis base viravam
+   `--color-base-*: , , ;` (CSS inválido). Agora `color`/`color_background`
+   resolvem para um drop com `.red/.green/.blue/.alpha/.rgb/.hue...` que
+   imprime o valor original ([lib/theme-render.ts](lib/theme-render.ts),
+   `colorDrop`). Os esquemas (`settings.color_schemes`) viraram uma coleção
+   iterável com `.id` e cores por canal — o padrão Dawn v9+.
+2. **font_picker interpretado errado.** `harmonia_sans_n4` virava família
+   "Harmonia" e QUALQUER família com a letra "i" era marcada itálica
+   (`--font-body-style: italic` no tema inteiro). O parser agora lê
+   `<família>_<n|i><peso>` (`shopifyFontFromHandle`). `font_face`/`font_url`
+   deixaram de devolver vazio: as fontes reais são carregadas por uma folha do
+   Google Fonts injetada no `content_for_header` (fonte licenciada fora do
+   Google, ex. Harmonia Sans, cai no `fallback_families` declarado — nunca
+   troca em silêncio).
+3. **`window.Shopify` não existia no preview.** O JS dos temas
+   (`designMode`, `routes`, `locale`) morria com ReferenceError e sliders não
+   inicializavam. O render injeta o shim no `content_for_header`.
+4. **Section groups além de header/footer eram ignorados.** Qualquer
+   `sections/*.json` agora vira grupo; templates `.context.*` (mercados) saem
+   da lista de páginas mas seguem no ZIP.
+5. **Tema >3MB era descartado EM SILÊNCIO na persistência** e o editor caía na
+   simulação genérica (paleta CACTUS). `cleanShopifyData` agora enxuga só o
+   inventário `sourceFiles` e só desiste (com aviso) acima de 24MB.
+6. **Editor**: `font_picker` ganhou controle próprio (família/peso/itálico ⇄
+   handle canônico) em vez de campo de texto cru.
+
+**Validação**: `tests/shopify-theme-render.test.mjs` (novo) cobre canais de
+cor, esquemas iteráveis, gradiente com fallback, fontes e grupos;
+`tests/_diagnostico.mjs` audita qualquer ZIP real
+(`node tests/_diagnostico.mjs <zip> [página]`). 30/30 testes, lint e build
+limpos. CSS computado do render conferido contra o editor da Shopify:
+announcement `rgb(109, 56, 139)` = `#6d388b` exato, texto
+`rgba(18, 18, 18, 0.9)`, Poppins 700 carregada, `--page-width: 140rem`, mesma
+ordem de seções.
+
+**Limitação conhecida**: chamadas externas do próprio tema (ex.
+`whatsmycountry.com` do shrine.null.js) falham por CORS fora da Shopify — igual
+aconteceria em qualquer preview local; não afeta layout.
 
 ## 🏠 Onde este app vive agora (leia primeiro)
 

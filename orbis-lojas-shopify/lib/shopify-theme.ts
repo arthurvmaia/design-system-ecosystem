@@ -1,4 +1,4 @@
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8, unzipSync, zipSync } from "fflate";
 
 export type ShopifyValue = string | number | boolean | null | ShopifyValue[] | { [key: string]: ShopifyValue };
 
@@ -200,8 +200,12 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
     .filter((value): value is ShopifySectionSchema => Boolean(value));
   const schemaByType = new Map(sectionSchemas.map((schema) => [schema.type, schema]));
 
+  /* Qualquer sections/*.json é um section group (header, footer, overlay,
+     aside, o que o tema quiser). Arquivos .context.* são sobrescritas
+     contextuais de mercado — ficam preservados no ZIP, mas não viram página
+     do editor (a Shopify também não os lista). */
   const jsonPageEntries = Array.from(byRelativePath.entries()).filter(([path]) =>
-    (path.startsWith("templates/") || path.startsWith("sections/header-group") || path.startsWith("sections/footer-group")) && path.endsWith(".json"),
+    (path.startsWith("templates/") || path.startsWith("sections/")) && path.endsWith(".json") && !path.includes(".context."),
   );
   const liquidPageEntries = Array.from(byRelativePath.entries()).filter(([path]) => path.startsWith("templates/") && path.endsWith(".liquid"));
   const jsonPages = jsonPageEntries
@@ -279,6 +283,41 @@ function collectImageAssets(byRelativePath: Map<string, Uint8Array>): ShopifyThe
     if (assets.length >= MAX_IMAGE_ASSETS) break;
   }
   return assets;
+}
+
+/* Extensões que o "Editar código" trata como texto editável; o resto (imagens,
+   fontes, vídeo) é listado como binário e fica intocável pela edição. */
+const EDITABLE_CODE_EXTENSIONS = /\.(liquid|json|js|mjs|css|scss|svg|txt|md|map)$/i;
+const CODE_FOLDERS = /^(layout|sections|snippets|templates|config|locales|assets|blocks)\//;
+export const MAX_CODE_FILE_BYTES = 2 * 1024 * 1024;
+
+/** O caminho pode ser editado pelo editor de código? (pasta conhecida, extensão de texto, sem escapes) */
+export function isEditableCodePath(path: string): boolean {
+  const normalized = normalizedPath(path);
+  return CODE_FOLDERS.test(normalized)
+    && EDITABLE_CODE_EXTENSIONS.test(normalized)
+    && !normalized.split("/").includes("..")
+    && normalized.length <= 240;
+}
+
+/**
+ * Regrava UM arquivo dentro do ZIP preservado, byte a byte para todo o resto.
+ * É a base do "Editar código": o ZIP no R2 é a fonte da verdade do render e da
+ * exportação, então salvar aqui já muda a prévia e o ZIP exportado.
+ */
+export function updateThemeSourceFile(bytes: Uint8Array, relativePath: string, data: Uint8Array): Uint8Array {
+  if (!isEditableCodePath(relativePath)) throw new Error("SHOPIFY_CODE_PATH");
+  if (data.byteLength > MAX_CODE_FILE_BYTES) throw new Error("SHOPIFY_CODE_SIZE");
+  const inspected = { archives: 0, files: 0, bytes: 0 };
+  const resolved = resolveThemeArchive(bytes, "", 0, inspected);
+  if (!resolved) throw new Error("SHOPIFY_THEME_STRUCTURE");
+  /* tema dentro de pacote aninhado: regravar exigiria reescrever ZIP dentro de
+     ZIP; melhor recusar com clareza do que corromper o pacote original */
+  if (resolved.depth > 0) throw new Error("SHOPIFY_CODE_NESTED");
+  const rootPrefix = normalizedPath(resolved.settingsSchemaEntry[0]).slice(0, -"config/settings_schema.json".length);
+  const unzipped = unzipSync(bytes);
+  unzipped[`${rootPrefix}${relativePath}`] = data;
+  return zipSync(unzipped);
 }
 
 /** Reabre o ZIP de origem e devolve o mapa de arquivos relativos à raiz do tema (layout/, sections/, snippets/, config/, locales/, templates/, assets/). */

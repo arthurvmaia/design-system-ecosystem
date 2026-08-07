@@ -66,9 +66,10 @@ function demoProduct(handle: string, index = 0) {
   const image = demoImage(title, tones[index % tones.length]);
   const variant = demoVariant(title, price);
   const media = { id: image.id, media_type: "image", position: 1, preview_image: image, alt: title, aspect_ratio: 1, width: image.width, height: image.height, src: image.src };
+  const productHandle = handle || title.toLowerCase().replace(/\W+/g, "-");
   return {
-    id: 7000000 + index, title, handle: handle || title.toLowerCase().replace(/\W+/g, "-"),
-    url: "#produto-demo", available: true, price, price_min: price, price_max: price, price_varies: false,
+    id: 7000000 + index, title, handle: productHandle,
+    url: `/products/${productHandle}`, available: true, price, price_min: price, price_max: price, price_varies: false,
     compare_at_price: compareAt, compare_at_price_min: compareAt ?? 0, compare_at_price_max: compareAt ?? 0, compare_at_price_varies: false,
     featured_image: image, featured_media: media, images: [image], media: [media],
     options: ["Título"], options_with_values: [{ name: "Título", position: 1, values: ["Padrão"], selected_value: "Padrão" }],
@@ -86,7 +87,7 @@ const DEMO_PRODUCTS = [0, 1, 2, 3, 4, 5].map((index) => demoProduct("", index));
 function demoCollection(handle: string) {
   const title = handle ? handle.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Coleção em destaque";
   return {
-    id: 9000001, title, handle: handle || "colecao-demo", url: "#colecao-demo", description: "",
+    id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
     products: DEMO_PRODUCTS, products_count: DEMO_PRODUCTS.length, all_products_count: DEMO_PRODUCTS.length,
     image: null, featured_image: DEMO_PRODUCTS[0].featured_image, all_tags: [], all_types: [], all_vendors: [],
     sort_by: "", default_sort_by: "best-selling", filters: [], template_suffix: null,
@@ -94,9 +95,9 @@ function demoCollection(handle: string) {
 }
 
 const DEMO_LINKS = [
-  { title: "Início", url: "#", active: true, current: true, child_active: false, child_current: false, links: [], levels: 0, handle: "inicio", type: "frontpage_link", object: null },
-  { title: "Produtos", url: "#", active: false, current: false, child_active: false, child_current: false, links: [], levels: 0, handle: "produtos", type: "catalog_link", object: null },
-  { title: "Contato", url: "#", active: false, current: false, child_active: false, child_current: false, links: [], levels: 0, handle: "contato", type: "page_link", object: null },
+  { title: "Início", url: "/", active: true, current: true, child_active: false, child_current: false, links: [], levels: 0, handle: "inicio", type: "frontpage_link", object: null },
+  { title: "Produtos", url: "/collections/all", active: false, current: false, child_active: false, child_current: false, links: [], levels: 0, handle: "produtos", type: "catalog_link", object: null },
+  { title: "Contato", url: "/pages/contact", active: false, current: false, child_active: false, child_current: false, links: [], levels: 0, handle: "contato", type: "page_link", object: null },
 ];
 
 function proxyWithFallback<T>(base: Record<string, T>, make: (key: string) => T) {
@@ -123,19 +124,21 @@ function flattenTranslations(source: Record<string, unknown>, prefix = "", out: 
 function resolveSettingValues(
   values: Record<string, ShopifyValue>,
   definitions: ShopifySettingDefinition[],
-  helpers: { imageFor: (value: ShopifyValue) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown },
+  helpers: { imageFor: (value: ShopifyValue) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
 ) {
   const byId = new Map(definitions.map((definition) => [definition.id, definition]));
   const resolved: Record<string, unknown> = {};
   for (const [id, value] of Object.entries(values)) {
     const type = byId.get(id)?.type ?? "";
     if (type === "font_picker" && typeof value === "string") {
-      const family = value.split("_")[0].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-      const weightMatch = value.match(/n(\d)/);
-      resolved[id] = {
-        family, fallback_families: "sans-serif", style: value.includes("i") ? "italic" : "normal",
-        weight: weightMatch ? Number(weightMatch[1]) * 100 : 400, baseline_ratio: 0.71, system: true, variants: [],
-      };
+      const font = shopifyFontFromHandle(value);
+      helpers.registerFont?.(font);
+      resolved[id] = font;
+      continue;
+    }
+    if ((type === "color" || type === "color_background") && typeof value === "string" && value) {
+      /* gradientes (color_background) não têm canais e seguem como string */
+      resolved[id] = colorDrop(value);
       continue;
     }
     if (type === "image_picker") { resolved[id] = helpers.imageFor(value); continue; }
@@ -145,14 +148,22 @@ function resolveSettingValues(
     if (type === "collection_list") { resolved[id] = ["colecao-1", "colecao-2", "colecao-3", "colecao-4"].map((handle) => demoCollection(handle)); continue; }
     if (type === "product_list") { resolved[id] = DEMO_PRODUCTS.slice(0, 4); continue; }
     if (type === "link_list" || type === "menu") { resolved[id] = { title: "Menu", handle: String(value ?? "main-menu"), links: DEMO_LINKS, levels: 1 }; continue; }
-    if (type === "blog") { resolved[id] = { title: "Blog", handle: String(value ?? "blog"), url: "#", articles: [], articles_count: 0, all_tags: [] }; continue; }
+    if (type === "blog") { const blogHandle = String(value ?? "blog"); resolved[id] = { title: "Blog", handle: blogHandle, url: `/blogs/${blogHandle}`, articles: [], articles_count: 0, all_tags: [] }; continue; }
     if (type === "article") { resolved[id] = null; continue; }
-    if (type === "page") { resolved[id] = { title: "Página", handle: String(value ?? "pagina"), content: "", url: "#" }; continue; }
+    if (type === "page") { const pageHandle = String(value ?? "pagina"); resolved[id] = { title: "Página", handle: pageHandle, content: "", url: `/pages/${pageHandle}` }; continue; }
     resolved[id] = value;
   }
   for (const definition of definitions) {
-    if (!(definition.id in resolved) && definition.default !== undefined) {
-      resolved[definition.id] = definition.default;
+    if (definition.id in resolved || definition.default === undefined) continue;
+    const fallback = definition.default;
+    if (definition.type === "font_picker" && typeof fallback === "string") {
+      const font = shopifyFontFromHandle(fallback);
+      helpers.registerFont?.(font);
+      resolved[definition.id] = font;
+    } else if ((definition.type === "color" || definition.type === "color_background") && typeof fallback === "string" && fallback) {
+      resolved[definition.id] = colorDrop(fallback);
+    } else {
+      resolved[definition.id] = fallback;
     }
   }
   return resolved;
@@ -160,17 +171,123 @@ function resolveSettingValues(
 
 function colorParse(value: string): [number, number, number, number] | null {
   if (typeof value !== "string") return null;
-  const hex = value.trim().match(/^#?([0-9a-f]{6}|[0-9a-f]{3})$/i)?.[1];
+  const hex = value.trim().match(/^#?([0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3})$/i)?.[1];
   if (hex) {
     const full = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
-    return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16), 1];
+    const alpha = full.length === 8 ? parseInt(full.slice(6, 8), 16) / 255 : 1;
+    return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16), alpha];
   }
-  const rgba = value.trim().match(/^rgba?\(([^)]+)\)$/i)?.[1]?.split(",").map((part) => parseFloat(part));
+  const rgba = value.trim().match(/^rgba?\(([^)]+)\)$/i)?.[1]?.split(/[,/\s]+/).filter(Boolean).map((part) => parseFloat(part));
   if (rgba && rgba.length >= 3) return [rgba[0], rgba[1], rgba[2], rgba[3] ?? 1];
   return null;
 }
 
 const rgbString = ([r, g, b, a]: [number, number, number, number]) => a >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${a})`;
+
+/**
+ * Cor como a Shopify entrega ao Liquid: imprime o valor original, mas expõe os
+ * canais (.red/.green/.blue/.alpha/.rgb…). É disso que os temas Dawn-based
+ * dependem para gerar as variáveis CSS — sem os canais, todo o esquema de cores
+ * do tema sai quebrado (`--color-base-text: , , ;`).
+ */
+function colorDrop(value: string): unknown {
+  const parsed = colorParse(value);
+  if (!parsed) return value;
+  const [red, green, blue, alpha] = parsed;
+  const max = Math.max(red, green, blue) / 255;
+  const min = Math.min(red, green, blue) / 255;
+  const lightness = (max + min) / 2;
+  const delta = max - min;
+  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+  const [r1, g1, b1] = [red / 255, green / 255, blue / 255];
+  let hue = 0;
+  if (delta > 0) {
+    if (max === r1) hue = 60 * (((g1 - b1) / delta) % 6);
+    else if (max === g1) hue = 60 * ((b1 - r1) / delta + 2);
+    else hue = 60 * ((r1 - g1) / delta + 4);
+  }
+  return {
+    red, green, blue, alpha,
+    rgb: `${red} ${green} ${blue}`,
+    rgba: `${red} ${green} ${blue} / ${alpha}`,
+    hue: Math.round((hue + 360) % 360),
+    saturation: Math.round(saturation * 100),
+    lightness: Math.round(lightness * 100),
+    toString() { return value; },
+  };
+}
+
+/** Fallback genérico coerente por família (a Shopify manda o fallback real; aqui é heurística declarada). */
+const SERIF_FONTS = /playfair|merriweather|lora|georgia|garamond|baskerville|cormorant|crimson|spectral|source serif|pt serif|noto serif|dm serif|ibm plex serif|bitter|domine|cardo|vollkorn|alegreya|eb garamond|libre caslon|zilla|frank ruhl|tinos|rozha|abril|prata|bodoni|didot|times/i;
+const MONO_FONTS = /mono|courier|consolas|menlo/i;
+
+type ShopifyFontDrop = {
+  family: string;
+  fallback_families: string;
+  style: string;
+  weight: number | string;
+  baseline_ratio: number;
+  system: boolean;
+  "system?": boolean;
+  variants: unknown[];
+  toString(): string;
+};
+
+/**
+ * Interpreta o handle do font_picker da Shopify (ex.: "poppins_n7",
+ * "harmonia_sans_n4", "playfair_display_i7"): tudo antes do último token
+ * `_n<d>`/`_i<d>` é a família (com underscores como espaços), o token final dá
+ * peso e itálico. O parser antigo cortava a família na primeira palavra e
+ * marcava itálico para qualquer nome contendo a letra "i".
+ */
+function shopifyFontFromHandle(value: string): ShopifyFontDrop {
+  const handle = value.trim().toLowerCase();
+  const match = handle.match(/^(.*?)_(n|i)(\d{1,2})$/);
+  const rawFamily = (match ? match[1] : handle).replace(/_/g, " ").trim();
+  const family = rawFamily.replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Assistant";
+  const weight = match ? Math.min(900, Math.max(100, Number(match[3]) * 100)) : 400;
+  const style = match?.[2] === "i" ? "italic" : "normal";
+  const fallback = MONO_FONTS.test(family) ? "monospace" : SERIF_FONTS.test(family) ? "serif" : "sans-serif";
+  return {
+    family,
+    fallback_families: fallback,
+    style,
+    weight,
+    baseline_ratio: 0.71,
+    system: false,
+    "system?": false,
+    variants: [],
+    toString() { return family; },
+  };
+}
+
+/**
+ * URL do Google Fonts para as fontes usadas no tema. A biblioteca de fontes da
+ * Shopify é majoritariamente espelho do Google Fonts; quando a família é
+ * licenciada (ex.: Harmonia Sans), a folha responde 400 e o CSS cai no
+ * fallback declarado — a troca fica visível no fallback_families, nunca muda em
+ * silêncio para outra família.
+ */
+function googleFontsHref(fonts: Iterable<{ family: string; weight: number | string; style: string }>): string | null {
+  const byFamily = new Map<string, Set<string>>();
+  for (const font of fonts) {
+    const weight = typeof font.weight === "number" ? font.weight : Number(font.weight) || 400;
+    const bold = Math.min(1000, weight + 300);
+    const variants = byFamily.get(font.family) ?? new Set<string>();
+    for (const w of [weight, bold]) { variants.add(`0,${w}`); variants.add(`1,${w}`); }
+    byFamily.set(font.family, variants);
+  }
+  if (!byFamily.size) return null;
+  const families = Array.from(byFamily.entries()).map(([family, variants]) => {
+    const tuples = Array.from(variants).sort((a, b) => {
+      const [ai, aw] = a.split(",").map(Number);
+      const [bi, bw] = b.split(",").map(Number);
+      return ai - bi || aw - bw;
+    });
+    return `family=${family.replace(/ /g, "+")}:ital,wght@${tuples.join(";")}`;
+  });
+  return `https://fonts.googleapis.com/css2?${families.join("&")}&display=swap`;
+}
 
 function argPairs(args: unknown[]): Record<string, unknown> {
   const named: Record<string, unknown> = {};
@@ -211,14 +328,30 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
   const currentSettings = record(rawSettingsData.current);
   const schemes = record(theme.globalValues.color_schemes ?? currentSettings.color_schemes);
   const schemeFor = (id: ShopifyValue) => {
-    const key = typeof id === "string" && id ? id : Object.keys(schemes)[0];
-    const scheme = record(schemes[key ?? ""]);
-    return { id: key ?? "scheme-1", settings: record(scheme.settings), toString: () => key ?? "scheme-1" };
+    const key = (typeof id === "string" && id ? id : Object.keys(schemes)[0]) ?? "scheme-1";
+    const scheme = record(schemes[key]);
+    /* cada cor do esquema também expõe canais — Dawn v9+ escreve
+       `{{ scheme.settings.background.rgb }}` ao gerar as classes .color-* */
+    const resolvedSettings: Record<string, unknown> = {};
+    for (const [settingId, value] of Object.entries(record(scheme.settings))) {
+      resolvedSettings[settingId] = typeof value === "string" && value ? colorDrop(value) : value;
+    }
+    return { id: key, settings: resolvedSettings, toString: () => key };
+  };
+  /* `settings.color_schemes` precisa ser iterável (`{% for scheme in ... %}`)
+     E indexável por id — um array com propriedades nomeadas atende os dois. */
+  const schemeList = Object.keys(schemes).map((key) => schemeFor(key));
+  const schemeCollection = schemeList as unknown as Record<string, unknown> & unknown[];
+  for (const drop of schemeList) schemeCollection[(drop as { id: string }).id] = drop;
+
+  const fontsUsed = new Map<string, ShopifyFontDrop>();
+  const registerFont = (font: ShopifyFontDrop) => {
+    fontsUsed.set(`${font.family}|${font.weight}|${font.style}`, font);
   };
 
   const allGlobalDefinitions = theme.globalGroups.flatMap((group) => group.settings);
-  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { imageFor, schemeFor });
-  if (!("color_schemes" in settings) && Object.keys(schemes).length) settings.color_schemes = schemes;
+  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { imageFor, schemeFor, registerFont });
+  if (schemeList.length) settings.color_schemes = schemeCollection;
 
   const localeFile =
     text(files, "locales/pt-BR.json") ?? text(files, "locales/pt-PT.json") ??
@@ -227,14 +360,33 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
   const translations = flattenTranslations(parseJson<Record<string, unknown>>(localeFile, {}));
 
   const schemaByType = new Map(theme.sectionSchemas.map((schema) => [schema.type, schema]));
+  /* fontes de seções/blocos de QUALQUER página entram antes do render: o
+     {{ content_for_header }} sai no <head>, antes de o layout executar os
+     {% sections %} de cabeçalho/rodapé. */
+  for (const page of theme.pages) {
+    for (const section of page.sections) {
+      const schema = schemaByType.get(section.type);
+      const harvest = (values: Record<string, ShopifyValue>, definitions: ShopifySettingDefinition[]) => {
+        for (const definition of definitions) {
+          if (definition.type !== "font_picker") continue;
+          const value = values[definition.id] ?? definition.default;
+          if (typeof value === "string" && value) registerFont(shopifyFontFromHandle(value));
+        }
+      };
+      harvest(section.settings, schema?.settings ?? []);
+      for (const block of section.blocks) {
+        harvest(block.settings, schema?.blocks.find((item) => item.type === block.type)?.settings ?? []);
+      }
+    }
+  }
   const resolveSection = (section: ShopifySectionInstance) => {
     const schema = schemaByType.get(section.type);
-    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { imageFor, schemeFor });
+    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { imageFor, schemeFor, registerFont });
     const blocks = section.blocks.map((block, index) => {
       const blockSchema = schema?.blocks.find((item) => item.type === block.type);
       return {
         id: block.id, type: block.type,
-        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { imageFor, schemeFor }),
+        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { imageFor, schemeFor, registerFont }),
         shopify_attributes: `data-block-id="${block.id}"`,
         index: index + 1, index0: index,
       };
@@ -245,7 +397,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
   const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(handle));
   const productsProxy = proxyWithFallback<unknown>({}, (handle) => demoProduct(handle, 2));
   const linklistsProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: "Menu", handle, links: DEMO_LINKS, levels: 1 }));
-  const pagesProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: handle, handle, content: "", url: "#" }));
+  const pagesProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: handle, handle, content: "", url: `/pages/${handle}` }));
   const imagesProxy = proxyWithFallback<unknown>({}, (name) => imageFor(name) ?? demoImage("Imagem"));
 
   const pageBase = pageId.split(".")[0];
@@ -260,11 +412,13 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
       enabled_payment_types: ["visa", "master", "pix"], published_locales: [{ iso_code: "pt-BR", primary: true }],
       metafields: {}, brand: { logo: null, colors: {} },
     },
+    /* caminhos REAIS (como na Shopify): é o que permite ao editor traduzir um
+       clique em link do tema para a página correspondente do preview */
     routes: {
-      root_url: "/", cart_url: "#carrinho", cart_add_url: "#", cart_change_url: "#", cart_update_url: "#", cart_clear_url: "#",
-      search_url: "#busca", predictive_search_url: "#", collections_url: "#", all_products_collection_url: "#",
-      account_url: "#", account_login_url: "#", account_logout_url: "#", account_register_url: "#",
-      account_addresses_url: "#", account_recover_url: "#", product_recommendations_url: "#",
+      root_url: "/", cart_url: "/cart", cart_add_url: "/cart/add", cart_change_url: "/cart/change", cart_update_url: "/cart/update", cart_clear_url: "/cart/clear",
+      search_url: "/search", predictive_search_url: "/search/suggest", collections_url: "/collections", all_products_collection_url: "/collections/all",
+      account_url: "/account", account_login_url: "/account/login", account_logout_url: "/account/logout", account_register_url: "/account/register",
+      account_addresses_url: "/account/addresses", account_recover_url: "/account/recover", product_recommendations_url: "/recommendations/products",
     },
     request: {
       design_mode: true, visual_preview_mode: false, page_type: pageBase === "index" ? "index" : pageBase,
@@ -283,19 +437,33 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
     },
     customer: null,
     template: { name: pageBase, suffix: pageId.includes(".") ? pageId.split(".").slice(1).join(".") : null, directory: null, toString: () => pageBase },
-    content_for_header: `<meta name="orbis-preview" content="1">`,
+    /* getter: quando o layout imprime {{ content_for_header }} (sempre por
+       último, depois das seções), fontsUsed já tem todas as fontes do tema —
+       o link do Google Fonts é o que faz o preview usar a fonte REAL. */
+    get content_for_header() {
+      const href = googleFontsHref(fontsUsed.values());
+      const fonts = href
+        ? `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="${href}">`
+        : "";
+      /* o editor da Shopify injeta window.Shopify no storefront; o JS dos
+         temas depende dele (designMode, locale, routes) para inicializar
+         sliders, carrosséis e menus. Sem o shim, ReferenceError e seção morta. */
+      const themeName = JSON.stringify(theme.themeName);
+      const runtime = `<script>window.Shopify=window.Shopify||{};Object.assign(window.Shopify,{designMode:true,shop:"minha-loja.exemplo",locale:"pt-BR",currency:{active:"BRL",rate:"1.0"},country:"BR",theme:{name:${themeName},role:"development"},routes:{root:"/"},cdnHost:"cdn.shopify.com",PaymentButton:{init:function(){}}});</script>`;
+      return `<meta name="orbis-preview" content="1">${runtime}${fonts}`;
+    },
     linklists: linklistsProxy,
     collections: collectionsProxy,
     all_products: productsProxy,
     pages: pagesProxy,
     images: imagesProxy,
-    blogs: proxyWithFallback<unknown>({}, (handle) => ({ title: "Blog", handle, url: "#", articles: [], articles_count: 0, all_tags: [] })),
+    blogs: proxyWithFallback<unknown>({}, (handle) => ({ title: "Blog", handle, url: `/blogs/${handle}`, articles: [], articles_count: 0, all_tags: [] })),
     articles: proxyWithFallback<unknown>({}, () => null),
     product: demoProduct("produto-demo", 0),
     collection: demoCollection("colecao-demo"),
-    article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "#", tags: [], comments: [], comments_count: 0, comments_enabled: false },
-    blog: { title: "Blog", url: "#", articles: [], articles_count: 0, all_tags: [] },
-    page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "#" },
+    article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "/blogs/news/artigo-demo", tags: [], comments: [], comments_count: 0, comments_enabled: false },
+    blog: { title: "Blog", url: "/blogs/news", articles: [], articles_count: 0, all_tags: [] },
+    page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "/pages/pagina" },
     search: { performed: false, terms: "", results: [], results_count: 0, types: ["product"], filters: [], sort_by: "relevance", default_sort_by: "relevance" },
     recommendations: { performed: false, products_count: 0, products: [], intent: "related" },
     predictive_search: { performed: false, resources: { products: [], collections: [], pages: [], articles: [] } },
@@ -406,14 +574,28 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
     if (typeof format === "string" && /%Y/.test(format)) return String(date.getFullYear());
     return date.toLocaleDateString("pt-BR");
   });
+  /* o @font-face real vem da folha do Google Fonts injetada no
+     content_for_header; aqui só não pode sair lixo dentro do <style> */
   engine.registerFilter("font_face", () => "");
-  engine.registerFilter("font_url", () => "");
+  /* preload apontando para a própria página seria o efeito de devolver "";
+     um woff2 vazio embutido é inofensivo */
+  engine.registerFilter("font_url", () => "data:font/woff2;base64,");
   engine.registerFilter("font_modify", (font, property, value) => {
     const base = record(font);
-    return { ...base, [String(property)]: value, family: base.family ?? "sans-serif" };
+    let next: unknown = value;
+    if (String(property) === "weight") {
+      const keyword: Record<string, number> = { bold: 700, bolder: 900, lighter: 300, normal: 400 };
+      const current = typeof base.weight === "number" ? base.weight : Number(base.weight) || 400;
+      next = keyword[String(value)] ?? (/^[+-]\d+$/.test(String(value)) ? Math.min(1000, Math.max(1, current + Number(value))) : Number(value) || value);
+    }
+    const family = typeof base.family === "string" ? base.family : "sans-serif";
+    return { ...base, [String(property)]: next, family, toString() { return family; } };
   });
   engine.registerFilter("color_to_rgb", (value) => { const c = colorParse(String(value)); return c ? rgbString(c) : String(value ?? ""); });
-  engine.registerFilter("color_to_hex", (value) => String(value ?? ""));
+  engine.registerFilter("color_to_hex", (value) => {
+    const c = colorParse(String(value));
+    return c ? `#${[c[0], c[1], c[2]].map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("")}` : String(value ?? "");
+  });
   engine.registerFilter("color_extract", (value, component) => {
     const c = colorParse(String(value)); if (!c) return 0;
     return component === "red" ? c[0] : component === "green" ? c[1] : component === "blue" ? c[2] : component === "alpha" ? c[3] : 0;
@@ -560,9 +742,10 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
   };
 
   const sectionByType = (type: string): ShopifySectionInstance => {
+    /* grupos primeiro (qualquer nome de grupo), depois qualquer página */
     for (const candidate of theme.pages) {
       const found = candidate.sections.find((section) => section.type === type);
-      if (found && (candidate.id.startsWith("header-group") || candidate.id.startsWith("footer-group") || candidate.id.startsWith("overlay-group"))) return found;
+      if (found && candidate.id.includes("-group")) return found;
     }
     const rawSections = record(currentSettings.sections);
     for (const [id, value] of Object.entries(rawSections)) {
@@ -614,7 +797,9 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
     html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>${contentForLayout}</body></html>`;
   }
 
-  const bridge = `<script>(function(){document.addEventListener("click",function(event){var anchor=event.target.closest("a");if(anchor){event.preventDefault();}var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section")},"*");}},true);})();</script>`;
+  /* ponte com o editor: clique numa seção seleciona na árvore; seleção na
+     árvore rola o preview até a seção e a destaca — como no editor Shopify */
+  const bridge = `<script>(function(){document.addEventListener("click",function(event){var anchor=event.target.closest("a");if(anchor){event.preventDefault();var href=anchor.getAttribute("href");if(href&&href.charAt(0)!=="#"&&window.parent!==window){window.parent.postMessage({orbisNavigate:href},"*");return;}}var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section")},"*");}},true);window.addEventListener("message",function(event){var data=event&&event.data;if(!data||!data.orbisScrollTo){return;}var target=document.getElementById("shopify-section-"+data.orbisScrollTo);if(!target){return;}target.scrollIntoView({behavior:"smooth",block:"start"});target.style.outline="2px solid #2f80ed";target.style.outlineOffset="-2px";window.clearTimeout(target.__orbisFlash);target.__orbisFlash=window.setTimeout(function(){target.style.outline="";target.style.outlineOffset="";},1600);});})();</script>`;
   html = html.includes("</body>") ? html.replace("</body>", `${bridge}</body>`) : html + bridge;
   return html;
 }
