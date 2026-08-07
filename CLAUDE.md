@@ -158,7 +158,33 @@ CRIATIVO, entregue como dado:
    corrigir a entrada e rodar de novo do que remendar a saída.
 4. **NUNCA copie texto, nome ou marca do site de origem.** O kit empresta só o
    jeito visual; a identidade é a do usuário.
-5. **Valide como sempre**: navegador headless em ~1440px e ~390px (janela na
+5. **NÃO MUDE A ESSÊNCIA DO COMPONENTE.** É a regra que o dono deu por escrito,
+   e é ela que decide o que você pode tocar:
+
+   > "sempre que vc usar um componente vc nao pode mudar a essencia do designer
+   > dele, a ideia de qualquer componente quando for gerar o site, é apenas
+   > trocar os valores e copy, imagens e videos caso precise, mas a essencia é
+   > para continuar."
+
+   **Troque:** texto e copy, cores (pela recoloração), fotos, vídeos, números,
+   rótulos, links, nomes de produto.
+
+   **Não troque:** a estrutura do HTML (não remova, não reordene, não aninhe
+   diferente), a hierarquia visual (o que é título continua título), o layout
+   (grade, colunas, proporções), o movimento (animação, revelação, parallax) e
+   o espaçamento interno da peça.
+
+   Casos concretos, todos vividos: apagar uma `<img>` sem substituta deixa um
+   buraco e desmonta a grade — a foto de origem FICA, com aviso. Reescalar
+   valores dentro de `@keyframes` pode achatar dois passos no mesmo degrau e
+   PARAR a animação. Um respiro lateral que a peça não tinha na origem a
+   encaixota e o resultado "parece PDF"; um que ela tinha e perdeu deixa o
+   título cortado na borda — quem decide isso é a geometria MEDIDA no mapa
+   estrutural da captura, não o palpite.
+
+   Quando faltar alguma coisa (mídia, texto, tradução), **degrade para o que a
+   peça já tinha e avise** — nunca para o vazio.
+6. **Valide como sempre**: navegador headless em ~1440px e ~390px (janela na
    cara de quem usa o computador é interrupção, não validação), e feche com
    `pnpm fila:concluir <job_id>`.
 
