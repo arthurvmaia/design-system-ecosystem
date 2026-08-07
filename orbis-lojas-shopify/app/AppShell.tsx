@@ -584,8 +584,11 @@ function ProjectsView({ data, onCreate, onEdit, onAction, busy }: { data: Bootst
 
 function ProjectRow({ project, onEdit, onDelete, onDuplicate, onPublish, busy }: { project: Project; onEdit: () => void; onDelete?: () => void; onDuplicate?: () => void; onPublish?: () => void; busy?: string | null }) {
   const model = previewFromProject(project);
+  /* a home real do PROJETO: o mesmo motor, lendo o estado atual salvo dele —
+     a miniatura acompanha as edições, não o tema de origem */
+  const homeSrc = model.renderable ? `/api/theme-render?projectId=${encodeURIComponent(project.id)}&page=index&v=${encodeURIComponent(project.updatedAt)}` : undefined;
   return (
-    <PreviewCard model={model} size="lista" onOpen={onEdit} actions={<>
+    <PreviewCard model={model} size="lista" onOpen={onEdit} homeSrc={homeSrc} unavailableReason={model.renderable ? undefined : "Este projeto não tem o ZIP do tema preservado, então a página inicial não pode ser renderizada."} actions={<>
       <button className="primary-button" onClick={onEdit}>Editar <ArrowRight size={15} /></button>
       {onPublish && project.status !== "published" && <button className="secondary-button" onClick={onPublish} disabled={busy === "publishProject"}><Globe2 size={15} /> Publicar</button>}
       {onDuplicate && <button className="icon-button" onClick={onDuplicate} disabled={busy === "duplicateProject"} aria-label={`Duplicar ${project.name}`} title="Duplicar projeto"><Copy size={16} /></button>}

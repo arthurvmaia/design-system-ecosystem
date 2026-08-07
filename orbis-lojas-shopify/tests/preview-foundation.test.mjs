@@ -103,3 +103,11 @@ test("RECUPERAÇÃO F3: cada tema mostra a home real DELE na área de Temas", as
   assert.match(source, /unavailableReason=/, "sem ZIP preservado, o motivo é declarado");
   assert.doesNotMatch(source, /previewFromTheme\(theme\)[\s\S]{0,400}PreviewMock/, "o mock não é o preview final de tema");
 });
+
+test("RECUPERAÇÃO F4: cada projeto mostra a home do SEU estado atual", async () => {
+  const source = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
+  assert.match(source, /\/api\/theme-render\?projectId=\$\{encodeURIComponent\(project\.id\)\}/, "a home vem do próprio projeto, não do tema de origem");
+  /* updatedAt na URL: salvar o projeto invalida o cache da miniatura */
+  assert.match(source, /v=\$\{encodeURIComponent\(project\.updatedAt\)\}/);
+  assert.match(source, /unavailableReason=\{model\.renderable \? undefined :/, "sem ZIP, motivo declarado");
+});
