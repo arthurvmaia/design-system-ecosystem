@@ -919,3 +919,177 @@ test('logo ancorada numa seção não substitui a foto de conteúdo', () => {
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+test('a moldura MEDIDA devolve o container que a peça perdeu ao ser recortada', () => {
+  // O caso que o dono viu no site de joalheria: o título "Uma joia que é sua"
+  // começando em x=0 e cortado pela borda. A origem tinha um container
+  // (`max-w-7xl mx-auto px-12`) que o recorte deixou para trás, e nenhuma das
+  // duas evidências anteriores o via — não há margem negativa, e o container
+  // era um PAI com utilitárias, não uma classe na peça.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-moldura-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    // O mapa estrutural como a captura o grava: a peça em x=129 com 1182 de
+    // largura, dentro de um container em x=80 com 1280, numa tela de 1440.
+    const capt = join(raiz, 'root', 'vault', 'ds_a', 'capture-v2');
+    mkdirSync(capt, { recursive: true });
+    writeFileSync(
+      join(capt, 'manifest.json'),
+      JSON.stringify({
+        viewport: { width: 1440, height: 900 },
+        structuralMap: [
+          {
+            fingerprint: { hash: 'corpo', stableClasses: ['bg-preto', 'text-branco'] },
+            pageBox: { x: 0, w: 1440 },
+            parent: null,
+          },
+          {
+            fingerprint: { hash: 'container', stableClasses: ['max-w-7xl', 'mx-auto', 'px-12'] },
+            pageBox: { x: 80, w: 1280 },
+            parent: 'corpo',
+          },
+          {
+            fingerprint: {
+              hash: 'heroi',
+              stableClasses: ['relative', 'pt-16', 'flex', 'items-center', 'gap-12'],
+            },
+            pageBox: { x: 129, w: 1182 },
+            parent: 'container',
+          },
+        ],
+      }),
+      'utf8',
+    );
+
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<section class="relative pt-16 flex items-center gap-12"><h1>Uma joia que é sua</h1></section>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_h',
+            name: 'Hero',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Abertura', componentIds: ['cmp_h'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const css = readFileSync(join(r.outputDir, 'assets', 'styles.css'), 'utf8');
+    // Largura e respiro saem SUBTRAÍDOS da medição: 1280 é a largura do
+    // container, 49 é 129 menos 80. Nenhum dos dois é suposto.
+    assert.match(css, /--pagina-largura:1280px/, 'a largura vem do container medido');
+    assert.match(css, /--pagina-respiro:min\(49px,6vw\)/, 'o respiro vem da subtração');
+    assert.match(
+      css,
+      /\[data-secao\]:has\(>\[data-ds-raiz="ds_a"\]\)\{[^}]*max-width:var\(--pagina-largura\)/,
+      'e a seção daquela origem entra no eixo',
+    );
+    assert.ok(
+      r.avisos.some((a) => a.includes('MEDIDOS no mapa estrutural')),
+      'a medição se declara, para ninguém confundir com suposição',
+    );
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('peça que era sangria na origem NÃO recebe moldura', () => {
+  // O outro lado da mesma régua, e a razão de a tentativa anterior ter virado
+  // PDF: peça que ocupava a tela inteira na origem foi desenhada assim. Dar
+  // container a ela é mudar a essência do desenho.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-sangria-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const capt = join(raiz, 'root', 'vault', 'ds_b', 'capture-v2');
+    mkdirSync(capt, { recursive: true });
+    writeFileSync(
+      join(capt, 'manifest.json'),
+      JSON.stringify({
+        viewport: { width: 1440, height: 900 },
+        structuralMap: [
+          {
+            fingerprint: { hash: 'corpo', stableClasses: ['bg-preto'] },
+            pageBox: { x: 0, w: 1440 },
+            parent: null,
+          },
+          {
+            fingerprint: {
+              hash: 'faixa',
+              stableClasses: ['w-full', 'relative', 'flex', 'items-center', 'py-24'],
+            },
+            pageBox: { x: 0, w: 1440 },
+            parent: 'corpo',
+          },
+        ],
+      }),
+      'utf8',
+    );
+
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<section class="w-full relative flex items-center py-24"><p>Faixa inteira</p></section>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_f',
+            name: 'Faixa',
+            category: 'features',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_b',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Recursos', componentIds: ['cmp_f'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const css = readFileSync(join(r.outputDir, 'assets', 'styles.css'), 'utf8');
+    assert.doesNotMatch(css, /--pagina-largura/, 'nenhuma moldura foi inventada');
+    assert.doesNotMatch(css, /\[data-secao\]:has\(>\[data-ds-raiz="ds_b"\]\)/, 'e a seção sangra');
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});

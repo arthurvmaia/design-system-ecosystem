@@ -31,6 +31,7 @@ import {
   reguasParaOrigem,
   resolverSecoes,
   separarCamadasDePagina,
+  vaultCaptureV2Dir,
 } from '@ds/shared';
 import { lerCssDoBundle } from './cascata.js';
 import { buildBrandingCss } from './index.js';
@@ -290,6 +291,155 @@ const camadaDaMarca = (fundo: string, primaria: string, acento: string): string 
  * utilitárias (`max-w-7xl mx-auto`, regras separadas no CSS compilado) fica sem
  * detecção — é a limitação conhecida, e ela é melhor que o falso positivo.
  */
+/**
+ * A moldura MEDIDA: onde a peça realmente ficava na página de origem.
+ *
+ * ── Por que esta evidência vale mais que as outras duas ────────────────────
+ *
+ * A margem negativa (abaixo) só denuncia o container quando a peça furou o
+ * respiro do pai — coisa que, na prática, só a nav faz. O container declarado
+ * no CSS foi tentado e reprovado: encaixotava o que já estava contido, e o dono
+ * viu na hora ("ficou parecendo pdf"). O próprio comentário daquela reversão já
+ * nomeava a lacuna que sobrou: "origem cujo container era um pai com utilitárias
+ * (`max-w-7xl mx-auto`) fica sem detecção — é a limitação conhecida".
+ *
+ * Era exatamente o caso do cogni, e o resultado apareceu no site de joalheria:
+ * o título "Uma joia que é sua" começando em x=0, cortado pela borda.
+ *
+ * Esta terceira evidência não é heurística nenhuma — é a posição que a captura
+ * MEDIU. O mapa estrutural guarda o `pageBox` de cada nó e o pai de cada um, e
+ * daí sai a verdade inteira: no cogni o hero ficava em x=129 com 1182 de
+ * largura, dentro de um container em x=80 com 1280 — que é `max-w-7xl` com
+ * `px-12`. Largura do container e respiro saem SUBTRAÍDOS, não supostos.
+ *
+ * E ela também sabe dizer quando NÃO fazer nada: peça que ocupava a viewport
+ * inteira na origem é sangria de propósito, e recebe moldura nenhuma. É esse
+ * discernimento que faltava à tentativa que virou PDF.
+ */
+type MolduraMedida = { largura: number; respiro: number };
+
+type MapaNo = {
+  fingerprint: { hash: string; stableClasses?: string[] };
+  pageBox?: { x: number; w: number };
+  parent?: string | null;
+};
+
+type MapaDaOrigem = { nos: MapaNo[]; viewport: number };
+
+/**
+ * O cache do mapa estrutural, criado A CADA MONTAGEM.
+ *
+ * Não pode ser de módulo: o servidor vive por horas, e uma reextração no meio
+ * do caminho deixaria a geometria velha em memória para todas as gerações
+ * seguintes — a peça mudaria de lugar no site sem nada no código explicar.
+ */
+const lerMapaDaOrigem = (
+  dsId: string,
+  cache: Map<string, MapaDaOrigem | null>,
+): MapaDaOrigem | null => {
+  const emCache = cache.get(dsId);
+  if (emCache !== undefined) return emCache;
+  let lido: MapaDaOrigem | null = null;
+  try {
+    const caminho = join(vaultCaptureV2Dir(dsId as `ds_${string}`), 'manifest.json');
+    if (existsSync(caminho)) {
+      const m = JSON.parse(readFileSync(caminho, 'utf8')) as {
+        structuralMap?: MapaNo[];
+        viewport?: { width?: number };
+      };
+      const nos = m.structuralMap ?? [];
+      const viewport = m.viewport?.width ?? 0;
+      if (nos.length > 0 && viewport > 0) lido = { nos, viewport };
+    }
+  } catch {
+    // Captura antiga, ilegível ou de outro formato: cai no plano B (a margem
+    // negativa). Melhor uma evidência a menos do que uma montagem interrompida.
+  }
+  cache.set(dsId, lido);
+  return lido;
+};
+
+/** As classes do primeiro elemento do corpo da peça — a âncora do casamento. */
+const classesDaRaiz = (html: string): string[] => {
+  const tag = /<(?!\/|!)([a-z][\w-]*)\b[^>]*>/i.exec(html);
+  if (tag === null) return [];
+  const cls = /\bclass\s*=\s*"([^"]*)"/i.exec(tag[0])?.[1];
+  return cls === undefined ? [] : cls.split(/\s+/).filter((c) => c.length > 0);
+};
+
+const molduraMedida = (
+  dsId: string,
+  html: string,
+  cache: Map<string, MapaDaOrigem | null>,
+): MolduraMedida | null => {
+  const mapa = lerMapaDaOrigem(dsId, cache);
+  if (mapa === null) return null;
+  const classes = new Set(classesDaRaiz(html));
+  if (classes.size === 0) return null;
+
+  // Casa pela INTERSEÇÃO das classes, não pela igualdade.
+  //
+  // Exigir que todas as classes do nó estivessem no elemento parecia o rigor
+  // certo e derrubava casamento bom: a nav de uma das origens casava 11 de 12 e
+  // era descartada pela única diferença — `bg-white/95` contra `bg-transparent`,
+  // que é a classe que ela troca ao rolar. Estado não é identidade.
+  //
+  // O corte pede DUAS coisas ao mesmo tempo: um piso absoluto, porque quatro
+  // classes genéricas (`relative flex w-full items-center`) casam com meia
+  // página, e um piso proporcional, porque casar 4 de 30 é coincidência.
+  let melhor: MapaNo | null = null;
+  let melhorPeso = 0;
+  let melhorFracao = 0;
+  for (const no of mapa.nos) {
+    const doNo = no.fingerprint.stableClasses ?? [];
+    if (doNo.length === 0 || no.pageBox === undefined) continue;
+    const inter = doNo.reduce((n, c) => (classes.has(c) ? n + 1 : n), 0);
+    const fracao = inter / doNo.length;
+    if (inter < 4 || fracao < 0.6) continue;
+    if (inter > melhorPeso || (inter === melhorPeso && fracao > melhorFracao)) {
+      melhor = no;
+      melhorPeso = inter;
+      melhorFracao = fracao;
+    }
+  }
+  if (melhor === null || melhor.pageBox === undefined) return null;
+
+  const porHash = new Map(mapa.nos.map((n) => [n.fingerprint.hash, n]));
+  // Sobe até o ancestral MAIS ALTO que ainda é mais estreito que a viewport: é
+  // ele o container da página. Parar no primeiro pegaria um wrapper interno.
+  let container: MapaNo | null = null;
+  let atual: MapaNo | null = melhor;
+  const vistos = new Set<string>();
+  while (atual !== null) {
+    const pai: MapaNo | null =
+      typeof atual.parent === 'string' ? (porHash.get(atual.parent) ?? null) : null;
+    if (pai === null || vistos.has(pai.fingerprint.hash)) break;
+    vistos.add(pai.fingerprint.hash);
+    if (pai.pageBox !== undefined && pai.pageBox.w < mapa.viewport) container = pai;
+    atual = pai;
+  }
+  const esquerda = melhor.pageBox.x;
+  const direita = mapa.viewport - (melhor.pageBox.x + melhor.pageBox.w);
+
+  // Sem ancestral mais estreito, o respiro veio do PRÓPRIO corpo da página —
+  // `body{padding:0 48px}` sem largura máxima. Aconteceu: uma peça em x=48 com
+  // 1344 de largura numa viewport de 1440, respiro dos dois lados, e nenhum
+  // container para subtrair. Recusar aí devolveria a peça colada na borda por
+  // falta de um nó intermediário que nunca existiu. A simetria é o que autoriza
+  // a leitura: respiro igual dos dois lados é container; só de um é desenho.
+  if (container?.pageBox === undefined) {
+    const assimetria = Math.abs(direita - esquerda);
+    if (esquerda < 8 || assimetria > Math.max(8, esquerda * 0.25)) return null;
+    return { largura: mapa.viewport, respiro: Math.round(esquerda) };
+  }
+
+  const respiro = Math.round(esquerda - container.pageBox.x);
+  // Respiro nulo ou negativo = a peça já encostava nas bordas do container por
+  // decisão de desenho. Devolver moldura aí seria mudar a essência dela.
+  if (respiro <= 0) return null;
+  return { largura: Math.round(container.pageBox.w), respiro };
+};
+
 const respiroPerdido = (html: string): { base: number; desktop: number } | null => {
   let base: number | null = null;
   let desktop: number | null = null;
@@ -556,6 +706,17 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   const chavesDeScriptLocal = new Set<string>();
   /** Origem → respiro do container que ela tinha e a captura não trouxe. */
   const containerPorOrigem = new Map<string, { base: number; desktop: number }>();
+  /**
+   * Origem → a moldura MEDIDA no mapa estrutural da captura.
+   *
+   * Vale mais que o mapa acima e o substitui quando existe: aquele infere o
+   * container a partir de uma marca indireta (a margem negativa), este lê onde
+   * a peça de fato estava. Guarda a MAIOR largura e o MAIOR respiro vistos na
+   * origem, porque a página composta tem um eixo só.
+   */
+  const molduraPorOrigem = new Map<string, MolduraMedida>();
+  /** O mapa estrutural de cada origem, lido uma vez por montagem. */
+  const cacheDoMapa = new Map<string, MapaDaOrigem | null>();
   const recoloracaoTotais = { origens: 0, reescritas: 0, mantidas: 0 };
   const retipografiaTotais = { reescritas: 0 };
   const reescalaTotais = { reescritas: 0, mantidas: 0 };
@@ -755,6 +916,17 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       containerPorOrigem.set(origemBase, {
         base: Math.max(anterior?.base ?? 0, respiro.base),
         desktop: Math.max(anterior?.desktop ?? 0, respiro.desktop),
+      });
+    }
+    // A medição, quando a captura a tem, manda: ela sabe a largura do container
+    // e o respiro por subtração, e sabe também quando a peça era sangria de
+    // propósito e não deve receber moldura nenhuma.
+    const medida = molduraMedida(origemBase, corpo, cacheDoMapa);
+    if (medida !== null) {
+      const anterior = molduraPorOrigem.get(origemBase);
+      molduraPorOrigem.set(origemBase, {
+        largura: Math.max(anterior?.largura ?? 0, medida.largura),
+        respiro: Math.max(anterior?.respiro ?? 0, medida.respiro),
       });
     }
 
@@ -996,21 +1168,45 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    * mesmo valor e as seções criadas nascem no mesmo eixo das seções de
    * biblioteca. Alinhar é isso — não é cada seção achar o próprio centro.
    */
-  if (containerPorOrigem.size > 0) {
-    // O alvo é a seção que carrega o proxy DAQUELA origem — assim toda seção
-    // dela entra no mesmo eixo, com marca de margem negativa ou sem.
-    const maiorBase = Math.max(...[...containerPorOrigem.values()].map((r) => r.base));
-    concatCss += `:root{--pagina-largura:1280px;--pagina-respiro:${maiorBase}px}\n`;
-    for (const [origem, respiro] of containerPorOrigem) {
+  // A medição substitui a inferência na origem em que as duas aparecem: ler
+  // onde a peça estava é melhor que deduzir de uma marca indireta.
+  const origensComMoldura = new Set([...molduraPorOrigem.keys(), ...containerPorOrigem.keys()]);
+  if (origensComMoldura.size > 0) {
+    /**
+     * UM eixo para a página inteira.
+     *
+     * Cada origem tinha o container dela — 1280 aqui, 1152 ali. Devolver o de
+     * cada uma alinharia a seção com a origem DELA e desalinharia as seções
+     * entre si, que é o que o dono não quer: "o grid do site precisa estar
+     * alinhado com o mesmo". Então a página adota a maior largura e o maior
+     * respiro entre as origens, e toda seção que perdeu container entra nesse
+     * eixo único.
+     */
+    const larguras = [...molduraPorOrigem.values()].map((m) => m.largura);
+    const respiros = [
+      ...[...molduraPorOrigem.values()].map((m) => m.respiro),
+      ...[...containerPorOrigem.values()].map((r) => r.base),
+    ];
+    const largura = larguras.length > 0 ? Math.max(...larguras) : 1280;
+    const respiroDesktop = respiros.length > 0 ? Math.max(...respiros) : 24;
+    // No celular o respiro do desktop come metade da tela. O `min` mantém o
+    // valor medido nas telas que o comportam e encolhe nas que não.
+    concatCss += `:root{--pagina-largura:${largura}px;--pagina-respiro:min(${respiroDesktop}px,6vw)}\n`;
+    for (const origem of origensComMoldura) {
+      // O alvo é a seção que carrega o proxy DAQUELA origem — assim toda seção
+      // dela entra no mesmo eixo, com marca de margem negativa ou sem.
       const alvo = `[data-secao]:has(>[data-ds-raiz="${origem}"])`;
       // `box-sizing:border-box` não é detalhe: sem ele a largura máxima vale
-      // para a caixa de CONTEÚDO, o container sai com 1280+respiro dos dois
-      // lados, e a peça que sangra de propósito (a nav, com margem negativa)
-      // estoura para fora dele — o que aparece na tela como uma barra cortada.
-      concatCss += `${alvo}{display:block;box-sizing:border-box;max-width:var(--pagina-largura);margin-inline:auto;padding-inline:${respiro.base}px}\n@media (min-width:768px){${alvo}{padding-inline:${respiro.desktop}px}}\n`;
+      // para a caixa de CONTEÚDO, o container sai com a largura + respiro dos
+      // dois lados, e a peça que sangra de propósito (a nav, com margem
+      // negativa) estoura para fora dele — na tela isso é uma barra cortada.
+      concatCss += `${alvo}{display:block;box-sizing:border-box;max-width:var(--pagina-largura);margin-inline:auto;padding-inline:var(--pagina-respiro)}\n`;
     }
+    const medidas = molduraPorOrigem.size;
     avisos.push(
-      `Margem negativa nas peças de ${containerPorOrigem.size} origem(ns) denuncia o container que elas tinham e a captura não trouxe: a página devolveu largura máxima de 1280px e o respiro lateral a TODAS as seções dessas origens, para o conteúdo não encostar na borda da tela.`,
+      medidas > 0
+        ? `Grid da página: ${largura}px de largura com ${respiroDesktop}px de respiro, MEDIDOS no mapa estrutural de ${medidas} origem(ns) — é onde a peça ficava antes de ser recortada. Todas as seções entram no mesmo eixo para o conteúdo não encostar na borda nem cada seção achar o próprio centro.`
+        : `Margem negativa nas peças de ${containerPorOrigem.size} origem(ns) denuncia o container que elas tinham e a captura não trouxe: a página devolveu ${largura}px de largura e o respiro lateral a TODAS as seções dessas origens, para o conteúdo não encostar na borda da tela.`,
     );
   }
 
