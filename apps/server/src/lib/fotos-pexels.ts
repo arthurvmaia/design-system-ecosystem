@@ -42,6 +42,27 @@ type RespostaPexels = {
 const jaUsadas = new Set<string>();
 
 /**
+ * A degradação para desenho é silenciosa PARA O USUÁRIO — foto nunca derruba a
+ * marca automática, e essa decisão fica. Mas silêncio total esconde defeito de
+ * infraestrutura: com a chave configurada e certa, as buscas falhavam TODAS por
+ * `unable to get local issuer certificate` (o Turbo roda em modo `strict` e não
+ * repassava o `NODE_EXTRA_CA_CERTS` da máquina, então o servidor não validava
+ * o certificado que a rede corporativa inspeciona), e a única evidência era um
+ * site cheio de desenho sem ninguém saber por quê.
+ *
+ * Uma reclamação por processo: quem está com a chave posta merece saber que ela
+ * não está funcionando, e repetir a cada imagem viraria ruído no console.
+ */
+let jaReclamou = false;
+const reclamarUmaVez = (motivo: string): void => {
+  if (jaReclamou) return;
+  jaReclamou = true;
+  console.warn(
+    `[pexels] ${motivo}. As mídias saem como desenho de cena. Se a chave está certa, confira se o processo enxerga o NODE_EXTRA_CA_CERTS da máquina.`,
+  );
+};
+
+/**
  * Busca e BAIXA até `quantas` fotos para um termo. Qualquer falha (sem rede,
  * chave inválida, cota, resposta estranha) devolve o que conseguiu — inclusive
  * lista vazia. O chamador completa o que faltar com o desenho de cena.
@@ -65,7 +86,10 @@ export const buscarFotos = async (
       headers: { Authorization: chave },
       signal: AbortSignal.timeout(10_000),
     });
-    if (!resposta.ok) return [];
+    if (!resposta.ok) {
+      reclamarUmaVez(`a Pexels respondeu HTTP ${resposta.status} à busca "${termo}"`);
+      return [];
+    }
     const corpo = (await resposta.json()) as RespostaPexels;
     for (const foto of corpo.photos ?? []) {
       if (saida.length >= quantas) break;
@@ -85,8 +109,9 @@ export const buscarFotos = async (
         // uma foto que não baixa não derruba as outras
       }
     }
-  } catch {
-    // sem rede ou fora do ar: o chamador degrada para o desenho de cena
+  } catch (erro) {
+    const causa = (erro as { cause?: { message?: string } }).cause?.message;
+    reclamarUmaVez(`não consegui falar com a Pexels (${causa ?? (erro as Error).message})`);
   }
   return saida;
 };

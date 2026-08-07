@@ -210,6 +210,7 @@ export const envolverSecao = (
     dados.componentIds.length > 0 ? ` data-componente="${dados.componentIds.join(' ')}"` : '';
   const sid = dados.secaoId !== undefined ? ` data-secao-id="${dados.secaoId}"` : '';
   const fixa = dados.fixaNoTopo === true ? ' data-fixa-no-topo' : '';
+
   return `<section data-secao="${dados.role}"${sid} data-origem="${origem}"${cmp}${fixa}>\n${corpo}\n</section>`;
 };
 
@@ -241,35 +242,73 @@ export const envolverSecao = (
  * (`data-ds-raiz`/`data-ds-corpo`): o CSS de origem precisa casar dentro da
  * camada do mesmo jeito que casa dentro de uma seção — o embrulho não pode
  * despir a peça.
+ *
+ * `herdada` distingue os DOIS fundos possíveis, que merecem tratamento oposto:
+ *
+ * - **peça de fundo promovida** pelo usuário: ele a escolheu PELA aparência,
+ *   então ela entra inteira, cor de origem e tudo;
+ * - **camada HERDADA da origem dominante** (o kit não trouxe peça de fundo):
+ *   ninguém escolheu aquelas cores, elas vieram de carona com as peças. Aqui a
+ *   camada é decoração a ser vestida com a marca — o atributo permite ao CSS
+ *   base apagar o fundo chapado da origem (que pintaria a página inteira da cor
+ *   do site de onde as peças saíram) e girar a matiz do que resta.
  */
 export const envolverCamadaDePagina = (
   corpo: string,
-  dados: { componentIds: readonly string[] },
+  dados: { componentIds: readonly string[]; herdada?: boolean },
 ): string =>
-  `${ESTILO_QUE_ABRE_PASSAGEM}\n<div data-ds-camadas-de-pagina aria-hidden="true" data-componente="${dados.componentIds.join(' ')}" style="position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden">\n${corpo}\n</div>`;
+  `<div data-ds-camadas-de-pagina${dados.herdada === true ? ' data-ds-camada-herdada' : ''} aria-hidden="true" data-componente="${dados.componentIds.join(' ')}" style="position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden">\n${corpo}\n</div>`;
 
 /**
- * Sem isto, a camada de fundo existe e ninguém a vê.
+ * Sem isto, o fundo da página existe e ninguém o vê.
  *
  * O compositor veste cada peça em dois proxies e copia para o de corpo as
  * classes do `<body>` da origem. Entre elas vem a cor de fundo da página de
  * onde a peça saiu (num dos sites capturados, `bg-[#03020A]`, um preto quase
  * puro). O resultado é que cada peça pinta um retângulo opaco do tamanho dela,
- * e a camada, que está em `z-index:-1`, fica atrás de todos eles. O usuário
- * descreveu exatamente isso: o fundo animado aparece "abaixo da camada dos
- * outros componentes".
+ * e o fundo da página — camada herdada ou o `body` pintado pela marca — fica
+ * atrás de todos eles.
  *
- * A regra apaga só o fundo do PROXY DE CORPO, e só dentro de uma seção. O que
- * ela não toca é tão importante quanto o que ela toca:
+ * A regra morava dentro de `envolverCamadaDePagina` e só existia quando a
+ * página TINHA camada — página sem camada nenhuma voltava a mostrar um fundo
+ * por seção (o "não integrado" que o dono apontou). Agora ela é da BASE da
+ * página composta: emitida sempre, por `montarPaginaDoKit`.
  *
- * - o fundo próprio de cada seção interna continua, porque ele é da peça e não
- *   da página de origem;
+ * O alcance cobre os quatro embrulhos que o compositor mesmo cria — a
+ * `<section>`, o proxy de raiz (o `<html>` da origem também carrega fundo), o
+ * proxy de corpo e o envelope `[data-ds-criado]` das seções criadas no estilo.
+ * O que ela NÃO toca é tão importante quanto o que toca:
+ *
+ * - o fundo próprio de cada elemento interno da peça continua, porque ele é da
+ *   peça e não da página de origem;
  * - o proxy da camada de fundo fica de fora do seletor (ele não vive dentro de
- *   `[data-secao]`), então um fundo feito só de gradiente no corpo sobrevive.
+ *   `[data-secao]`), então um fundo feito só de gradiente no corpo sobrevive;
+ * - o conteúdo DENTRO de `[data-ds-criado]` segue mandando nos próprios
+ *   cartões e molduras — só o envelope é transparente.
  *
  * `!important` porque a classe da origem e este seletor têm a mesma força, e
  * quem ganha passa a depender da ordem em que o CSS foi concatenado. Empate
  * decidido por acaso é defeito que volta sozinho.
  */
-const ESTILO_QUE_ABRE_PASSAGEM =
-  '<style data-ds-camada-passa>[data-secao] [data-ds-corpo]{background-color:transparent!important;background-image:none!important}</style>';
+export const REGRA_QUE_ABRE_PASSAGEM =
+  '[data-secao],[data-secao]>[data-ds-raiz],[data-secao] [data-ds-corpo],[data-ds-criado]{background-color:transparent!important;background-image:none!important}';
+
+/**
+ * A TINTA padrão da página composta é a da marca, não a da origem.
+ *
+ * É o par obrigatório da regra acima. O compositor tira o fundo do `<body>` da
+ * origem para a página ser uma superfície só — e a cor de TEXTO daquele mesmo
+ * `<body>`, que os proxies também vestem, continuava valendo e descia por
+ * herança até o último parágrafo. Num caso real, o título herdou `#2c1810` (a
+ * tinta escura de um site que tinha seções claras) e foi parar sobre o fundo
+ * `#14110e` da marca: razão de contraste 1,2:1, texto invisível.
+ *
+ * Trocar a superfície e manter a tinta é meia troca. Aqui ela se completa.
+ *
+ * Sem `!important` de propósito: isto é o PADRÃO, não uma imposição. Qualquer
+ * elemento que declare a própria cor — e o `escoparCss` os preserva — continua
+ * mandando nela. O que morre é só a herança cega do corpo de origem, e a
+ * especificidade basta para isso: o escopo sai em `:where()`, que não pontua.
+ */
+export const REGRA_DA_TINTA_DA_MARCA =
+  '[data-secao]>[data-ds-raiz],[data-secao] [data-ds-corpo],[data-ds-criado]{color:var(--marca-body)}';

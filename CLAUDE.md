@@ -135,7 +135,12 @@ CRIATIVO, entregue como dado:
      o tema) e a identidade do usuário (`branding`). É isso que faz a seção
      criada parecer do mesmo site.
    - `cssCriado`: as regras das suas seções criadas (use os tokens
-     `var(--marca-...)`, nunca hex solto).
+     `var(--marca-...)`, nunca hex solto). **O fundo é da PÁGINA, nunca da
+     seção**: não declare `background` no wrapper de seção — o compositor
+     envolve o seu HTML em `[data-ds-criado]` transparente sobre o fundo da
+     página (`--pagina-fundo`, publicado no CSS base). Fundo local só em
+     cartão/moldura, e de preferência com alfa (`color-mix(..., transparent)`),
+     para a página continuar UMA superfície contínua.
    - `responsivoExtra`: o que ESTE site pede além do `cssResponsivoBase`.
    - `midia[]`: `{de, para}` — onde entra cada arquivo de
      `projects/<id>/media/`. Mídia com `secaoId` vai naquela seção; sem

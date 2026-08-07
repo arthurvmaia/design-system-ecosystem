@@ -273,9 +273,11 @@ ${buildCatalog(catalogoDoKit(input), input.layout.preferDesignSystemId)}
 
 Componha o site.`;
 
-  // Mesmo racional do extractor: o Fable 5 pensa dentro do max_tokens (em
+  // Mesmo racional do extractor: o modelo pensa DENTRO do max_tokens (em
   // effort max, 16k amputava o plano) e os classificadores de segurança podem
   // recusar uma requisição legítima — recusa cai para o modelo de fallback.
+  // O padrão da geração é o Opus 5 em effort max (ver `getModels` no servidor):
+  // é aqui que um plano raso vira um site que alguém refaz à mão.
   const MODELO_FALLBACK = 'claude-opus-4-8';
   const chamar = (model: string) =>
     client.messages.create({

@@ -138,3 +138,122 @@ test('derivada com alfa mantém o alfa como expressão', () => {
   assert.ok(r.css.includes('/ var(--tw-bg-opacity, 1))'), r.css);
   assert.ok(r.css.startsWith('.a{background:oklch(from var(--marca-primary'), r.css);
 });
+
+test('retema: origem de tema invertido migra superfície, acento e tinta para a marca', () => {
+  const css = [
+    '.card{background-color:#0A0A1A}', // superfície escura do tema oposto
+    '.t{color:#fff}', // texto branco, ilegível no claro
+    '.i{stroke:#10B981}', // acento esmeralda da origem
+    '.j{stroke:#D946EF}', // um SEGUNDO acento, outra matiz
+    '.p{color:#94a3b8}', // cinza intermediário: corpo de texto
+  ].join('');
+  const r = recolorirCss(css, new Map(), { retema: { alvo: 'claro' } });
+  assert.ok(r.css.includes('.card{background-color:var(--marca-surface, #0a0a1a)}'), r.css);
+  assert.ok(r.css.includes('.t{color:var(--marca-heading, #ffffff)}'), r.css);
+  // Dois acentos distintos na origem continuam distintos aqui.
+  assert.ok(r.css.includes('.i{stroke:var(--marca-primary, #10b981)}'), r.css);
+  assert.ok(r.css.includes('.j{stroke:var(--marca-accent, #d946ef)}'), r.css);
+  assert.ok(r.css.includes('.p{color:var(--marca-body, #94a3b8)}'), r.css);
+  assert.ok(
+    r.avisos.some((a) => a.includes('tema invertido')),
+    'o retema é declarado',
+  );
+});
+
+test('retema alcança o stop de gradiente do Tailwind (custom property)', () => {
+  // `.from-white` compila para `--tw-gradient-from:#fff` — o literal mora na
+  // custom property, e foi por ali que o branco do título escapou no caso real.
+  const r = recolorirCss(
+    '.h{--tw-gradient-from:#fff var(--tw-gradient-from-position)}',
+    new Map(),
+    {
+      retema: { alvo: 'claro' },
+    },
+  );
+  assert.ok(r.css.includes('--tw-gradient-from:var(--marca-surface, #ffffff)'), r.css);
+});
+
+test('sem retema, mapa vazio continua sendo passagem direta', () => {
+  const r = recolorirCss('.t{color:#fff}', new Map());
+  assert.equal(r.css, '.t{color:#fff}');
+  assert.equal(r.reescritas, 0);
+});
+
+test('temas que combinam: só o acento migra, superfície e tinta ficam da origem', () => {
+  // Streetwear vermelho vestindo peça de um site escuro: o preto do cartão
+  // está certo, o verde-esmeralda do ícone não — ele é de outra marca.
+  const css = '.card{background-color:#0A0A1A}.t{color:#fff}.i{stroke:#10B981}';
+  const r = recolorirCss(css, new Map(), { retema: { alvo: 'escuro', apenasAcentos: true } });
+  assert.ok(r.css.includes('.card{background-color:#0A0A1A}'), 'a superfície fica');
+  assert.ok(r.css.includes('.t{color:#fff}'), 'a tinta fica');
+  assert.ok(r.css.includes('.i{stroke:var(--marca-primary, #10b981)}'), 'o acento migra');
+});
+
+test('piso de contraste: cor de marca que não se lê no fundo cede para a que se lê', () => {
+  // Marca escura de barbearia: fundo quase preto, primária marrom escura.
+  // Um título da origem que vira "primary" some — foi o "Nascido do sussurro
+  // ancestral" marrom sobre preto. O piso troca pela tinta de título.
+  const retema = {
+    alvo: 'escuro' as const,
+    apenasAcentos: true,
+    fundoDaPagina: '#14110e',
+    tokens: { primary: '#2a1c10', heading: '#f3ede4', body: '#c0b5a6', accent: '#e3c68a' },
+  };
+  const r = recolorirCss('.h{color:#c96a2b}', new Map(), { retema });
+  assert.ok(r.css.includes('var(--marca-heading'), `cedeu para quem se lê: ${r.css}`);
+
+  // E quando a própria primária se lê, ela fica: o piso não achata a paleta.
+  const legivel = recolorirCss('.h{color:#c96a2b}', new Map(), {
+    retema: { ...retema, tokens: { ...retema.tokens, primary: '#e0a45a' } },
+  });
+  assert.ok(legivel.css.includes('var(--marca-primary'), legivel.css);
+});
+
+test('piso de contraste não alcança FUNDO: só texto passa pela régua', () => {
+  const retema = {
+    alvo: 'escuro' as const,
+    fundoDaPagina: '#14110e',
+    tokens: { primary: '#2a1c10', heading: '#f3ede4' },
+  };
+  const r = recolorirCss('.c{background-color:#c96a2b}', new Map(), { retema });
+  assert.ok(r.css.includes('var(--marca-primary'), 'fundo escuro é escolha, não defeito');
+});
+
+test('temas iguais: texto que perdeu o chão claro é resgatado mesmo em apenasAcentos', () => {
+  // O caso real: título `#2c1810` que na origem sentava num bloco claro e, com
+  // a seção transparente, passou a sentar no fundo `#14110e` da marca — 1,2:1.
+  const retema = {
+    alvo: 'escuro' as const,
+    apenasAcentos: true,
+    fundoDaPagina: '#14110e',
+    tokens: { primary: '#b8863b', heading: '#f3ede4', body: '#c0b5a6', accent: '#e3c68a' },
+  };
+  const r = recolorirCss(
+    '.t{color:#2c1810}.ok{color:#f3ede4}.card{background-color:#1f1a15}',
+    new Map(),
+    {
+      retema,
+    },
+  );
+  assert.ok(r.css.includes('.t{color:var(--marca-'), `resgatou o ilegível: ${r.css}`);
+  assert.ok(r.css.includes('.ok{color:#f3ede4}'), 'texto que JÁ se lê não é tocado');
+  assert.ok(r.css.includes('.card{background-color:#1f1a15}'), 'superfície da origem fica');
+});
+
+test('variável usada como tinta é tratada como texto, mesmo com nome neutro', () => {
+  // `--brown` não diz o papel; `color: var(--brown)` diz. Sem ler o USO, a
+  // declaração escapa do retema e o título fica ilegível — foi o caso real.
+  const css =
+    ':root{--brown:#2c1810;--areia:#2c1810}.t{color:var(--brown)}.c{background:var(--areia)}';
+  const r = recolorirCss(css, new Map(), {
+    retema: {
+      alvo: 'escuro',
+      apenasAcentos: true,
+      fundoDaPagina: '#14110e',
+      tokens: { heading: '#f3ede4', body: '#c0b5a6', primary: '#b8863b', accent: '#e3c68a' },
+    },
+  });
+  assert.ok(r.css.includes('--brown:var(--marca-'), `tinta migrou: ${r.css}`);
+  // A que só serve de fundo NÃO é tocada: mesma cor, papel diferente.
+  assert.ok(r.css.includes('--areia:#2c1810'), `fundo intacto: ${r.css}`);
+});

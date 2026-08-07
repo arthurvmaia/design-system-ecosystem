@@ -236,23 +236,46 @@ const RECEITAS: readonly Receita[] = [
 
 const svgLogo = (
   r: Receita,
-  variante: 'principal' | 'horizontal' | 'simbolo' | 'clara' | 'escura' | 'favicon',
+  variante:
+    | 'principal'
+    | 'horizontal'
+    | 'vertical'
+    | 'simbolo'
+    | 'reduzida'
+    | 'clara'
+    | 'escura'
+    | 'monocromatica'
+    | 'favicon'
+    | 'social',
 ): string => {
   const inicial = r.nome[0] ?? 'A';
-  const [, , , , primary, primaryFg] = r.cores;
-  // Clara/escura: a marca sobre fundo escuro/claro — traço sólido, sem fundo.
+  const [background, , , , primary, primaryFg] = r.cores;
+  // Clara/escura/monocromática: a marca em UM tom, sem fundo — para vestir
+  // superfícies que a variante não controla (nav escura, rodapé, impressos).
+  const umTomSo = variante === 'clara' || variante === 'escura' || variante === 'monocromatica';
   const traco = variante === 'clara' ? '#ffffff' : variante === 'escura' ? '#111111' : primary;
-  const marca = `<rect x="4" y="4" width="56" height="56" rx="14" fill="${variante === 'clara' || variante === 'escura' ? 'none' : primary}" stroke="${traco}" stroke-width="${variante === 'clara' || variante === 'escura' ? 4 : 0}"/><text x="32" y="43" text-anchor="middle" font-family="${r.display}" font-size="34" font-weight="700" fill="${variante === 'clara' || variante === 'escura' ? traco : primaryFg}">${inicial}</text>`;
-  if (
-    variante === 'simbolo' ||
-    variante === 'favicon' ||
-    variante === 'clara' ||
-    variante === 'escura'
-  ) {
+  const marca = `<rect x="4" y="4" width="56" height="56" rx="14" fill="${umTomSo ? 'none' : primary}" stroke="${traco}" stroke-width="${umTomSo ? 4 : 0}"/><text x="32" y="43" text-anchor="middle" font-family="${r.display}" font-size="34" font-weight="700" fill="${umTomSo ? traco : primaryFg}">${inicial}</text>`;
+  if (variante === 'favicon') {
+    // O favicon NÃO é o símbolo reduzido: em 16px a margem e o raio grande
+    // viram borrão. Marca chapada de canto a canto, raio curto, letra maior.
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><rect width="64" height="64" rx="10" fill="${primary}"/><text x="32" y="46" text-anchor="middle" font-family="${r.display}" font-size="42" font-weight="700" fill="${primaryFg}">${inicial}</text></svg>`;
+  }
+  if (variante === 'social') {
+    // Cartão de compartilhamento (og:image): aqui o fundo FAZ parte da peça.
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630"><rect width="1200" height="630" fill="${background}"/><g transform="translate(568,183) scale(2.5)">${marca}</g><text x="600" y="470" text-anchor="middle" font-family="${r.display}" font-size="56" font-weight="600" fill="${primary}">${r.nome}</text></svg>`;
+  }
+  if (variante === 'simbolo' || umTomSo) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">${marca}</svg>`;
   }
   if (variante === 'horizontal') {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" width="320" height="64">${marca}<text x="76" y="42" font-family="${r.display}" font-size="26" font-weight="600" fill="${traco}">${r.nome}</text></svg>`;
+  }
+  if (variante === 'reduzida') {
+    // A versão de rodapé: símbolo menor e nome curto, num retângulo baixo.
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" width="240" height="48"><g transform="scale(0.75)">${marca}</g><text x="58" y="31" font-family="${r.display}" font-size="18" font-weight="600" fill="${traco}">${r.nome}</text></svg>`;
+  }
+  if (variante === 'vertical') {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 160" width="120" height="160"><g transform="translate(28,8)">${marca}</g><text x="60" y="120" text-anchor="middle" font-family="${r.display}" font-size="16" font-weight="600" fill="${traco}">${r.nome}</text></svg>`;
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" width="200" height="120"><g transform="translate(68,0)">${marca}</g><text x="100" y="98" text-anchor="middle" font-family="${r.display}" font-size="20" font-weight="600" fill="${traco}">${r.nome}</text></svg>`;
 };
@@ -387,7 +410,7 @@ const svgImagem = (
   h: number,
   opcoes?: { cena?: Cena; papel?: string },
 ): string => {
-  const [background, surface, heading, , primary, , accent] = r.cores;
+  const [, surface, heading, , primary, , accent] = r.cores;
   const cena = opcoes?.cena ?? 'generica';
   const retrato = ehPapelDeRetrato(opcoes?.papel ?? '');
   const lado = Math.min(w, h);
@@ -399,7 +422,12 @@ const svgImagem = (
     : desenhoDaCena(cena, indice, primary, accent);
   const halo = `<circle cx="${w * 0.72}" cy="${h * 0.26}" r="${lado * 0.42}" fill="${primary}" opacity="0.10"/><circle cx="${w * 0.24}" cy="${h * 0.8}" r="${lado * 0.3}" fill="${accent}" opacity="0.08"/>`;
   const rotulo = r.segmento.trim().length > 0 ? `${r.nome} · ${r.segmento}` : r.nome;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" data-cena="${retrato ? 'retrato' : cena}"><rect width="${w}" height="${h}" fill="${background}"/><rect width="${w}" height="${h}" fill="${surface}" opacity="0.5"/>${halo}<g transform="translate(${dx} ${dy}) scale(${escala})">${miolo}</g><text x="${w * 0.04}" y="${h * 0.95}" font-family="${r.body}" font-size="${Math.max(12, h * 0.032)}" fill="${heading}" opacity="0.45">${rotulo}</text></svg>`;
+  // O fundo da arte é TRANSLÚCIDO de propósito: os dois retângulos full-bleed
+  // opacos (fundo + superfície) recortavam um bloco chapado por cima do fundo
+  // da página composta — o "background não integrado" que o dono apontou. Um
+  // véu de superfície com alfa mantém a legibilidade do desenho e deixa o
+  // fundo da página atravessar; quem precisa de moldura opaca a põe no CSS.
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" data-cena="${retrato ? 'retrato' : cena}"><rect width="${w}" height="${h}" rx="${Math.min(24, lado * 0.06)}" fill="${surface}" opacity="0.35"/>${halo}<g transform="translate(${dx} ${dy}) scale(${escala})">${miolo}</g><text x="${w * 0.04}" y="${h * 0.95}" font-family="${r.body}" font-size="${Math.max(12, h * 0.032)}" fill="${heading}" opacity="0.45">${rotulo}</text></svg>`;
 };
 
 /** Uma seção do projeto que ACEITA mídia, já com a conta feita pela rota. */
@@ -474,6 +502,7 @@ export type MarcaAutomatica = {
   fontDisplay: string;
   fontBody: string;
   logoPath: string | null;
+  faviconPath: string | null;
   contact: { email: string; phone: string; whatsapp: string; address: string };
   social: Record<string, string>;
   mainCta: { label: string; href: string };
@@ -626,11 +655,24 @@ export const criarMarcaAutomatica = async (
     return stored;
   };
 
-  const tiposDeLogo = ['principal', 'horizontal', 'simbolo', 'clara', 'escura', 'favicon'] as const;
+  // O kit COMPLETO do schema (TipoDeLogo): cada local de uso tem a variante
+  // preferida dele — rodapé pede a reduzida, compartilhamento pede a social.
+  const tiposDeLogo = [
+    'principal',
+    'horizontal',
+    'vertical',
+    'simbolo',
+    'reduzida',
+    'clara',
+    'escura',
+    'monocromatica',
+    'favicon',
+    'social',
+  ] as const;
   const logos: LogoVariante[] = tiposDeLogo.map((tipo) => ({
     tipo,
     path: gravar(`logo-${tipo}`, svgLogo(receita, tipo), 'logo', `Logo ${tipo} de ${receita.nome}`),
-    transparente: tipo === 'clara' || tipo === 'escura',
+    transparente: tipo === 'clara' || tipo === 'escura' || tipo === 'monocromatica',
   }));
 
   // ── Mídias POR SEÇÃO, quando o projeto tem estrutura ─────────────────────
@@ -735,6 +777,7 @@ export const criarMarcaAutomatica = async (
       fontDisplay: receita.display,
       fontBody: receita.body,
       logoPath: logos[0]?.path ?? null,
+      faviconPath: logos.find((l) => l.tipo === 'favicon')?.path ?? null,
       contact: {
         email: `contato@${slug}.com.br`,
         phone: '(11) 4002-8922',

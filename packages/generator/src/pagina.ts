@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   type MapaDeRecoloracao,
   type ReguasDeEscala,
+  type Retema,
   atributosDeProxy,
   envolverEmProxies,
   escoparCss,
@@ -13,6 +14,7 @@ import {
   nomesGlobaisDe,
   recolorirCss,
   reescalarCss,
+  retemarHtmlInline,
   retipografarCss,
 } from '@ds/composer';
 import {
@@ -21,6 +23,7 @@ import {
   type ProjectBranding,
   type ProjectLayout,
   buildTypographyCss,
+  distribuirTokens,
   ehPecaDeFundo,
   escalaDeReferencia,
   projectGeneratedVersionDir,
@@ -32,6 +35,8 @@ import {
 import { lerCssDoBundle } from './cascata.js';
 import { buildBrandingCss } from './index.js';
 import {
+  REGRA_DA_TINTA_DA_MARCA,
+  REGRA_QUE_ABRE_PASSAGEM,
   atributosDoDocumentoDaPeca,
   envolverCamadaDePagina,
   envolverSecao,
@@ -105,7 +110,20 @@ export type EntradaDaPagina = {
    * raiz do site gerado (ex.: `midia/hero.webp`). O HTML criado referencia o
    * `para`.
    */
-  midia?: readonly { de: string; para: string }[];
+  midia?: readonly {
+    de: string;
+    para: string;
+    /**
+     * A seção a que esta mídia pertence.
+     *
+     * Com ela, o compositor TROCA sozinho as fotos que a peça trouxe do site de
+     * origem pelas do projeto, na ordem. Sem ela, a mídia só é copiada e cabe
+     * ao criativo referenciá-la — e foi assim que um site de joalheria saiu
+     * com foto de imóvel na Nova Zelândia: a peça veio com a foto de outra
+     * empresa e ninguém a trocou.
+     */
+    secaoId?: string;
+  }[];
   /** Sobrescreve o destino (testes). Default: `generated/<iso>` do projeto. */
   outputDir?: string;
 };
@@ -150,6 +168,178 @@ const aplicarSubstituicoes = (
   return saida;
 };
 
+/** A cor de `bg-[#hex]` nos atributos de `<body>` da origem, quando declarada. */
+const corDeFundoDaOrigem = (attrs: string | undefined): string | null => {
+  if (attrs === undefined) return null;
+  const m = /bg-\[(#(?:[0-9a-f]{3}|[0-9a-f]{6}))\]/i.exec(attrs);
+  return m?.[1] ?? null;
+};
+
+/** Luminância relativa (0 escuro → 1 claro) de um hex; null quando não é hex. */
+const luminancia = (cor: string): number | null => {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(cor.trim());
+  if (m === null || m[1] === undefined) return null;
+  const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1];
+  const canal = (i: number): number => Number.parseInt(h.slice(i, i + 2), 16) / 255;
+  return 0.2126 * canal(0) + 0.7152 * canal(2) + 0.0722 * canal(4);
+};
+
+/** Matiz (0–360) de um hex, ou null quando é cinza puro / não é hex. */
+const matiz = (cor: string): number | null => {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(cor.trim());
+  if (m === null || m[1] === undefined) return null;
+  const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1];
+  const [r, g, b] = [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16) / 255) as [
+    number,
+    number,
+    number,
+  ];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (d === 0) return null;
+  const bruto = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (bruto * 60 + 360) % 360;
+};
+
+/**
+ * Veste a decoração da camada herdada com as cores da MARCA.
+ *
+ * A camada vem com as cores literais do site de origem em classes de valor
+ * arbitrário (`bg-[#1A0B40]`), e o dono foi categórico: todo componente tem de
+ * sair na paleta da marca. A recoloração por cluster alcança parte disso, mas
+ * só quando aquele literal virou cluster com papel — decoração de fundo
+ * costuma ficar de fora, e então a cafeteria ganha blobs roxos.
+ *
+ * Aqui a troca é direta e determinística: cada elemento decorativo da camada
+ * recebe, INLINE (que vence a classe), a cor primária ou a de acento da marca,
+ * alternando na ordem em que aparecem. Duas cores bastam porque é isso que a
+ * camada tem: brilhos difusos que dão profundidade, não desenho com semântica.
+ */
+const vestirDecoracaoNaMarca = (html: string, tokens: readonly string[]): string => {
+  let i = 0;
+  return html.replace(/<div\b[^>]*\bbg-\[#(?:[0-9a-f]{3}|[0-9a-f]{6})\][^>]*>/gi, (tag) => {
+    const cor = tokens[i % tokens.length] ?? tokens[0];
+    i += 1;
+    if (/\bstyle\s*=\s*"/i.test(tag)) {
+      return tag.replace(/\bstyle\s*=\s*"([^"]*)"/i, (_m, estilo: string) => {
+        const limpo = estilo.trim().replace(/;$/, '');
+        return `style="${limpo};background:${cor}"`;
+      });
+    }
+    return tag.replace(/>$/, ` style="background:${cor}">`);
+  });
+};
+
+/**
+ * Fundo ambiente derivado da PALETA DA MARCA: a base chapada mais dois brilhos
+ * difusos nas cores primária e de acento. É o fundo da página quando o kit não
+ * traz camada nenhuma E a origem dominante também não tem camada para herdar —
+ * sem isto a página compõe sobre o vazio. Mesmo envelope fixo da camada
+ * herdada, mesma passagem.
+ */
+const camadaDaMarca = (fundo: string, primaria: string, acento: string): string =>
+  `<div data-ds-camadas-de-pagina data-ds-camada-da-marca aria-hidden="true" style="position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden;background:${fundo}">
+<div style="position:absolute;top:-18%;left:-12%;width:58%;height:58%;border-radius:50%;background:${primaria};opacity:.16;filter:blur(110px)"></div>
+<div style="position:absolute;bottom:-22%;right:-12%;width:52%;height:52%;border-radius:50%;background:${acento};opacity:.13;filter:blur(130px)"></div>
+</div>`;
+
+/**
+ * O respiro lateral que a peça PERDEU ao sair do site de origem.
+ *
+ * Na origem, nav e hero moravam dentro de um container com largura máxima e
+ * respiro (`max-w-7xl mx-auto px-4 md:px-8`). A captura recorta a peça e o pai
+ * fica para trás — na composição a seção passa a ocupar a viewport inteira, e o
+ * conteúdo encosta na borda: o nome no canto esquerdo, o menu e o mockup de
+ * celular cortados na direita. Foi o que o dono viu no café e no asteric.
+ *
+ * O container não viaja no bundle (nem no manifesto, nem no `raw.html`), mas a
+ * peça carrega a IMPRESSÃO DIGITAL dele: margem negativa horizontal só existe
+ * para cancelar o respiro de um pai que existia. `-mx-4 px-4 md:-mx-8 md:px-8`
+ * diz, literalmente, "meu pai me dava 16px de respiro, 32px no desktop".
+ *
+ * Daí sai o par (respiro base, respiro no desktop), na escala do Tailwind
+ * (N × 4px). A largura máxima não fica registrada em lugar nenhum, e 1280px
+ * (`max-w-7xl`) é o container que acompanha esse par na esmagadora maioria dos
+ * sites — é convenção assumida, e está dita aqui para quem precisar mudá-la.
+ */
+/**
+ * ── Por que só a MARGEM NEGATIVA justifica devolver o container ─────────────
+ *
+ * Uma tentativa anterior usava uma segunda evidência: o container declarado no
+ * CSS da origem (`.container{max-width:1200px;margin:0 auto}`). Ela parecia
+ * mais abrangente e foi PIOR — o dono viu na hora: "ficou parecendo pdf".
+ *
+ * O motivo é a diferença entre as duas evidências. Margem negativa
+ * (`-mx-4 md:-mx-8`) prova que o container era um PAI, que a captura recortou:
+ * devolvê-lo restaura o desenho. Uma classe de container no CSS prova o
+ * contrário — que a origem se contém DENTRO da peça, que veio inteira. Ali,
+ * acrescentar um container externo encaixota o que já estava contido, e a
+ * página vira uma coluna estreita entre duas margens largas.
+ *
+ * Por isso a evidência do CSS não entra. Origem cujo container era um pai com
+ * utilitárias (`max-w-7xl mx-auto`, regras separadas no CSS compilado) fica sem
+ * detecção — é a limitação conhecida, e ela é melhor que o falso positivo.
+ */
+const respiroPerdido = (html: string): { base: number; desktop: number } | null => {
+  let base: number | null = null;
+  let desktop: number | null = null;
+  for (const m of html.matchAll(/(?:^|["'\s])(?:(md|lg|xl):)?-m[xlr]-(\d{1,2})(?=["'\s])/g)) {
+    const passos = Number(m[2]);
+    if (!Number.isFinite(passos)) continue;
+    const px = passos * 4;
+    if (m[1] === undefined) base = Math.max(base ?? 0, px);
+    else desktop = Math.max(desktop ?? 0, px);
+  }
+  if (base === null && desktop === null) return null;
+  return { base: base ?? desktop ?? 0, desktop: desktop ?? base ?? 0 };
+};
+
+/**
+ * Troca as fotos que a peça trouxe do site de ORIGEM pelas do projeto.
+ *
+ * O kit empresta o layout e o desenho; a identidade é do usuário — e foto é
+ * identidade. Sem esta troca, o site de joalheria sai com a casa à beira-mar
+ * que a imobiliária de origem fotografou, e o de barbearia com o escritório de
+ * outra empresa. O dono foi explícito: a imagem tem de ter a ver com a marca.
+ *
+ * O alvo é preciso: só `<img>`/`<source>` que apontam para os ASSETS da peça
+ * (`assets/<cmpId>/…`), que é exatamente o acervo do site de origem. Ícone
+ * desenhado em SVG inline, logo da marca e mídia que o criativo já colocou não
+ * são tocados. Sobrando foto de origem sem substituta, ela é REMOVIDA junto com
+ * o elemento: melhor um espaço vazio do que a casa de outra empresa.
+ */
+const trocarFotosDaOrigem = (
+  html: string,
+  cmpId: string,
+  disponiveis: readonly string[],
+): { html: string; usadas: number; removidas: number } => {
+  let usadas = 0;
+  let removidas = 0;
+  const saida = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const src = /\bsrc\s*=\s*"([^"]+)"/i.exec(tag)?.[1];
+    if (src === undefined || !src.startsWith(`assets/${cmpId}/`)) return tag;
+    // Frame de referência visual não é foto de conteúdo: é o retrato inteiro
+    // da seção, e quem decide sobre ele é a regra da referência visual.
+    if (src.includes('/frames/')) return tag;
+    const nova = disponiveis[usadas];
+    if (nova === undefined) {
+      removidas += 1;
+      return '';
+    }
+    usadas += 1;
+    // O `alt` também é da origem ("Sirocco no deserto durante a hora dourada")
+    // e descreveria a foto ERRADA — sai junto com ela. Alt vazio em imagem
+    // decorativa é o certo; texto alternativo específico é trabalho do
+    // criativo, que conhece o conteúdo.
+    return tag
+      .replace(/\bsrc\s*=\s*"[^"]+"/i, `src="${nova}"`)
+      .replace(/\bsrcset\s*=\s*"[^"]*"/i, '')
+      .replace(/\balt\s*=\s*"[^"]*"/i, 'alt=""');
+  });
+  return { html: saida, usadas, removidas };
+};
+
 /** Os `<script src>` remotos de um documento de bundle, na ordem. */
 const scriptsRemotosDe = (html: string): string[] => {
   const out: string[] = [];
@@ -182,6 +372,60 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   for (const origem of ds?.origens ?? []) {
     const mapa = mapaDeRecoloracao(origem.clusters);
     if (mapa.size > 0) mapasPorOrigem.set(origem.designSystemId, mapa);
+  }
+
+  // ── O fundo da marca, a referência de compatibilidade ─────────────────────
+  // Decide duas coisas mais abaixo: se a página herda a camada de fundo da
+  // origem dominante (portão de luminância) e quais origens precisam do
+  // resgate de contraste — texto branco de origem escura numa página clara
+  // (ou o inverso) some, e a recoloração por cluster não o alcança porque
+  // branco/preto são neutros, sem papel.
+  const tokensDaMarca =
+    entrada.branding.paleta !== undefined ? distribuirTokens(entrada.branding.paleta) : undefined;
+  const fundoDaMarca = tokensDaMarca?.background ?? entrada.branding.palette.background;
+  const primariaDaMarca = tokensDaMarca?.primary ?? entrada.branding.palette.primary;
+  const acentoDaMarca = tokensDaMarca?.accent ?? entrada.branding.palette.accent ?? primariaDaMarca;
+  const lumDaMarca = luminancia(fundoDaMarca);
+  /**
+   * O retema de cada origem de tema invertido, criado UMA vez por origem.
+   *
+   * O objeto guarda estado (as matizes já vistas), e é por isso que ele é
+   * compartilhado entre a folha da origem e o HTML das peças dela: o acento
+   * esmeralda tem de virar a MESMA cor da marca no ícone e na borda.
+   */
+  const retemaPorOrigem = new Map<string, Retema>();
+  const origensComFundoOposto = new Set<string>();
+  if (lumDaMarca !== null) {
+    for (const cmp of entrada.kit.components) {
+      const origem = cmp.designSystemId ?? cmp.id;
+      if (retemaPorOrigem.has(origem)) continue;
+      const indexPath = join(cmp.bundlePath, 'index.html');
+      if (!existsSync(indexPath)) continue;
+      const cor = corDeFundoDaOrigem(
+        atributosDoDocumentoDaPeca(readFileSync(indexPath, 'utf8')).body,
+      );
+      const lum = cor === null ? null : luminancia(cor);
+      const oposto = lum !== null && Math.abs(lumDaMarca - lum) > 0.4;
+      if (oposto) origensComFundoOposto.add(origem);
+      /**
+       * TODA origem ganha retema; o que muda é a extensão.
+       *
+       * Tema oposto → retema completo (superfície, texto e acento migram).
+       * Tema igual → só os ACENTOS. O acento de outra marca é errado nos dois
+       * casos: o ícone esmeralda de um site de segurança não pode aparecer num
+       * streetwear vermelho só porque os dois são escuros.
+       */
+      retemaPorOrigem.set(origem, {
+        alvo: lumDaMarca > 0.5 ? 'claro' : 'escuro',
+        ...(cor !== null ? { corDePagina: cor } : {}),
+        matizes: [],
+        ...(oposto ? {} : { apenasAcentos: true }),
+        // Os hexes reais da marca e o fundo da página: é com eles que o piso
+        // de contraste confere se o texto migrado ainda se lê.
+        ...(tokensDaMarca !== undefined ? { tokens: tokensDaMarca } : {}),
+        fundoDaPagina: fundoDaMarca,
+      });
+    }
   }
 
   /**
@@ -293,6 +537,8 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    */
   const scriptsLocais: string[] = [];
   const chavesDeScriptLocal = new Set<string>();
+  /** Origem → respiro do container que ela tinha e a captura não trouxe. */
+  const containerPorOrigem = new Map<string, { base: number; desktop: number }>();
   const recoloracaoTotais = { origens: 0, reescritas: 0, mantidas: 0 };
   const retipografiaTotais = { reescritas: 0 };
   const reescalaTotais = { reescritas: 0, mantidas: 0 };
@@ -301,10 +547,25 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    * Processa UMA peça: CSS da origem (recolorido → escopado, uma vez), corpo
    * vestido nos proxies, assets copiados e referências reescritas.
    */
+  /**
+   * As mídias do projeto ANCORADAS em cada seção, na ordem em que chegaram.
+   * É delas que sai a troca das fotos de origem.
+   */
+  const midiaPorSecao = new Map<string, string[]>();
+  for (const m of entrada.midia ?? []) {
+    if (m.secaoId === undefined) continue;
+    const lista = midiaPorSecao.get(m.secaoId) ?? [];
+    lista.push(m.para);
+    midiaPorSecao.set(m.secaoId, lista);
+  }
+  /** A fila da seção em processamento; cada peça consome o que usar. */
+  let fotosDaSecao: string[] = [];
+
   const processarPeca = (
     cmpId: string,
     substituicoes: Record<string, string> | undefined,
     rotulo: string,
+    opcoes?: { descartarReferenciaVisual?: boolean },
   ): string | null => {
     const cmp = porId.get(cmpId);
     if (cmp === undefined) {
@@ -318,6 +579,20 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       return null;
     }
     const documento = readFileSync(indexPath, 'utf8');
+
+    // Referência visual é imagem CONGELADA da origem: não recolore, não aceita
+    // substituição de texto — numa seção que JÁ tem conteúdo criado, ela só
+    // injetaria a marca de outro site (o "Arquitetura da Mente" no meio do
+    // café). O criado cobre a seção; a peça sai, dito.
+    if (
+      opcoes?.descartarReferenciaVisual === true &&
+      documento.includes('data-ds-aviso="referencia-visual"')
+    ) {
+      avisos.push(
+        `[${rotulo}] a peça ${cmpId} (${cmp.name}) é referência visual — imagem congelada do site de origem, sem recoloração nem texto da marca. A seção já tem conteúdo criado no estilo do kit, então a imagem saiu.`,
+      );
+      return null;
+    }
 
     // Fundo/efeito mantém as cores originais: a peça foi escolhida PELA cor.
     // A origem-apelido dá a ela um escopo próprio sem recoloração.
@@ -348,8 +623,16 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       }
       let css = leitura.css;
       const mapa = manterCores ? undefined : mapasPorOrigem.get(origemBase);
-      if (mapa !== undefined && css.trim().length > 0) {
-        const rec = recolorirCss(css, mapa);
+      // O RETEMA entra junto da recoloração: origem de tema oposto ao da marca
+      // tem TODA cor que nenhum cluster cobria migrada para a paleta —
+      // superfície, acento e tinta (ver Retema no composer).
+      const retema = manterCores ? undefined : retemaPorOrigem.get(origemBase);
+      if ((mapa !== undefined || retema !== undefined) && css.trim().length > 0) {
+        const rec = recolorirCss(
+          css,
+          mapa ?? new Map(),
+          retema === undefined ? undefined : { retema },
+        );
         css = rec.css;
         recoloracaoTotais.origens += 1;
         recoloracaoTotais.reescritas += rec.reescritas;
@@ -436,6 +719,34 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     // O transform congelado da captura sai: o script de parallax da origem
     // viaja junto e reaplica o valor certo a cada rolagem.
     let corpo = limparTransformCongelado(semCompilador.corpo);
+
+    /**
+     * O container perdido é da ORIGEM, não desta peça.
+     *
+     * Só a nav costuma carregar a margem negativa que o denuncia (é ela que
+     * precisa furar o respiro do pai para encostar o fundo nas bordas). O hero
+     * da MESMA origem morava no mesmo container e não tem marca nenhuma — se a
+     * regra valesse só para quem tem a marca, o menu alinhava e o título
+     * continuava colado na borda, que foi exatamente o que apareceu no asteric.
+     */
+    const respiro = respiroPerdido(corpo);
+    if (respiro !== null) {
+      const anterior = containerPorOrigem.get(origemBase);
+      containerPorOrigem.set(origemBase, {
+        base: Math.max(anterior?.base ?? 0, respiro.base),
+        desktop: Math.max(anterior?.desktop ?? 0, respiro.desktop),
+      });
+    }
+
+    // A segunda passagem do retema: `style=""` e `fill`/`stroke` do SVG, que
+    // não moram em folha nenhuma. Sem ela sobram o ícone esmeralda e o cartão
+    // com gradiente escuro no meio de uma página clara.
+    const retemaDaPeca = manterCores ? undefined : retemaPorOrigem.get(origemBase);
+    if (retemaDaPeca !== undefined) {
+      const r = retemarHtmlInline(corpo, retemaDaPeca);
+      corpo = r.html;
+      if (r.trocas > 0) recoloracaoTotais.reescritas += r.trocas;
+    }
     corpo = aplicarSubstituicoes(corpo, substituicoes, avisos, rotulo);
     corpo = envolverEmProxies({
       origem,
@@ -453,6 +764,21 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
         cpSync(join(assetsDir, entry), join(destino, entry), { recursive: true });
       }
       corpo = reescreverRefsHtml(corpo, cmpId);
+      // Com as refs já no namespace da peça, dá para reconhecer o que é foto
+      // DA ORIGEM e trocá-la pela do projeto.
+      const troca = trocarFotosDaOrigem(corpo, cmpId, fotosDaSecao);
+      corpo = troca.html;
+      fotosDaSecao = fotosDaSecao.slice(troca.usadas);
+      if (troca.usadas > 0) {
+        avisos.push(
+          `[${rotulo}] ${troca.usadas} foto(s) do site de origem trocada(s) pela mídia do projeto.`,
+        );
+      }
+      if (troca.removidas > 0) {
+        avisos.push(
+          `[${rotulo}] ${troca.removidas} foto(s) do site de origem removida(s): não havia mídia do projeto para esta seção. Gere as mídias automáticas ou envie imagens para ela.`,
+        );
+      }
     }
     // Frames da referência visual também moram no bundle e viajam junto.
     const framesDir = join(cmp.bundlePath, 'frames');
@@ -513,16 +839,24 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   let bodyHtml = '';
   for (const secao of separado.secoes) {
     const criativo = criativoPorSecao.get(secao.id);
+    const temCriado = criativo?.htmlCriado !== undefined && criativo.htmlCriado.trim().length > 0;
     const partes: string[] = [];
     const usados: string[] = [];
+    // A fila de fotos DESTA seção, que as peças dela vão consumindo.
+    fotosDaSecao = [...(midiaPorSecao.get(secao.id) ?? [])];
     for (const peca of secao.pecas) {
-      const corpo = processarPeca(peca.id, criativo?.substituicoes, secao.nome || secao.slug);
+      const corpo = processarPeca(peca.id, criativo?.substituicoes, secao.nome || secao.slug, {
+        descartarReferenciaVisual: temCriado,
+      });
       if (corpo === null) continue;
       partes.push(corpo);
       usados.push(peca.id);
     }
-    if (criativo?.htmlCriado !== undefined && criativo.htmlCriado.trim().length > 0) {
-      partes.push(criativo.htmlCriado);
+    if (temCriado && criativo?.htmlCriado !== undefined) {
+      // O envelope dá à seção criada o mesmo ponto de apoio que os proxies dão
+      // às peças: a REGRA_QUE_ABRE_PASSAGEM o torna transparente e o fundo é
+      // da página. O conteúdo interno segue mandando nos próprios cartões.
+      partes.push(`<div data-ds-criado>\n${criativo.htmlCriado}\n</div>`);
     }
     if (partes.length === 0) {
       avisos.push(
@@ -549,16 +883,61 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   // Só quando nenhuma peça de fundo foi promovida: o kit não trouxe fundo, mas
   // as peças vieram de um site que TINHA (o bundle guarda as camadas em
   // `data-ds-camadas-de-fundo`, que a composição retira de cada peça). A página
-  // herda as camadas da origem dominante UMA vez; o `data-ds-camada-passa` do
-  // embrulho torna o fundo das seções transparente e o fundo passa a ser da
-  // página inteira — inclusive atrás das seções de outras origens.
+  // herda as camadas da origem dominante UMA vez; a REGRA_QUE_ABRE_PASSAGEM
+  // torna o fundo das seções transparente e o fundo passa a ser da página
+  // inteira — inclusive atrás das seções de outras origens.
+  //
+  // A camada herdada entra SEMPRE que existir — a decoração da origem (feixes,
+  // canvas, blobs) é o que dá vida à página, e o dono quer vê-la. O que ela NÃO
+  // pode trazer é a cor: o fundo chapado do site de origem some (regra de
+  // herdada, abaixo) e o que resta é girado para a matiz da marca. Uma versão
+  // anterior descartava a camada quando o claro/escuro não batia, e o resultado
+  // foi um site sem as linhas — o defeito oposto, e pior.
+  let giroDoCanvas = 0;
   if (camadasHtml === '' && origemDominante !== null) {
+    const temaOposto = origensComFundoOposto.has(origemDominante);
     for (const cmp of pecasPorOrigem.get(origemDominante) ?? []) {
       const indexPath = join(cmp.bundlePath, 'index.html');
       if (!existsSync(indexPath)) continue;
       const documento = readFileSync(indexPath, 'utf8');
-      const miolo = extrairCamadasDeFundo(documento);
+      let miolo = extrairCamadasDeFundo(documento);
       if (miolo === null) continue;
+
+      /**
+       * O `<canvas>` da camada é cena OPACA pintada por JavaScript: aqueles
+       * pixels não moram em CSS nenhum, então nem a recoloração nem token
+       * algum os alcança. Enquanto o tema da origem bate com o da marca (site
+       * escuro vestindo marca escura) ele é lucro — é dele que saem os feixes
+       * de neon. Com o tema INVERTIDO ele é ruína: numa marca clara de
+       * cafeteria, ele repinta a página inteira com a noite da origem, e a
+       * tentativa de girar a matiz só trocou o roxo por verde. Então ele sai, e
+       * a decoração que RESTA (blobs, gradientes) veste a marca logo abaixo.
+       */
+      if (temaOposto) {
+        // Vídeo de fundo cai na MESMA régua do canvas, e pelo mesmo motivo:
+        // são pixels, não CSS. Um vídeo escuro cobrindo a viewport impõe a
+        // noite da origem a uma marca clara, e nenhuma recoloração o alcança.
+        miolo = miolo
+          .replace(/<canvas\b[^>]*>[\s\S]*?<\/canvas>/gi, '')
+          .replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, '');
+      } else if (/<canvas\b/i.test(miolo)) {
+        /**
+         * Tema igual, canvas mantido: os feixes continuam, mas na matiz da
+         * marca. `hue-rotate` é a única alça que existe sobre pixel pintado por
+         * JavaScript, e aqui ela é segura porque o giro alcança SÓ o canvas —
+         * girar a camada inteira foi o que, num teste anterior, trocou o roxo
+         * por verde e escureceu a página. O ângulo sai da cor decorativa da
+         * própria camada até a primária da marca.
+         */
+        const corDecorativa = /bg-\[(#(?:[0-9a-f]{3}|[0-9a-f]{6}))\]/i.exec(miolo)?.[1] ?? null;
+        const daOrigem = corDecorativa === null ? null : matiz(corDecorativa);
+        const alvo = matiz(primariaDaMarca);
+        if (daOrigem !== null && alvo !== null) {
+          giroDoCanvas = Math.round(((alvo - daOrigem + 540) % 360) - 180);
+        }
+      }
+      miolo = vestirDecoracaoNaMarca(miolo, [primariaDaMarca, acentoDaMarca]);
+
       let corpoCamada = envolverEmProxies({
         origem: origemDominante,
         html: miolo,
@@ -566,18 +945,65 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
         documentoAttrs: atributosDoDocumentoDaPeca(documento),
       });
       corpoCamada = reescreverRefsHtml(corpoCamada, cmp.id);
-      camadasHtml = `\n${envolverCamadaDePagina(corpoCamada, { componentIds: [cmp.id] })}\n`;
+      camadasHtml = `\n${envolverCamadaDePagina(corpoCamada, {
+        componentIds: [cmp.id],
+        herdada: true,
+      })}\n`;
       avisos.push(
-        `O kit não tem peça de fundo: a página herdou as camadas de fundo do site de origem de "${cmp.name}" (origem dominante), para o fundo ser da página inteira em vez de um vazio.`,
+        temaOposto
+          ? `O kit não tem peça de fundo: a página herdou as camadas de "${cmp.name}" (origem dominante) com a decoração vestida na paleta da marca. O canvas da origem saiu — ele é pintado por JavaScript no tema escuro daquele site, e nenhuma recoloração alcança pixel.`
+          : `O kit não tem peça de fundo: a página herdou as camadas de "${cmp.name}" (origem dominante), com o fundo chapado removido e a decoração vestida na paleta da marca.`,
       );
       break;
     }
   }
+  if (camadasHtml === '') {
+    camadasHtml = `\n${camadaDaMarca(fundoDaMarca, primariaDaMarca, acentoDaMarca)}\n`;
+  }
 
   // ── Base da página composta (do compositor, não de uma origem) ────────────
   // O reset tira a margem default do UA (8px de fresta na cor do body em volta
-  // de tudo); a regra de sticky é o par CSS do atributo `data-fixa-no-topo`.
-  concatCss += `\n/* base da página composta */\nhtml,body{margin:0}\n[data-secao="nav"][data-fixa-no-topo]{position:sticky;top:0;z-index:60}\n`;
+  // de tudo); a passagem é a regra que torna os embrulhos do compositor
+  // transparentes sobre o fundo da página — emitida SEMPRE, com ou sem camada;
+  // `--pagina-fundo` publica esse fundo para o CSS criado consumir; a regra de
+  // sticky é o par CSS do atributo `data-fixa-no-topo`.
+  concatCss += `\n/* base da página composta */\nhtml,body{margin:0}\n:root{--pagina-fundo:${fundoDaMarca}}\nbody{background:var(--pagina-fundo)}\n${REGRA_QUE_ABRE_PASSAGEM}\n${REGRA_DA_TINTA_DA_MARCA}\n[data-secao="nav"][data-fixa-no-topo]{position:sticky;top:0;z-index:60}\n`;
+
+  /**
+   * O CONTAINER da página, devolvido às seções que provaram tê-lo perdido.
+   *
+   * `--pagina-largura` fica publicado junto do fundo: o CSS criado consome o
+   * mesmo valor e as seções criadas nascem no mesmo eixo das seções de
+   * biblioteca. Alinhar é isso — não é cada seção achar o próprio centro.
+   */
+  if (containerPorOrigem.size > 0) {
+    // O alvo é a seção que carrega o proxy DAQUELA origem — assim toda seção
+    // dela entra no mesmo eixo, com marca de margem negativa ou sem.
+    const maiorBase = Math.max(...[...containerPorOrigem.values()].map((r) => r.base));
+    concatCss += `:root{--pagina-largura:1280px;--pagina-respiro:${maiorBase}px}\n`;
+    for (const [origem, respiro] of containerPorOrigem) {
+      const alvo = `[data-secao]:has(>[data-ds-raiz="${origem}"])`;
+      // `box-sizing:border-box` não é detalhe: sem ele a largura máxima vale
+      // para a caixa de CONTEÚDO, o container sai com 1280+respiro dos dois
+      // lados, e a peça que sangra de propósito (a nav, com margem negativa)
+      // estoura para fora dele — o que aparece na tela como uma barra cortada.
+      concatCss += `${alvo}{display:block;box-sizing:border-box;max-width:var(--pagina-largura);margin-inline:auto;padding-inline:${respiro.base}px}\n@media (min-width:768px){${alvo}{padding-inline:${respiro.desktop}px}}\n`;
+    }
+    avisos.push(
+      `Margem negativa nas peças de ${containerPorOrigem.size} origem(ns) denuncia o container que elas tinham e a captura não trouxe: a página devolveu largura máxima de 1280px e o respiro lateral a TODAS as seções dessas origens, para o conteúdo não encostar na borda da tela.`,
+    );
+  }
+
+  // A camada HERDADA não traz a cor de fundo da origem: sem esta regra, a
+  // página inteira nasce pintada com a cor do site de onde as peças vieram
+  // (`bg-[#03020A]` num deles) e a marca perde a própria superfície.
+  if (camadasHtml.includes('data-ds-camada-herdada')) {
+    concatCss +=
+      '[data-ds-camada-herdada]>[data-ds-raiz],[data-ds-camada-herdada] [data-ds-corpo]{background-color:transparent!important;background-image:none!important}\n';
+    if (giroDoCanvas !== 0) {
+      concatCss += `[data-ds-camada-herdada] canvas{filter:hue-rotate(${giroDoCanvas}deg)}\n`;
+    }
+  }
 
   // ── Mídia do projeto ──────────────────────────────────────────────────────
   for (const m of entrada.midia ?? []) {
@@ -596,6 +1022,55 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     mkdirSync(join(destino, '..'), { recursive: true });
     cpSync(origem, destino);
     arquivos.push(m.para);
+  }
+
+  // ── As logos da marca: o kit INTEIRO viaja com o site ─────────────────────
+  // A marca automática gera as variações (principal, horizontal, símbolo,
+  // clara, escura, favicon…) e distribui por local (`logosLocais`) — mas nada
+  // disso chegava ao site: o autor copiava uma ou duas na mão e o resto morria
+  // no painel. Aqui todas as variações existentes são copiadas para `midia/`
+  // com nome estável (`logo-<tipo>.<ext>`), respeitando o que o autor já
+  // copiou (mesma fonte não entra duas vezes; alvo ocupado não é sobrescrito).
+  const alvoPorFonte = new Map<string, string>();
+  for (const m of entrada.midia ?? []) {
+    if (!alvoPorFonte.has(m.de)) alvoPorFonte.set(m.de, m.para);
+  }
+  const alvosOcupados = new Set(alvoPorFonte.values());
+  const copiarLogo = (fonte: string, alvo: string): string | null => {
+    const existente = alvoPorFonte.get(fonte);
+    if (existente !== undefined) return existente;
+    if (fonte.split(/[\\/]/).includes('..') || alvosOcupados.has(alvo)) return null;
+    const origem = join(projectMediaDir(entrada.projectId), fonte);
+    if (!existsSync(origem)) {
+      avisos.push(`Logo da marca não encontrada no projeto: ${fonte}`);
+      return null;
+    }
+    const destino = join(outputDir, alvo);
+    mkdirSync(join(destino, '..'), { recursive: true });
+    cpSync(origem, destino);
+    arquivos.push(alvo);
+    alvoPorFonte.set(fonte, alvo);
+    alvosOcupados.add(alvo);
+    return alvo;
+  };
+  for (const logo of entrada.branding.logos ?? []) {
+    const ext = (logo.path.split('.').pop() ?? 'svg').toLowerCase();
+    copiarLogo(logo.path, `midia/logo-${logo.tipo}.${ext}`);
+  }
+  // O favicon: a variação do local `favicon`, com os legados como degrau.
+  const fonteDoFavicon =
+    entrada.branding.logosLocais?.favicon ??
+    entrada.branding.faviconPath ??
+    entrada.branding.logoPath ??
+    null;
+  let faviconHref: string | null = null;
+  if (fonteDoFavicon !== null) {
+    const ext = (fonteDoFavicon.split('.').pop() ?? 'svg').toLowerCase();
+    faviconHref =
+      alvoPorFonte.get(fonteDoFavicon) ?? copiarLogo(fonteDoFavicon, `midia/logo-favicon.${ext}`);
+  }
+  if (faviconHref === null) {
+    avisos.push('O site saiu sem favicon: a marca do projeto não tem logo nenhuma gravada.');
   }
 
   // ── As quatro folhas, na ordem da cascata ─────────────────────────────────
@@ -632,13 +1107,29 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     ...scriptsRemotos.map((s) => `<script src="${s}"></script>`),
   ].join('\n');
 
+  /**
+   * O título da aba é o NOME DA MARCA, e nada mais.
+   *
+   * A aba é onde a marca aparece quando o site não está à vista, e ali cabem
+   * poucos caracteres: "Café da Estação · cafeteria em São Paulo" chega ao
+   * usuário como "Café da Estação · cafeteria em S…". O que o `titulo` da
+   * entrada traz é o nome do PROJETO, útil no estúdio e ruído no navegador —
+   * por isso a decisão é do compositor, e não de quem escreve o criativo: vale
+   * para todo site gerado, sem depender de alguém lembrar.
+   */
+  const tituloDaAba = entrada.branding.brandName?.trim() || entrada.titulo;
+
+  const faviconLink =
+    faviconHref === null
+      ? ''
+      : `<link rel="icon"${faviconHref.endsWith('.svg') ? ' type="image/svg+xml"' : ''} href="${faviconHref}"/>\n`;
   const finalHtml = `<!doctype html>
 <html lang="${entrada.lang ?? 'pt-BR'}">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>${entrada.titulo}</title>
-${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
+<title>${tituloDaAba}</title>
+${faviconLink}${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
 <link rel="stylesheet" href="assets/criadas.css"/>
 <link rel="stylesheet" href="assets/responsivo.css"/>
 <link rel="stylesheet" href="assets/marca.css"/>

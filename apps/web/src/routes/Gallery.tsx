@@ -189,6 +189,54 @@ function MarcaBadge({ marca }: { marca?: Recolorabilidade }) {
 }
 
 /**
+ * O selo de MOVIMENTO: esta peça se mexe.
+ *
+ * A miniatura do card é um retrato parado, e é nele que a pessoa decide curtir.
+ * Uma peça com fade por scroll, parallax ou reveal chegava a essa decisão com a
+ * mesma cara de uma peça estática — o dono só descobria o movimento depois, no
+ * site gerado, e pediu para ver a animação ANTES de dar like.
+ *
+ * A medida vem do que a captura observou NESTA peça: comportamentos de rolagem
+ * associados a ela (`fidelity.scroll`) e interação de hover no pipeline.
+ *
+ * Uma tentativa anterior usou as flags do contrato do bundle
+ * (`temAnimacoes`/`temInteracoes`) e foi medida antes de virar tela: elas dão
+ * positivo em 65 de 65 peças, porque são calculadas sobre o CSS do SITE inteiro
+ * (todo site tem um `:hover` e um `animations.css`). Selo que aparece em tudo
+ * não informa nada. A evidência por segmento discrimina de verdade: 29 com
+ * rolagem e 46 com hover, de 154.
+ *
+ * Clicar no card abre o modal, que já demonstra o movimento sozinho — o selo é
+ * o convite que faltava.
+ */
+function MovimentoBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
+  const rola = (fidelity?.scroll?.length ?? 0) > 0;
+  const hover =
+    fidelity?.interactions?.some((i) => i.kind === 'hover') === true ||
+    fidelity?.pipeline?.some((p) => p.kind === 'hover') === true;
+  if (!rola && !hover) return null;
+  const cor = 'var(--color-ion-3)';
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+      style={{
+        backgroundColor: 'color-mix(in srgb, var(--color-ion-3) 14%, transparent)',
+        color: cor,
+        border: '1px solid color-mix(in srgb, var(--color-ion-3) 36%, transparent)',
+      }}
+      title={
+        rola
+          ? 'Esta peça se move com a rolagem (fade, parallax ou reveal). Abra para ver a demonstração antes de curtir.'
+          : 'Esta peça reage ao mouse. Abra para ver a demonstração antes de curtir.'
+      }
+    >
+      <Play size={9} />
+      {rola ? 'animação' : 'interativa'}
+    </span>
+  );
+}
+
+/**
  * O alcance da marca no laudo: quanto, e POR QUE o resto ficou de fora.
  *
  * Aqui mora a resposta que o selo não cabe. A medição sempre contou por motivo
@@ -1476,6 +1524,7 @@ function SegmentsView({
                       </span>
                       <FidelityBadge fidelity={s.fidelity} comparacao={s.comparacaoVisual} />
                       <MarcaBadge marca={s.marca} />
+                      <MovimentoBadge fidelity={s.fidelity} />
                     </div>
                   </div>
                 </div>
@@ -1652,6 +1701,7 @@ function SegmentCard({
                 <span className="truncate">{CATEGORY_LABEL(segment.category)}</span>
                 <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
                 <MarcaBadge marca={segment.marca} />
+                <MovimentoBadge fidelity={segment.fidelity} />
                 <RolagemBadge ancoras={segment.ancoras} />
               </div>
               {subcomponentes > 0 && onAbrirPecas !== undefined && (
@@ -1947,6 +1997,7 @@ function SegmentCardFilho({
             <span className="shrink-0">{CATEGORY_LABEL(segment.category)}</span>
             <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
             <MarcaBadge marca={segment.marca} />
+            <MovimentoBadge fidelity={segment.fidelity} />
             <RolagemBadge ancoras={segment.ancoras} />
             {nomeDoPai !== undefined && (
               <span

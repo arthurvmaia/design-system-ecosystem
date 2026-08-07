@@ -21,8 +21,17 @@ import {
  *
  * O que a régua decide, na ordem do peso:
  *   1. a peça é da categoria que o papel pede;
- *   2. é da ORIGEM PRINCIPAL do kit (a origem que cobre mais etapas vence);
- *   3. veste mais marca (taxa de recolorabilidade).
+ *   2. a montagem cobre o MÁXIMO de etapas com peça (pareamento, não gula:
+ *      a peça `card` que serviria a dois papéis vai para o papel em que ela é
+ *      insubstituível, e o outro papel fica com a peça que só serve a ele);
+ *   3. é da ORIGEM PRINCIPAL do kit (a origem que cobre mais etapas vence);
+ *   4. veste mais marca (taxa de recolorabilidade).
+ *
+ * O item 2 é a resposta ao "poucos componentes e sempre os mesmos": a versão
+ * gulosa dava à primeira etapa a melhor peça e deixava as seguintes vazias
+ * mesmo havendo peça sobrando que a primeira também aceitaria. O pareamento
+ * (caminhos aumentantes, a Biblioteca é pequena) remaneja: mais peças da
+ * Biblioteca em uso, menos seções "criadas no estilo".
  *
  * Papel sem peça não é erro: sai declarado em `passos` com `componentId: null`
  * — a geração cria a seção no estilo do kit quando a permissão está ligada.
@@ -66,6 +75,17 @@ export const montarKitAutomatico = (
   objetivo: ObjetivoDoSite,
   pecas: readonly PecaParaMontagem[],
   marcaDe: (id: string) => number | null,
+  opcoes?: {
+    /**
+     * A origem que o usuário QUER vestir, quando ele escolheu uma.
+     *
+     * Sem ela, a origem principal é sempre a de maior cobertura — e dois sites
+     * feitos no mesmo dia saem com as mesmas peças, por mais que a Biblioteca
+     * tenha outras. Com ela, a mesma Biblioteca dá visuais diferentes: é a
+     * diferença entre um acervo e um carimbo.
+     */
+    origemPreferida?: string | null;
+  },
 ): KitAutomatico => {
   const etapas: readonly EtapaDeMarketing[] = SEQUENCIAS[objetivo];
   const avisos: string[] = [];
@@ -77,50 +97,107 @@ export const montarKitAutomatico = (
     const origens = new Set(candidatasDe(etapa.papel, pecas).map((p) => p.designSystemId));
     for (const o of origens) cobertura.set(o, (cobertura.get(o) ?? 0) + 1);
   }
-  const origemPrincipal = [...cobertura.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const porCobertura = [...cobertura.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const preferida = opcoes?.origemPreferida ?? null;
+  // A preferência só vale se aquela origem cobrir alguma etapa: preferir uma
+  // origem sem peça nenhuma para este objetivo produziria um kit vazio em
+  // silêncio, e o certo é dizer que ela não serve e seguir com a que serve.
+  const preferidaServe = preferida !== null && (cobertura.get(preferida) ?? 0) > 0;
+  if (preferida !== null && !preferidaServe) {
+    avisos.push(
+      `A origem preferida (${preferida}) não tem peça para nenhuma etapa deste objetivo: a montagem seguiu pela origem de maior cobertura.`,
+    );
+  }
+  const origemPrincipal = preferidaServe ? preferida : porCobertura;
 
-  const usadas = new Set<string>();
-  const passos: PassoDaMontagem[] = [];
+  /**
+   * Peça VIVA na frente, peça MORTA no fim.
+   *
+   * `kind: 'asset'` é a peça que a captura não conseguiu reproduzir e promoveu
+   * como imagem congelada do site de origem. Ela não aceita o texto da marca
+   * nem a recoloração — entra no site como um retrato de OUTRA empresa. Uma
+   * seção criada no estilo do kit é melhor que isso, então ela só é escolhida
+   * quando nada mais cobre o papel, e o motivo diz.
+   *
+   * `kind: 'animation'` é o oposto: a peça carrega movimento (fade por scroll,
+   * parallax, reveal). O dono pediu que o movimento venha sempre que existir
+   * na Biblioteca — então ele vale meio ponto no desempate, o bastante para
+   * ganhar de uma peça estática equivalente sem atropelar a coerência de
+   * origem, que continua valendo mais.
+   */
+  const vitalidade = (kind: string): number =>
+    kind === 'asset' ? -10 : kind === 'animation' ? 0.5 : 0;
+  const nota = (c: { daOrigem: boolean; marca: number | null; kind: string }): number =>
+    (c.daOrigem ? 2 : 0) + (c.marca ?? 0) + vitalidade(c.kind);
 
-  for (const etapa of etapas) {
-    const candidatas = candidatasDe(etapa.papel, pecas).filter((p) => !usadas.has(p.id));
-    if (candidatas.length === 0) {
-      passos.push({
+  const candidatasPorEtapa = etapas.map((etapa) =>
+    candidatasDe(etapa.papel, pecas)
+      .map((p) => ({
+        p,
+        daOrigem: p.designSystemId === origemPrincipal,
+        marca: marcaDe(p.id),
+        kind: p.kind,
+      }))
+      .sort((a, b) => nota(b) - nota(a)),
+  );
+
+  // Pareamento máximo etapa×peça por caminhos aumentantes (Kuhn): quando a
+  // peça preferida de uma etapa já está ocupada, a etapa dona tenta a própria
+  // alternativa antes de negar — é o remanejo que a gula não fazia. A ordem de
+  // preferência acima decide QUAL pareamento máximo sai; o tamanho é máximo
+  // de qualquer jeito. Determinístico: sem sorteio, mesma entrada → mesmo kit.
+  const etapaDaPeca = new Map<string, number>();
+  const escolhaDaEtapa = new Map<
+    number,
+    { p: PecaParaMontagem; daOrigem: boolean; marca: number | null }
+  >();
+  const tentarCobrir = (i: number, visitadas: Set<string>): boolean => {
+    for (const candidata of candidatasPorEtapa[i] ?? []) {
+      if (visitadas.has(candidata.p.id)) continue;
+      visitadas.add(candidata.p.id);
+      const dona = etapaDaPeca.get(candidata.p.id);
+      if (dona === undefined || tentarCobrir(dona, visitadas)) {
+        etapaDaPeca.set(candidata.p.id, i);
+        escolhaDaEtapa.set(i, candidata);
+        return true;
+      }
+    }
+    return false;
+  };
+  etapas.forEach((_, i) => {
+    tentarCobrir(i, new Set());
+  });
+
+  const passos: PassoDaMontagem[] = etapas.map((etapa, i) => {
+    const escolhida = escolhaDaEtapa.get(i);
+    if (escolhida === undefined) {
+      const haviaCandidata = (candidatasPorEtapa[i]?.length ?? 0) > 0;
+      return {
         papel: etapa.papel,
         etapa: nomeDaEtapa(etapa),
         faz: etapa.faz,
         componentId: null,
         nome: null,
-        motivo:
-          'sem peça desta categoria na Biblioteca: a geração cria a seção no estilo do kit quando a permissão "criar seções faltantes" está ligada.',
-      });
-      continue;
+        motivo: haviaCandidata
+          ? 'as peças desta categoria já cobrem outras etapas: a geração cria a seção no estilo do kit quando a permissão "criar seções faltantes" está ligada.'
+          : 'sem peça desta categoria na Biblioteca: a geração cria a seção no estilo do kit quando a permissão "criar seções faltantes" está ligada.',
+      };
     }
-    const pontuadas = candidatas
-      .map((p) => {
-        const daOrigem = p.designSystemId === origemPrincipal;
-        const marca = marcaDe(p.id);
-        return { p, pontos: (daOrigem ? 2 : 0) + (marca ?? 0), daOrigem, marca };
-      })
-      .sort((a, b) => b.pontos - a.pontos);
-    const melhor = pontuadas[0];
-    if (melhor === undefined) continue;
-    usadas.add(melhor.p.id);
     const razoes = [
-      melhor.daOrigem ? 'da origem principal' : 'de outra origem (única que cobre o papel)',
-      melhor.marca !== null
-        ? `veste ${Math.round(melhor.marca * 100)}% da marca`
+      escolhida.daOrigem ? 'da origem principal' : 'de outra origem (cobre uma etapa a mais)',
+      escolhida.marca !== null
+        ? `veste ${Math.round(escolhida.marca * 100)}% da marca`
         : 'marca não medida',
     ];
-    passos.push({
+    return {
       papel: etapa.papel,
       etapa: nomeDaEtapa(etapa),
       faz: etapa.faz,
-      componentId: melhor.p.id,
-      nome: melhor.p.name,
+      componentId: escolhida.p.id,
+      nome: escolhida.p.name,
       motivo: razoes.join('; '),
-    });
-  }
+    };
+  });
 
   const escolhidos = passos.filter((p) => p.componentId !== null);
   const origensUsadas = new Set(

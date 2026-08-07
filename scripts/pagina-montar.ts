@@ -41,7 +41,13 @@ const EntradaDoComando = z.object({
     .default([]),
   cssCriado: z.string().optional(),
   responsivoExtra: z.string().optional(),
-  midia: z.array(z.object({ de: z.string(), para: z.string() })).default([]),
+  // `secaoId` é opcional mas PRECISA estar declarado: é ele que autoriza o
+  // compositor a trocar as fotos que a peça trouxe do site de origem pelas do
+  // projeto. Sem a declaração, o zod descarta o campo em silêncio e o site sai
+  // com a foto da outra empresa — foi exatamente assim que aconteceu.
+  midia: z
+    .array(z.object({ de: z.string(), para: z.string(), secaoId: z.string().optional() }))
+    .default([]),
   outputDir: z.string().optional(),
 });
 

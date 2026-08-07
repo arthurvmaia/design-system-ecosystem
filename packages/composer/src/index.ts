@@ -39,8 +39,10 @@ export { type ConsolidacaoDaOrigem, consolidarCores } from './clusters.js';
 export {
   type MapaDeRecoloracao,
   type ResultadoRecoloracao,
+  type Retema,
   mapaDeRecoloracao,
   recolorirCss,
+  retemarHtmlInline,
 } from './recolorir.js';
 
 /**

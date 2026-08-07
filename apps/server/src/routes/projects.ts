@@ -166,12 +166,18 @@ projectsRoute.post(
       nicho: z.string().optional(),
       nome: z.string().optional(),
       marca: z.string().optional(),
+      /**
+       * A origem que deve vestir o kit. Sem ela, a montagem escolhe a de maior
+       * cobertura — e dois sites feitos na mesma Biblioteca saem com as mesmas
+       * peças. Com ela, o mesmo acervo dá visuais diferentes.
+       */
+      origem: z.string().startsWith('ds_').optional(),
     }),
   ),
   async (c) => {
     const recusa = exigeSenhaDeAcao(c);
     if (recusa !== null) return recusa;
-    const { objetivo, nicho, nome, marca: nomeDaMarca } = c.req.valid('json');
+    const { objetivo, nicho, nome, marca: nomeDaMarca, origem } = c.req.valid('json');
     const db = getDb();
 
     const pecas = db.select().from(tables.libraryComponents).all();
@@ -197,6 +203,7 @@ projectsRoute.post(
       })),
       (cmpId) =>
         recolorabilidadeDoBundle(libraryComponentBundleDir(cmpId as `cmp_${string}`))?.taxa ?? null,
+      { origemPreferida: origem ?? null },
     );
     if (montagem.componentIds.length === 0) {
       return c.json(
@@ -241,6 +248,10 @@ projectsRoute.post(
     const layout = ProjectLayout.parse({
       ...DEFAULT_LAYOUT,
       objetivo,
+      // A origem que venceu a montagem também rege a ESCALA do site (é dela
+      // que sai a régua de tamanhos), senão o kit sairia de uma origem e as
+      // proporções de outra.
+      preferDesignSystemId: montagem.origemPrincipal,
       permissoes: { criarSecoesFaltantes: true, criarArteDeApoio: true },
       secoes: montagem.passos.map((p, i) => ({
         id: `sec-exp-${i + 1}`,
@@ -278,6 +289,7 @@ projectsRoute.post(
         nicho: b.nicho ?? undefined,
         tone: b.tone,
         logoPath: b.logoPath,
+        faviconPath: b.faviconPath,
         palette: {
           primary: b.primary,
           background: b.background,
@@ -549,13 +561,45 @@ projectsRoute.post('/:id/midias-automaticas', async (c) => {
     // a CENA das imagens (streetwear desenha roupa, não gradiente qualquer).
     b.nicho ?? null,
   );
-  const media = [...lerManifest(row.mediaManifestJson), ...criadas];
+  /**
+   * Gerar de novo SUBSTITUI a leva anterior, não empilha.
+   *
+   * Empilhando, cada clique somava um jogo completo de imagens nas mesmas
+   * seções e o painel da seção passava a mostrar cinco miniaturas para um
+   * espaço só — foi o que aconteceu ao regerar depois de consertar a chave da
+   * Pexels: quatro desenhos velhos disputando espaço com a foto nova.
+   *
+   * A troca alcança só o que ESTA rota gerou antes: imagem automática de seção
+   * (o nome carrega `-secao-`) das seções que acabaram de ser refeitas. Upload
+   * do usuário, logo e mídia de outra seção não são tocados — o que a pessoa
+   * pôs ali com a própria mão não sai por causa de um clique em outro lugar.
+   */
+  const refeitas = new Set(secoes.map((s) => s.id));
+  const anteriores = lerManifest(row.mediaManifestJson);
+  const substituidas = anteriores.filter(
+    (m) =>
+      !(
+        m.kind === 'image' &&
+        m.secaoId !== undefined &&
+        refeitas.has(m.secaoId) &&
+        /-secao-/.test(m.path)
+      ),
+  );
+  for (const velha of anteriores) {
+    if (substituidas.includes(velha)) continue;
+    try {
+      rmSync(join(projectMediaDir(id), velha.path), { force: true });
+    } catch {
+      // arquivo já sumiu ou está preso: o manifesto é a fonte da verdade
+    }
+  }
+  const media = [...substituidas, ...criadas];
   db.update(tables.projects)
     .set({ mediaManifestJson: JSON.stringify(media), updatedAt: Date.now() })
     .where(eq(tables.projects.id, id))
     .run();
 
-  return c.json({ criadas, media }, 201);
+  return c.json({ criadas, media, substituidas: anteriores.length - substituidas.length }, 201);
 });
 
 projectsRoute.post('/:id/media', async (c) => {

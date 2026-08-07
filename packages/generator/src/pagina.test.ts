@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -251,7 +251,10 @@ test('a página inteira: recoloração, fundo em camada, seção criada, cascata
 
     // 1. A recoloração aconteceu: o literal virou consumo de --marca-*.
     assert.ok(styles.includes('var(--marca-primary, #0d3c1f)'), 'peça recolorida');
-    assert.equal(r.recoloracao.reescritas, 1);
+    // O contador soma a folha E o HTML inline (`style=""`, `fill`/`stroke` do
+    // SVG), então o número exato depende do que a peça carrega. O que se
+    // garante aqui é que a recoloração ACONTECEU, não quantas vezes.
+    assert.ok(r.recoloracao.reescritas >= 1, `recolorou pouco: ${r.recoloracao.reescritas}`);
 
     // 2. O fundo NÃO é <section>: é camada fixa atrás de tudo, logo após o body.
     assert.ok(index.includes('data-ds-camadas-de-pagina'), 'camada presente');
@@ -336,7 +339,7 @@ test('peça sem bundle entra em faltando e a seção avisa em vez de sumir', () 
   }
 });
 
-test('sem design system: nada recolore e o aviso diz', () => {
+test('sem design system: o cluster não recolore nada, mas o acento ainda veste a marca', () => {
   const raiz = mkdtempSync(join(tmpdir(), 'pagina-'));
   try {
     const hero = bundle(
@@ -368,10 +371,13 @@ test('sem design system: nada recolore e o aviso diz', () => {
       outputDir: join(raiz, 'saida'),
     });
     const styles = readFileSync(join(r.outputDir, 'assets', 'styles.css'), 'utf8');
+    // O literal de origem continua sendo a reserva, sempre.
     assert.ok(styles.includes('#0d3c1f'));
-    assert.ok(!styles.includes('--marca-'));
     assert.ok(r.avisos.some((a) => a.includes('Sem design system')));
-    assert.equal(r.recoloracao.origens, 0);
+    // O RETEMA não depende do design system: ele deriva o papel da própria cor
+    // e da paleta da marca. Verde saturado é acento, e acento de outra marca
+    // não entra num site desta — com ou sem clusters consolidados.
+    assert.match(styles, /var\(--marca-(primary|accent), #0d3c1f\)/, 'o acento veste a marca');
   } finally {
     rmSync(raiz, { recursive: true, force: true });
   }
@@ -469,7 +475,7 @@ test('kit sem peça de fundo herda as camadas da origem dominante; scripts, stic
       'camada antes das seções',
     );
     assert.ok(
-      r.avisos.some((a) => a.includes('herdou as camadas de fundo')),
+      r.avisos.some((a) => a.includes('herdou as camadas')),
       'a herança é declarada',
     );
 
@@ -494,6 +500,216 @@ test('kit sem peça de fundo herda as camadas da origem dominante; scripts, stic
   }
 });
 
+test('peça de referência visual sai da seção que TEM conteúdo criado; fica na que não tem', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-frame-'));
+  try {
+    const frameDir = join(raiz, 'frame');
+    mkdirSync(join(frameDir, 'assets', 'css'), { recursive: true });
+    mkdirSync(join(frameDir, 'frames'), { recursive: true });
+    writeFileSync(
+      join(frameDir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<aside data-ds-aviso="referencia-visual">Referência visual animada.</aside>
+<img src="frames/secao-x.png" alt="Cards da origem">
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(frameDir, 'frames', 'secao-x.png'), 'png', 'utf8');
+    const montarCom = (secoes: { secaoId: string; htmlCriado?: string }[], nome: string) =>
+      montarPaginaDoKit({
+        projectId: 'prj_teste',
+        titulo: 'T',
+        kit: {
+          id: 'kit_t',
+          components: [
+            {
+              id: 'cmp_frame',
+              name: 'Cards congelados',
+              category: 'feature',
+              kind: 'animation',
+              bundlePath: frameDir,
+              designSystemId: 'ds_a',
+            },
+          ],
+        },
+        layout: ProjectLayout.parse({
+          secoes: [{ id: 'sec_1', nome: 'O que é', componentIds: ['cmp_frame'] }],
+        }),
+        branding: DEFAULT_PROJECT_BRANDING,
+        secoes,
+        outputDir: join(raiz, nome),
+      });
+
+    // COM criado: a imagem congelada da origem sai; o criado cobre a seção.
+    const comCriado = montarCom(
+      [{ secaoId: 'sec_1', htmlCriado: '<div class="meu-conteudo">Da marca</div>' }],
+      'saida-com',
+    );
+    const indexCom = readFileSync(join(comCriado.outputDir, 'index.html'), 'utf8');
+    assert.ok(!indexCom.includes('frames/secao-x.png'), 'o frame da origem saiu');
+    assert.ok(indexCom.includes('meu-conteudo'), 'o conteúdo criado ficou');
+    assert.match(indexCom, /data-secao-id="sec_1" data-origem="gerado"/, 'a procedência é honesta');
+    assert.ok(
+      comCriado.avisos.some((a) => a.includes('referência visual')),
+      'a saída da peça é declarada',
+    );
+    // O criado vem embrulhado no envelope que a regra de passagem alcança.
+    assert.ok(indexCom.includes('<div data-ds-criado>'), 'envelope do criado presente');
+
+    // SEM criado: o frame é o único conteúdo da seção e continua.
+    const semCriado = montarCom([], 'saida-sem');
+    const indexSem = readFileSync(join(semCriado.outputDir, 'index.html'), 'utf8');
+    assert.ok(indexSem.includes('frames/secao-x.png'), 'sem criado, o frame fica');
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('a camada da origem é HERDADA e vestida na marca, nunca descartada', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-portao-'));
+  try {
+    // A origem declara o fundo no <body> (bg-[#03020A], preto) e tem camadas.
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    writeFileSync(
+      join(dir, 'index.html'),
+      // A camada é a real: canvas pintado por JS (cor fora do alcance do CSS) e
+      // um blob roxo declarado por classe — é dele que sai a matiz de referência.
+      `<!doctype html><html><head></head><body class="bg-[#03020A] text-white">
+<div data-ds-camadas-de-fundo="2"><canvas id="webgl-bg"></canvas><div class="bg-[#1A0B40] blur-[120px]"></div></div>
+<section class="hero">Oi</section>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.hero{color:#fff}', 'utf8');
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_hero',
+            name: 'Hero escuro',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Abertura', papel: 'hero', componentIds: ['cmp_hero'] }],
+      }),
+      // Marca CLARA sobre origem quase preta: o caso do café sobre o neon.
+      branding: DEFAULT_PROJECT_BRANDING,
+      outputDir: join(raiz, 'saida'),
+    });
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    const styles = readFileSync(join(r.outputDir, 'assets', 'styles.css'), 'utf8');
+
+    // 1. A camada da origem VEM: é a decoração dela que dá vida à página.
+    assert.ok(index.includes('data-ds-camada-herdada'), 'a camada foi herdada e marcada');
+    assert.ok(!index.includes('data-ds-camada-da-marca'), 'sem fundo ambiente por cima');
+
+    // 2. O canvas sai: ele é cena OPACA pintada por JavaScript no tema escuro
+    //    da origem, e pixel não se recolore. Mantê-lo repintava a página
+    //    inteira com a noite de outro site.
+    assert.ok(!index.includes('webgl-bg'), 'o canvas do tema oposto saiu');
+    assert.ok(
+      r.avisos.some((a) => a.includes('canvas da origem saiu')),
+      'e a saída é declarada',
+    );
+
+    // 3. A decoração que RESTA veste a marca, por estilo inline (vence a
+    //    classe de valor arbitrário da origem).
+    assert.match(index, /bg-\[#1A0B40\][^>]*style="background:#[0-9a-f]{6}"/i, 'blob na marca');
+
+    // 4. E o fundo chapado da origem não pinta a página.
+    assert.match(
+      styles,
+      /\[data-ds-camada-herdada\][^{]*\{background-color:transparent!important/,
+      'o fundo chapado da origem é apagado',
+    );
+
+    // 3. A regra de passagem é da BASE: existe com ou sem camada.
+    assert.ok(styles.includes('[data-ds-criado]'), 'regra de passagem sempre presente');
+    assert.ok(styles.includes('--pagina-fundo'), 'o fundo da página é token publicado');
+    assert.ok(styles.includes('body{background:var(--pagina-fundo)}'), 'uma página só');
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('as variações da logo viajam para midia/ e o favicon entra no head', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-logo-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    // A raiz do ecossistema vira o tmp: projectMediaDir(prj_teste) mora nela.
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const mediaDir = join(raiz, 'root', 'projects', 'prj_teste', 'media');
+    mkdirSync(mediaDir, { recursive: true });
+    for (const tipo of ['principal', 'horizontal', 'simbolo', 'favicon']) {
+      writeFileSync(join(mediaDir, `x-logo-${tipo}.svg`), `<svg data-tipo="${tipo}"/>`, 'utf8');
+    }
+    const hero = bundle(raiz, 'hero', '<section class="hero">Oi</section>', '.hero{color:#000}');
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_hero',
+            name: 'Hero',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: hero,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'A', componentIds: ['cmp_hero'] }],
+      }),
+      branding: {
+        ...DEFAULT_PROJECT_BRANDING,
+        logos: [
+          { tipo: 'principal', path: 'x-logo-principal.svg' },
+          { tipo: 'horizontal', path: 'x-logo-horizontal.svg' },
+          { tipo: 'simbolo', path: 'x-logo-simbolo.svg' },
+          { tipo: 'favicon', path: 'x-logo-favicon.svg' },
+        ],
+        logosLocais: { favicon: 'x-logo-favicon.svg' },
+      },
+      // O autor já copiou a horizontal com o nome dele: a fonte não duplica.
+      midia: [{ de: 'x-logo-horizontal.svg', para: 'midia/logo-horizontal.svg' }],
+      outputDir: join(raiz, 'saida'),
+    });
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.match(
+      index,
+      /<link rel="icon" type="image\/svg\+xml" href="midia\/logo-favicon\.svg"\/>/,
+      'favicon no head',
+    );
+    for (const tipo of ['principal', 'horizontal', 'simbolo', 'favicon']) {
+      assert.ok(
+        existsSync(join(r.outputDir, 'midia', `logo-${tipo}.svg`)),
+        `logo-${tipo} copiada para o site`,
+      );
+    }
+    assert.equal(
+      r.arquivos.filter((a) => a === 'midia/logo-horizontal.svg').length,
+      1,
+      'a variação que o autor já copiou não entra duas vezes',
+    );
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
 test('quando o kit TEM peça de fundo, nada é herdado por cima', () => {
   const raiz = mkdtempSync(join(tmpdir(), 'pagina-fundo-'));
   try {
@@ -509,6 +725,71 @@ test('quando o kit TEM peça de fundo, nada é herdado por cima', () => {
       'sem herança quando o fundo veio de peça',
     );
   } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('foto do site de origem é trocada pela mídia do projeto, e removida quando não há', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-foto-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const mediaDir = join(raiz, 'root', 'projects', 'prj_teste', 'media');
+    mkdirSync(mediaDir, { recursive: true });
+    writeFileSync(join(mediaDir, 'foto-da-marca.jpg'), 'jpg', 'utf8');
+
+    // A peça traz DUAS fotos do acervo da origem — a casa de outra empresa.
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    mkdirSync(join(dir, 'assets', 'image'), { recursive: true });
+    writeFileSync(join(dir, 'assets', 'image', 'casa.jpg'), 'origem', 'utf8');
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<section><img src="assets/image/casa.jpg" alt="Casa"><img src="assets/image/casa.jpg" alt="Outra"></section>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_p',
+            name: 'Peça com foto',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Abertura', componentIds: ['cmp_p'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      // Uma foto do projeto para a seção: cobre a primeira, não a segunda.
+      midia: [{ de: 'foto-da-marca.jpg', para: 'midia/marca-1.jpg', secaoId: 'sec_1' }],
+      outputDir: join(raiz, 'saida'),
+    });
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.ok(index.includes('src="midia/marca-1.jpg"'), 'a primeira foto virou a do projeto');
+    assert.ok(!index.includes('assets/cmp_p/image/casa.jpg'), 'nenhuma foto da origem sobrou');
+    assert.ok(
+      r.avisos.some((a) => a.includes('trocada(s) pela mídia do projeto')),
+      'a troca é declarada',
+    );
+    assert.ok(
+      r.avisos.some((a) => a.includes('removida(s)')),
+      'e a que não teve substituta também',
+    );
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
     rmSync(raiz, { recursive: true, force: true });
   }
 });

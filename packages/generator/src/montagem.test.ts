@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  REGRA_QUE_ABRE_PASSAGEM,
   envolverCamadaDePagina,
   envolverSecao,
   extrairCamadasDeFundo,
@@ -94,22 +95,31 @@ test('envolverCamadaDePagina: camada fixa atrás de tudo, sem roubar clique', ()
   assert.equal((html.match(/<div/g) ?? []).length, 1, 'um embrulho só, sem aninhamento extra');
 });
 
-test('envolverCamadaDePagina: abre passagem para a camada ser vista', () => {
-  // O compositor copia para o proxy de corpo as classes do <body> de origem, e
+test('REGRA_QUE_ABRE_PASSAGEM: todo embrulho do compositor fica transparente', () => {
+  // O compositor copia para os proxies as classes de <html>/<body> da origem, e
   // entre elas vem a cor de fundo daquela página. Sem esta regra, cada peça
-  // pinta um retângulo opaco e a camada, que está em z-index:-1, some atrás de
-  // todas elas: é o "o fundo fica abaixo dos outros componentes".
-  const html = envolverCamadaDePagina('<canvas id="p"></canvas>', { componentIds: ['cmp_fundo'] });
-  assert.match(html, /<style data-ds-camada-passa>/, 'a regra viaja junto com a camada');
-  assert.match(html, /\[data-secao\] \[data-ds-corpo\]/, 'só o proxy de corpo dentro de uma seção');
-  assert.match(html, /background-color:transparent!important/);
-  assert.match(html, /background-image:none!important/, 'gradiente da origem sai da frente');
+  // pinta um retângulo opaco e o fundo da página (camada herdada ou o body da
+  // marca) some atrás de todas elas: é o "background não integrado".
+  assert.match(REGRA_QUE_ABRE_PASSAGEM, /\[data-secao\] \[data-ds-corpo\]/, 'proxy de corpo');
+  assert.match(REGRA_QUE_ABRE_PASSAGEM, /\[data-secao\]>\[data-ds-raiz\]/, 'proxy de raiz');
+  assert.match(REGRA_QUE_ABRE_PASSAGEM, /^\[data-secao\],/, 'a própria section');
+  assert.match(REGRA_QUE_ABRE_PASSAGEM, /\[data-ds-criado\]/, 'o envelope da seção criada');
+  assert.match(REGRA_QUE_ABRE_PASSAGEM, /background-color:transparent!important/);
+  assert.match(
+    REGRA_QUE_ABRE_PASSAGEM,
+    /background-image:none!important/,
+    'gradiente da origem sai da frente',
+  );
   // O proxy da PRÓPRIA camada não pode ser apagado: um fundo feito só de
   // gradiente no corpo vive ali, e ele não fica dentro de [data-secao].
   assert.ok(
-    !/\[data-ds-camadas-de-pagina\] \[data-ds-corpo\]/.test(html),
+    !REGRA_QUE_ABRE_PASSAGEM.includes('data-ds-camadas-de-pagina'),
     'a regra não alcança a própria camada',
   );
+  // E a camada não carrega mais a regra embutida: ela virou BASE da página,
+  // emitida sempre — página sem camada também precisa do fundo integrado.
+  const html = envolverCamadaDePagina('<canvas id="p"></canvas>', { componentIds: ['cmp_fundo'] });
+  assert.ok(!html.includes('<style'), 'a camada sai sem estilo embutido');
 });
 
 test('limparParaComposicao: a peça não arrasta o fundo da página de origem', () => {
