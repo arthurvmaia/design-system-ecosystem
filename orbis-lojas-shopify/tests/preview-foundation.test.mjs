@@ -154,3 +154,29 @@ test("a prévia respeita o JS do tema: gaveta do carrinho não vira troca de pá
      link levava a login/404/cadastro */
   assert.match(appShell, /const paginas = \(shopify\?\.pages \?\? \[\]\)\.filter\(\(item\) => !item\.id\.includes\("-group"\)\);/);
 });
+
+test("carrinho do preview: formulário fiel, Ajax Cart API simulada e gaveta com itens", async () => {
+  const render = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
+  /* o {% form %} precisa parecer com o da Shopify, senão o tema nem tenta
+     adicionar: é por data-type="add-to-cart-form" que ele acha o formulário */
+  assert.match(render, /data-type="add-to-cart-form"/);
+  assert.match(render, /name="form_type"/);
+  assert.match(render, /product: "\/cart\/add"/);
+  /* a compra é tratada pelo próprio preview: cada tema liga o botão de um
+     jeito e muitos vêm ofuscados */
+  assert.match(render, /function comprar\(form\)/);
+  assert.match(render, /secoesDaGaveta/);
+  assert.match(render, /function abrirGaveta/);
+  /* sem gaveta no tema, o item aparece na página do carrinho */
+  assert.match(render, /orbisNavigate:"\/cart"/);
+  /* o carrinho renderiza de verdade no Liquid */
+  assert.match(render, /function buildCart/);
+  assert.match(render, /cart: buildCart\(cartItems\)/);
+  assert.match(render, /onlySections/, "Section Rendering API para atualizar a gaveta");
+  const preview = await readFile(new URL("../app/ShopifyStorePreview.tsx", import.meta.url), "utf8");
+  assert.match(preview, /cartRef/, "o carrinho sobrevive à troca de página");
+  assert.match(preview, /orbisCartEstado/);
+  /* cada rota de conta abre a SUA página */
+  assert.match(preview, /register: \["customers\/register"/);
+  assert.match(preview, /recover: \["customers\/reset_password"/);
+});

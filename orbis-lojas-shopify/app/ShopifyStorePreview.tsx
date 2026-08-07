@@ -36,7 +36,23 @@ export function resolvePreviewPageId(theme: ShopifyThemeImport, href: string): s
     const handle = path.split("/").filter(Boolean)[1] ?? "";
     return firstExisting(`page.${handle}`, "page");
   }
-  if (path.startsWith("/account")) return firstExisting("customers/login", "customers/account");
+  if (path.startsWith("/account")) {
+    /* cada rota de conta tem a SUA página: mandar tudo para o login fazia
+       "Criar conta" e "Esqueci a senha" abrirem a tela errada */
+    const trecho = path.replace(/^\/account\/?/, "").split("/")[0];
+    const porRota: Record<string, string[]> = {
+      "": ["customers/account", "customers/login"],
+      login: ["customers/login"],
+      register: ["customers/register", "customers/login"],
+      addresses: ["customers/addresses", "customers/account"],
+      orders: ["customers/order", "customers/account"],
+      recover: ["customers/reset_password", "customers/login"],
+      reset: ["customers/reset_password", "customers/login"],
+      activate: ["customers/activate_account", "customers/login"],
+      logout: ["index"],
+    };
+    return firstExisting(...(porRota[trecho] ?? ["customers/login", "customers/account"]));
+  }
   return null;
 }
 
@@ -47,6 +63,9 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
   const [status, setStatus] = useState<"loading" | "live" | "fallback">("loading");
   const requestRef = useRef(0);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  /* o carrinho do preview mora aqui: assim ele sobrevive à troca de página
+     (o iframe é recriado) sem provocar re-render a cada item adicionado */
+  const cartRef = useRef<Array<{ variantId: number; quantity: number }>>([]);
   const canRender = Boolean(shopify.compatibility?.preservedSource);
 
   /* árvore → preview: seleção rola o iframe até a seção e a destaca */
@@ -75,7 +94,7 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
         const response = await fetch("/api/theme-render", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ shopify, page: pageId }),
+          body: JSON.stringify({ shopify, page: pageId, cartItems: cartRef.current }),
         });
         if (requestId !== requestRef.current) return;
         if (!response.ok) { setStatus("fallback"); return; }
@@ -90,7 +109,28 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
-      const data = event.data as { orbisSection?: string; orbisBlock?: string | null; orbisNavigate?: string } | null;
+      const data = event.data as { orbisSection?: string; orbisBlock?: string | null; orbisNavigate?: string; orbisCartSections?: string[]; orbisCartItems?: unknown; orbisPedido?: number; orbisCartEstado?: Array<{ variantId: number; quantity: number }> } | null;
+      /* o carrinho mudou dentro do preview: guardamos para a próxima página */
+      if (Array.isArray(data?.orbisCartEstado)) { cartRef.current = data.orbisCartEstado; return; }
+      /* o carrinho do preview pede o HTML novo das seções (gaveta, contador):
+         renderizamos pelo MESMO motor, com o carrinho que o iframe mantém */
+      if (data?.orbisPedido && Array.isArray(data.orbisCartSections)) {
+        const pedido = data.orbisPedido;
+        const alvo = (event.source as Window | null) ?? frameRef.current?.contentWindow ?? null;
+        void (async () => {
+          let secoes: Record<string, string> = {};
+          try {
+            const response = await fetch("/api/theme-render", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ shopify, page: pageId, sections: data.orbisCartSections, cartItems: data.orbisCartItems }),
+            });
+            if (response.ok) secoes = await response.json() as Record<string, string>;
+          } catch { /* sem seções o tema ainda atualiza o próprio estado */ }
+          alvo?.postMessage({ orbisPedido: pedido, orbisSecoes: secoes }, "*");
+        })();
+        return;
+      }
       if (data?.orbisSection) {
         onSelectSection?.(data.orbisSection);
         onSelectBlock?.(data.orbisSection, data.orbisBlock ?? null);
@@ -102,7 +142,7 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onSelectSection, onSelectBlock, onNavigatePage, shopify]);
+  }, [onSelectSection, onSelectBlock, onNavigatePage, shopify, pageId]);
 
   if (!canRender || status === "fallback") return <>{fallback}</>;
   return (

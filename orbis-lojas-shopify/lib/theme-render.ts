@@ -7,12 +7,19 @@ import { Liquid, type TagToken, type TopLevelToken, type Context, type Emitter }
 import { strFromU8 } from "fflate";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
 
+/** Item do carrinho simulado: o preview guarda só o essencial. */
+export type PreviewCartItem = { variantId: number; quantity: number };
+
 export type RenderOptions = {
   theme: ShopifyThemeImport;
   files: Map<string, Uint8Array>;
   pageId: string;
   /** Converte um caminho relativo do tema (assets/foo.png) na URL servida. */
   assetBase: (path: string) => string;
+  /** Estado do carrinho simulado; sem ele o carrinho nasce vazio. */
+  cartItems?: PreviewCartItem[];
+  /** Quando presente, devolve só o HTML destas seções (Section Rendering API). */
+  onlySections?: string[];
 };
 
 const PLACEHOLDER_SVG = (label: string, tone = "#e5e7eb") =>
@@ -83,6 +90,52 @@ function demoProduct(handle: string, index = 0) {
 }
 
 const DEMO_PRODUCTS = [0, 1, 2, 3, 4, 5].map((index) => demoProduct("", index));
+
+/** A variante de cada produto demo tem id próprio, para o carrinho casar item com produto. */
+for (const [index, product] of DEMO_PRODUCTS.entries()) {
+  const variantId = 1000001 + index;
+  product.variants[0].id = variantId;
+  product.selected_or_first_available_variant.id = variantId;
+  product.first_available_variant.id = variantId;
+}
+
+/**
+ * Carrinho simulado no formato que os temas leem (Dawn e derivados):
+ * itens com produto, variante, preços e a linha final. É o que faz a gaveta
+ * mostrar item, quantidade e total de verdade.
+ */
+function buildCart(items: PreviewCartItem[] | undefined) {
+  const linhas = (items ?? [])
+    .map((item, index) => {
+      const produto = DEMO_PRODUCTS.find((candidate) => candidate.variants[0].id === item.variantId) ?? DEMO_PRODUCTS[index % DEMO_PRODUCTS.length];
+      const quantidade = Math.max(1, Math.min(99, Math.floor(item.quantity) || 1));
+      const variante = produto.variants[0];
+      const preco = produto.price;
+      return {
+        id: variante.id, key: `${variante.id}:${index}`, quantity: quantidade,
+        title: produto.title, product_title: produto.title, variant_title: null,
+        product_id: produto.id, variant_id: variante.id, handle: produto.handle,
+        url: produto.url, product_has_only_default_variant: true,
+        price: preco, final_price: preco, original_price: preco, discounted_price: preco,
+        line_price: preco * quantidade, final_line_price: preco * quantidade,
+        original_line_price: preco * quantidade, total_discount: 0,
+        image: produto.featured_image, featured_image: produto.featured_image,
+        product: produto, variant: variante, options_with_values: produto.options_with_values,
+        properties: {}, selling_plan_allocation: null, discounts: [], line_level_discount_allocations: [],
+        requires_shipping: true, taxable: true, gift_card: false, sku: variante.sku, vendor: produto.vendor,
+      };
+    });
+  const total = linhas.reduce((soma, linha) => soma + linha.line_price, 0);
+  const contagem = linhas.reduce((soma, linha) => soma + linha.quantity, 0);
+  return {
+    item_count: contagem, items: linhas, total_price: total, original_total_price: total,
+    items_subtotal_price: total, total_discount: 0, empty: linhas.length === 0,
+    currency: { iso_code: "BRL", symbol: "R$" }, note: null, attributes: {},
+    cart_level_discount_applications: [], discount_applications: [],
+    requires_shipping: linhas.length > 0, taxes_included: false, checkout_charge_amount: total,
+    token: "orbis-preview-cart", created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  };
+}
 
 function demoCollection(handle: string) {
   const title = handle ? handle.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Coleção em destaque";
@@ -297,7 +350,7 @@ function argPairs(args: unknown[]): Record<string, unknown> {
   return named;
 }
 
-export async function renderThemePage({ theme, files, pageId, assetBase }: RenderOptions): Promise<string> {
+export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections }: RenderOptions): Promise<string> {
   const assetPathByName = new Map<string, string>();
   for (const path of files.keys()) {
     if (path.startsWith("assets/")) assetPathByName.set(path.slice("assets/".length).toLowerCase(), path);
@@ -430,11 +483,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
       market: { handle: "br", metafields: {} },
       available_countries: [], available_languages: [],
     },
-    cart: {
-      item_count: 0, items: [], total_price: 0, original_total_price: 0, items_subtotal_price: 0, total_discount: 0,
-      currency: { iso_code: "BRL", symbol: "R$" }, empty: true, note: null, attributes: {}, cart_level_discount_applications: [],
-      requires_shipping: true, taxes_included: false, discount_applications: [], checkout_charge_amount: 0,
-    },
+    cart: buildCart(cartItems),
     customer: null,
     template: { name: pageBase, suffix: pageId.includes(".") ? pageId.split(".").slice(1).join(".") : null, directory: null, toString: () => pageBase },
     /* getter: quando o layout imprime {{ content_for_header }} (sempre por
@@ -682,6 +731,25 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
       emitter.write("</style>");
     },
   });
+  /**
+   * `{% form %}` fiel ao que a Shopify gera. Não é detalhe: o JS dos temas
+   * acha o formulário de compra por `form[data-type="add-to-cart-form"]` e os
+   * campos `form_type`/`utf8`. Com um `<form action="#">` genérico, o botão
+   * "Adicionar ao carrinho" simplesmente não fazia nada.
+   */
+  const formAttrs = (args: string) => {
+    const tipo = args.match(/^\s*['"]?([\w-]+)['"]?/)?.[1] ?? "form";
+    const acoes: Record<string, string> = {
+      product: "/cart/add", cart: "/cart", contact: "/contact#contact_form",
+      customer_login: "/account/login", create_customer: "/account", recover_customer_password: "/account/recover",
+      activate_customer_password: "/account/activate", customer_address: "/account/addresses",
+      new_comment: "#comments", localization: "/localization", customer: "/contact#contact_form",
+    };
+    const extra = tipo === "product" ? ` data-type="add-to-cart-form" enctype="multipart/form-data" novalidate="novalidate"` : "";
+    const id = `${tipo}_form_${Math.random().toString(36).slice(2, 10)}`;
+    return { tipo, abertura: `<form method="post" action="${acoes[tipo] ?? "#"}" id="${id}" accept-charset="UTF-8" class="${tipo}-form"${extra}><input type="hidden" name="form_type" value="${tipo}"><input type="hidden" name="utf8" value="✓">` };
+  };
+
   engine.registerTag("form", {
     parse(this: { templates: unknown[]; liquid: Liquid; args: string }, tagToken: TagToken, remainTokens: TopLevelToken[]) {
       this.args = tagToken.args;
@@ -693,8 +761,8 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
         .on("end", () => { throw new Error("tag {% form %} não fechada"); });
       (stream as unknown as { start: () => void }).start();
     },
-    * render(this: { templates: unknown[]; liquid: Liquid }, ctx: Context, emitter: Emitter) {
-      emitter.write(`<form action="#" method="post" onsubmit="return false">`);
+    * render(this: { templates: unknown[]; liquid: Liquid; args: string }, ctx: Context, emitter: Emitter) {
+      emitter.write(formAttrs(this.args ?? "").abertura);
       yield (this.liquid as unknown as { renderer: { renderTemplates: (tpls: unknown[], ctx: Context, emitter: Emitter) => unknown } }).renderer.renderTemplates(this.templates as never, ctx, emitter);
       emitter.write("</form>");
     },
@@ -766,6 +834,18 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
     async render(this: { name: string }) { return renderGroup(this.name); },
   });
 
+  /* Section Rendering API: o tema pede o HTML de seções soltas (a gaveta do
+     carrinho, o contador do ícone) depois de mexer no carrinho. Devolvemos o
+     mesmo mapa que a Shopify devolve, renderizado pelo mesmo motor. */
+  if (onlySections?.length) {
+    const mapa: Record<string, string> = {};
+    for (const id of onlySections.slice(0, 8)) {
+      const tipo = id.replace(/^shopify-section-/, "");
+      mapa[id] = await renderSectionInstance(sectionByType(tipo));
+    }
+    return JSON.stringify(mapa);
+  }
+
   /* ---------- conteúdo da página ---------- */
   const page: ShopifyPage | undefined =
     theme.pages.find((item) => item.id === pageId) ??
@@ -804,6 +884,84 @@ export async function renderThemePage({ theme, files, pageId, assetBase }: Rende
      - "interagir": o JS do tema funciona (menus, accordions); links viram
        navegação de página do preview; formulários continuam bloqueados.
      - "previa": como interagir, sem contornos de seleção. */
+  /* Carrinho simulado dentro do preview: intercepta a Ajax Cart API da
+     Shopify (/cart/add.js, /cart.js, /cart/change.js…), guarda o estado aqui
+     e pede ao editor o HTML novo das seções — é assim que a gaveta abre com
+     item, quantidade e total de verdade, sem backend de loja. */
+  const carrinhoPonte = `<script>window.__ORBIS_CART_INICIAL__=${JSON.stringify(cartItems ?? [])};(function(){
+var itens=[];var pedidos={};var seq=0;
+function moeda(c){return "R$ "+(c/100).toFixed(2).replace(".",",");}
+function estado(){var total=0,contagem=0;for(var i=0;i<itens.length;i++){total+=itens[i].price*itens[i].quantity;contagem+=itens[i].quantity;}
+return {token:"orbis-preview-cart",item_count:contagem,total_price:total,original_total_price:total,items_subtotal_price:total,total_discount:0,currency:"BRL",requires_shipping:itens.length>0,note:null,attributes:{},items:itens.map(function(it,idx){return {id:it.id,key:it.id+":"+idx,quantity:it.quantity,title:it.title,product_title:it.title,variant_title:null,price:it.price,final_price:it.price,line_price:it.price*it.quantity,final_line_price:it.price*it.quantity,original_line_price:it.price*it.quantity,url:it.url,image:it.image,featured_image:{url:it.image,alt:it.title},product_id:it.product_id,variant_id:it.id,handle:it.handle,quantity_rule:{min:1,max:null,increment:1},properties:{}};})};}
+function dadosDoBotao(alvo){var form=alvo&&alvo.closest?alvo.closest("form"):null;var card=alvo&&alvo.closest?alvo.closest("[data-product-id],.card-wrapper,.grid__item,product-card,.card"):null;
+var id=null;if(form){var input=form.querySelector('[name="id"]');if(input&&input.value)id=parseInt(input.value,10);}
+var titulo=(card&&(card.querySelector(".card__heading,.card-information__text,h3,h2")||{}).textContent||"").replace(/\\s+/g," ").trim();
+var img=card?card.querySelector("img"):null;var preco=null;var precoEl=card?card.querySelector(".price-item--regular,.price__regular .price-item,.price-item"):null;
+if(precoEl){var n=precoEl.textContent.replace(/[^0-9,]/g,"").replace(",",".");if(n)preco=Math.round(parseFloat(n)*100);}
+return {id:id||Date.now()%100000,title:titulo||"Produto",price:preco||0,image:img?img.currentSrc||img.src:null,handle:(titulo||"produto").toLowerCase().replace(/[^a-z0-9]+/g,"-"),product_id:id||0,url:"/products/"+((titulo||"produto").toLowerCase().replace(/[^a-z0-9]+/g,"-"))};}
+var ultimoAlvo=null;document.addEventListener("click",function(e){ultimoAlvo=e.target;},true);
+function adicionar(payload){var base=dadosDoBotao(ultimoAlvo);var id=payload&&payload.id?parseInt(payload.id,10):base.id;var qtd=payload&&payload.quantity?parseInt(payload.quantity,10):1;
+var existente=null;for(var i=0;i<itens.length;i++){if(itens[i].id===id)existente=itens[i];}
+if(existente){existente.quantity+=qtd;return existente;}
+var novo={id:id,title:base.title,price:base.price,image:base.image,handle:base.handle,product_id:base.product_id,url:base.url,quantity:qtd};itens.push(novo);return novo;}
+function mudar(payload){var chave=payload.id||payload.line;var qtd=parseInt(payload.quantity,10);
+if(payload.line){var idx=parseInt(payload.line,10)-1;if(itens[idx]){if(qtd<=0)itens.splice(idx,1);else itens[idx].quantity=qtd;}}
+else {for(var i=itens.length-1;i>=0;i--){if(String(itens[i].id)===String(chave)||itens[i].id+":"+i===String(chave)){if(qtd<=0)itens.splice(i,1);else itens[i].quantity=qtd;}}}
+return estado();}
+function pedirSecoes(lista){return new Promise(function(resolve){if(!lista||!lista.length||window.parent===window){resolve({});return;}
+var id=++seq;pedidos[id]=resolve;window.parent.postMessage({orbisCartSections:lista,orbisCartItems:itens.map(function(i){return {variantId:i.id,quantity:i.quantity};}),orbisPedido:id},"*");
+setTimeout(function(){if(pedidos[id]){pedidos[id]({});delete pedidos[id];}},4000);});}
+window.addEventListener("message",function(e){var d=e&&e.data;if(d&&d.orbisPedido&&pedidos[d.orbisPedido]){pedidos[d.orbisPedido](d.orbisSecoes||{});delete pedidos[d.orbisPedido];}});
+function listaDeSecoes(url,corpo){var s=null;try{var u=new URL(url,location.origin);s=u.searchParams.get("sections");}catch(err){}
+if(!s&&corpo&&corpo.sections)s=Array.isArray(corpo.sections)?corpo.sections.join(","):corpo.sections;
+return s?String(s).split(",").map(function(x){return x.trim();}).filter(Boolean):[];}
+function corpoDe(init){try{if(!init||!init.body)return {};
+if(typeof init.body==="string"){try{return JSON.parse(init.body);}catch(e){var o={};init.body.split("&").forEach(function(p){var kv=p.split("=");o[decodeURIComponent(kv[0])]=decodeURIComponent(kv[1]||"");});return o;}}
+if(init.body instanceof FormData){var o2={};init.body.forEach(function(v,k){o2[k]=v;});return o2;}}catch(e){}return {};}
+function resposta(dados){return new Response(JSON.stringify(dados),{status:200,headers:{"Content-Type":"application/json"}});}
+var fetchOriginal=window.fetch.bind(window);
+window.fetch=function(entrada,init){var url=typeof entrada==="string"?entrada:(entrada&&entrada.url)||"";
+if(/\\/cart(\\/(add|change|update|clear))?\\.js/.test(url)||/\\/cart\\/(add|change|update|clear)(\\?|$)/.test(url)){
+var corpo=corpoDe(init);var secoes=listaDeSecoes(url,corpo);var resultado;
+if(/add/.test(url)){resultado=adicionar(corpo);}
+else if(/change|update/.test(url)){resultado=mudar(corpo);}
+else if(/clear/.test(url)){itens=[];resultado=estado();}
+else {resultado=estado();}
+return pedirSecoes(secoes).then(function(html){var saida=/add/.test(url)?resultado:estado();
+if(secoes.length){saida=Object.assign({},saida,{sections:html});}
+if(/add/.test(url)){saida=Object.assign({},saida,{items:[resultado],sections:secoes.length?html:undefined});}
+/* avisa o tema que o carrinho mudou, como a Shopify faz */
+document.dispatchEvent(new CustomEvent("cart:refresh",{bubbles:true}));
+return resposta(saida);});}
+return fetchOriginal(entrada,init);};
+/* Compra tratada AQUI, não pelo JS do tema: cada tema liga o botão de um
+   jeito (e muitos vêm ofuscados). Interceptar o envio do formulário de
+   compra faz "Adicionar ao carrinho" funcionar em qualquer tema. */
+/* toda seção do tema cujo TIPO fale de carrinho: mini-cart, cart-drawer,
+   cart-notification, cart-icon-bubble… o nome muda de tema para tema */
+function secoesDaGaveta(){var tipos=[];document.querySelectorAll("[id^='shopify-section-']").forEach(function(s){var m=(s.className||"").toString().match(/section-([\\w-]+)/);var t=m&&m[1];if(t&&/cart/i.test(t)&&tipos.indexOf(t)<0)tipos.push(t);});return tipos;}
+function aplicarSecoes(html){Object.keys(html||{}).forEach(function(tipo){if(!html[tipo])return;
+var alvo=document.querySelector("[id^='shopify-section-'].section-"+tipo)||document.getElementById("shopify-section-"+tipo);
+if(!alvo)return;var novo=document.createElement("div");novo.innerHTML=html[tipo];
+var conteudo=novo.querySelector("[id^='shopify-section-']")||novo;alvo.innerHTML=conteudo.innerHTML;});}
+function abrirGaveta(){var gaveta=document.querySelector("cart-drawer, #CartDrawer, .cart-drawer, [id*='cart-drawer' i]");
+if(gaveta){["active","is-open","open","drawer--active"].forEach(function(c){gaveta.classList.add(c);});gaveta.removeAttribute("hidden");if(gaveta.hasAttribute("aria-hidden"))gaveta.setAttribute("aria-hidden","false");
+var det=gaveta.closest("details");if(det)det.open=true;document.body.classList.add("overflow-hidden");return true;}
+return false;}
+function comprar(form){var idInput=form.querySelector('[name="id"]');var qtdInput=form.querySelector('[name="quantity"]');
+adicionar({id:idInput&&idInput.value,quantity:qtdInput&&qtdInput.value?qtdInput.value:1});
+if(window.parent!==window){window.parent.postMessage({orbisCartEstado:itens.map(function(i){return {variantId:i.id,quantity:i.quantity};})},"*");}
+pedirSecoes(secoesDaGaveta()).then(function(html){aplicarSecoes(html);
+if(!abrirGaveta()&&window.parent!==window){/* tema sem gaveta: mostra a página do carrinho, para o item aparecer */window.parent.postMessage({orbisNavigate:"/cart"},"*");}
+document.dispatchEvent(new CustomEvent("cart:refresh",{bubbles:true}));});}
+document.addEventListener("submit",function(e){var form=e.target;if(form&&form.matches&&form.matches('form[data-type="add-to-cart-form"]')){e.preventDefault();comprar(form);}},true);
+document.addEventListener("click",function(e){var botao=e.target.closest&&e.target.closest('form[data-type="add-to-cart-form"] button:not([type="button"]), button[name="add"]');
+if(botao){var form=botao.closest("form");if(form){e.preventDefault();comprar(form);}}},false);
+/* estado inicial vindo do editor, para o carrinho sobreviver à troca de página */
+try{if(window.__ORBIS_CART_INICIAL__&&window.__ORBIS_CART_INICIAL__.length){itens=window.__ORBIS_CART_INICIAL__.map(function(i){var base=dadosDoBotao(null);return {id:i.variantId,quantity:i.quantity,title:i.title||base.title,price:i.price||0,image:null,handle:"produto",product_id:i.variantId,url:"/cart"};});}}catch(e){}
+window.__orbisCarrinho={estado:estado,itens:function(){return itens;},comprar:comprar};
+})();</script>`;
+
   const bridge = `<script>(function(){var mode="selecionar";var hoverAlvo=null;
 function limparHover(){if(hoverAlvo){hoverAlvo.style.outline="";hoverAlvo.style.outlineOffset="";hoverAlvo=null;}}
 document.addEventListener("submit",function(event){event.preventDefault();},true);
@@ -825,7 +983,10 @@ event.preventDefault();if(window.parent!==window){window.parent.postMessage({orb
 window.addEventListener("message",function(event){var data=event&&event.data;if(!data){return;}
 if(data.orbisMode){mode=String(data.orbisMode);limparHover();return;}
 if(!data.orbisScrollTo){return;}var target=document.getElementById("shopify-section-"+data.orbisScrollTo);if(!target){return;}target.scrollIntoView({behavior:"smooth",block:"start"});if(mode==="previa"){return;}target.style.outline="2px solid #2f80ed";target.style.outlineOffset="-2px";window.clearTimeout(target.__orbisFlash);target.__orbisFlash=window.setTimeout(function(){target.style.outline="";target.style.outlineOffset="";},1600);});})();</script>`;
-  html = html.includes("</body>") ? html.replace("</body>", `${bridge}</body>`) : html + bridge;
+  /* o carrinho entra ANTES do bridge e antes do JS do tema agir: ele precisa
+     substituir o fetch cedo para interceptar a primeira adição */
+  const rodape = `${carrinhoPonte}${bridge}`;
+  html = html.includes("</body>") ? html.replace("</body>", `${rodape}</body>`) : html + rodape;
   return html;
 }
 
