@@ -56,6 +56,7 @@ import {
   Play,
   Smartphone,
   Sparkles,
+  Square,
   Sun,
   Trash2,
   X,
@@ -209,11 +210,25 @@ function MarcaBadge({ marca }: { marca?: Recolorabilidade }) {
  * Clicar no card abre o modal, que já demonstra o movimento sozinho — o selo é
  * o convite que faltava.
  */
-function MovimentoBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
-  const rola = (fidelity?.scroll?.length ?? 0) > 0;
+/**
+ * Que demonstração esta peça pede — ou nenhuma.
+ *
+ * A rolagem vem antes do hover quando a peça tem as duas: ela é o movimento que
+ * se vê sem fazer nada, e é o que a pessoa está tentando decidir se quer.
+ */
+type ModoDeDemo = 'scroll' | 'hover' | null;
+const demoDaPeca = (fidelity?: SegmentFidelity | null): ModoDeDemo => {
+  if ((fidelity?.scroll?.length ?? 0) > 0) return 'scroll';
   const hover =
     fidelity?.interactions?.some((i) => i.kind === 'hover') === true ||
     fidelity?.pipeline?.some((p) => p.kind === 'hover') === true;
+  return hover ? 'hover' : null;
+};
+
+function MovimentoBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
+  const modo = demoDaPeca(fidelity);
+  const rola = modo === 'scroll';
+  const hover = modo === 'hover';
   if (!rola && !hover) return null;
   const cor = 'var(--color-ion-3)';
   return (
@@ -226,8 +241,8 @@ function MovimentoBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
       }}
       title={
         rola
-          ? 'Esta peça se move com a rolagem (fade, parallax ou reveal). Abra para ver a demonstração antes de curtir.'
-          : 'Esta peça reage ao mouse. Abra para ver a demonstração antes de curtir.'
+          ? 'Esta peça se move com a rolagem (fade, parallax ou reveal). Toque no play da miniatura para ver.'
+          : 'Esta peça reage ao mouse. Toque no play da miniatura para ver.'
       }
     >
       <Play size={9} />
@@ -1603,6 +1618,9 @@ function SegmentCard({
   });
 
   const delay = index < 6 ? `ds-d${index + 1}` : '';
+  /** Que demo esta peça oferece, e se ela está rodando agora neste card. */
+  const modoDeDemo = demoDaPeca(segment.fidelity);
+  const [demoLigada, setDemoLigada] = useState<ModoDeDemo>(null);
 
   return (
     // `h-full` + coluna: todos os cards da linha terminam na mesma altura, e o
@@ -1659,13 +1677,66 @@ function SegmentCard({
                 </div>
               ) : (
                 <PreviewFrame
-                  src={previewSegmentUrl(segment.id)}
+                  src={
+                    demoLigada === 'scroll'
+                      ? previewSegmentScrollUrl(segment.id)
+                      : demoLigada === 'hover'
+                        ? previewSegmentHoverUrl(segment.id)
+                        : previewSegmentUrl(segment.id)
+                  }
                   title={segment.name}
                   ajuste="conter"
                 />
               )}
             </div>
           </button>
+          {/**
+           * O PLAY na miniatura — a demo onde a decisão acontece.
+           *
+           * O dono pediu "uma demo só para eu entender a animação para ver se
+           * vou dar like", e o selo de movimento já prometia isso. Só que a
+           * demonstração morava no modal: para saber se a peça se mexe era
+           * preciso abrir uma a uma. Curtir 50 peças assim é 50 idas e voltas.
+           *
+           * Fica DESLIGADA por padrão, e isso é decisão, não economia: a grade
+           * mostra dezenas de cards ao mesmo tempo, e dezenas de iframes
+           * animando juntos derrubam o navegador. Cada peça anima quando a
+           * pessoa pede, e uma de cada vez basta para decidir.
+           *
+           * Só aparece em peça que TEM movimento medido — botão de play em
+           * peça parada seria promessa falsa.
+           */}
+          {modoDeDemo !== null && !mostraRetrato && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDemoLigada((atual) => (atual === null ? modoDeDemo : null));
+              }}
+              title={
+                demoLigada !== null
+                  ? 'Parar a demonstração'
+                  : modoDeDemo === 'scroll'
+                    ? 'Ver o movimento na rolagem'
+                    : 'Ver a reação ao mouse'
+              }
+              aria-label={
+                demoLigada !== null
+                  ? `Parar a demonstração de ${segment.name}`
+                  : `Ver a demonstração de ${segment.name}`
+              }
+              className={cn(
+                'absolute top-2.5 right-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-md transition-opacity duration-200',
+                demoLigada !== null ? 'opacity-100' : 'opacity-70 group-hover:opacity-100',
+              )}
+              style={{
+                backgroundColor: demoLigada !== null ? 'var(--color-ion-3)' : 'rgba(0,0,0,0.55)',
+                color: demoLigada !== null ? 'var(--color-ink-0)' : 'var(--color-fg)',
+              }}
+            >
+              {demoLigada !== null ? <Square size={11} /> : <Play size={11} />}
+            </button>
+          )}
           {/* Altura reservada: a linha de peças é opcional, e sem reservar o
               espaço os títulos de uma mesma linha da grade ficavam em alturas
               diferentes. */}
