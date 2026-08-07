@@ -1317,7 +1317,7 @@ test('ponteiro personalizado vira peça própria quando a página esconde o nati
         node({ fingerprint: corpoFp, role: 'section', pageBox: { x: 0, y: 0, w: 1440, h: 3600 } }),
         node({
           fingerprint: pontFp,
-          role: 'other',
+          role: 'unknown',
           parent: corpoFp.hash,
           pageBox: { x: 0, y: 0, w: 24, h: 24 },
         }),
@@ -1343,7 +1343,7 @@ test('sem `cursor:none` no corpo, nenhuma peça de ponteiro é inventada', () =>
     entradaVazia({
       structuralMap: [
         node({ fingerprint: corpoFp, role: 'section', pageBox: { x: 0, y: 0, w: 1440, h: 3600 } }),
-        node({ fingerprint: botaoFp, role: 'other', parent: corpoFp.hash }),
+        node({ fingerprint: botaoFp, role: 'unknown', parent: corpoFp.hash }),
       ],
       htmlPorHash: new Map([[botaoFp.hash, '<button class="cursor-pointer">ok</button>']]),
     }),
