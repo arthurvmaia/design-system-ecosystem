@@ -6,6 +6,38 @@
 > dentro do repositório `design-system-ecosystem`. Sessões conduzidas com
 > Claude no Claude Code.
 
+## 🛟 Recuperação 2026-08-07 — navegação e miniatura da home real
+
+O programa de fases abaixo introduziu duas regressões, corrigidas em cinco
+fases de recuperação (um commit cada):
+
+1. **Navegação** (`95462d7`): a ordem tinha virado recomendação minha em vez da
+   definição do produto. Ordem correta e travada por teste:
+   **01 Início · 02 Importar temas · 03 Temas · 04 Editor · 05 Editar código ·
+   06 Projetos** (Projetos sempre por último).
+2. **Miniatura dos cards** (`a59b756`, `e419df5`, `a35637b`): os cards mostravam
+   um **mock geométrico** (círculo, barras, blocos) — tanto o antigo
+   `.mini-store` quanto o `PreviewMock` que a fase 2 do programa criou. Agora a
+   miniatura é **a HOME REAL**, pelo MESMO motor Liquid que abre o tema
+   (`GET /api/theme-render`), num iframe reduzido por escala e inerte.
+   `?projectId=` foi adicionado à mesma rota para o projeto renderizar o
+   **próprio estado salvo**; o `updatedAt` na URL invalida o cache sozinho.
+   O mock só sobrevive como estado de carregamento; sem ZIP preservado o card
+   **declara o motivo** em vez de fingir preview.
+
+**Armadilha que custou tempo e vale saber**: `IntersectionObserver` e
+`ResizeObserver` **não entregam callback quando a aba não está compositando
+quadros**. Com só eles, a miniatura ficava presa em "carregando" e, ao trocar
+de viewport, mantinha a escala anterior (home cortada no mobile). A geometria
+(`getBoundingClientRect`, `clientWidth`) é quem decide, com `scroll`/`resize`
+como rede de segurança e os observers como gatilho barato.
+
+Validação final (`53/53` testes, lint e build limpos): tema e projeto
+`lavenore` com 39 imagens reais e 14 seções na ordem certa, escala 0,73 no
+desktop e 0,2727 em 375px, zero mocks no caminho final, export ainda
+regravando só `settings_data.json`, Editar código com 288 arquivos e nenhum
+dado perdido.
+
 ## 🚀 Programa 2026-08-07 — fases 0 a 10 (um commit por fase)
 
 Roteiro completo em [docs/plano-editor-visual.md](docs/plano-editor-visual.md).

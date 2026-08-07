@@ -111,3 +111,12 @@ test("RECUPERAÇÃO F4: cada projeto mostra a home do SEU estado atual", async (
   assert.match(source, /v=\$\{encodeURIComponent\(project\.updatedAt\)\}/);
   assert.match(source, /unavailableReason=\{model\.renderable \? undefined :/, "sem ZIP, motivo declarado");
 });
+
+test("RECUPERAÇÃO F5: a escala da miniatura acompanha a largura em qualquer viewport", async () => {
+  const card = await readFile(new URL("../app/PreviewCard.tsx", import.meta.url), "utf8");
+  /* o ResizeObserver também não entrega callback sem composição: sem o resize
+     da janela, a home ficaria na escala da largura anterior ao trocar de
+     viewport (cortada no mobile) */
+  assert.match(card, /window\.addEventListener\("resize", apply/);
+  assert.match(card, /host\.clientWidth \/ baseWidth/, "escala derivada da largura real do card");
+});

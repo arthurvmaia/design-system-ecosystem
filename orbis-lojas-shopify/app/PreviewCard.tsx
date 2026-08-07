@@ -53,14 +53,23 @@ export function RealHomeThumbnail({ src, title, baseWidth = 1280 }: { src: strin
     };
   }, [visible]);
 
+  /* A escala segue a largura do card. O ResizeObserver sozinho não basta pelo
+     mesmo motivo do observer acima: sem composição de quadros ele não entrega
+     callback, e a home ficaria na escala da largura anterior — cortada ou
+     espremida ao trocar de viewport. O resize da janela é a rede de segurança. */
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const apply = () => setFrame({ scale: host.clientWidth / baseWidth, height: host.clientHeight });
+    const apply = () => setFrame((current) => {
+      const scale = host.clientWidth / baseWidth;
+      const height = host.clientHeight;
+      return current.scale === scale && current.height === height ? current : { scale, height };
+    });
     apply();
     const observer = new ResizeObserver(apply);
     observer.observe(host);
-    return () => observer.disconnect();
+    window.addEventListener("resize", apply, { passive: true });
+    return () => { observer.disconnect(); window.removeEventListener("resize", apply); };
   }, [baseWidth]);
 
   useEffect(() => {
