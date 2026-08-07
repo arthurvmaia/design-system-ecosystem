@@ -840,6 +840,38 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       (a) => a.target !== null && hashesMembros.has(a.target),
     );
     const html = entrada.htmlPorHash.get(secao.hash) ?? '';
+
+    /**
+     * Seção sem HTML no mapa não é seção — e emitir uma derrubava o site todo.
+     *
+     * O `?? ''` acima é honesto (o mapa pode não ter aquele hash: nó em shadow
+     * root, teto de coleta atingido, elemento que sumiu entre o mapa e a
+     * coleta), mas o segmento saía assim mesmo, com `htmlSnippet` vazio. E aí o
+     * `fila:concluir` valida o manifesto, o schema exige pelo menos um
+     * caractere, e a extração INTEIRA é recusada: um site com 4 seções vazias
+     * em 7 perdia também as 3 boas, mais o fundo, mais os botões.
+     *
+     * Medido ao sair de 7 sites escolhidos a dedo (0 vazios em 154 segmentos)
+     * para 46 quaisquer do catálogo: 5 dos 11 primeiros tinham pelo menos uma
+     * seção vazia, e nenhum deles chegava à Galeria.
+     *
+     * A saída é a mesma dos outros descartes — vira rejeitado com motivo, que é
+     * o que o motor já faz com o que não presta, em vez de contaminar o resto.
+     * O ramo dos comportamentos, mais abaixo, sempre teve esta guarda.
+     */
+    if (html.trim().length === 0) {
+      rejeitados.push({
+        hash: secao.hash,
+        category: 'other',
+        name: secao.hash,
+        htmlSnippet: '',
+        motivos: [
+          'A seção não tem HTML no mapa da captura: sem conteúdo não há o que pré-visualizar nem compor.',
+        ],
+      });
+      continue;
+    }
+
     // Ícones que ficaram como casca dentro DESTA seção, e os que já vieram
     // desenhados. É o que decide se a biblioteca de ícones ainda faz falta —
     // um item cujos ícones foram todos trazidos para o HTML não depende dela.
