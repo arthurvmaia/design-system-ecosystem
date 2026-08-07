@@ -1,4 +1,5 @@
 import {
+  CATEGORIAS_DE_PAGINA,
   type EtapaDeMarketing,
   type ObjetivoDoSite,
   ROLE_CATEGORIES,
@@ -215,8 +216,41 @@ export const montarKitAutomatico = (
     );
   }
 
+  /**
+   * Os comportamentos da página entram FORA da disputa por papéis.
+   *
+   * A montagem casa peça com etapa da sequência, e comportamento não é etapa de
+   * sequência nenhuma: ele não ocupa lugar na página. Por isso ele não constava
+   * de `ROLE_CATEGORIES` e simplesmente nunca era escolhido — o dono podia curtir
+   * uma animação na Galeria e ela jamais apareceria num kit automático, que foi
+   * exatamente a falta que ele relatou.
+   *
+   * Entra o da origem principal, para o efeito casar com o CSS das seções (o
+   * escopo por origem é o que decide se ele alcança os elementos), e um por
+   * categoria, porque dois observadores de rolagem sobre os mesmos elementos não
+   * dobram o efeito — só o custo.
+   */
+  const daPagina = pecas.filter((p) => CATEGORIAS_DE_PAGINA.includes(p.category));
+  const porCategoria = new Map<string, (typeof daPagina)[number]>();
+  for (const p of daPagina) {
+    const atual = porCategoria.get(p.category);
+    const melhorQueOAtual =
+      atual === undefined ||
+      (p.designSystemId === origemPrincipal && atual.designSystemId !== origemPrincipal);
+    if (melhorQueOAtual) porCategoria.set(p.category, p);
+  }
+  const comportamentos = [...porCategoria.values()];
+  if (comportamentos.length > 0) {
+    avisos.push(
+      `${comportamentos.length} comportamento(s) de página no kit (${comportamentos.map((c) => c.name).join(', ')}): valem para todas as seções, sem ocupar uma.`,
+    );
+  }
+
   return {
-    componentIds: escolhidos.map((p) => p.componentId as string),
+    componentIds: [
+      ...escolhidos.map((p) => p.componentId as string),
+      ...comportamentos.map((c) => c.id),
+    ],
     passos,
     origemPrincipal,
     nomeSugerido: `Kit ${objetivo.replace(/-/g, ' ')}`,

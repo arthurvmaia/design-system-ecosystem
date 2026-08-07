@@ -10,6 +10,7 @@ import {
   normalizarProjectLayout,
   papelParaCategoria,
   separarCamadasDePagina,
+  separarComportamentosDaPagina,
 } from './layout.js';
 
 /**
@@ -164,4 +165,71 @@ test('fase 3: toda categoria que a segmentação produz tem destino na geração
   assert.equal(papelParaCategoria('gallery'), 'gallery');
   assert.equal(papelParaCategoria('accordion'), 'faq');
   assert.equal(papelParaCategoria('timeline'), 'about');
+});
+
+test('comportamento sai da seção e vira da página; hero animado continua seção', () => {
+  const secoes = separarComportamentosDaPagina([
+    {
+      id: 's1',
+      nome: 'Abertura',
+      origem: 'kit',
+      pecas: [
+        { id: 'cmp_hero', name: 'Hero animado', category: 'hero', kind: 'animation' },
+        {
+          id: 'cmp_rev',
+          name: 'Aparecer conforme rola',
+          category: 'interaction',
+          kind: 'animation',
+        },
+      ],
+    },
+    {
+      id: 's2',
+      nome: 'Ponteiro',
+      origem: 'kit',
+      pecas: [{ id: 'cmp_cur', name: 'Cursor que segue', category: 'cursor', kind: 'animation' }],
+    },
+  ] as never);
+
+  // O hero FICA: `kind: 'animation'` também é o topo do site, e tirá-lo do
+  // fluxo esvaziaria a página. A linha é a categoria.
+  assert.equal(secoes.secoes.length, 1);
+  assert.deepEqual(
+    secoes.secoes[0]?.pecas.map((p) => p.id),
+    ['cmp_hero'],
+  );
+
+  // O comportamento e o cursor saem, e a seção que só tinha o cursor some.
+  assert.deepEqual(secoes.comportamentos.map((c) => c.id).sort(), ['cmp_cur', 'cmp_rev']);
+  assert.ok(
+    secoes.avisos.some(
+      (a) => a.includes('vale para todas as seções') || a.includes('página inteira'),
+    ),
+    'a saída é explicada',
+  );
+});
+
+test('o mesmo comportamento em duas seções vale UMA vez', () => {
+  // Dois observadores sobre os mesmos elementos não dobram o efeito, só o custo.
+  const r = separarComportamentosDaPagina([
+    {
+      id: 's1',
+      nome: 'A',
+      origem: 'kit',
+      pecas: [
+        { id: 'cmp_a', name: 'Bloco', category: 'hero', kind: 'component' },
+        { id: 'cmp_rev', name: 'Reveal', category: 'interaction', kind: 'animation' },
+      ],
+    },
+    {
+      id: 's2',
+      nome: 'B',
+      origem: 'kit',
+      pecas: [
+        { id: 'cmp_b', name: 'Outro', category: 'cta', kind: 'component' },
+        { id: 'cmp_rev', name: 'Reveal', category: 'interaction', kind: 'animation' },
+      ],
+    },
+  ] as never);
+  assert.equal(r.comportamentos.length, 1);
 });

@@ -31,6 +31,7 @@ import {
   reguasParaOrigem,
   resolverSecoes,
   separarCamadasDePagina,
+  separarComportamentosDaPagina,
   vaultCaptureV2Dir,
 } from '@ds/shared';
 import { lerCssDoBundle } from './cascata.js';
@@ -631,10 +632,14 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     );
   }
 
-  // ── Estrutura: seções do usuário, fundo separado ──────────────────────────
+  // ── Estrutura: seções do usuário, fundo e comportamento separados ─────────
   const resolvidas = resolverSecoes(entrada.layout.secoes, [...entrada.kit.components]);
   avisos.push(...resolvidas.avisos);
-  const separado = separarCamadasDePagina(resolvidas.secoes);
+  // Comportamento sai ANTES do fundo: uma peça pode ser as duas coisas (um
+  // fundo que reage à rolagem), e nesse caso o que decide é o que ela FAZ.
+  const comportamento = separarComportamentosDaPagina(resolvidas.secoes);
+  avisos.push(...comportamento.avisos);
+  const separado = separarCamadasDePagina(comportamento.secoes);
   avisos.push(...separado.avisos);
 
   const outputDir =
@@ -1047,6 +1052,42 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     }
   }
 
+  // ── Os comportamentos da página ───────────────────────────────────────────
+  //
+  // O HTML deles é quase nada — "Aparecer conforme rola" tem 191 bytes — e o
+  // que vale é o efeito colateral de `processarPeca`: o CSS da origem entra na
+  // cascata e o script local vai para o FIM do body, junto com os outros, onde
+  // encontra os elementos de todas as seções já montados. Um observador
+  // registrado antes de os elementos existirem não observaria nada, e é por isso
+  // que nenhum script fica inline no meio da página.
+  //
+  // Entram na cascata ANTES das seções, de propósito: comportamento é a base
+  // sobre a qual a seção manda, e não o contrário.
+  //
+  // Limitação conhecida, e vale dizer: o CSS de cada origem é escopado nela, e
+  // um comportamento vindo da origem A não alcança o CSS das seções da origem B.
+  // O SCRIPT alcança — ele é global e procura por seletor —, mas a regra que
+  // esconde o elemento antes da revelação é de cada origem. Comportamento
+  // escolhido da mesma origem das seções funciona inteiro; misturado, funciona
+  // no que compartilha a origem.
+  //
+  // O pouco de HTML vai num `<div data-ds-comportamento>` SOBRE o conteúdo, e
+  // não atrás como o fundo: o ponteiro personalizado precisa ficar por cima, e o
+  // resto não ocupa espaço nenhum de qualquer forma.
+  let comportamentoHtml = '';
+  if (comportamento.comportamentos.length > 0) {
+    const corpos = comportamento.comportamentos
+      .map((c) => processarPeca(c.id, undefined, 'comportamento da página'))
+      .filter((c): c is string => c !== null);
+    if (corpos.length > 0) {
+      const ids = comportamento.comportamentos.map((c) => c.id).join(' ');
+      comportamentoHtml = `\n<div data-ds-comportamento="${ids}" style="position:fixed;inset:0;pointer-events:none;z-index:9999">\n${corpos.join('\n')}\n</div>\n`;
+      avisos.push(
+        `${corpos.length} comportamento(s) da página aplicados: o CSS e o script deles valem para todas as seções, não para uma faixa.`,
+      );
+    }
+  }
+
   // ── As seções, na ordem do usuário ────────────────────────────────────────
   let bodyHtml = '';
   for (const secao of separado.secoes) {
@@ -1383,7 +1424,7 @@ ${faviconLink}${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
 <link rel="stylesheet" href="assets/responsivo.css"/>
 <link rel="stylesheet" href="assets/marca.css"/>
 </head>
-<body>${revelacao.html}
+<body>${revelacao.html}${comportamentoHtml}
 ${scriptsHtml}
 </body>
 </html>`;

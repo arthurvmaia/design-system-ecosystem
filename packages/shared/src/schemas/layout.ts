@@ -101,6 +101,17 @@ export const ROLE_CATEGORIES: Record<SectionRole, string[]> = {
 };
 
 /**
+ * Categorias que NÃO ocupam seção: elas valem para a página inteira.
+ *
+ * `ROLE_CATEGORIES` responde "que peça cabe nesta seção?", e comportamento não
+ * cabe em seção nenhuma — a pergunta certa para ele é outra. Sem esta lista, o
+ * montador de kit automático ignorava `interaction` e `cursor` por completo:
+ * elas não constavam de papel nenhum, então nunca eram escolhidas, e o dono não
+ * tinha como pôr uma animação no kit por mais que curtisse a peça na Galeria.
+ */
+export const CATEGORIAS_DE_PAGINA: readonly string[] = ['interaction', 'cursor'];
+
+/**
  * Como cada papel se chama em português, num lugar só.
  *
  * Antes o rótulo vivia dentro de cada blueprint, então o MESMO papel mudava de
@@ -387,6 +398,26 @@ export const ehPecaDeFundo = (c: { category: string; kind: string }): boolean =>
   c.category === 'background' || c.kind === 'effect';
 
 /**
+ * Uma peça de COMPORTAMENTO também não é uma seção — pela razão oposta à do
+ * fundo: ela não tem aparência própria nenhuma.
+ *
+ * "Aparecer conforme rola" tem 191 bytes de HTML. Posta no fluxo como
+ * `<section>`, vira uma faixa vazia no meio do site enquanto o efeito que ela
+ * traz — o que o dono de fato escolheu — não alcança elemento nenhum. O que ela
+ * carrega de útil é o SCRIPT e o CSS, e os dois valem para a página inteira.
+ *
+ * A linha é a CATEGORIA, e não o `kind`. `kind: 'animation'` também aparece em
+ * `hero` e `footer`, e ali é seção de verdade: as mesmas peças têm de 5 a 9 KB
+ * de HTML e são o topo e o rodapé do site. Separar por `kind` levaria o hero
+ * inteiro para fora do fluxo.
+ *
+ * `cursor` entra aqui pelo mesmo motivo: ponteiro personalizado é um elemento
+ * que segue o mouse na página toda, não um bloco dentro de uma seção.
+ */
+export const ehPecaDeComportamento = (c: { category: string; kind: string }): boolean =>
+  c.category === 'interaction' || c.category === 'cursor';
+
+/**
  * `ComponenteDoKitResumo` é o mínimo que a resolução precisa e NÃO carrega
  * `kind` — mas os componentes do kit no payload carregam, e o objeto chega
  * inteiro em runtime. Ler o campo por fora, com defesa, atende os dois
@@ -457,4 +488,62 @@ export const separarCamadasDePagina = (
     restantes.push({ ...s, pecas, origem: pecas.length === 0 ? 'criada' : s.origem });
   }
   return { secoes: restantes, camadas: [...camadas.values()], avisos };
+};
+
+/** Mesma defesa de `temCaraDeFundo`, para o resumo que não carrega `kind`. */
+const temCaraDeComportamento = (p: ComponenteDoKitResumo): boolean => {
+  const kind = (p as { kind?: unknown }).kind;
+  return ehPecaDeComportamento({
+    category: p.category,
+    kind: typeof kind === 'string' ? kind : '',
+  });
+};
+
+/**
+ * Retira as peças de comportamento das seções e as devolve como comportamento
+ * da PÁGINA.
+ *
+ * Gêmea de `separarCamadasDePagina`, e existe pela mesma razão prática: o dono
+ * pediu para escolher animações na Galeria e na Biblioteca e usá-las no kit.
+ * Antes disto, escolher uma produzia uma faixa vazia no meio do site — o efeito
+ * não chegava a lugar nenhum, porque o que ele faz depende de alcançar os
+ * elementos das OUTRAS seções, e uma `<section>` não alcança as irmãs.
+ *
+ * A diferença para o fundo está no destino: fundo vira camada fixa ATRÁS de
+ * tudo; comportamento não tem lugar no espaço — o CSS e o script dele passam a
+ * valer para a página inteira, e o pouco de HTML que ele tenha (o ponteiro que
+ * segue o mouse, por exemplo) fica por cima, fora do fluxo.
+ */
+export const separarComportamentosDaPagina = (
+  secoes: readonly SecaoResolvida[],
+): { secoes: SecaoResolvida[]; comportamentos: ComponenteDoKitResumo[]; avisos: string[] } => {
+  // Dedupe por id: o mesmo comportamento escolhido em duas seções vale UMA vez.
+  // Aplicá-lo duas vezes registraria dois observadores sobre os mesmos
+  // elementos — o efeito não dobra, só o custo.
+  const comportamentos = new Map<string, ComponenteDoKitResumo>();
+  const avisos: string[] = [];
+  const restantes: SecaoResolvida[] = [];
+  for (const s of secoes) {
+    const achados = s.pecas.filter(temCaraDeComportamento);
+    if (achados.length === 0) {
+      restantes.push(s);
+      continue;
+    }
+    for (const c of achados) if (!comportamentos.has(c.id)) comportamentos.set(c.id, c);
+    const pecas = s.pecas.filter((p) => !temCaraDeComportamento(p));
+    const rotulo = s.nome.trim() === '' ? 'Uma seção' : `A seção "${s.nome.trim()}"`;
+    const nomes = achados.map((c) => `"${c.name}"`).join(' e ');
+    const instrucao = s.instrucao?.trim() ?? '';
+    if (pecas.length === 0 && instrucao === '' && s.origem === 'kit') {
+      avisos.push(
+        `${rotulo} só tinha ${nomes}, que é comportamento e não conteúdo: passou a valer para a página inteira e a seção saiu.`,
+      );
+      continue;
+    }
+    avisos.push(
+      `${rotulo} perdeu ${nomes}: comportamento não ocupa lugar na página — ele passou a valer para todas as seções.`,
+    );
+    restantes.push({ ...s, pecas, origem: pecas.length === 0 ? 'criada' : s.origem });
+  }
+  return { secoes: restantes, comportamentos: [...comportamentos.values()], avisos };
 };
