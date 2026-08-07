@@ -509,6 +509,63 @@ const trocarFotosDaOrigem = (
   return { html: saida, usadas, mantidas };
 };
 
+/**
+ * Troca o VÍDEO que a peça trouxe da origem pelo vídeo do projeto.
+ *
+ * Gêmea da troca de fotos, e existe pelo mesmo motivo — com um agravante. Foto
+ * de outra empresa num site é constrangedor; vídeo de outra empresa é a marca
+ * dela falando, com a voz dela, dentro do site do cliente. E não havia troca
+ * nenhuma: o único tratamento de `<video>` na composição era APAGÁ-LO, e só
+ * quando o tema da origem era oposto ao da marca. Nos outros casos ele
+ * atravessava inteiro até o site entregue.
+ *
+ * Três lugares carregam o endereço e os três mudam juntos: o `src` do próprio
+ * `<video>`, o `src` de cada `<source>` (que é como o site oferece mp4 e webm
+ * ao mesmo tempo) e o `poster`, que é o quadro mostrado antes de dar play — sem
+ * ele, o primeiro instante do vídeo ainda é o da outra empresa.
+ *
+ * O `poster` recebe FOTO, não vídeo, e por isso a função aceita as duas filas:
+ * ele é uma imagem, e usar o caminho do mp4 ali não mostraria nada.
+ *
+ * Sem vídeo do projeto, o da origem FICA, pela mesma razão da foto: o buraco
+ * quebra o desenho, e o aviso diz o que resolver.
+ */
+const trocarVideosDaOrigem = (
+  html: string,
+  cmpId: string,
+  videos: readonly string[],
+  fotos: readonly string[],
+): { html: string; usados: number; mantidos: number } => {
+  let usados = 0;
+  let mantidos = 0;
+  const daOrigem = (u: string | undefined): boolean => u?.startsWith(`assets/${cmpId}/`) === true;
+
+  const saida = html.replace(/<video\b[^>]*>[\s\S]*?<\/video>/gi, (bloco) => {
+    const abertura = /<video\b[^>]*>/i.exec(bloco)?.[0] ?? '';
+    const src = /\bsrc\s*=\s*"([^"]+)"/i.exec(abertura)?.[1];
+    const fontes = [...bloco.matchAll(/<source\b[^>]*\bsrc\s*=\s*"([^"]+)"/gi)].map((m) => m[1]);
+    // Vídeo que não veio do acervo da origem não é da origem: pode ser mídia
+    // que o criativo já pôs, e trocá-la desfaria o trabalho dele.
+    if (!daOrigem(src) && !fontes.some(daOrigem)) return bloco;
+
+    const novo = videos[usados];
+    if (novo === undefined) {
+      mantidos += 1;
+      return bloco;
+    }
+    usados += 1;
+    const capa = fotos[0];
+    let saidaBloco = bloco
+      .replace(/(<video\b[^>]*\bsrc\s*=\s*")[^"]+(")/i, `$1${novo}$2`)
+      .replace(/(<source\b[^>]*\bsrc\s*=\s*")[^"]+(")/gi, `$1${novo}$2`);
+    if (capa !== undefined) {
+      saidaBloco = saidaBloco.replace(/(<video\b[^>]*\bposter\s*=\s*")[^"]+(")/i, `$1${capa}$2`);
+    }
+    return saidaBloco;
+  });
+  return { html: saida, usados, mantidos };
+};
+
 /** Os `<script src>` remotos de um documento de bundle, na ordem. */
 const scriptsRemotosDe = (html: string): string[] => {
   const out: string[] = [];
@@ -737,18 +794,24 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    * As mídias do projeto ANCORADAS em cada seção, na ordem em que chegaram.
    * É delas que sai a troca das fotos de origem.
    */
-  const midiaPorSecao = new Map<string, string[]>();
+  const midiaPorSecao = new Map<string, { fotos: string[]; videos: string[] }>();
   for (const m of entrada.midia ?? []) {
     if (m.secaoId === undefined) continue;
     // Marca não é conteúdo: a logo tem o caminho das variações e do favicon, e
     // entrar aqui faria o símbolo da empresa substituir a foto do hero.
     if (m.kind === 'logo' || m.kind === 'icon') continue;
-    const lista = midiaPorSecao.get(m.secaoId) ?? [];
-    lista.push(m.para);
+    const lista = midiaPorSecao.get(m.secaoId) ?? { fotos: [], videos: [] };
+    // Foto e vídeo em filas SEPARADAS, porque os buracos que eles preenchem são
+    // de formatos diferentes: pôr um `.mp4` no `src` de uma `<img>` não mostra
+    // nada, e uma `.jpg` no `<video>` também não. Uma fila só, na ordem de
+    // chegada, faria isso na primeira vez que o projeto tivesse os dois.
+    if (m.kind === 'video') lista.videos.push(m.para);
+    else lista.fotos.push(m.para);
     midiaPorSecao.set(m.secaoId, lista);
   }
-  /** A fila da seção em processamento; cada peça consome o que usar. */
+  /** As filas da seção em processamento; cada peça consome o que usar. */
   let fotosDaSecao: string[] = [];
+  let videosDaSecao: string[] = [];
 
   const processarPeca = (
     cmpId: string,
@@ -986,6 +1049,21 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
           `[${rotulo}] ${troca.mantidas} foto(s) do site de origem CONTINUAM na página: não havia mídia do projeto para esta seção. Gere as mídias automáticas ou envie imagens para ela — enquanto isso o site mostra a foto de outra empresa.`,
         );
       }
+      // O vídeo segue a mesma régua, e com mais urgência: vídeo de outra
+      // empresa é a marca dela falando dentro do site do cliente.
+      const tv = trocarVideosDaOrigem(corpo, cmpId, videosDaSecao, fotosDaSecao);
+      corpo = tv.html;
+      videosDaSecao = videosDaSecao.slice(tv.usados);
+      if (tv.usados > 0) {
+        avisos.push(
+          `[${rotulo}] ${tv.usados} vídeo(s) do site de origem trocado(s) pelo do projeto (com a capa junto).`,
+        );
+      }
+      if (tv.mantidos > 0) {
+        avisos.push(
+          `[${rotulo}] ${tv.mantidos} vídeo(s) do site de origem CONTINUAM na página: não havia vídeo do projeto para esta seção — o site entrega o vídeo de outra empresa até você enviar o seu.`,
+        );
+      }
     }
     // Frames da referência visual também moram no bundle e viajam junto.
     const framesDir = join(cmp.bundlePath, 'frames');
@@ -1095,8 +1173,10 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     const temCriado = criativo?.htmlCriado !== undefined && criativo.htmlCriado.trim().length > 0;
     const partes: string[] = [];
     const usados: string[] = [];
-    // A fila de fotos DESTA seção, que as peças dela vão consumindo.
-    fotosDaSecao = [...(midiaPorSecao.get(secao.id) ?? [])];
+    // As filas DESTA seção, que as peças dela vão consumindo.
+    const daSecao = midiaPorSecao.get(secao.id);
+    fotosDaSecao = [...(daSecao?.fotos ?? [])];
+    videosDaSecao = [...(daSecao?.videos ?? [])];
     for (const peca of secao.pecas) {
       const corpo = processarPeca(peca.id, criativo?.substituicoes, secao.nome || secao.slug, {
         descartarReferenciaVisual: temCriado,

@@ -1098,3 +1098,77 @@ test('peça que era sangria na origem NÃO recebe moldura', () => {
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+test('vídeo da origem é trocado pelo do projeto, com src, source e capa', () => {
+  // Foto de outra empresa num site é constrangedor; vídeo de outra empresa é a
+  // marca dela falando dentro do site do cliente. Até aqui o único tratamento
+  // de <video> era APAGÁ-LO, e só quando o tema era oposto — nos outros casos
+  // ele atravessava inteiro até a entrega.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-video-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const mediaDir = join(raiz, 'root', 'projects', 'prj_teste', 'media');
+    mkdirSync(mediaDir, { recursive: true });
+    writeFileSync(join(mediaDir, 'marca.mp4'), 'mp4', 'utf8');
+    writeFileSync(join(mediaDir, 'capa.jpg'), 'jpg', 'utf8');
+
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    mkdirSync(join(dir, 'assets', 'video'), { recursive: true });
+    writeFileSync(join(dir, 'assets', 'video', 'origem.mp4'), 'origem', 'utf8');
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<section><video src="assets/video/origem.mp4" poster="assets/video/frame.jpg" autoplay muted>
+<source src="assets/video/origem.mp4" type="video/mp4">
+</video></section>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_v',
+            name: 'Peça com vídeo',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Abertura', componentIds: ['cmp_v'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      midia: [
+        { de: 'marca.mp4', para: 'midia/marca.mp4', secaoId: 'sec_1', kind: 'video' },
+        { de: 'capa.jpg', para: 'midia/capa.jpg', secaoId: 'sec_1', kind: 'image' },
+      ],
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    // Os três lugares que carregam endereço mudam juntos: sem o poster, o
+    // primeiro instante do vídeo ainda seria o da outra empresa.
+    assert.match(index, /<video[^>]*src="midia\/marca\.mp4"/, 'o src do vídeo');
+    assert.match(index, /<source[^>]*src="midia\/marca\.mp4"/, 'e o do source');
+    assert.match(index, /poster="midia\/capa\.jpg"/, 'e a capa, que é foto e não vídeo');
+    assert.ok(!index.includes('assets/cmp_v/video/origem.mp4'), 'nada da origem sobrou');
+    assert.ok(
+      r.avisos.some((a) => a.includes('vídeo(s) do site de origem trocado')),
+      'a troca é declarada',
+    );
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
