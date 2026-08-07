@@ -580,7 +580,10 @@ function ThemeFullscreenPreview({ theme, onClose }: { theme: Theme; onClose: () 
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = anterior; };
   }, [onClose]);
 
-  const paginas = (shopify?.pages ?? []).filter((item) => !item.id.includes("-group")).slice(0, 8);
+  /* TODAS as páginas navegáveis: cortar a lista fazia o seletor mostrar a
+     página errada quando um link do tema levava a uma página de fora do corte
+     (login, 404, cadastro) — a loja ia certo e o rótulo mentia. */
+  const paginas = (shopify?.pages ?? []).filter((item) => !item.id.includes("-group"));
   return (
     <div className="fullscreen-preview" role="dialog" aria-modal="true" aria-label={`Prévia em tela cheia: ${theme.name}`}>
       <header className="fullscreen-preview-bar">

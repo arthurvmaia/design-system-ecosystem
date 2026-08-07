@@ -128,9 +128,9 @@ test("RECUPERAÇÃO F5: a escala da miniatura acompanha a largura em qualquer vi
 
 test("links do tema navegam a prévia em qualquer modo, e Visualizar abre em tela cheia", async () => {
   const render = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
-  /* o clique em link é tratado ANTES do desvio do modo de seleção: selecionar
-     a seção não pode mais impedir a navegação entre páginas */
-  assert.match(render, /if\(anchor\)\{var href=anchor\.getAttribute\("href"\);event\.preventDefault\(\);/);
+  /* o clique em link é tratado à parte do desvio do modo de seleção:
+     selecionar a seção não pode impedir a navegação entre páginas */
+  assert.match(render, /if\(anchor\)\{var externo=anchor\.getAttribute\("href"\)/);
   assert.match(render, /orbisNavigate:href/);
   const appShell = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
   assert.match(appShell, /function ThemeFullscreenPreview/);
@@ -140,4 +140,17 @@ test("links do tema navegam a prévia em qualquer modo, e Visualizar abre em tel
   assert.doesNotMatch(appShell, /ThemeModalPreview/, "o modal antigo saiu de cena");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /\.fullscreen-preview \{[^}]*position: fixed;[^}]*inset: 0/, "ocupa a tela toda");
+});
+
+test("a prévia respeita o JS do tema: gaveta do carrinho não vira troca de página", async () => {
+  const render = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
+  /* a decisão de navegar acontece na BOLHA, depois do tema: se ele tratou o
+     clique (carrinho que abre a gaveta, menu, modal), a prévia não navega */
+  assert.match(render, /if\(!anchor\|\|event\.defaultPrevented\)\{return;\}/);
+  /* a captura só impede sair para a internet — não atrapalha o tema */
+  assert.match(render, /externo\.indexOf\("https:\/\/"\)===0/);
+  const appShell = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
+  /* o seletor lista TODAS as páginas: cortar fazia o rótulo mentir quando um
+     link levava a login/404/cadastro */
+  assert.match(appShell, /const paginas = \(shopify\?\.pages \?\? \[\]\)\.filter\(\(item\) => !item\.id\.includes\("-group"\)\);/);
 });
