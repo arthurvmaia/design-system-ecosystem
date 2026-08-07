@@ -43,8 +43,9 @@ test("o editor expõe os controles de paridade com a Shopify", async () => {
   assert.match(source, /className="block-count"/);
   /* radio de verdade quando o schema traz opções */
   assert.match(source, /type === "radio" && setting\.options/);
-  /* miniaturas derivam do tema importado */
-  assert.match(source, /shopifyPalette\?\.accent \?\? palette\.hero\.accentColor/);
+  /* miniaturas derivam do tema importado, via fundação dos previews */
+  assert.match(source, /previewFromTheme\(theme\)/);
+  assert.match(source, /previewFromProject\(project\)/);
   /* sementes demo só quando o tema não referencia recursos */
   assert.match(source, /if \(!handles\.size\)/);
 });

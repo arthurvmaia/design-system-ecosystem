@@ -66,3 +66,11 @@ test("Fase 3: a área de Temas usa a fundação (card grande + biblioteca)", asy
   assert.match(source, /cardFor\(principal, "grande"\)/);
   assert.doesNotMatch(source, /mini-store/, "o mock antigo do card saiu de cena");
 });
+
+test("Fase 4: a área de Projetos usa a fundação com ações próprias", async () => {
+  const source = await readFile(new URL("../app/AppShell.tssx".replace("tssx","tsx"), import.meta.url), "utf8");
+  assert.match(source, /previewFromProject\(project\)/, "ProjectRow nasce do normalizador");
+  assert.match(source, /size="lista"/, "projetos em modo lista");
+  assert.match(source, /Tema: \{project\.themeName\}/, "tema relacionado visível");
+  assert.doesNotMatch(source, /project-thumb/, "o thumb antigo de três barras saiu");
+});

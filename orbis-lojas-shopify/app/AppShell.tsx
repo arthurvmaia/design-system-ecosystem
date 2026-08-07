@@ -47,9 +47,9 @@ import { normalizeCustomization } from "@/lib/business-rules.mjs";
 import { enderecoDoPortal } from "@/app/portal";
 import { DesligarOrbis } from "@/app/DesligarOrbis";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySectionSchema, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
-import { ShopifyLiveRender, ShopifyStorePreview, schemePalette, themePalette } from "@/app/ShopifyStorePreview";
+import { ShopifyLiveRender, ShopifyStorePreview, schemePalette } from "@/app/ShopifyStorePreview";
 import { PreviewCard } from "@/app/PreviewCard";
-import { previewFromTheme } from "@/app/preview-model";
+import { previewFromProject, previewFromTheme } from "@/app/preview-model";
 import { Orbis as OrbisNucleo } from "@/app/Orbis";
 import { EntryGate } from "@/app/EntryGate";
 import { ClientFlow } from "@/app/ClientFlow";
@@ -577,15 +577,16 @@ function ProjectsView({ data, onCreate, onEdit, onAction, busy }: { data: Bootst
 }
 
 function ProjectRow({ project, onEdit, onDelete, onDuplicate, onPublish, busy }: { project: Project; onEdit: () => void; onDelete?: () => void; onDuplicate?: () => void; onPublish?: () => void; busy?: string | null }) {
-  const palette = normalizeCustomization(project.customization);
-  const shopifyData = palette.shopify as ShopifyThemeImport | null;
-  const shopifyPalette = shopifyData ? themePalette(shopifyData.globalValues) : null;
+  const model = previewFromProject(project);
   return (
-    <article className="project-row">
-      <div className="project-thumb" style={{ "--project-color": shopifyPalette?.accent ?? palette.hero.accentColor, "--project-bg": shopifyPalette?.background ?? palette.hero.background } as React.CSSProperties}><span /><span /><span /></div>
-      <div className="project-info"><div><span className={`status status-${project.status}`}>{statusLabel(project.status)}</span><span>{project.themeName}</span></div><h3>{project.name}</h3><p>Atualizado {formatRelative(project.updatedAt)}</p></div>
-      <div className="project-actions"><button className="primary-button" onClick={onEdit}>Editar <ArrowRight size={15} /></button>{onDelete && <button className="icon-button delete-project-button" onClick={onDelete} aria-label={`Apagar ${project.name}`} title="Apagar projeto"><Trash2 size={16} /></button>}{onDuplicate && <button className="icon-button" onClick={onDuplicate} disabled={busy === "duplicateProject"} aria-label={`Duplicar ${project.name}`}><Copy size={16} /></button>}{onPublish && project.status !== "published" && <button className="icon-button" onClick={onPublish} disabled={busy === "publishProject"} aria-label={`Publicar ${project.name}`}><Globe2 size={16} /></button>}</div>
-    </article>
+    <PreviewCard model={model} size="lista" onOpen={onEdit} actions={<>
+      <button className="primary-button" onClick={onEdit}>Editar <ArrowRight size={15} /></button>
+      {onPublish && project.status !== "published" && <button className="secondary-button" onClick={onPublish} disabled={busy === "publishProject"}><Globe2 size={15} /> Publicar</button>}
+      {onDuplicate && <button className="icon-button" onClick={onDuplicate} disabled={busy === "duplicateProject"} aria-label={`Duplicar ${project.name}`} title="Duplicar projeto"><Copy size={16} /></button>}
+      {onDelete && <button className="icon-button delete-project-button" onClick={onDelete} aria-label={`Apagar ${project.name}`} title="Apagar projeto"><Trash2 size={16} /></button>}
+    </>}>
+      <p className="preview-card-desc">Tema: {project.themeName} · Atualizado {formatRelative(project.updatedAt)}</p>
+    </PreviewCard>
   );
 }
 
@@ -1415,7 +1416,6 @@ function Modal({ title, onClose, wide, children }: { title: string; onClose: () 
 }
 
 function tabTitle(tab: Tab) { return ({ home: "Início", extract: "Importar temas", code: "Editar código", themes: "Temas Shopify", projects: "Meus projetos", editor: "Editor visual" })[tab]; }
-function statusLabel(status: Project["status"]) { return ({ draft: "RASCUNHO", editing: "EM EDIÇÃO", published: "PUBLICADO", archived: "ARQUIVADO" })[status]; }
 function formatRelative(value: string) { const date = new Date(`${value.replace(" ", "T")}Z`); const minutes = Math.max(1, Math.round((Date.now() - date.getTime()) / 60000)); return minutes < 60 ? `há ${minutes} min` : minutes < 1440 ? `há ${Math.round(minutes / 60)} h` : `em ${new Intl.DateTimeFormat("pt-BR").format(date)}`; }
 function humanError(error: unknown) { const message = error instanceof Error ? error.message : "UNEXPECTED_ERROR"; if (message.includes("DATABASE_UNAVAILABLE")) return "Perdoe-me, senhor. O banco de dados ainda não está disponível neste ambiente."; if (message.includes("AUTHENTICATION_REQUIRED")) return "Senhor, abra o aplicativo pelo modo local para que eu possa servi-lo."; return "Perdoe-me, senhor. Algo não saiu como esperado. Permita-me tentar novamente."; }
 function shopifyImportError(message: string) { if (message.includes("SHOPIFY_ZIP_SIZE")) return "O ZIP precisa ter até 100 MB, senhor."; if (message.includes("SHOPIFY_ZIP_INVALID")) return "Senhor, este arquivo está corrompido ou não é um ZIP válido."; if (message.includes("SHOPIFY_THEME_STRUCTURE") || message.includes("SHOPIFY_SETTINGS_SCHEMA")) return "Vasculhei até os ZIPs internos, senhor, e não encontrei um tema Shopify válido."; if (message.includes("SHOPIFY_THEME_CONTENT")) return "O ZIP não contém seções ou templates válidos para eu carregar, senhor."; if (message.includes("SHOPIFY_ZIP_FILES") || message.includes("SHOPIFY_ZIP_EXPANDED_SIZE")) return "Este ZIP é grande ou complexo demais para eu carregar com segurança, senhor."; if (message.includes("Failed to fetch") || message.includes("NetworkError")) return "Meu carregador local ficou indisponível, senhor. Já tentei novamente; mantenha o aplicativo aberto e ordene Tentar novamente."; return "Não consegui carregar este tema, senhor. O arquivo pode estar incompleto ou não ser um tema Shopify."; }
