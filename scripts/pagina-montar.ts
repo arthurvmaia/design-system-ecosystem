@@ -46,7 +46,17 @@ const EntradaDoComando = z.object({
   // projeto. Sem a declaração, o zod descarta o campo em silêncio e o site sai
   // com a foto da outra empresa — foi exatamente assim que aconteceu.
   midia: z
-    .array(z.object({ de: z.string(), para: z.string(), secaoId: z.string().optional() }))
+    .array(
+      z.object({
+        de: z.string(),
+        para: z.string(),
+        secaoId: z.string().optional(),
+        // `kind` entra pela MESMA razão que `secaoId`: campo não declarado é
+        // campo descartado em silêncio. Ele separa foto de conteúdo da marca —
+        // sem ele, uma logo ancorada numa seção substitui a foto do hero.
+        kind: z.enum(['image', 'video', 'logo', 'icon', '3d', 'lottie', 'mockup']).optional(),
+      }),
+    )
     .default([]),
   outputDir: z.string().optional(),
 });

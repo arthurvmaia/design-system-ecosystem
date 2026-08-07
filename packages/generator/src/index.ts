@@ -472,6 +472,20 @@ export const generateSite = async (
       secaoId: sec.secaoId,
       substituicoes: sec.substitutions,
     })),
+    // A mídia do projeto ATRAVESSA para o montador — e não atravessava.
+    //
+    // Este caminho chamava o montador sem `midia` nenhuma, então ele não tinha
+    // por onde trocar as fotos que a peça trouxe da origem, e o site do cliente
+    // saía com o acervo fotográfico de outra empresa. A prova de que ninguém
+    // tinha reparado é que o manifesto já trazia tudo o que faltava: `path` é o
+    // mesmo `de` relativo a `projects/<id>/media/`, `secaoId` é onde o dono pôs
+    // a imagem e `kind` separa foto de logo.
+    midia: input.media.map((m) => ({
+      de: m.path,
+      para: `midia/${m.path}`,
+      secaoId: m.secaoId,
+      kind: m.kind,
+    })),
     outputDir,
   });
   for (const aviso of resultado.avisos) opts.onProgress?.(aviso);

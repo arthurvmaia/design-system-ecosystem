@@ -123,6 +123,15 @@ export type EntradaDaPagina = {
      * empresa e ninguém a trocou.
      */
     secaoId?: string;
+    /**
+     * O que esta mídia É, no vocabulário do manifesto do projeto.
+     *
+     * Sem isto, a logo da marca ancorada numa seção entraria na fila das fotos
+     * de conteúdo e substituiria a foto do hero pelo símbolo da empresa. Marca
+     * (`logo`, `icon`) tem caminho próprio — o das variações e do favicon.
+     * Ausente = conteúdo, que é como as entradas antigas se comportavam.
+     */
+    kind?: 'image' | 'video' | 'logo' | 'icon' | '3d' | 'lottie' | 'mockup';
   }[];
   /** Sobrescreve o destino (testes). Default: `generated/<iso>` do projeto. */
   outputDir?: string;
@@ -306,16 +315,24 @@ const respiroPerdido = (html: string): { base: number; desktop: number } | null 
  * O alvo é preciso: só `<img>`/`<source>` que apontam para os ASSETS da peça
  * (`assets/<cmpId>/…`), que é exatamente o acervo do site de origem. Ícone
  * desenhado em SVG inline, logo da marca e mídia que o criativo já colocou não
- * são tocados. Sobrando foto de origem sem substituta, ela é REMOVIDA junto com
- * o elemento: melhor um espaço vazio do que a casa de outra empresa.
+ * são tocados.
+ *
+ * Sobrando foto de origem sem substituta, ela FICA — e a regra já foi o
+ * contrário. Removê-la parecia o certo ("melhor um espaço vazio do que a casa
+ * de outra empresa") até se ver o que acontece quando NÃO HÁ mídia nenhuma: o
+ * caminho de API e a prévia do kit não passavam `midia`, a fila chegava vazia
+ * aqui e o site saía sem uma foto sequer — buraco em toda seção, layout
+ * desmontado, e nenhum aviso que explicasse. Um buraco quebra a ESSÊNCIA do
+ * desenho, que é justamente o que o kit empresta; uma foto trocável não. Ela
+ * sai no aviso, com o que fazer para resolver.
  */
 const trocarFotosDaOrigem = (
   html: string,
   cmpId: string,
   disponiveis: readonly string[],
-): { html: string; usadas: number; removidas: number } => {
+): { html: string; usadas: number; mantidas: number } => {
   let usadas = 0;
-  let removidas = 0;
+  let mantidas = 0;
   const saida = html.replace(/<img\b[^>]*>/gi, (tag) => {
     const src = /\bsrc\s*=\s*"([^"]+)"/i.exec(tag)?.[1];
     if (src === undefined || !src.startsWith(`assets/${cmpId}/`)) return tag;
@@ -324,8 +341,8 @@ const trocarFotosDaOrigem = (
     if (src.includes('/frames/')) return tag;
     const nova = disponiveis[usadas];
     if (nova === undefined) {
-      removidas += 1;
-      return '';
+      mantidas += 1;
+      return tag;
     }
     usadas += 1;
     // O `alt` também é da origem ("Sirocco no deserto durante a hora dourada")
@@ -337,7 +354,7 @@ const trocarFotosDaOrigem = (
       .replace(/\bsrcset\s*=\s*"[^"]*"/i, '')
       .replace(/\balt\s*=\s*"[^"]*"/i, 'alt=""');
   });
-  return { html: saida, usadas, removidas };
+  return { html: saida, usadas, mantidas };
 };
 
 /** Os `<script src>` remotos de um documento de bundle, na ordem. */
@@ -554,6 +571,9 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   const midiaPorSecao = new Map<string, string[]>();
   for (const m of entrada.midia ?? []) {
     if (m.secaoId === undefined) continue;
+    // Marca não é conteúdo: a logo tem o caminho das variações e do favicon, e
+    // entrar aqui faria o símbolo da empresa substituir a foto do hero.
+    if (m.kind === 'logo' || m.kind === 'icon') continue;
     const lista = midiaPorSecao.get(m.secaoId) ?? [];
     lista.push(m.para);
     midiaPorSecao.set(m.secaoId, lista);
@@ -774,9 +794,9 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
           `[${rotulo}] ${troca.usadas} foto(s) do site de origem trocada(s) pela mídia do projeto.`,
         );
       }
-      if (troca.removidas > 0) {
+      if (troca.mantidas > 0) {
         avisos.push(
-          `[${rotulo}] ${troca.removidas} foto(s) do site de origem removida(s): não havia mídia do projeto para esta seção. Gere as mídias automáticas ou envie imagens para ela.`,
+          `[${rotulo}] ${troca.mantidas} foto(s) do site de origem CONTINUAM na página: não havia mídia do projeto para esta seção. Gere as mídias automáticas ou envie imagens para ela — enquanto isso o site mostra a foto de outra empresa.`,
         );
       }
     }

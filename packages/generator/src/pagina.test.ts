@@ -729,7 +729,7 @@ test('quando o kit TEM peça de fundo, nada é herdado por cima', () => {
   }
 });
 
-test('foto do site de origem é trocada pela mídia do projeto, e removida quando não há', () => {
+test('foto do site de origem é trocada pela mídia do projeto, e mantida quando não há', () => {
   const raiz = mkdtempSync(join(tmpdir(), 'pagina-foto-'));
   const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
   try {
@@ -778,15 +778,141 @@ test('foto do site de origem é trocada pela mídia do projeto, e removida quand
     });
     const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
     assert.ok(index.includes('src="midia/marca-1.jpg"'), 'a primeira foto virou a do projeto');
-    assert.ok(!index.includes('assets/cmp_p/image/casa.jpg'), 'nenhuma foto da origem sobrou');
+    // A SEGUNDA continua sendo a da origem: sem substituta, a foto fica. Um
+    // buraco no lugar dela desmontaria o desenho, que é o que o kit empresta.
+    assert.equal(
+      (index.match(/assets\/cmp_p\/image\/casa\.jpg/g) ?? []).length,
+      1,
+      'a foto sem substituta continua na página',
+    );
     assert.ok(
       r.avisos.some((a) => a.includes('trocada(s) pela mídia do projeto')),
       'a troca é declarada',
     );
     assert.ok(
-      r.avisos.some((a) => a.includes('removida(s)')),
-      'e a que não teve substituta também',
+      r.avisos.some((a) => a.includes('CONTINUAM na página')),
+      'e a que ficou sem substituta é denunciada, com o que fazer',
     );
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('projeto SEM mídia nenhuma não sai sem foto nenhuma', () => {
+  // O caso que aconteceu de verdade: o caminho de API e a prévia do kit não
+  // passavam `midia`, a fila de fotos chegava vazia e TODA foto era removida —
+  // o site inteiro com buraco onde havia imagem, e ninguém entendia por quê.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-sem-midia-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    mkdirSync(join(dir, 'assets', 'image'), { recursive: true });
+    writeFileSync(join(dir, 'assets', 'image', 'casa.jpg'), 'origem', 'utf8');
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<section><img src="assets/image/casa.jpg" alt="Casa"></section>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_p',
+            name: 'Peça com foto',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Abertura', componentIds: ['cmp_p'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      // Sem `midia`: exatamente como o caminho de API chamava.
+      outputDir: join(raiz, 'saida'),
+    });
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.ok(index.includes('assets/cmp_p/image/casa.jpg'), 'a página continua com a foto');
+    assert.ok(
+      r.avisos.some((a) => a.includes('CONTINUAM na página')),
+      'e o aviso diz que ela é da origem e como resolver',
+    );
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('logo ancorada numa seção não substitui a foto de conteúdo', () => {
+  // A marca tem caminho próprio (variações + favicon). Se ela entrasse na fila
+  // das fotos, o símbolo da empresa tomaria o lugar da foto do hero.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-logo-foto-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const mediaDir = join(raiz, 'root', 'projects', 'prj_teste', 'media');
+    mkdirSync(mediaDir, { recursive: true });
+    writeFileSync(join(mediaDir, 'logo.svg'), '<svg/>', 'utf8');
+    writeFileSync(join(mediaDir, 'foto.jpg'), 'jpg', 'utf8');
+
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    mkdirSync(join(dir, 'assets', 'image'), { recursive: true });
+    writeFileSync(join(dir, 'assets', 'image', 'casa.jpg'), 'origem', 'utf8');
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<section><img src="assets/image/casa.jpg" alt="Casa"></section>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_p',
+            name: 'Peça com foto',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Abertura', componentIds: ['cmp_p'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      // A logo vem PRIMEIRO e ancorada na mesma seção: sem o `kind`, seria ela
+      // a substituir a foto.
+      midia: [
+        { de: 'logo.svg', para: 'midia/logo.svg', secaoId: 'sec_1', kind: 'logo' },
+        { de: 'foto.jpg', para: 'midia/foto.jpg', secaoId: 'sec_1', kind: 'image' },
+      ],
+      outputDir: join(raiz, 'saida'),
+    });
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.ok(index.includes('src="midia/foto.jpg"'), 'quem entrou foi a foto');
+    assert.ok(!index.includes('src="midia/logo.svg"'), 'a logo não virou foto de conteúdo');
   } finally {
     if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
     else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
