@@ -22,7 +22,9 @@ import {
   KitDesignSystem,
   type ProjectBranding,
   type ProjectLayout,
+  type ResultadoDeAceite,
   buildTypographyCss,
+  conferirSiteGerado,
   distribuirTokens,
   ehPecaDeFundo,
   escalaDeReferencia,
@@ -168,6 +170,14 @@ export type ResultadoDaPagina = {
    * entrega precisa saber.
    */
   independente: { fechadoEmSi: boolean; pendentes: string[]; externas: string[] };
+  /**
+   * O veredito da regra de aceite do site (`docs/regras-de-aceite.md`).
+   *
+   * `aprovado: false` significa DEFEITO — conserte o motor antes de entregar.
+   * `comPendencia: true` significa limite declarado: pode subir, mas vai para a
+   * tela de pendências com o motivo.
+   */
+  aceite: ResultadoDeAceite;
 };
 
 /** Troca cada chave pelo valor, uma vez; o que não casar vira aviso. */
@@ -795,6 +805,14 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   /** O mapa estrutural de cada origem, lido uma vez por montagem. */
   const cacheDoMapa = new Map<string, MapaDaOrigem | null>();
   const recoloracaoTotais = { origens: 0, reescritas: 0, mantidas: 0 };
+  /**
+   * O que a REGRA DE ACEITE do site precisa contar enquanto a página é montada.
+   *
+   * Contado aqui, e não relido do HTML no fim, porque só aqui se sabe a
+   * diferença entre "esta foto é da marca" e "esta foto é da origem e ficou por
+   * falta de substituta" — no HTML pronto as duas são só um `<img>`.
+   */
+  const paraOAceite = { fotosDaOrigem: 0, videosDaOrigem: 0, secoesVazias: [] as string[] };
   const retipografiaTotais = { reescritas: 0 };
   const reescalaTotais = { reescritas: 0, mantidas: 0 };
 
@@ -1057,6 +1075,7 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
         );
       }
       if (troca.mantidas > 0) {
+        paraOAceite.fotosDaOrigem += troca.mantidas;
         avisos.push(
           `[${rotulo}] ${troca.mantidas} foto(s) do site de origem CONTINUAM na página: não havia mídia do projeto para esta seção. Gere as mídias automáticas ou envie imagens para ela — enquanto isso o site mostra a foto de outra empresa.`,
         );
@@ -1072,6 +1091,7 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
         );
       }
       if (tv.mantidos > 0) {
+        paraOAceite.videosDaOrigem += tv.mantidos;
         avisos.push(
           `[${rotulo}] ${tv.mantidos} vídeo(s) do site de origem CONTINUAM na página: não havia vídeo do projeto para esta seção — o site entrega o vídeo de outra empresa até você enviar o seu.`,
         );
@@ -1204,6 +1224,7 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       partes.push(`<div data-ds-criado>\n${criativo.htmlCriado}\n</div>`);
     }
     if (partes.length === 0) {
+      paraOAceite.secoesVazias.push(secao.nome || secao.slug);
       avisos.push(
         `A seção "${secao.nome || secao.slug}" saiu vazia: sem peça em disco e sem HTML criado. Ela foi mantida para o problema aparecer na prévia, não sumir.`,
       );
@@ -1589,10 +1610,45 @@ ${scriptsHtml}
     );
   }
 
+  /**
+   * A REGRA DE ACEITE do site, aplicada antes de a montagem devolver.
+   *
+   * É o portão que o dono pediu: "uma etapa de conferência antes de gerar o
+   * site, assim a gente só sobe o que realmente passa pelas regras, e o que não
+   * passar você vai estudar e tentar passar; se não tiver como, pode seguir e
+   * deixar na tela de pendências".
+   *
+   * Por isso ela NÃO interrompe a montagem. O site é escrito de qualquer forma —
+   * interromper deixaria a pessoa sem nada para olhar, e olhar é justamente como
+   * se descobre o que consertar. O veredito viaja no resultado, e quem chama
+   * decide: consertar o motor, ou mandar para pendências com o motivo escrito.
+   *
+   * O contraste fica de fora aqui: medi-lo exige o navegador, e a montagem é
+   * determinística e sem rede. Ele é conferido na validação da prévia, que já
+   * abre a página.
+   */
+  const aceite = conferirSiteGerado({
+    html: finalHtml,
+    nomeDaMarca: entrada.branding.brandName ?? '',
+    refsQuebradas: pendentesEmDisco,
+    fotosDaOrigemMantidas: paraOAceite.fotosDaOrigem,
+    videosDaOrigemMantidos: paraOAceite.videosDaOrigem,
+    gridMedido: molduraPorOrigem.size > 0,
+    secoesVazias: paraOAceite.secoesVazias,
+    contrastesAbaixoDoPiso: 0,
+    temFavicon: faviconHref !== null,
+    pecasComMovimento: entrada.kit.components.filter((c) => c.kind === 'animation').length,
+  });
+  for (const v of aceite.vereditos) {
+    if (v.estado === 'passou') continue;
+    avisos.push(`[aceite ${v.codigo}] ${v.titulo}: ${v.motivo}`);
+  }
+
   return {
     outputDir,
     arquivos,
     avisos,
+    aceite,
     faltando,
     recoloracao: recoloracaoTotais,
     retipografia: retipografiaTotais,

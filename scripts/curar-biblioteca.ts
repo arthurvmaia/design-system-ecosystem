@@ -45,8 +45,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { getDb, tables } from '@ds/indexer';
 import {
+  type PecaParaAceite,
   SegmentsManifest,
   type SegmentsManifest as SegmentsManifestType,
+  conferirPecaDaGaleria,
   vaultSegmentsManifest,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
@@ -105,18 +107,39 @@ const avaliar = (seg: {
   let reprovaTipo: string | null = null;
 
   const html = seg.htmlSnippet ?? '';
-  const pequenaOk = PEQUENAS_POR_NATUREZA.has(seg.category);
-  if (!pequenaOk && html.length < MIN_HTML) {
-    reprova = `HTML de ${html.length} caracteres: sobra de recorte, não componente`;
-    reprovaTipo = 'HTML curto demais: sobra de recorte, não componente';
+
+  /**
+   * A REGRA DE ACEITE DA GALERIA manda aqui (`docs/regras-de-aceite.md`).
+   *
+   * Ela é o portão que o dono pediu: "uma etapa de conferência antes de você
+   * realmente colocar isso na galeria". A curadoria continua tendo a nota dela
+   * para ORDENAR, mas quem decide se a peça pode subir é a regra — senão haveria
+   * dois critérios, e o mais frouxo venceria na primeira pressa.
+   */
+  const aceite = conferirPecaDaGaleria({
+    categoria: seg.category,
+    kind: seg.kind,
+    htmlSnippet: html,
+    representacao: (insight?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
+    // A captura não guarda, por segmento, qual runtime trouxe script — isso
+    // mora no manifesto do bundle. Aqui a lista fica vazia e G1 passa; a
+    // conferência completa de G1 acontece na compilação, onde o bundle existe.
+    runtimes: [],
+    movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
+    classesDeRevelacao: [],
+    temObservadorDeRolagem: false,
+    refsQuebradas: [],
+    assetsNaOrigem: [],
+  });
+  const primeiraReprovacao = aceite.vereditos.find((v) => v.estado === 'reprovou');
+  if (primeiraReprovacao !== undefined) {
+    reprova = `${primeiraReprovacao.codigo}: ${primeiraReprovacao.motivo}`;
+    reprovaTipo = `${primeiraReprovacao.codigo} — ${primeiraReprovacao.titulo}`;
   }
+  const pendencias = aceite.vereditos.filter((v) => v.estado === 'pendente');
   if (insight?.support === 'nao-suportado') {
     reprova = 'a captura não reproduz este item';
     reprovaTipo = 'a captura não reproduz este item';
-  }
-  if (insight?.representation === 'referencia-visual') {
-    reprova = 'é uma FOTO da região, não um componente: não aceita copy nem recoloração';
-    reprovaTipo = 'foto congelada da região (referência visual)';
   }
   if (insight?.comparacaoVisual?.ok === false) {
     reprova = `o bundle não bate com o que a captura viu (${Math.round((insight.comparacaoVisual.delta ?? 0) * 100)}% de diferença)`;
@@ -126,6 +149,8 @@ const avaliar = (seg: {
     reprova = 'peça promovida como imagem congelada do site de origem';
     reprovaTipo = 'imagem congelada do site de origem';
   }
+
+  for (const p of pendencias) motivos.push(`pendência ${p.codigo}`);
 
   const fid = insight?.fidelity ?? 0;
   nota += fid;

@@ -155,17 +155,31 @@ export const conferirPecaDaGaleria = (p: PecaParaAceite): ResultadoDeAceite => {
       : { codigo: 'G5', titulo: 'Há componente ali', estado: 'passou', motivo: '' },
   );
 
-  // G6 — o que a peça diz que é, ela é.
-  const movimentoSemRotulo =
-    p.movimentoProprio && p.kind !== 'animation' && !PEQUENAS_POR_NATUREZA.has(p.categoria);
+  /**
+   * G6 — o que a peça diz que é, ela é.
+   *
+   * A primeira versão desta regra exigia `kind: 'animation'` de TODA peça com
+   * movimento, e o acervo mostrou o erro na hora: 162 reprovações. Um card com
+   * fade-in continua sendo um card — o movimento é adjetivo dele, não a
+   * identidade. Forçar a reclassificação teria enchido a Galeria de "animações"
+   * que são, na verdade, cartões e rodapés.
+   *
+   * O que o dono pediu era outra coisa: que a ANIMAÇÃO EM SI — o efeito, o
+   * comportamento, o ponteiro — fosse classificável, para poder ser escolhida.
+   * Isso é sobre as categorias de comportamento, e sobre não promover movimento
+   * a imagem congelada.
+   */
+  const comportamentoMalRotulado = PEQUENAS_POR_NATUREZA.has(p.categoria) && p.kind !== 'animation';
+  const movimentoViradoImagem = p.movimentoProprio && p.kind === 'asset';
   v.push(
-    movimentoSemRotulo
+    comportamentoMalRotulado || movimentoViradoImagem
       ? {
           codigo: 'G6',
           titulo: 'O que a peça diz que é, ela é',
           estado: 'reprovou',
-          motivo:
-            'a peça se mexe e não está classificada como animação: assim ela nunca é encontrada por quem procura movimento.',
+          motivo: movimentoViradoImagem
+            ? 'a peça se mexe e foi promovida como imagem congelada do site de origem: ela não aceita a copy nem a cor da marca.'
+            : `peça de ${p.categoria} precisa ser classificada como animação para poder ser escolhida como comportamento da página.`,
         }
       : { codigo: 'G6', titulo: 'O que a peça diz que é, ela é', estado: 'passou', motivo: '' },
   );

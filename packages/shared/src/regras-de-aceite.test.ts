@@ -115,8 +115,24 @@ test('G5: recorte curto reprova, mas comportamento e cursor escapam', () => {
   }
 });
 
-test('G6: peça que se mexe sem ser classificada como animação reprova', () => {
+test('G6: card com fade-in continua sendo card, e isso PASSA', () => {
+  // A primeira versão da regra exigia `kind: animation` de toda peça com
+  // movimento e reprovou 162 do acervo. O movimento é adjetivo do card, não a
+  // identidade dele — reclassificar encheria a Galeria de "animações" que são
+  // cartões e rodapés.
   const r = conferirPecaDaGaleria(peca({ movimentoProprio: true, kind: 'component' }));
+  assert.equal(cod(r, 'G6')?.estado, 'passou');
+});
+
+test('G6: comportamento de página TEM de ser classificado como animação', () => {
+  // Aqui a classificação é a identidade: sem ela a peça nunca é encontrada por
+  // quem procura um efeito para o site.
+  const r = conferirPecaDaGaleria(peca({ categoria: 'interaction', kind: 'component' }));
+  assert.equal(cod(r, 'G6')?.estado, 'reprovou');
+});
+
+test('G6: movimento promovido a imagem congelada reprova', () => {
+  const r = conferirPecaDaGaleria(peca({ movimentoProprio: true, kind: 'asset' }));
   assert.equal(cod(r, 'G6')?.estado, 'reprovou');
 });
 
