@@ -323,6 +323,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .csp-note { font-size: 10px; color: #7f9797; line-height: 1.5; }
 @media (max-width: 900px) { .cf-layout { grid-template-columns: 1fr; } .cf-preview { position: static; } }
 
+.editor-project-switch { height: 30px; max-width: 260px; padding: 0 8px; font-size: 11px; }
+
+.theme-switcher { display: grid; gap: 5px; min-width: 220px; }
+.theme-switcher span { font: 600 9px var(--font-geist-mono); letter-spacing: 0.1em; text-transform: uppercase; color: #7f9797; }
+.theme-switcher select { height: 34px; padding: 0 10px; }
+
 .themes-shelf { display: grid; gap: 18px; }
 .preview-card-grande .preview-card-media { aspect-ratio: 21 / 10; }
 .preview-card-grande .preview-card-head h3 { font-size: 17px; }

@@ -62,8 +62,13 @@ test("PreviewCard cobre carregamento, erro de imagem e fallback com paleta", asy
 test("Fase 3: a área de Temas usa a fundação (card grande + biblioteca)", async () => {
   const source = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
   assert.match(source, /previewFromTheme\(theme\)/, "ThemeCard nasce do normalizador");
-  assert.match(source, /const \[principal, \.\.\.biblioteca\]/, "primeiro tema em destaque, demais na grade");
+  /* o tema ESCOLHIDO fica em destaque; os demais na biblioteca */
+  assert.match(source, /const principal = destaque \?\? data\.themes\[0\];/);
+  assert.match(source, /const biblioteca = data\.themes\.filter\(\(theme\) => theme\.id !== principal\.id\);/);
   assert.match(source, /cardFor\(principal, "grande"\)/);
+  /* seletores para trocar de tema e de projeto sem sair da tela */
+  assert.match(source, /className="theme-switcher"/, "seletor de tema em destaque");
+  assert.match(source, /className="editor-project-switch"/, "seletor de projeto no editor");
   assert.doesNotMatch(source, /mini-store/, "o mock antigo do card saiu de cena");
 });
 

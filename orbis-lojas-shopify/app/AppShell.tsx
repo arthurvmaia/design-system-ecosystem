@@ -251,7 +251,7 @@ export function AppShell({ identity }: { identity: Identity }) {
                 setBusy(String(payload.action));
                 try { await action(payload); setToast(message); } catch (requestError) { setError(humanError(requestError)); } finally { setBusy(null); }
               }} busy={busy} />}
-              {tab === "editor" && <EditorView key={selectedProject?.id ?? "no-project"} project={selectedProject} onChooseProject={() => setTab("projects")} onDataChange={loadData} onMessage={setToast} />}
+              {tab === "editor" && <EditorView key={selectedProject?.id ?? "no-project"} project={selectedProject} projects={data.projects} onSelectProject={setSelectedProjectId} onChooseProject={() => setTab("projects")} onDataChange={loadData} onMessage={setToast} />}
             </>
           )}
         </main>
@@ -522,13 +522,27 @@ function FlowCard({ index, icon: Icon, title, body, onClick }: { index: string; 
 
 function ThemesView({ data, onPreview, onUse, onEditCode, onFavorite, onDelete, busy }: { data: BootstrapData; onPreview: (theme: Theme) => void; onUse: (theme: Theme) => void; onEditCode: (theme: Theme) => void; onFavorite: (id: string, favorite: boolean) => void; onDelete: (id: string) => Promise<void>; busy: string | null }) {
   const [deleteTarget, setDeleteTarget] = useState<Theme | null>(null);
+  /* qual tema fica em destaque; troca pelo seletor do cabeçalho */
+  const [destaqueId, setDestaqueId] = useState<string | null>(null);
+  const destaque = data.themes.find((theme) => theme.id === destaqueId) ?? data.themes[0];
   return (
     <div className="content-wrap page-view">
-      <PageIntro eyebrow="TEMAS · 03" title="Sua coleção, senhor." body="Cada tema que o senhor me confia aparece aqui com suas páginas, seções, recursos e configurações." />
+      <div className="page-intro-row">
+        <PageIntro eyebrow="TEMAS · 03" title="Sua coleção, senhor." body="Cada tema que o senhor me confia aparece aqui com suas páginas, seções, recursos e configurações." />
+        {data.themes.length > 1 && (
+          <label className="theme-switcher">
+            <span>Tema em destaque</span>
+            <select value={destaque?.id ?? ""} onChange={(event) => setDestaqueId(event.target.value)} aria-label="Escolher o tema em destaque">
+              {data.themes.map((theme) => <option key={theme.id} value={theme.id}>{theme.name}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
       {data.themes.length ? (() => {
-        /* como na Shopify: o primeiro tema em card grande, os demais na
-           biblioteca em grade */
-        const [principal, ...biblioteca] = data.themes;
+        /* o tema escolhido ocupa o card grande (como o tema publicado na
+           Shopify); os outros ficam na biblioteca abaixo */
+        const principal = destaque ?? data.themes[0];
+        const biblioteca = data.themes.filter((theme) => theme.id !== principal.id);
         const cardFor = (theme: Theme, size: "grande" | "media") => <ThemeCard key={theme.id} theme={theme} size={size} favorite={data.favorites.includes(theme.id)} onPreview={() => onPreview(theme)} onUse={() => onUse(theme)} onEditCode={() => onEditCode(theme)} onFavorite={() => onFavorite(theme.id, !data.favorites.includes(theme.id))} onDelete={() => setDeleteTarget(theme)} deleting={busy === "deleteTheme"} />;
         return <div className="themes-shelf">
           {cardFor(principal, "grande")}
@@ -674,7 +688,7 @@ const PAGE_PRIMARY_SECTION: Record<StorePage, SectionKey> = {
   home: "hero", product: "productPage", collection: "collection", search: "search", cart: "cart", blog: "blog",
 };
 
-function EditorView({ project, onChooseProject, onDataChange, onMessage }: { project: Project | null; onChooseProject: () => void; onDataChange: () => Promise<void>; onMessage: (message: string) => void }) {
+function EditorView({ project, projects, onSelectProject, onChooseProject, onDataChange, onMessage }: { project: Project | null; projects: Project[]; onSelectProject: (id: string) => void; onChooseProject: () => void; onDataChange: () => Promise<void>; onMessage: (message: string) => void }) {
   const [device, setDevice] = useState<Device>("desktop");
   const [page, setPage] = useState<StorePage>("home");
   const [selectedSection, setSelectedSection] = useState<SectionKey>("hero");
@@ -894,7 +908,16 @@ function EditorView({ project, onChooseProject, onDataChange, onMessage }: { pro
   return (
     <div className="editor-shell">
       <div className="editor-toolbar">
-        <div className="editor-project"><span className="status status-editing">EM EDIÇÃO</span><strong>{project.name}</strong></div>
+        <div className="editor-project">
+          <span className="status status-editing">EM EDIÇÃO</span>
+          {/* trocar o que está sendo editado sem sair do editor: a lista traz
+              TODOS os projetos, não só o do último tema importado */}
+          {projects.length > 1
+            ? <select className="editor-project-switch" value={project.id} onChange={(event) => onSelectProject(event.target.value)} aria-label="Projeto que está sendo editado" title="Trocar de projeto/tema">
+                {projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            : <strong>{project.name}</strong>}
+        </div>
         <div className="device-switch" aria-label="Largura da prévia">{([{ id: "desktop", icon: Monitor, label: "Desktop" }, { id: "tablet", icon: Tablet, label: "Tablet" }, { id: "mobile", icon: Smartphone, label: "Celular" }] as const).map(({ id, icon: Icon, label }) => <button key={id} className={device === id ? "active" : ""} onClick={() => setDevice(id)} aria-label={label} title={label}><Icon size={16} /></button>)}</div>
         {shopify && <div className="mode-switch" role="radiogroup" aria-label="Modo da prévia">{([["selecionar", "Selecionar", "Clique escolhe a seção ou o bloco; nada navega nem compra"], ["interagir", "Interagir", "Menus, abas e sliders do tema funcionam; links trocam de página"], ["previa", "Prévia", "Visualização limpa, sem contornos do editor"]] as const).map(([id, label, hint]) => <button key={id} role="radio" aria-checked={previewMode === id} className={previewMode === id ? "active" : ""} onClick={() => setPreviewMode(id)} title={hint}>{label}</button>)}</div>}
         <div className="editor-controls"><button className="icon-button" onClick={undo} disabled={!past.length} aria-label="Desfazer"><Undo2 size={16} /></button><button className="icon-button" onClick={redo} disabled={!future.length} aria-label="Refazer"><Redo2 size={16} /></button><span className={`save-state ${saveState}`}><span />{saveState === "saving" ? "Guardando, senhor…" : saveState === "error" ? "Falhei ao guardar, senhor" : "Guardado, senhor"}</span>{shopify && <>
