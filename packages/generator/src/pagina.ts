@@ -1464,6 +1464,34 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   // sai idêntico ao de antes: nenhum token novo, nenhuma mudança de aparência.
   escrever('assets/marca.css', buildBrandingCss(entrada.branding, referencia?.escala));
 
+  /**
+   * A folha dos RETOQUES — nasce vazia e é a ÚLTIMA da cascata.
+   *
+   * O dono pediu um botão em cada site gerado para dizer "esse título está
+   * pequeno", "esse azul não é o meu azul". A pergunta que decide o desenho é
+   * onde esse pedido pousa.
+   *
+   * Regerar a página inteira é o caminho óbvio e é o errado: refaz tudo o que já
+   * estava bom, paga a composição de novo, e o retoque some na geração seguinte.
+   * Editar o `index.html` à mão é pior — destrói a reprodutibilidade e não há
+   * como desfazer.
+   *
+   * Então o retoque pousa aqui. Emitida SEMPRE, mesmo vazia, para que ajustar
+   * seja só escrever nela; e ligada por último no `<head>` para vencer a cascata
+   * sem precisar de um `!important` sequer. A composição original fica intacta, e
+   * desfazer um ajuste é apagar o bloco dele.
+   */
+  escrever(
+    'assets/ajustes.css',
+    [
+      '/* Retoques pedidos DEPOIS da geração.',
+      '   Cada bloco traz o pedido que o originou; apagar o bloco desfaz o',
+      '   ajuste. Esta folha é a última da cascata, então o que estiver aqui',
+      '   vence sem precisar de !important. */',
+      '',
+    ].join('\n'),
+  );
+
   const fontImportUrl = buildTypographyCss(entrada.branding.typography).importUrl;
   const fontLinks = fontImportUrl
     ? `<link rel="preconnect" href="https://fonts.googleapis.com"/>\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>\n<link rel="stylesheet" href="${fontImportUrl}"/>\n`
@@ -1515,6 +1543,7 @@ ${faviconLink}${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
 <link rel="stylesheet" href="assets/criadas.css"/>
 <link rel="stylesheet" href="assets/responsivo.css"/>
 <link rel="stylesheet" href="assets/marca.css"/>
+<link rel="stylesheet" href="assets/ajustes.css"/>
 </head>
 <body>${revelacao.html}${comportamentoHtml}
 ${scriptsHtml}

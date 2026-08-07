@@ -1,12 +1,29 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { getDb, tables } from '@ds/indexer';
-import { type ProjectId, ehNomeDeVersao, ehProjectId, projectGeneratedDir } from '@ds/shared';
+import {
+  AjustesDoSite,
+  type ProjectId,
+  ehNomeDeVersao,
+  ehProjectId,
+  enqueueJob,
+  projectGeneratedDir,
+} from '@ds/shared';
+import { zValidator } from '@hono/zod-validator';
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { z } from 'zod';
 
 export const meusProjetosRoute = new Hono();
 
@@ -178,4 +195,82 @@ meusProjetosRoute.get('/:id', (c) => {
   const row = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
   if (!row) return c.json({ error: 'not_found' }, 404);
   return c.json({ item: { ...row, versoes: listarVersoes(id) } });
+});
+
+// ── Retoques num site já gerado ─────────────────────────────────────────────
+//
+// O dono pediu um botão em cada site para dizer, em texto livre, o que quer
+// diferente: "esse título está pequeno", "esse azul não é o meu azul".
+//
+// O pedido NÃO regera o site. O site entregue é independente (carrega cópia de
+// todos os assets, conferido em `montarPaginaDoKit`), então o retoque pousa
+// nele: a montagem emite `assets/ajustes.css` vazia e ligada por último na
+// cascata, e é lá que o ajuste é escrito. A composição original fica intacta e
+// desfazer é apagar um bloco.
+//
+// Quem escreve o CSS é o agente, pela fila — julgar "mais destacado" é trabalho
+// de quem enxerga a página, não de uma regra. A rota só registra e enfileira.
+
+const PedidoDeAjuste = z.object({ pedido: z.string().min(3).max(2000) });
+
+/** O arquivo de histórico daquela versão. Fica AO LADO do site, não no banco:
+ *  baixar o .zip leva o histórico junto, e apagar a versão não deixa órfão. */
+const caminhoDosAjustes = (id: ProjectId, versao: string): string =>
+  join(projectGeneratedDir(id), versao, 'ajustes.json');
+
+const lerAjustes = (id: ProjectId, versao: string): AjustesDoSite => {
+  const p = caminhoDosAjustes(id, versao);
+  if (!existsSync(p)) return { formato: 1, ajustes: [] };
+  try {
+    return AjustesDoSite.parse(JSON.parse(readFileSync(p, 'utf8')));
+  } catch {
+    return { formato: 1, ajustes: [] };
+  }
+};
+
+meusProjetosRoute.get('/:id/ajustes', (c) => {
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
+  const versao = c.req.query('versao') ?? listarVersoes(id)[0]?.timestamp;
+  if (versao === undefined || !ehNomeDeVersao(versao)) {
+    return c.json({ error: 'versao_nao_encontrada' }, 404);
+  }
+  return c.json({ versao, ...lerAjustes(id, versao) });
+});
+
+meusProjetosRoute.post('/:id/ajustes', zValidator('json', PedidoDeAjuste), (c) => {
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
+
+  const versoes = listarVersoes(id);
+  const pedida = c.req.query('versao');
+  const versao = pedida === undefined ? versoes[0]?.timestamp : pedida;
+  if (versao === undefined || !ehNomeDeVersao(versao)) {
+    return c.json({ error: 'versao_nao_encontrada' }, 404);
+  }
+  const dir = join(projectGeneratedDir(id), versao);
+  if (!existsSync(dir)) return c.json({ error: 'versao_nao_encontrada' }, 404);
+
+  const { pedido } = c.req.valid('json');
+  const atual = lerAjustes(id, versao);
+  const novo = {
+    id: `ajt_${Date.now().toString(36)}`,
+    pedido: pedido.trim(),
+    pedidoEm: Date.now(),
+    estado: 'pendente' as const,
+    aplicadoEm: null,
+    css: '',
+    resposta: '',
+  };
+  const conteudo: AjustesDoSite = { formato: 1, ajustes: [...atual.ajustes, novo] };
+  writeFileSync(caminhoDosAjustes(id, versao), JSON.stringify(conteudo, null, 2), 'utf8');
+
+  const projeto = getDb().select().from(tables.projects).where(eq(tables.projects.id, id)).get();
+  const job = enqueueJob('ajustar', `Ajustar — ${projeto?.name ?? id}`, {
+    projectId: id,
+    versao,
+    ajusteId: novo.id,
+    pedido: novo.pedido,
+  });
+  return c.json({ ajuste: novo, job }, 202);
 });

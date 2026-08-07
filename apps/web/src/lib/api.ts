@@ -1,4 +1,5 @@
 import type {
+  AjusteDoSite,
   AncoraDeRolagem,
   GovernancaDoKit,
   IdentidadeVerbal,
@@ -929,4 +930,20 @@ export const api = {
   meusProjetosContagem: () => jsonFetch<{ total: number }>('/api/meus-projetos/contagem'),
   abrirPasta: (id: string) =>
     jsonFetch<{ ok: boolean }>(`/api/meus-projetos/${id}/abrir-pasta`, { method: 'POST' }),
+  /**
+   * Os retoques pedidos para uma versão gerada, e o pedido novo.
+   *
+   * Não regera o site: o pedido vira job e o ajuste pousa no
+   * `assets/ajustes.css` daquela versão, que a montagem emite vazio e liga por
+   * último na cascata.
+   */
+  ajustesDoSite: (id: string, versao?: string) =>
+    jsonFetch<{ versao: string; formato: number; ajustes: AjusteDoSite[] }>(
+      `/api/meus-projetos/${id}/ajustes${versao ? `?versao=${encodeURIComponent(versao)}` : ''}`,
+    ),
+  pedirAjuste: (id: string, pedido: string, versao?: string) =>
+    jsonFetch<{ ajuste: AjusteDoSite; job: { id: string } }>(
+      `/api/meus-projetos/${id}/ajustes${versao ? `?versao=${encodeURIComponent(versao)}` : ''}`,
+      { method: 'POST', body: JSON.stringify({ pedido }) },
+    ),
 };
