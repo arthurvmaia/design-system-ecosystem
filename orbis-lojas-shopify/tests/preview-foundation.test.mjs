@@ -58,3 +58,11 @@ test("PreviewCard cobre carregamento, erro de imagem e fallback com paleta", asy
   assert.match(source, /--pc-accent/, "o mock é pintado pela paleta do modelo");
   assert.match(source, /aria-label/, "cartão acessível");
 });
+
+test("Fase 3: a área de Temas usa a fundação (card grande + biblioteca)", async () => {
+  const source = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
+  assert.match(source, /previewFromTheme\(theme\)/, "ThemeCard nasce do normalizador");
+  assert.match(source, /const \[principal, \.\.\.biblioteca\]/, "primeiro tema em destaque, demais na grade");
+  assert.match(source, /cardFor\(principal, "grande"\)/);
+  assert.doesNotMatch(source, /mini-store/, "o mock antigo do card saiu de cena");
+});

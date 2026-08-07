@@ -48,6 +48,8 @@ import { enderecoDoPortal } from "@/app/portal";
 import { DesligarOrbis } from "@/app/DesligarOrbis";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySectionSchema, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
 import { ShopifyLiveRender, ShopifyStorePreview, schemePalette, themePalette } from "@/app/ShopifyStorePreview";
+import { PreviewCard } from "@/app/PreviewCard";
+import { previewFromTheme } from "@/app/preview-model";
 import { Orbis as OrbisNucleo } from "@/app/Orbis";
 import { EntryGate } from "@/app/EntryGate";
 import { ClientFlow } from "@/app/ClientFlow";
@@ -522,37 +524,34 @@ function ThemesView({ data, onPreview, onUse, onEditCode, onFavorite, onDelete, 
   return (
     <div className="content-wrap page-view">
       <PageIntro eyebrow="TEMAS · 03" title="Sua coleção, senhor." body="Cada tema que o senhor me confia aparece aqui com suas páginas, seções, recursos e configurações." />
-      {data.themes.length ? <div className={data.themes.length === 1 ? "single-theme-grid" : "theme-grid imported-theme-grid"}>{data.themes.map((theme, index) => <ThemeCard key={theme.id} theme={theme} index={index} favorite={data.favorites.includes(theme.id)} onPreview={() => onPreview(theme)} onUse={() => onUse(theme)} onEditCode={() => onEditCode(theme)} onFavorite={() => onFavorite(theme.id, !data.favorites.includes(theme.id))} onDelete={() => setDeleteTarget(theme)} deleting={busy === "deleteTheme"} />)}</div> : <EmptyState icon={LayoutTemplate} title="Nenhum tema sob minha guarda" body="Senhor, entregue-me um ZIP em Importar temas e eu cuidarei do resto." />}
+      {data.themes.length ? (() => {
+        /* como na Shopify: o primeiro tema em card grande, os demais na
+           biblioteca em grade */
+        const [principal, ...biblioteca] = data.themes;
+        const cardFor = (theme: Theme, size: "grande" | "media") => <ThemeCard key={theme.id} theme={theme} size={size} favorite={data.favorites.includes(theme.id)} onPreview={() => onPreview(theme)} onUse={() => onUse(theme)} onEditCode={() => onEditCode(theme)} onFavorite={() => onFavorite(theme.id, !data.favorites.includes(theme.id))} onDelete={() => setDeleteTarget(theme)} deleting={busy === "deleteTheme"} />;
+        return <div className="themes-shelf">
+          {cardFor(principal, "grande")}
+          {biblioteca.length > 0 && <div className="theme-grid imported-theme-grid">{biblioteca.map((theme) => cardFor(theme, "media"))}</div>}
+        </div>;
+      })() : <EmptyState icon={LayoutTemplate} title="Nenhum tema sob minha guarda" body="Senhor, entregue-me um ZIP em Importar temas e eu cuidarei do resto." />}
       {deleteTarget && <Modal title="Apagar tema?" onClose={() => busy !== "deleteTheme" && setDeleteTarget(null)}><div className="delete-summary"><div className="delete-icon"><Trash2 size={23} /></div><p>Senhor, o tema <strong>{deleteTarget.name}</strong> e todos os projetos ligados a ele serão removidos deste computador. Poderei recebê-lo novamente em <strong>Importar temas</strong>.</p></div><div className="modal-actions"><button className="secondary-button" disabled={busy === "deleteTheme"} onClick={() => setDeleteTarget(null)}>Cancelar</button><button className="danger-button" disabled={busy === "deleteTheme"} onClick={() => { const theme = deleteTarget; void onDelete(theme.id).then(() => setDeleteTarget(null)); }}>{busy === "deleteTheme" ? "Apagando…" : "Apagar tema"}</button></div></Modal>}
     </div>
   );
 }
 
-function ThemeCard({ theme, index, favorite, onPreview, onUse, onEditCode, onFavorite, onDelete, deleting }: { theme: Theme; index: number; favorite: boolean; onPreview: () => void; onUse: () => void; onEditCode: () => void; onFavorite: () => void; onDelete: () => void; deleting: boolean }) {
-  const palette = normalizeCustomization(theme.defaultSettings);
-  const shopifyData = palette.shopify as ShopifyThemeImport | null;
-  const photo = shopifyData?.assetPreview;
-  /* a miniatura pinta com as cores REAIS do tema importado; a paleta demo só
-     vale para o caminho legado sem dados Shopify */
-  const shopifyPalette = shopifyData ? themePalette(shopifyData.globalValues) : null;
+function ThemeCard({ theme, size, favorite, onPreview, onUse, onEditCode, onFavorite, onDelete, deleting }: { theme: Theme; size: "grande" | "media"; favorite: boolean; onPreview: () => void; onUse: () => void; onEditCode: () => void; onFavorite: () => void; onDelete: () => void; deleting: boolean }) {
+  const model = previewFromTheme(theme);
   return (
-    <article className={`theme-card ${theme.featured ? "featured" : ""}`}>
-      <div className={`theme-visual ${photo ? "theme-visual-photo" : ""}`} style={{ "--preview-primary": shopifyPalette?.accent ?? palette.hero.accentColor, "--preview-bg": shopifyPalette?.background ?? palette.hero.background, "--preview-text": shopifyPalette?.text ?? palette.hero.textColor } as React.CSSProperties}>
-        {photo ? <img src={photo} alt={`Prévia real do tema ${theme.name}`} /> : <>
-          <div className="mini-browser"><span /><span /><span /><i /></div>
-          <div className="mini-store"><b>{shopifyData ? theme.name : palette.header.brand}</b><div className="mini-links"><span /><span /><span /></div><div className="mini-hero"><em /><div><strong /><small /><button /></div></div><div className="mini-products"><span /><span /><span /></div></div>
-        </>}
-        <button className={`favorite-button ${favorite ? "active" : ""}`} onClick={onFavorite} aria-label={favorite ? `Remover ${theme.name} dos favoritos` : `Favoritar ${theme.name}`}><Heart size={16} fill={favorite ? "currentColor" : "none"} /></button>
-        {theme.badge && <span className="theme-badge">{theme.badge}</span>}
-      </div>
-      <div className="theme-card-body">
-        <div className="theme-meta"><span>{String(index + 1).padStart(2, "0")}</span><span>{theme.category}</span><span>v{theme.version}</span></div>
-        <div className="theme-title-row"><h2>{theme.name}</h2><span><Check size={14} /> LIVRE</span></div>
-        <p>{theme.description}</p>
-        <div className="theme-facts"><span>{theme.sectionCount} seções</span><span>{theme.languages.join(" · ")}</span></div>
-        <div className="card-actions"><button className="secondary-button" onClick={onPreview}><Eye size={15} /> Visualizar</button><button className="primary-button" onClick={onUse}>Editar tema <ArrowUpRight size={15} /></button><button className="secondary-button" onClick={onEditCode} title="Abrir os arquivos do tema (layout, sections, snippets, assets…)"><FileCode2 size={15} /> Editar código</button><button className="icon-button delete-theme-button" onClick={onDelete} disabled={deleting} aria-label={`Apagar ${theme.name}`} title="Apagar tema"><Trash2 size={16} /></button></div>
-      </div>
-    </article>
+    <PreviewCard model={model} size={size} onOpen={onPreview} actions={<>
+      <button className="secondary-button" onClick={onPreview}><Eye size={15} /> Visualizar</button>
+      <button className="primary-button" onClick={onUse}>Editar tema <ArrowUpRight size={15} /></button>
+      <button className="secondary-button" onClick={onEditCode} title="Abrir os arquivos do tema (layout, sections, snippets, assets…)"><FileCode2 size={15} /> Editar código</button>
+      <button className={`icon-button favorite-inline ${favorite ? "active" : ""}`} onClick={onFavorite} aria-label={favorite ? `Remover ${theme.name} dos favoritos` : `Favoritar ${theme.name}`}><Heart size={16} fill={favorite ? "currentColor" : "none"} /></button>
+      <button className="icon-button delete-theme-button" onClick={onDelete} disabled={deleting} aria-label={`Apagar ${theme.name}`} title="Apagar tema"><Trash2 size={16} /></button>
+    </>}>
+      <p className="preview-card-desc">{theme.description}</p>
+      <div className="preview-card-meta"><span>{theme.category}</span><span>{theme.languages.slice(0, 8).join(" · ")}{theme.languages.length > 8 ? " …" : ""}</span></div>
+    </PreviewCard>
   );
 }
 
