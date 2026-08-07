@@ -285,6 +285,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .font-catalog-weights { font: 9px var(--font-geist-mono); color: #7f9797; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 .font-catalog-more { justify-self: center; }
 .font-catalog-open { white-space: nowrap; }
+.font-restore { font-size: 10px; white-space: nowrap; }
 
 /* Prévia do fluxo do cliente (Fase 5) */
 .cf-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; width: min(1180px, 100%); margin: 0 auto; }

@@ -105,6 +105,10 @@ test("render reproduz cores, esquemas, fontes e grupos como a Shopify", async ()
     /* webfonts reais no content_for_header */
     assert.match(html, /fonts\.googleapis\.com\/css2\?[^"]*Playfair\+Display/);
     assert.match(html, /fonts\.googleapis\.com\/css2\?[^"]*Harmonia\+Sans/);
+    /* disciplina de carga: SOMENTE as famílias usadas pelo tema entram na
+       folha — nada de catálogo inteiro nem pesos além dos derivados */
+    const sheet = html.match(/fonts\.googleapis\.com\/css2\?([^"]*)/)?.[1] ?? "";
+    assert.equal((sheet.match(/family=/g) ?? []).length, 2, "duas famílias usadas, duas famílias na folha");
     /* grupo arbitrário renderizado por {% sections 'promo-group' %} */
     assert.match(html, /Faixa global/);
     /* nenhuma variável de cor quebrada */

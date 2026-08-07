@@ -50,7 +50,8 @@ import type { ShopifyPage, ShopifySectionInstance, ShopifySectionSchema, Shopify
 import { ShopifyLiveRender, ShopifyStorePreview, schemePalette } from "@/app/ShopifyStorePreview";
 import { PreviewCard } from "@/app/PreviewCard";
 import { previewFromProject, previewFromTheme } from "@/app/preview-model";
-import { FontCatalog } from "@/app/FontCatalog";
+import { FontCatalog, catalogFontFor } from "@/app/FontCatalog";
+import type { CatalogFont } from "@/lib/google-fonts";
 import { Orbis as OrbisNucleo } from "@/app/Orbis";
 import { EntryGate } from "@/app/EntryGate";
 import { ClientFlow } from "@/app/ClientFlow";
@@ -1107,17 +1108,38 @@ function ShopifyFontPickerControl({ setting, value, onChange }: { setting: Shopi
   const families = SHOPIFY_FONT_FAMILIES.includes(parsed.family) ? SHOPIFY_FONT_FAMILIES : [parsed.family, ...SHOPIFY_FONT_FAMILIES];
   const listId = `font-${setting.id}`;
   const [catalogOpen, setCatalogOpen] = useState(false);
+  /* a entrada do catálogo para a família atual limita pesos/itálico ao que
+     EXISTE — o tema final não pode pedir variante que a fonte não tem */
+  const [catalogEntry, setCatalogEntry] = useState<CatalogFont | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      const entry = await catalogFontFor(parsed.family);
+      if (!cancelled) setCatalogEntry(entry);
+    }, 0);
+    return () => { cancelled = true; window.clearTimeout(timeout); };
+  }, [parsed.family]);
+  const weights = catalogEntry?.weights?.length ? catalogEntry.weights : [100, 200, 300, 400, 500, 600, 700, 800, 900];
+  const italicAvailable = catalogEntry ? catalogEntry.italic : true;
+  const defaultHandle = typeof setting.default === "string" ? setting.default : "";
+  const isDefault = !defaultHandle || (value || defaultHandle) === defaultHandle;
   return <Field label={setting.label}>
     <input list={listId} value={parsed.family} onChange={(event) => onChange(buildFontHandle(event.target.value, parsed.weight, parsed.italic))} aria-label={`${setting.label}: família`} />
     <datalist id={listId}>{families.map((family) => <option key={family} value={family} />)}</datalist>
     <div className="font-picker-row">
       <select value={parsed.weight} onChange={(event) => onChange(buildFontHandle(parsed.family, Number(event.target.value), parsed.italic))} aria-label={`${setting.label}: peso`}>
-        {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((weight) => <option key={weight} value={weight}>{weight}</option>)}
+        {weights.includes(parsed.weight) ? null : <option value={parsed.weight}>{parsed.weight} (fora da família)</option>}
+        {weights.map((weight) => <option key={weight} value={weight}>{weight}</option>)}
       </select>
-      <label className="font-picker-italic"><input type="checkbox" checked={parsed.italic} onChange={(event) => onChange(buildFontHandle(parsed.family, parsed.weight, event.target.checked))} /> Itálico</label>
+      <label className="font-picker-italic" title={italicAvailable ? undefined : "Esta família não tem itálico no catálogo"}><input type="checkbox" checked={parsed.italic} disabled={!italicAvailable && !parsed.italic} onChange={(event) => onChange(buildFontHandle(parsed.family, parsed.weight, event.target.checked))} /> Itálico</label>
       <button type="button" className="secondary-button font-catalog-open" onClick={() => setCatalogOpen(true)}>Catálogo Google Fonts</button>
+      {!isDefault && defaultHandle && <button type="button" className="text-button font-restore" onClick={() => onChange(defaultHandle)} title={`Voltar para ${parseFontHandle(defaultHandle).family}`}>Restaurar padrão</button>}
     </div>
-    <small>Fonte da Shopify ({value || "padrão"}). O preview carrega a família real; se ela não existir no Google Fonts, vale o fallback declarado.</small>
+    <small>
+      {catalogEntry === null
+        ? `Família fora do Google Fonts (${parsed.family}); o preview usa o fallback declarado e o handle é preservado.`
+        : `Fonte da Shopify (${value || "padrão"}); pesos exibidos são os que a família realmente tem.`}
+    </small>
     {catalogOpen && <Modal title="Catálogo Google Fonts" wide onClose={() => setCatalogOpen(false)}>
       <FontCatalog currentFamily={parsed.family} onPick={(font) => {
         /* peso preservado quando a família tem; senão o mais próximo de 400 */

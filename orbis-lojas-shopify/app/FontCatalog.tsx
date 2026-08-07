@@ -45,6 +45,38 @@ export function rememberRecentFont(family: string) {
 
 let catalogCache: CatalogFont[] | null = null;
 let catalogSource: "live" | "cache" | "stale" | "reserva" | null = null;
+let catalogPromise: Promise<void> | null = null;
+
+/**
+ * Carregador único do catálogo (Fase 7): todos os controles de fonte
+ * compartilham a mesma promessa — uma requisição por sessão, nunca uma por
+ * controle. Quando a rota falha, a reserva local entra declarada.
+ */
+export async function loadCatalog(): Promise<{ fonts: CatalogFont[]; source: NonNullable<typeof catalogSource> }> {
+  if (!catalogCache) {
+    catalogPromise ??= (async () => {
+      try {
+        const response = await fetch("/api/google-fonts");
+        const payload = await response.json() as { fonts?: CatalogFont[]; source?: string; error?: string };
+        if (!response.ok || !payload.fonts?.length) throw new Error(payload.error ?? "CATALOG_UNAVAILABLE");
+        catalogCache = payload.fonts;
+        catalogSource = (payload.source as typeof catalogSource) ?? "live";
+      } catch {
+        catalogCache = CATALOG_FALLBACK;
+        catalogSource = "reserva";
+      }
+    })();
+    await catalogPromise;
+  }
+  return { fonts: catalogCache ?? CATALOG_FALLBACK, source: catalogSource ?? "reserva" };
+}
+
+/** A entrada do catálogo para uma família (null = família fora do catálogo). */
+export async function catalogFontFor(family: string): Promise<CatalogFont | null> {
+  const { fonts } = await loadCatalog();
+  const wanted = family.trim().toLowerCase();
+  return fonts.find((font) => font.family.toLowerCase() === wanted) ?? null;
+}
 
 export function FontCatalog({ currentFamily, onPick }: { currentFamily: string; onPick: (font: CatalogFont) => void }) {
   const [fonts, setFonts] = useState<CatalogFont[] | null>(catalogCache);
@@ -59,18 +91,11 @@ export function FontCatalog({ currentFamily, onPick }: { currentFamily: string; 
     if (catalogCache) return;
     let cancelled = false;
     const timeout = window.setTimeout(async () => {
-      try {
-        const response = await fetch("/api/google-fonts");
-        const payload = await response.json() as { fonts?: CatalogFont[]; source?: string; error?: string };
-        if (!response.ok || !payload.fonts?.length) throw new Error(payload.error ?? "CATALOG_UNAVAILABLE");
-        catalogCache = payload.fonts;
-        catalogSource = (payload.source as typeof catalogSource) ?? "live";
-        if (!cancelled) { setFonts(catalogCache); setSource(catalogSource); setStatus("ok"); }
-      } catch {
-        catalogCache = CATALOG_FALLBACK;
-        catalogSource = "reserva";
-        if (!cancelled) { setFonts(CATALOG_FALLBACK); setSource("reserva"); setStatus("reserva"); }
-      }
+      const { fonts: loaded, source: loadedSource } = await loadCatalog();
+      if (cancelled) return;
+      setFonts(loaded);
+      setSource(loadedSource);
+      setStatus(loadedSource === "reserva" ? "reserva" : "ok");
     }, 0);
     return () => { cancelled = true; window.clearTimeout(timeout); };
   }, []);
