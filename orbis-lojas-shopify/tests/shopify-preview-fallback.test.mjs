@@ -71,3 +71,14 @@ test("a aba Editar código existe com explorer e gravação", async () => {
   /* o card do tema tem o atalho, como o menu do tema na Shopify */
   assert.match(appShell, /onEditCode/);
 });
+
+test("Fase 8: o editor tem modos de prévia e foco de bloco", async () => {
+  const appShell = await readFile(appShellUrl, "utf8");
+  assert.match(appShell, /className="mode-switch"/, "barra Selecionar/Interagir/Prévia");
+  assert.match(appShell, /previewMode/, "modo governa a ponte");
+  assert.match(appShell, /focusBlockId/, "bloco clicado no preview foca o grupo no painel");
+  assert.match(appShell, /anchorId=\{`bloco-\$\{block\.id\}`\}/, "âncora estável por id do bloco, não por posição");
+  const preview = await readFile(previewUrl, "utf8");
+  assert.match(preview, /orbisMode: mode/, "o modo é postado ao iframe");
+  assert.match(preview, /onSelectBlock/, "seleção de bloco chega ao editor");
+});

@@ -40,7 +40,9 @@ export function resolvePreviewPageId(theme: ShopifyThemeImport, href: string): s
   return null;
 }
 
-export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onNavigatePage, selectedSectionId, fallback }: { shopify: ShopifyThemeImport; pageId: string; onSelectSection?: (id: string) => void; onNavigatePage?: (id: string) => void; selectedSectionId?: string; fallback: ReactNode }) {
+export type PreviewMode = "selecionar" | "interagir" | "previa";
+
+export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBlock, onNavigatePage, selectedSectionId, mode = "selecionar", fallback }: { shopify: ShopifyThemeImport; pageId: string; onSelectSection?: (id: string) => void; onSelectBlock?: (sectionId: string, blockId: string | null) => void; onNavigatePage?: (id: string) => void; selectedSectionId?: string; mode?: PreviewMode; fallback: ReactNode }) {
   const [html, setHtml] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "live" | "fallback">("loading");
   const requestRef = useRef(0);
@@ -55,6 +57,15 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onNavigate
     }, 150);
     return () => window.clearTimeout(timeout);
   }, [selectedSectionId, status, html]);
+
+  /* o modo (selecionar/interagir/previa) governa o comportamento da ponte */
+  useEffect(() => {
+    if (status !== "live" || !html) return;
+    const timeout = window.setTimeout(() => {
+      frameRef.current?.contentWindow?.postMessage({ orbisMode: mode }, "*");
+    }, 120);
+    return () => window.clearTimeout(timeout);
+  }, [mode, status, html]);
 
   useEffect(() => {
     if (!canRender) return;
@@ -79,8 +90,11 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onNavigate
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
-      const data = event.data as { orbisSection?: string; orbisNavigate?: string } | null;
-      if (data?.orbisSection) onSelectSection?.(data.orbisSection);
+      const data = event.data as { orbisSection?: string; orbisBlock?: string | null; orbisNavigate?: string } | null;
+      if (data?.orbisSection) {
+        onSelectSection?.(data.orbisSection);
+        onSelectBlock?.(data.orbisSection, data.orbisBlock ?? null);
+      }
       if (data?.orbisNavigate) {
         const nextPageId = resolvePreviewPageId(shopify, data.orbisNavigate);
         if (nextPageId) onNavigatePage?.(nextPageId);
@@ -88,7 +102,7 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onNavigate
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onSelectSection, onNavigatePage, shopify]);
+  }, [onSelectSection, onSelectBlock, onNavigatePage, shopify]);
 
   if (!canRender || status === "fallback") return <>{fallback}</>;
   return (

@@ -43,7 +43,7 @@ const layout = `<!doctype html><html><head>{{ content_for_header }}
 </style></head><body>{% sections 'promo-group' %}{{ content_for_layout }}</body></html>`;
 
 function section(name, settings = []) {
-  return `<div class="secao-{{ section.id }}">{{ section.settings.heading }}</div>{% schema %}${JSON.stringify({ name, settings, presets: [{ name }] })}{% endschema %}`;
+  return `<div class="secao-{{ section.id }}">{{ section.settings.heading }}{% for block in section.blocks %}<p {{ block.shopify_attributes }}>{{ block.settings.texto }}</p>{% endfor %}</div>{% schema %}${JSON.stringify({ name, settings, blocks: [{ type: "linha", name: "Linha", settings: [{ type: "text", id: "texto", label: "Texto", default: "linha" }] }], presets: [{ name, blocks: [{ type: "linha" }] }] })}{% endschema %}`;
 }
 
 function makeZip() {
@@ -68,7 +68,7 @@ function makeZip() {
     "sections/main-product.liquid": section("Produto"),
     "sections/main-cart-items.liquid": section("Carrinho"),
     "sections/promo-group.json": JSON.stringify({ type: "promo", name: "Promoções", sections: { faixa: { type: "promo", settings: { heading: "Faixa global" } } }, order: ["faixa"] }),
-    "templates/index.json": JSON.stringify({ sections: { hero: { type: "hero", settings: { heading: "Início" } } }, order: ["hero"] }),
+    "templates/index.json": JSON.stringify({ sections: { hero: { type: "hero", settings: { heading: "Início" }, blocks: { "linha-1": { type: "linha", settings: { texto: "linha um" } } }, block_order: ["linha-1"] } }, order: ["hero"] }),
     "templates/index.context.abc-123.json": JSON.stringify({ sections: { hero: { type: "hero", settings: { heading: "Contexto de mercado" } } }, order: ["hero"] }),
     "templates/product.json": JSON.stringify({ sections: { main: { type: "main-product", settings: {} } }, order: ["main"] }),
     "templates/cart.json": JSON.stringify({ sections: { cart: { type: "main-cart-items", settings: {} } }, order: ["cart"] }),
@@ -116,6 +116,13 @@ test("render reproduz cores, esquemas, fontes e grupos como a Shopify", async ()
     /* ponte de sincronia: clique → editor e editor → scroll na seção */
     assert.match(html, /orbisSection/);
     assert.match(html, /orbisScrollTo/);
+    /* inspetor (fase 8): modos, seleção de bloco e bloqueio de formulários */
+    assert.match(html, /orbisMode/);
+    assert.match(html, /orbisBlock/);
+    assert.match(html, /addEventListener\("submit",function\(event\)\{event\.preventDefault\(\);\}/);
+    /* o shopify_attributes dos blocos vira data-block-id no HTML — a âncora
+       estável da seleção de bloco */
+    assert.match(html, /data-block-id="/);
   } finally {
     await server.close();
   }

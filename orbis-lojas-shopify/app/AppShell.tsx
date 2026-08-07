@@ -635,6 +635,9 @@ function EditorView({ project, onChooseProject, onDataChange, onMessage }: { pro
   const [selectedSection, setSelectedSection] = useState<SectionKey>("hero");
   const [shopifyPageId, setShopifyPageId] = useState("index");
   const [shopifySectionId, setShopifySectionId] = useState("__global__");
+  /* inspetor (Fase 8): bloco focado pelo clique no preview + modo da ponte */
+  const [focusBlockId, setFocusBlockId] = useState<string | null>(null);
+  const [previewMode, setPreviewMode] = useState<"selecionar" | "interagir" | "previa">("selecionar");
   const [draft, setDraft] = useState<Customization>(() => normalizeCustomization(project?.customization));
   const draftRef = useRef(draft);
   const [past, setPast] = useState<Customization[]>([]);
@@ -848,6 +851,7 @@ function EditorView({ project, onChooseProject, onDataChange, onMessage }: { pro
       <div className="editor-toolbar">
         <div className="editor-project"><span className="status status-editing">EM EDIÇÃO</span><strong>{project.name}</strong></div>
         <div className="device-switch" aria-label="Largura da prévia">{([{ id: "desktop", icon: Monitor, label: "Desktop" }, { id: "tablet", icon: Tablet, label: "Tablet" }, { id: "mobile", icon: Smartphone, label: "Celular" }] as const).map(({ id, icon: Icon, label }) => <button key={id} className={device === id ? "active" : ""} onClick={() => setDevice(id)} aria-label={label} title={label}><Icon size={16} /></button>)}</div>
+        {shopify && <div className="mode-switch" role="radiogroup" aria-label="Modo da prévia">{([["selecionar", "Selecionar", "Clique escolhe a seção ou o bloco; nada navega nem compra"], ["interagir", "Interagir", "Menus, abas e sliders do tema funcionam; links trocam de página"], ["previa", "Prévia", "Visualização limpa, sem contornos do editor"]] as const).map(([id, label, hint]) => <button key={id} role="radio" aria-checked={previewMode === id} className={previewMode === id ? "active" : ""} onClick={() => setPreviewMode(id)} title={hint}>{label}</button>)}</div>}
         <div className="editor-controls"><button className="icon-button" onClick={undo} disabled={!past.length} aria-label="Desfazer"><Undo2 size={16} /></button><button className="icon-button" onClick={redo} disabled={!future.length} aria-label="Refazer"><Redo2 size={16} /></button><span className={`save-state ${saveState}`}><span />{saveState === "saving" ? "Guardando, senhor…" : saveState === "error" ? "Falhei ao guardar, senhor" : "Guardado, senhor"}</span>{shopify && <>
           <select className="zoom-select" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label="Zoom da prévia"><option value={0.5}>50%</option><option value={0.75}>75%</option><option value={1}>100%</option></select>
           <button className="icon-button" onClick={() => window.open(`/api/theme-render?themeId=${project.themeId}&page=${shopifyPageId}`, "_blank", "noopener")} aria-label="Abrir prévia em nova aba" title="Abrir prévia em nova aba (versão salva do tema)"><ArrowUpRight size={16} /></button>
@@ -866,10 +870,10 @@ function EditorView({ project, onChooseProject, onDataChange, onMessage }: { pro
           <div className="editor-empty"><EmptyState icon={CircleAlert} title="O tema não trouxe páginas editáveis" body="A importação deste tema não produziu nenhuma página. Reimporte o ZIP em Importar temas para atualizar o projeto." /></div>
         ) : shopify && activeShopifyPage ? <>
           <ShopifyStructurePanel theme={shopify} page={activeShopifyPage} selectedSectionId={shopifySectionId} onPageChange={(nextId) => { setShopifyPageId(nextId); const nextPage = shopify.pages.find((item) => item.id === nextId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} onSelectSection={(nextSectionId) => { setShopifySectionId(nextSectionId); setPainelMobile("ajustes"); }} onAddSection={addShopifySectionTo} onMoveSection={moveShopifySection} onDuplicateSection={duplicateShopifySection} onRemoveSection={removeShopifySection} onToggleSection={toggleShopifySection} onAddBlock={addShopifyBlock} onMoveBlock={moveShopifyBlock} onDuplicateBlock={duplicateShopifyBlock} onRemoveBlock={removeShopifyBlock} />
-          <div className="preview-stage"><div className={`preview-frame preview-${device}`} style={{ zoom }}><ShopifyLiveRender shopify={shopify} pageId={shopifyPageId} onSelectSection={setShopifySectionId} onNavigatePage={(nextPageId) => { setShopifyPageId(nextPageId); const nextPage = shopify.pages.find((item) => item.id === nextPageId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} selectedSectionId={shopifySectionId} fallback={<ShopifyStorePreview theme={shopify} page={activeShopifyPage} device={device} selectedSectionId={shopifySectionId} onSelectSection={(nextSectionId, ownerPageId) => { if (ownerPageId && ownerPageId !== shopifyPageId) setShopifyPageId(ownerPageId); setShopifySectionId(nextSectionId); }} onNavigatePage={(nextPageId) => { setShopifyPageId(nextPageId); const nextPage = shopify.pages.find((item) => item.id === nextPageId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} />} /></div></div>
+          <div className="preview-stage"><div className={`preview-frame preview-${device}`} style={{ zoom }}><ShopifyLiveRender shopify={shopify} pageId={shopifyPageId} mode={previewMode} onSelectSection={(id) => { setShopifySectionId(id); setPainelMobile("ajustes"); }} onSelectBlock={(_, blockId) => setFocusBlockId(blockId)} onNavigatePage={(nextPageId) => { setShopifyPageId(nextPageId); const nextPage = shopify.pages.find((item) => item.id === nextPageId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} selectedSectionId={shopifySectionId} fallback={<ShopifyStorePreview theme={shopify} page={activeShopifyPage} device={device} selectedSectionId={shopifySectionId} onSelectSection={(nextSectionId, ownerPageId) => { if (ownerPageId && ownerPageId !== shopifyPageId) setShopifyPageId(ownerPageId); setShopifySectionId(nextSectionId); }} onNavigatePage={(nextPageId) => { setShopifyPageId(nextPageId); const nextPage = shopify.pages.find((item) => item.id === nextPageId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} />} /></div></div>
           <aside className="properties-panel">
             <div className="panel-heading"><span>{shopifySectionId === "__global__" ? "CONFIGURAÇÕES DO TEMA" : (activeShopifySection?.name ?? "SEÇÃO").toUpperCase()}</span><PanelRight size={15} /></div>
-            <ShopifyProperties theme={shopify} pageIndex={activeSectionPageIndex} section={activeShopifySection} sectionIndex={activeShopifySectionIndex} global={shopifySectionId === "__global__"} update={update} />
+            <ShopifyProperties theme={shopify} pageIndex={activeSectionPageIndex} section={activeShopifySection} sectionIndex={activeShopifySectionIndex} global={shopifySectionId === "__global__"} focusBlockId={focusBlockId} update={update} />
           </aside>
         </> : <>
           <aside className="structure-panel">
@@ -1014,8 +1018,18 @@ function collectResourceHandles(theme: ShopifyThemeImport) {
   return Array.from(handles).slice(0, 80);
 }
 
-function ShopifyProperties({ theme, pageIndex, section, sectionIndex, global, update }: { theme: ShopifyThemeImport; pageIndex: number; section?: ShopifySectionInstance; sectionIndex: number; global: boolean; update: (path: string[], value: EditableValue) => void }) {
+function ShopifyProperties({ theme, pageIndex, section, sectionIndex, global, focusBlockId, update }: { theme: ShopifyThemeImport; pageIndex: number; section?: ShopifySectionInstance; sectionIndex: number; global: boolean; focusBlockId?: string | null; update: (path: string[], value: EditableValue) => void }) {
   const handleSuggestions = collectResourceHandles(theme);
+  /* clique num bloco do preview abre e rola até o grupo daquele bloco */
+  useEffect(() => {
+    if (!focusBlockId) return;
+    const timeout = window.setTimeout(() => {
+      const anchor = document.getElementById(`bloco-${focusBlockId}`);
+      if (anchor instanceof HTMLDetailsElement) anchor.open = true;
+      anchor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 80);
+    return () => window.clearTimeout(timeout);
+  }, [focusBlockId]);
   if (global) return <div className="shopify-properties"><div className="shopify-import-summary"><FileArchive size={18} /><div><b>{theme.themeName}</b><span>{theme.compatibility?.architecture ?? "Tema Shopify"} · {theme.summary.fileCount} arquivos · {theme.summary.editableSettingCount} ajustes · {theme.compatibility?.preservedSource ? "ZIP preservado" : "estrutura preservada"}</span></div></div>{theme.globalGroups.map((group, index) => <PropertyGroup key={`${group.name}-${index}`} icon={Settings2} title={group.name} open={index === 0}>{group.settings.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={theme.globalValues[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "globalValues", setting.id], value)} context={theme.globalValues} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />)}</PropertyGroup>)}</div>;
   if (!section || sectionIndex < 0) return <div className="property-empty">Selecione uma seção da página.</div>;
   const schema = theme.sectionSchemas.find((item) => item.type === section.type);
@@ -1024,7 +1038,7 @@ function ShopifyProperties({ theme, pageIndex, section, sectionIndex, global, up
     <div className="shopify-import-summary"><Layers3 size={18} /><div><b>{section.name}</b><span>{section.type} · {section.blocks.length} blocos</span></div></div>
     <div className="shopify-section-visibility"><ToggleField label="Exibir esta seção na loja" checked={!section.disabled} onChange={(visible) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "disabled"], !visible)} /></div>
     <PropertyGroup icon={Type} title="Configurações da seção" open>{sectionDefinitions.length ? sectionDefinitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={section.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "settings", setting.id], value)} context={section.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />) : <p className="property-note">Esta seção não possui campos próprios; use os blocos abaixo.</p>}</PropertyGroup>
-    {section.blocks.map((block, blockIndex) => { const blockSchema = schema?.blocks.find((item) => item.type === block.type); const definitions = mergeShopifyDefinitions(blockSchema?.settings ?? [], block.settings); return <PropertyGroup key={block.id} icon={Layers3} title={`Bloco · ${blockSchema?.name ?? humanizeShopify(block.type)}`} open={blockIndex === 0}>{definitions.length ? definitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={block.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "blocks", String(blockIndex), "settings", setting.id], value)} context={block.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />) : <p className="property-note">Bloco sem configurações editáveis.</p>}</PropertyGroup>; })}
+    {section.blocks.map((block, blockIndex) => { const blockSchema = schema?.blocks.find((item) => item.type === block.type); const definitions = mergeShopifyDefinitions(blockSchema?.settings ?? [], block.settings); return <PropertyGroup key={block.id} anchorId={`bloco-${block.id}`} icon={Layers3} title={`Bloco · ${blockSchema?.name ?? humanizeShopify(block.type)}`} open={blockIndex === 0 || block.id === focusBlockId}>{definitions.length ? definitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={block.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "blocks", String(blockIndex), "settings", setting.id], value)} context={block.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />) : <p className="property-note">Bloco sem configurações editáveis.</p>}</PropertyGroup>; })}
   </div>;
 }
 
@@ -1372,8 +1386,8 @@ function sameEditableValue(current: unknown, next: EditableValue) {
   return current === next;
 }
 
-function PropertyGroup({ icon: Icon, title, open, children }: { icon: typeof Home; title: string; open?: boolean; children: React.ReactNode }) {
-  return <details className="property-group" open={open}><summary><span><Icon size={14} /> {title}</span><ChevronRight size={14} /></summary><div className="property-content">{children}</div></details>;
+function PropertyGroup({ icon: Icon, title, open, anchorId, children }: { icon: typeof Home; title: string; open?: boolean; anchorId?: string; children: React.ReactNode }) {
+  return <details className="property-group" id={anchorId} open={open}><summary><span><Icon size={14} /> {title}</span><ChevronRight size={14} /></summary><div className="property-content">{children}</div></details>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span>{children}</label>; }

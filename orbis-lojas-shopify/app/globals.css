@@ -287,6 +287,11 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .font-catalog-open { white-space: nowrap; }
 .font-restore { font-size: 10px; white-space: nowrap; }
 
+/* Modos da prévia (Fase 8) */
+.mode-switch { display: flex; border: 1px solid #2b4040; }
+.mode-switch button { padding: 5px 10px; border: 0; background: none; color: #9db4b4; font-size: 10px; letter-spacing: 0.04em; cursor: pointer; }
+.mode-switch button.active { background: #122a26; color: var(--green, #22d49b); }
+
 /* Prévia do fluxo do cliente (Fase 5) */
 .cf-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; width: min(1180px, 100%); margin: 0 auto; }
 .cf-layout > .cf-panel { width: 100%; }
