@@ -229,6 +229,44 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .range-field > span { display: flex; justify-content: space-between; }.range-field b { color: #cbd7d7; font: 600 9px var(--font-geist-mono); }.range-field input { width: 100%; accent-color: var(--green); }
 .shopify-demo-flag { display: inline-block; margin-left: 5px; padding: 1px 5px; border: 1px solid currentColor; border-radius: 3px; font-style: normal; font-size: 8px; letter-spacing: 0.08em; opacity: 0.65; vertical-align: middle; }
 
+/* Fundação dos previews (Fase 2): cartão-base de Temas e Projetos */
+.preview-card { display: flex; flex-direction: column; border: 1px solid #1d3232; background: #0a1414; min-width: 0; }
+.preview-card-open { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: inherit; }
+.preview-card-open:focus-visible { outline: 2px solid var(--green, #22d49b); outline-offset: 2px; }
+.preview-card-media { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: #0e1b1b; }
+.preview-card-lista .preview-card-media { aspect-ratio: 21 / 9; }
+.preview-card-media img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+.preview-card-media.is-loading::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(150, 200, 195, 0.09) 50%, transparent 70%); animation: pc-shimmer 1.3s infinite; }
+@keyframes pc-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.preview-card-badge { position: absolute; left: 10px; bottom: 10px; padding: 3px 8px; background: var(--green, #22d49b); color: #04211a; font: 700 9px var(--font-geist-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.preview-card-mock { display: flex; flex-direction: column; height: 100%; background: #dfe6e6; }
+.pcm-browser { display: flex; gap: 4px; align-items: center; padding: 6px 8px; background: #cfd8d8; }
+.pcm-browser span { width: 6px; height: 6px; border-radius: 50%; background: #9fb0b0; }
+.pcm-browser i { flex: 1; height: 6px; margin-left: 8px; border-radius: 3px; background: #bcc8c8; }
+.pcm-store { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--pc-bg, #ffffff); color: var(--pc-text, #121212); }
+.pcm-store b { font-size: 11px; letter-spacing: 0.02em; }
+.pcm-hero { flex: 1; display: flex; gap: 10px; align-items: center; padding: 8px; background: color-mix(in srgb, var(--pc-accent, #444) 14%, var(--pc-bg, #fff)); }
+.pcm-hero em { width: 34%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--pc-accent) 55%, white), var(--pc-accent)); }
+.pcm-hero div { flex: 1; display: grid; gap: 5px; }
+.pcm-hero strong { height: 7px; background: color-mix(in srgb, var(--pc-text) 80%, transparent); }
+.pcm-hero small { height: 5px; width: 70%; background: color-mix(in srgb, var(--pc-text) 35%, transparent); }
+.pcm-hero u { height: 8px; width: 34%; background: var(--pc-accent); }
+.pcm-products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.pcm-products span { aspect-ratio: 4 / 3; background: color-mix(in srgb, var(--pc-accent) 22%, white); }
+.preview-card-body { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 14px; }
+.preview-card-head { display: flex; align-items: center; gap: 10px; }
+.preview-card-head h3 { font-size: 14px; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-card-status { margin-left: auto; padding: 2px 7px; border: 1px solid currentColor; font: 600 8px var(--font-geist-mono); letter-spacing: 0.08em; white-space: nowrap; }
+.preview-card-status.tone-ok { color: var(--green, #22d49b); }
+.preview-card-status.tone-info { color: #7fb6d9; }
+.preview-card-status.tone-warn { color: #f2c14e; }
+.preview-card-status.tone-error { color: #f27f6c; }
+.preview-card-subtitle { font-size: 11px; color: #8ca3a3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 10px var(--font-geist-mono); color: #7f9797; }
+.preview-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.preview-card-skeleton .pcs-line { height: 10px; margin: 4px 0; background: #142424; }
+@media (max-width: 640px) { .preview-card-media, .preview-card-lista .preview-card-media { aspect-ratio: 16 / 11; } }
+
 /* Editar código: explorer + editor, como o "Edit code" da Shopify */
 .code-editor-shell { display: grid; grid-template-columns: 280px 1fr; gap: 14px; min-height: 540px; align-items: stretch; }
 .code-explorer { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid #1d3232; background: #0a1414; min-width: 0; }
