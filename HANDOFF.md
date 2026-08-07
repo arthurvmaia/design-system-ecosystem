@@ -1,7 +1,17 @@
 # HANDOFF — onde o trabalho está
 
-*Atualizado em 2026-08-03. CI verde, 1.290 testes rápidos e 79 de navegador
-passando, portão de fidelidade aprovado.*
+*Atualizado em 2026-08-07. Suíte 1.385 testes verdes, lint e typecheck limpos.*
+
+> **Rodada 2026-08-06/07 — site composto com paridade e mídia por nicho**: o
+> vão preto da prévia/hero morreu (a página herda as camadas de fundo da origem
+> dominante quando o kit não tem peça de fundo), scripts dedupe (menu mobile
+> voltou a abrir), nav sticky devolvida, parallax congelado limpo, marca
+> automática ganhou nicho de primeira classe + receitas por palavras (streetwear
+> etc.), mídias automáticas desenham a CENA do nicho e — com `PEXELS_API_KEY`
+> no `.env` do server (gratuita, pexels.com/api) — saem como FOTO real com
+> fallback declarado. Detalhes, verificação e pendências: **seção 15 do
+> `C:\Users\arthur.maia\Desktop\AUDITORIA-MOTOR-EXTRACAO.md`**. Reinicie o
+> servidor (INICIAR.bat) para valer na UI. Push segue não autorizado.
 
 Este arquivo é para quem senta amanhã: o que está pronto, o que ficou pelo
 caminho e **por que** cada coisa que falta foi deixada para depois. O registro

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -34,8 +35,10 @@ import {
   atributosDoDocumentoDaPeca,
   envolverCamadaDePagina,
   envolverSecao,
+  extrairCamadasDeFundo,
   extrairCorpo,
   limparParaComposicao,
+  limparTransformCongelado,
   reescreverRefsCss,
   reescreverRefsHtml,
 } from './montagem.js';
@@ -230,6 +233,44 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   const porId = new Map(entrada.kit.components.map((c) => [c.id, c]));
   const criativoPorSecao = new Map((entrada.secoes ?? []).map((s) => [s.secaoId, s]));
 
+  /**
+   * ── A origem dominante da página ──────────────────────────────────────────
+   *
+   * Quem tem mais peças nas seções; empate vai para a origem do hero (a dobra
+   * que define a cara do site); persistindo, a primeira origem na ordem das
+   * seções. É dela que a página herda o fundo quando o kit não traz peça de
+   * fundo nenhuma — sem isso, `limparParaComposicao` tira o fundo de cada peça
+   * e ninguém devolve: a página compõe sobre um vazio (o "vão preto").
+   */
+  const contagemPorOrigem = new Map<string, number>();
+  const pecasPorOrigem = new Map<string, KitComponenteDeGeracao[]>();
+  const ordemDasOrigens: string[] = [];
+  let origemDoHero: string | null = null;
+  for (const secao of separado.secoes) {
+    for (const peca of secao.pecas) {
+      const cmp = porId.get(peca.id);
+      if (cmp === undefined) continue;
+      const origem = cmp.designSystemId ?? cmp.id;
+      contagemPorOrigem.set(origem, (contagemPorOrigem.get(origem) ?? 0) + 1);
+      if (!pecasPorOrigem.has(origem)) {
+        pecasPorOrigem.set(origem, []);
+        ordemDasOrigens.push(origem);
+      }
+      pecasPorOrigem.get(origem)?.push(cmp);
+      if (origemDoHero === null && secao.slug === 'hero') origemDoHero = origem;
+    }
+  }
+  const origemDominante =
+    ordemDasOrigens.length === 0
+      ? null
+      : ordemDasOrigens.reduce((melhor, o) => {
+          const co = contagemPorOrigem.get(o) ?? 0;
+          const cm = contagemPorOrigem.get(melhor) ?? 0;
+          if (co > cm) return o;
+          if (co === cm && o === origemDoHero && melhor !== origemDoHero) return o;
+          return melhor;
+        });
+
   // Estado da composição, compartilhado entre seções e camadas: uma origem
   // entra com CSS uma vez só, e os nomes globais (keyframes) acumulam.
   const origensComCss = new Set<string>();
@@ -240,6 +281,18 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   };
   let concatCss = '';
   const scriptsRemotos: string[] = [];
+  /**
+   * Scripts LOCAIS das peças, um por conteúdo, na ordem da primeira aparição.
+   *
+   * Antes cada peça carregava as próprias tags no lugar onde o corpo dela caiu,
+   * e duas peças do mesmo site carregavam o MESMO arquivo duas vezes — dois
+   * listeners no botão do menu mobile (abre e fecha no mesmo clique), dois
+   * requestAnimationFrame desenhando o mesmo canvas. Aqui a página composta
+   * volta a ser como a origem: cada script uma vez, no fim do body, quando
+   * todos os elementos que ele procura já existem.
+   */
+  const scriptsLocais: string[] = [];
+  const chavesDeScriptLocal = new Set<string>();
   const recoloracaoTotais = { origens: 0, reescritas: 0, mantidas: 0 };
   const retipografiaTotais = { reescritas: 0 };
   const reescalaTotais = { reescritas: 0, mantidas: 0 };
@@ -380,7 +433,9 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
         `[${rotulo}] o script ${src} compila CSS em runtime e foi MANTIDO: o bundle desta peça não traz o CSS compilado, e removê-lo deixaria a peça sem estilo. As cores de origem podem vazar por cima da marca nesta peça.`,
       );
     }
-    let corpo = semCompilador.corpo;
+    // O transform congelado da captura sai: o script de parallax da origem
+    // viaja junto e reaplica o valor certo a cada rolagem.
+    let corpo = limparTransformCongelado(semCompilador.corpo);
     corpo = aplicarSubstituicoes(corpo, substituicoes, avisos, rotulo);
     corpo = envolverEmProxies({
       origem,
@@ -409,6 +464,32 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     for (const s of scriptsRemotosDe(documento)) {
       if (!scriptsRemotos.includes(s)) scriptsRemotos.push(s);
     }
+
+    // As tags de script saem do corpo: local entra UMA vez (por conteúdo) no
+    // fim do body; remoto já foi coletado em `scriptsRemotos` logo acima.
+    corpo = corpo.replace(
+      /<script\b([^>]*)>([\s\S]*?)<\/script>/gi,
+      (tag, attrs: string, conteudo: string) => {
+        const src = /\bsrc\s*=\s*"([^"]+)"/i.exec(attrs)?.[1];
+        if (src !== undefined && /^(https?:)?\/\//i.test(src)) return '';
+        let chave: string;
+        if (src !== undefined) {
+          // O nome do arquivo é hash de conteúdo nos bundles novos, mas o
+          // caminho carrega o namespace da peça — a identidade de verdade são
+          // os bytes, então o dedupe lê o arquivo já copiado para o site.
+          const arquivo = join(outputDir, src);
+          chave = existsSync(arquivo)
+            ? createHash('sha1').update(readFileSync(arquivo)).digest('hex')
+            : src;
+        } else {
+          chave = `inline:${conteudo.trim()}`;
+        }
+        if (chavesDeScriptLocal.has(chave)) return '';
+        chavesDeScriptLocal.add(chave);
+        scriptsLocais.push(tag);
+        return '';
+      },
+    );
     return corpo;
   };
 
@@ -449,13 +530,54 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       );
       partes.push(`<!-- seção "${secao.nome}" sem conteúdo -->`);
     }
-    bodyHtml += `\n${envolverSecao(partes.join('\n'), {
+    const conteudoDaSecao = partes.join('\n');
+    // Nav que era sticky/fixed na origem: a section vira o sticky (na
+    // composição o containing block da nav é a própria section, onde sticky
+    // não tem curso). A regra CSS correspondente vive no bloco base abaixo.
+    const fixaNoTopo =
+      secao.slug === 'nav' && /class="[^"]*\b(?:sticky|fixed)\b[^"]*"/.test(conteudoDaSecao);
+    bodyHtml += `\n${envolverSecao(conteudoDaSecao, {
       role: secao.slug,
       secaoId: secao.id,
       componentIds: usados,
       criouAlgo: criativo?.htmlCriado !== undefined || usados.length < secao.pecas.length,
+      fixaNoTopo,
     })}\n`;
   }
+
+  // ── Fundo herdado da origem dominante ─────────────────────────────────────
+  // Só quando nenhuma peça de fundo foi promovida: o kit não trouxe fundo, mas
+  // as peças vieram de um site que TINHA (o bundle guarda as camadas em
+  // `data-ds-camadas-de-fundo`, que a composição retira de cada peça). A página
+  // herda as camadas da origem dominante UMA vez; o `data-ds-camada-passa` do
+  // embrulho torna o fundo das seções transparente e o fundo passa a ser da
+  // página inteira — inclusive atrás das seções de outras origens.
+  if (camadasHtml === '' && origemDominante !== null) {
+    for (const cmp of pecasPorOrigem.get(origemDominante) ?? []) {
+      const indexPath = join(cmp.bundlePath, 'index.html');
+      if (!existsSync(indexPath)) continue;
+      const documento = readFileSync(indexPath, 'utf8');
+      const miolo = extrairCamadasDeFundo(documento);
+      if (miolo === null) continue;
+      let corpoCamada = envolverEmProxies({
+        origem: origemDominante,
+        html: miolo,
+        css: '',
+        documentoAttrs: atributosDoDocumentoDaPeca(documento),
+      });
+      corpoCamada = reescreverRefsHtml(corpoCamada, cmp.id);
+      camadasHtml = `\n${envolverCamadaDePagina(corpoCamada, { componentIds: [cmp.id] })}\n`;
+      avisos.push(
+        `O kit não tem peça de fundo: a página herdou as camadas de fundo do site de origem de "${cmp.name}" (origem dominante), para o fundo ser da página inteira em vez de um vazio.`,
+      );
+      break;
+    }
+  }
+
+  // ── Base da página composta (do compositor, não de uma origem) ────────────
+  // O reset tira a margem default do UA (8px de fresta na cor do body em volta
+  // de tudo); a regra de sticky é o par CSS do atributo `data-fixa-no-topo`.
+  concatCss += `\n/* base da página composta */\nhtml,body{margin:0}\n[data-secao="nav"][data-fixa-no-topo]{position:sticky;top:0;z-index:60}\n`;
 
   // ── Mídia do projeto ──────────────────────────────────────────────────────
   for (const m of entrada.midia ?? []) {
@@ -502,7 +624,13 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   const fontLinks = fontImportUrl
     ? `<link rel="preconnect" href="https://fonts.googleapis.com"/>\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>\n<link rel="stylesheet" href="${fontImportUrl}"/>\n`
     : '';
-  const scriptsHtml = scriptsRemotos.map((s) => `<script src="${s}"></script>`).join('\n');
+  // Locais primeiro (na ordem da primeira aparição), remotos depois — a mesma
+  // ordem relativa que a página tinha quando cada peça carregava as próprias
+  // tags inline e os remotos fechavam o body.
+  const scriptsHtml = [
+    ...scriptsLocais,
+    ...scriptsRemotos.map((s) => `<script src="${s}"></script>`),
+  ].join('\n');
 
   const finalHtml = `<!doctype html>
 <html lang="${entrada.lang ?? 'pt-BR'}">

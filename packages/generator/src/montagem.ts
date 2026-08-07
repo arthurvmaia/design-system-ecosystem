@@ -72,6 +72,58 @@ const removerElementoPorAtributo = (html: string, atributo: string, tag = 'div')
 };
 
 /**
+ * Extrai o MIOLO do bloco `<div data-ds-camadas-de-fundo>` de um documento.
+ *
+ * É o inverso complementar de `limparParaComposicao`: a limpeza tira o bloco de
+ * cada peça porque numa página o fundo é da página; esta função é quem permite
+ * à página TER esse fundo quando o kit não trouxe nenhuma peça de fundo — sem
+ * ela, a remoção vira só perda (o vão preto que o dono viu no hero).
+ *
+ * Usa a mesma varredura por profundidade do removedor: o miolo tem `<div>`
+ * aninhado e regex preguiçosa cortaria no primeiro `</div>`.
+ */
+export const extrairCamadasDeFundo = (html: string): string | null => {
+  const abertura = /<div\b[^>]*\bdata-ds-camadas-de-fundo\b[^>]*>/i.exec(html);
+  if (abertura === null) return null;
+  const corpoComeca = abertura.index + abertura[0].length;
+  const passo = /<div\b[^>]*>|<\/div\s*>/gi;
+  passo.lastIndex = corpoComeca;
+  let profundidade = 1;
+  for (;;) {
+    const m = passo.exec(html);
+    if (m === null) return null;
+    profundidade += m[0].startsWith('</') ? -1 : 1;
+    if (profundidade === 0) {
+      const miolo = html.slice(corpoComeca, m.index).trim();
+      return miolo.length > 0 ? miolo : null;
+    }
+  }
+};
+
+/**
+ * Remove o transform inline CONGELADO da captura em elementos de parallax.
+ *
+ * O coletor grava o estado do DOM no instante do print, e um elemento com
+ * `data-parallax` chega com `style="transform: translate(9.9px, -9.8px)"` —
+ * a posição da rolagem em que a captura estava. Na página composta o script de
+ * parallax da origem viaja junto e reaplica o transform a cada rolagem; o
+ * valor congelado só serve para a peça nascer deslocada antes do primeiro
+ * evento. Elementos SEM `data-parallax` não são tocados: transform estático
+ * pode ser design (rotate de um cartão, por exemplo).
+ */
+export const limparTransformCongelado = (html: string): string =>
+  html.replace(/<[^>]*\bdata-parallax\b[^>]*>/gi, (tag) =>
+    tag.replace(/\bstyle\s*=\s*"([^"]*)"/i, (_m, estilo: string) => {
+      const limpo = estilo
+        .split(';')
+        .map((d) => d.trim())
+        .filter((d) => d.length > 0 && !/^transform\s*:/i.test(d))
+        .join(';');
+      return limpo.length > 0 ? `style="${limpo}"` : '';
+    }),
+  );
+
+/**
  * Prepara o corpo do bundle para virar parte de uma página.
  *
  * Três coisas saem:
@@ -137,14 +189,28 @@ export const reescreverRefsCss = (css: string, cmpId: string): string =>
  */
 export const envolverSecao = (
   corpo: string,
-  dados: { role: string; secaoId?: string; componentIds: readonly string[]; criouAlgo?: boolean },
+  dados: {
+    role: string;
+    secaoId?: string;
+    componentIds: readonly string[];
+    criouAlgo?: boolean;
+    /**
+     * A peça desta seção era sticky/fixed na origem. Na composição o proxy e a
+     * `<section>` viram o containing block dela — exatamente da altura da
+     * própria peça, onde sticky não tem para onde grudar. O atributo permite ao
+     * CSS base da página promover a SEÇÃO a sticky, devolvendo o comportamento
+     * que a origem tinha (a nav que acompanha a rolagem).
+     */
+    fixaNoTopo?: boolean;
+  },
 ): string => {
   const origem =
     dados.componentIds.length === 0 ? 'gerado' : dados.criouAlgo === true ? 'misto' : 'biblioteca';
   const cmp =
     dados.componentIds.length > 0 ? ` data-componente="${dados.componentIds.join(' ')}"` : '';
   const sid = dados.secaoId !== undefined ? ` data-secao-id="${dados.secaoId}"` : '';
-  return `<section data-secao="${dados.role}"${sid} data-origem="${origem}"${cmp}>\n${corpo}\n</section>`;
+  const fixa = dados.fixaNoTopo === true ? ' data-fixa-no-topo' : '';
+  return `<section data-secao="${dados.role}"${sid} data-origem="${origem}"${cmp}${fixa}>\n${corpo}\n</section>`;
 };
 
 /**

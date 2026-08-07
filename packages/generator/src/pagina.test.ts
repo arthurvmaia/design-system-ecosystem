@@ -376,3 +376,139 @@ test('sem design system: nada recolore e o aviso diz', () => {
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+/**
+ * O kit SEM peça de fundo, vindo de um site que TINHA fundo: o caso do vão
+ * preto. As peças chegam limpas (limparParaComposicao tira as camadas de cada
+ * uma) e, sem este caminho, ninguém as devolvia — a página compunha sobre um
+ * vazio. Aqui também moram o dedupe de scripts (duas peças da mesma origem
+ * carregavam o MESMO arquivo duas vezes: dois listeners no menu, o toggle
+ * abria e fechava no mesmo clique), a nav sticky e a limpeza do parallax.
+ */
+const bundleComFundo = (raiz: string, nome: string, corpoSemCamadas: string): string => {
+  const dir = join(raiz, nome);
+  mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+  mkdirSync(join(dir, 'assets', 'js'), { recursive: true });
+  writeFileSync(
+    join(dir, 'index.html'),
+    `<!doctype html><html><head><link rel="stylesheet" href="assets/css/tokens.css"></head><body class="bg-escuro">
+<div data-ds-camadas-de-fundo="2">
+<canvas id="webgl-bg" class="fixed inset-0 -z-20"></canvas>
+<div class="fixed inset-0 -z-10 blur-de-origem"></div>
+</div>
+${corpoSemCamadas}
+<script src="assets/js/app.js"></script>
+</body></html>`,
+    'utf8',
+  );
+  writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+  writeFileSync(
+    join(dir, 'assets', 'js', 'app.js'),
+    'window.__app = (window.__app ?? 0) + 1;',
+    'utf8',
+  );
+  return dir;
+};
+
+test('kit sem peça de fundo herda as camadas da origem dominante; scripts, sticky e parallax', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-fundo-'));
+  try {
+    const nav = bundleComFundo(raiz, 'nav', '<nav class="sticky top-0">Menu</nav>');
+    const hero = bundleComFundo(
+      raiz,
+      'hero',
+      '<section class="hero" data-parallax="0.5" style="transform: translate(9.9px, -9.8px); opacity: 1">Oi</section>',
+    );
+    const out = join(raiz, 'saida');
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'Site de Teste',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_nav',
+            name: 'Nav',
+            category: 'nav',
+            kind: 'component',
+            bundlePath: nav,
+            designSystemId: 'ds_a',
+          },
+          {
+            id: 'cmp_hero',
+            name: 'Hero',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: hero,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      designSystem: null,
+      layout: ProjectLayout.parse({
+        secoes: [
+          { id: 'sec_1', nome: 'Menu', papel: 'nav', componentIds: ['cmp_nav'] },
+          { id: 'sec_2', nome: 'Abertura', papel: 'hero', componentIds: ['cmp_hero'] },
+        ],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      outputDir: out,
+    });
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    const styles = readFileSync(join(r.outputDir, 'assets', 'styles.css'), 'utf8');
+
+    // 1. A página herdou as camadas: uma vez, antes das seções, com aviso.
+    assert.ok(index.includes('data-ds-camadas-de-pagina'), 'camada herdada presente');
+    assert.equal(
+      (index.match(/webgl-bg/g) ?? []).length,
+      1,
+      'as camadas entram UMA vez (não uma por peça)',
+    );
+    assert.ok(
+      index.indexOf('data-ds-camadas-de-pagina') < index.indexOf('<section'),
+      'camada antes das seções',
+    );
+    assert.ok(
+      r.avisos.some((a) => a.includes('herdou as camadas de fundo')),
+      'a herança é declarada',
+    );
+
+    // 2. Scripts: o MESMO conteúdo em duas peças vira UMA tag, depois das seções.
+    const tags = index.match(/<script\b[^>]*src="assets\/[^"]+"/g) ?? [];
+    assert.equal(tags.length, 1, 'um script local só, apesar de duas peças com o mesmo arquivo');
+    assert.ok(
+      (index.lastIndexOf('</section>') ?? 0) < index.indexOf('<script'),
+      'os scripts fecham o body, quando todos os elementos já existem',
+    );
+
+    // 3. A nav sticky de origem promove a seção; a regra base existe no CSS.
+    assert.match(index, /data-secao="nav"[^>]*data-fixa-no-topo/);
+    assert.ok(styles.includes('[data-secao="nav"][data-fixa-no-topo]'), 'regra do sticky no base');
+    assert.ok(styles.includes('html,body{margin:0}'), 'reset da margem do UA');
+
+    // 4. O transform congelado do parallax saiu; as outras declarações ficam.
+    assert.ok(!index.includes('translate(9.9px'), 'o congelado da captura saiu');
+    assert.ok(index.includes('opacity: 1'), 'o resto do style fica');
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('quando o kit TEM peça de fundo, nada é herdado por cima', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-fundo-'));
+  try {
+    const r = montar(raiz);
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.equal(
+      (index.match(/data-ds-camadas-de-pagina/g) ?? []).length,
+      1,
+      'uma camada só: a da peça de fundo promovida',
+    );
+    assert.ok(
+      !r.avisos.some((a) => a.includes('herdou as camadas de fundo')),
+      'sem herança quando o fundo veio de peça',
+    );
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});

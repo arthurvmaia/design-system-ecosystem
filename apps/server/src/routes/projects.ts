@@ -168,7 +168,7 @@ projectsRoute.post(
       marca: z.string().optional(),
     }),
   ),
-  (c) => {
+  async (c) => {
     const recusa = exigeSenhaDeAcao(c);
     if (recusa !== null) return recusa;
     const { objetivo, nicho, nome, marca: nomeDaMarca } = c.req.valid('json');
@@ -266,7 +266,7 @@ projectsRoute.post(
 
     // 3. A marca automática — aqui a estrutura JÁ existe, então as mídias
     // nascem ancoradas nas seções.
-    const marca = criarMarcaAutomatica(projectId, {
+    const marca = await criarMarcaAutomatica(projectId, {
       nicho: nicho?.trim() || null,
       nomeDaMarca: nomeDaMarca?.trim() || null,
       secoes: secoesQueAceitamMidia({ layoutJson: JSON.stringify(layout), kitId }),
@@ -275,6 +275,7 @@ projectsRoute.post(
     const branding = normalizarProjectBranding(
       JSON.stringify({
         brandName: b.brandName,
+        nicho: b.nicho ?? undefined,
         tone: b.tone,
         logoPath: b.logoPath,
         palette: {
@@ -483,7 +484,7 @@ projectsRoute.post('/:id/marca-automatica', async (c) => {
     // sem corpo é uso legítimo: nicho é opcional
   }
 
-  const r = criarMarcaAutomatica(id, { nicho, secoes: secoesQueAceitamMidia(row) });
+  const r = await criarMarcaAutomatica(id, { nicho, secoes: secoesQueAceitamMidia(row) });
   const media = [...lerManifest(row.mediaManifestJson), ...r.media];
   db.update(tables.projects)
     .set({ mediaManifestJson: JSON.stringify(media), updatedAt: Date.now() })
@@ -501,7 +502,7 @@ projectsRoute.post('/:id/marca-automatica', async (c) => {
  * estrutura de pé, lê a identidade SALVA (da automática ou preenchida à mão) e
  * veste cada seção que aceita mídia, ancorando por `secaoId`.
  */
-projectsRoute.post('/:id/midias-automaticas', (c) => {
+projectsRoute.post('/:id/midias-automaticas', async (c) => {
   const id = c.req.param('id');
   if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
   const db = getDb();
@@ -527,7 +528,7 @@ projectsRoute.post('/:id/midias-automaticas', (c) => {
     const idCor = b.paleta?.atribuicoes[token];
     return b.paleta?.cores.find((c2) => c2.id === idCor)?.hex ?? fallback;
   };
-  const criadas = criarMidiasDasSecoes(
+  const criadas = await criarMidiasDasSecoes(
     id,
     {
       nome: b.brandName ?? 'Marca',
@@ -544,6 +545,9 @@ projectsRoute.post('/:id/midias-automaticas', (c) => {
       ],
     },
     secoes,
+    // O nicho persiste no branding desde a marca automática; é ele que decide
+    // a CENA das imagens (streetwear desenha roupa, não gradiente qualquer).
+    b.nicho ?? null,
   );
   const media = [...lerManifest(row.mediaManifestJson), ...criadas];
   db.update(tables.projects)

@@ -3,8 +3,10 @@ import { test } from 'node:test';
 import {
   envolverCamadaDePagina,
   envolverSecao,
+  extrairCamadasDeFundo,
   extrairCorpo,
   limparParaComposicao,
+  limparTransformCongelado,
   reescreverRefsCss,
   reescreverRefsHtml,
 } from './montagem.js';
@@ -133,4 +135,70 @@ test('limparParaComposicao: sem fechamento à vista, não corta nada', () => {
   // nada tem a ver com o bloco, o que é pior que deixar o bloco.
   const corpo = '<div data-ds-camadas-de-fundo="1"><canvas></canvas><section>texto</section>';
   assert.ok(limparParaComposicao(corpo).includes('texto'), 'o resto do corpo sobrevive');
+});
+
+test('extrairCamadasDeFundo: devolve o miolo inteiro, com os aninhados', () => {
+  // O inverso da limpeza: é daqui que a página herda o fundo quando o kit não
+  // traz peça de fundo nenhuma (o vão preto do hero nasceu dessa assimetria).
+  const doc = `<body><div data-ds-camadas-de-fundo="2">
+<canvas id="webgl-bg" class="fixed inset-0 -z-20"></canvas>
+<div class="fixed inset-0 -z-10"><div class="blur-grande"></div></div>
+</div>
+<nav id="navbar">Início</nav></body>`;
+  const miolo = extrairCamadasDeFundo(doc);
+  assert.ok(miolo !== null);
+  assert.ok(miolo.includes('webgl-bg'), 'o canvas vem');
+  assert.ok(miolo.includes('blur-grande'), 'o div aninhado vem');
+  assert.ok(!miolo.includes('data-ds-camadas-de-fundo'), 'sem o embrulho do bundle');
+  assert.ok(!miolo.includes('navbar'), 'e nada além do bloco');
+});
+
+test('extrairCamadasDeFundo: sem bloco (ou sem fechamento) devolve null', () => {
+  assert.equal(extrairCamadasDeFundo('<nav>só conteúdo</nav>'), null);
+  assert.equal(
+    extrairCamadasDeFundo('<div data-ds-camadas-de-fundo="1"><canvas></canvas>'),
+    null,
+    'bloco quebrado não vira fundo pela metade',
+  );
+  assert.equal(
+    extrairCamadasDeFundo('<div data-ds-camadas-de-fundo="0"></div>'),
+    null,
+    'bloco vazio não vira camada',
+  );
+});
+
+test('limparTransformCongelado: tira só o transform, e só de quem tem data-parallax', () => {
+  // A captura grava o estado do DOM no instante do print: um elemento de
+  // parallax chega com o translate daquela rolagem. O script da origem viaja
+  // junto e reaplica o valor certo — o congelado só faz a peça nascer torta.
+  const html =
+    '<div data-parallax="0.5" style="transform: translate(9.9px, -9.8px); opacity: 1">a</div>' +
+    '<div class="cartao" style="transform: rotate(3deg)">b</div>';
+  const limpo = limparTransformCongelado(html);
+  assert.ok(!limpo.includes('translate(9.9px'), 'o congelado saiu');
+  assert.ok(limpo.includes('opacity: 1'), 'as outras declarações ficam');
+  assert.ok(limpo.includes('rotate(3deg)'), 'transform estático de design não é tocado');
+});
+
+test('limparTransformCongelado: style que só tinha transform sai inteiro', () => {
+  const limpo = limparTransformCongelado(
+    '<div data-parallax="1" style="transform: translateY(4px)">a</div>',
+  );
+  assert.ok(!limpo.includes('style='), 'atributo vazio não fica para trás');
+  assert.ok(limpo.includes('data-parallax="1"'), 'o resto da tag sobrevive');
+});
+
+test('envolverSecao: nav sticky de origem declara data-fixa-no-topo', () => {
+  const html = envolverSecao('<nav class="sticky top-0">Menu</nav>', {
+    role: 'nav',
+    secaoId: 'sec_1',
+    componentIds: ['cmp_nav'],
+    fixaNoTopo: true,
+  });
+  assert.ok(html.includes('data-fixa-no-topo'), 'o atributo casa com a regra do CSS base');
+  const sem = envolverSecao('<nav>Menu</nav>', {
+    role: 'nav',
+    componentIds: ['cmp_nav'],
+  });
+  assert.ok(!sem.includes('data-fixa-no-topo'), 'sem sticky na origem, nada muda');
 });
