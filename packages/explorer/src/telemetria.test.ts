@@ -168,3 +168,28 @@ test('urlParaLog remove query e credenciais (regra 16)', () => {
   );
   assert.equal(urlParaLog('não-é-url'), '[url inválida]');
 });
+
+test('o orçamento total AMPLIA para o site grande, e nunca encolhe', () => {
+  // O total era constante e 43 das 58 capturas do acervo saíam PARCIAIS. Um
+  // número fixo não serve a sites que variam 100× em nós e 17× em altura.
+  let agora = 0;
+  const t = new Telemetria({ total: 180_000, fases: {} }, () => agora);
+
+  assert.equal(t.restanteTotal(), 180_000);
+  assert.ok(t.ampliarTotal(540_000, 'site 3× o típico'), 'ampliou');
+  assert.equal(t.restanteTotal(), 540_000, 'o que resta acompanha');
+
+  // Encolher é recusado: o objetivo é não estourar, e reduzir no meio do
+  // caminho abortaria fase que já tinha sido autorizada a rodar.
+  assert.equal(t.ampliarTotal(120_000, 'menor'), false, 'não encolhe');
+  assert.equal(t.restanteTotal(), 540_000);
+
+  // E fica registrado: ampliação silenciosa vira mistério na telemetria.
+  assert.deepEqual(
+    t.ampliacoesDoTotal().map((a) => a.para),
+    [540_000],
+  );
+
+  agora = 100_000;
+  assert.equal(t.restanteTotal(), 440_000, 'o decorrido desconta do total novo');
+});

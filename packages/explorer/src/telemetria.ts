@@ -93,6 +93,8 @@ export class Telemetria {
   private parcialFlag = false;
   private faseInterrompida?: string;
   private motivoInterrupcao?: string;
+  /** O que foi ampliado e por quê — declarado, nunca implícito. */
+  private readonly ampliacoes: { de: number; para: number; motivo: string }[] = [];
 
   constructor(
     private readonly orc: Orcamento,
@@ -110,6 +112,47 @@ export class Telemetria {
   /** Quanto resta do orçamento TOTAL (ms). Nunca negativo. */
   restanteTotal(): number {
     return Math.max(0, this.orc.total - this.decorrido());
+  }
+
+  /**
+   * Amplia o orçamento total quando o SITE se mostra maior que o típico.
+   *
+   * O total era uma constante, e o acervo mostrou o preço: **43 das 58 capturas
+   * saíram PARCIAIS** — três em cada quatro. Não surpreende, olhando a variação
+   * do que ele tem de cobrir: de 12 a 1168 nós no mapa (100×) e de 900 a 15412
+   * pixels de altura (17×). Um número fixo não serve aos dois extremos; ele ou
+   * esfomeia o site grande ou desperdiça no pequeno.
+   *
+   * A ampliação acontece DEPOIS de a página estar medida — é o único momento em
+   * que se sabe o tamanho do trabalho. Antes disso seria o mesmo chute com outro
+   * nome.
+   *
+   * Só cresce, nunca encolhe: o objetivo é não estourar, e reduzir o total no
+   * meio do caminho abortaria fases que já tinham sido autorizadas a rodar.
+   */
+  ampliarTotal(novoTotal: number, motivo: string): boolean {
+    const alvo = Math.round(novoTotal);
+    if (!Number.isFinite(alvo) || alvo <= this.orc.total) return false;
+    this.ampliacoes.push({ de: this.orc.total, para: alvo, motivo });
+    this.orc.total = alvo;
+    return true;
+  }
+
+  /** As ampliações aplicadas, para o relatório. */
+  ampliacoesDoTotal(): readonly { de: number; para: number; motivo: string }[] {
+    return this.ampliacoes;
+  }
+
+  /**
+   * O orçamento total VIGENTE — já com as ampliações.
+   *
+   * Quem calcula teto de fase precisa ler daqui, e não da constante de
+   * configuração. Ler da constante foi o defeito que fez a primeira versão da
+   * ampliação não servir para nada: o total subia para 355 s e o teto do
+   * percurso continuava em 61,2 s, que é a fração de 180 s.
+   */
+  totalAtual(): number {
+    return this.orc.total;
   }
 
   /**

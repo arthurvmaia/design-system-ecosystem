@@ -148,6 +148,35 @@ export const FASE_V2 = {
  * As frações somam menos que 1 de propósito — o que sobra é a margem do
  * carregamento, da drenagem e do fechamento.
  */
+/**
+ * O SITE TÍPICO do acervo, medido — a régua com que o orçamento se ajusta.
+ *
+ * São as medianas de 58 capturas: 321 nós no mapa estrutural e 5756 px de
+ * altura. Números medidos, não escolhidos: um site nesses valores recebe
+ * exatamente o orçamento configurado, e é a partir daí que a proporção conta.
+ * Recalibrar é ler o acervo de novo, não discutir.
+ */
+const NOS_DO_SITE_TIPICO = 321;
+const ALTURA_DO_SITE_TIPICO = 5756;
+/**
+ * A contagem BRUTA de elementos, medida no HTML renderizado de 60 capturas:
+ * mediana 405. É outra régua que a do mapa estrutural (321), porque o mapa é
+ * filtrado — e é esta que serve antes do percurso, quando só existe o DOM.
+ */
+const ELEMENTOS_DO_SITE_TIPICO = 405;
+/**
+ * O teto da ampliação. O maior site do catálogo tem 1168 nós (3,6× a mediana) e
+ * 15412 px (2,7×), então 4× o cobre com folga — e impede que uma página de
+ * rolagem infinita segure a fila para sempre.
+ */
+const TETO_DE_AMPLIACAO = 4;
+/**
+ * O teto ABSOLUTO de uma captura. Orçamento sem fim é fila travada, e o limite
+ * fica declarado aqui em vez de esperar alguém descobri-lo numa madrugada. Doze
+ * minutos cobrem o site mais pesado do catálogo com folga.
+ */
+const TETO_ABSOLUTO_MS = 12 * 60_000;
+
 const FRACAO_DA_FASE: Record<string, number> = {
   [FASE_V2.percurso]: 0.34,
   // O bloco de HTML por seção, espera de ícones, prints e retratos de fundo
@@ -373,12 +402,17 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     let soma = 0;
     for (const f of ORDEM_DAS_FASES.slice(i + 1)) {
       const m = historico[f];
-      soma += m !== undefined ? m : Math.round(limits.orcamentoTotalMs * (FRACAO_DA_FASE[f] ?? 0));
+      soma += m !== undefined ? m : Math.round(tel.totalAtual() * (FRACAO_DA_FASE[f] ?? 0));
     }
     return soma;
   };
+  // `tel.totalAtual()`, e NÃO `limits.orcamentoTotalMs`: o total cresce quando o
+  // site se mostra maior que o típico, e o teto da fase tem de crescer junto.
+  // Ler da constante foi o que fez a primeira versão da ampliação não servir
+  // para nada — o total subia para 355 s e o percurso continuava cortado em
+  // 61,2 s, que é a fração de 180 s.
   const tetoCom = (nome: string): number | undefined =>
-    tetoDaFase(nome, limits.orcamentoTotalMs, tel.restanteTotal(), medidoAdiante(nome));
+    tetoDaFase(nome, tel.totalAtual(), tel.restanteTotal(), medidoAdiante(nome));
   // Registrado no manifesto: sem isto, ninguém sabe se o teto veio do
   // histórico ou da fração, e a sugestão de orçamento da tela vira palpite.
   const aposPercurso = medidoAdiante(FASE_V2.percurso);
@@ -466,6 +500,70 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
      * estoura a cota perde a varredura de ponteiro, não a observação temporal —
      * porque a temporal é barata e é o que responde "isto se move".
      */
+    /**
+     * A PRIMEIRA ampliação do orçamento, antes do percurso.
+     *
+     * A ampliação pelo mapa estrutural (mais abaixo) chega tarde demais para a
+     * fase que mais sofre: o percurso roda ANTES de o mapa existir, e o teto
+     * dele já foi calculado quando aquela ampliação acontece. Medido no Sonic
+     * Link: o total subiu de 180 s para 334 s e o percurso continuou cortado em
+     * 61,2 s, que é a fração de 180 s.
+     *
+     * Aqui a página já carregou e assentou, então dá para medi-la com duas
+     * contas baratas — altura e número de elementos. É o suficiente: o custo do
+     * percurso é quantas paradas ele faz (altura) vezes quanto há para provocar
+     * em cada uma (elementos).
+     *
+     * As duas réguas são medianas do acervo: 5756 px e 405 elementos.
+     */
+    const medidaDaPagina = await page.evaluate<{ altura: number; nos: number }>(
+      '(function(){try{return {altura:document.documentElement.scrollHeight||0,nos:document.querySelectorAll("*").length||0}}catch(e){return {altura:0,nos:0}}})()',
+    );
+    const fatorInicial = Math.min(
+      TETO_DE_AMPLIACAO,
+      Math.max(
+        1,
+        medidaDaPagina.altura / ALTURA_DO_SITE_TIPICO,
+        medidaDaPagina.nos / ELEMENTOS_DO_SITE_TIPICO,
+      ),
+    );
+    /**
+     * O orçamento parte do que a captura CUSTA, medido — não de 180 s.
+     *
+     * O histórico do acervo entrega o número que faltava: o percurso custa 295 s
+     * de mediana e recebia 61; a soma de todas as fases medidas passa de 560 s.
+     * O orçamento configurado é TRÊS VEZES menor que o trabalho que o motor foi
+     * mandado fazer, e é por isso que 43 das 58 capturas saíam parciais — não
+     * por sites patológicos, mas por aritmética.
+     *
+     * A folga de 20% cobre o grão do corte: uma fase só é interrompida ENTRE
+     * passos, e um passo do percurso custa dezenas de segundos.
+     *
+     * Sem histórico — primeira captura da máquina — nada disto acontece e o
+     * configurado vale, como sempre valeu.
+     */
+    const somaMedida = Object.values(opts.historicoDeFases ?? {}).reduce((n, ms) => n + ms, 0);
+    const pelaHistoria = somaMedida > 0 ? somaMedida * 1.2 * fatorInicial : 0;
+    const alvoDoTotal = Math.min(
+      TETO_ABSOLUTO_MS,
+      Math.max(limits.orcamentoTotalMs * fatorInicial, pelaHistoria),
+    );
+    if (
+      tel.ampliarTotal(
+        alvoDoTotal,
+        `página ${fatorInicial.toFixed(1)}× a típica (${medidaDaPagina.nos} elementos, ${Math.round(medidaDaPagina.altura)}px)${somaMedida > 0 ? `; fases medidas somam ${Math.round(somaMedida / 1000)}s` : ''}`,
+      )
+    ) {
+      log('orcamento-ampliado', {
+        quando: 'antes-do-percurso',
+        fator: Number(fatorInicial.toFixed(2)),
+        nos: medidaDaPagina.nos,
+        altura: Math.round(medidaDaPagina.altura),
+        medidasMs: Math.round(somaMedida),
+        totalMs: Math.round(alvoDoTotal),
+      });
+    }
+
     const paradasPrevistas = opts.maxParadas ?? 10;
     const tetoPercurso = tetoCom(FASE_V2.percurso) ?? 60_000;
     // A cota conta TODAS as paradas que vão acontecer, não só as da descida.
@@ -739,6 +837,46 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       midias: mediaDetections.length,
       runtimes: runtimeDetections.length,
     });
+
+    /**
+     * O ORÇAMENTO se ajusta ao tamanho do site — aqui, e não antes.
+     *
+     * Este é o primeiro momento em que se sabe o tamanho do trabalho: o mapa
+     * está pronto e a altura da página, medida. Tudo o que vem depois (estados,
+     * retratos, prints de seção, compilação, comparação) custa em proporção a
+     * esses dois números — e o total era uma CONSTANTE.
+     *
+     * O acervo mediu o preço: **43 das 58 capturas saíram PARCIAIS**, três em
+     * cada quatro. Não surpreende, olhando o que o número fixo tinha de cobrir:
+     * de 12 a 1168 nós (100×) e de 900 a 15412 px de altura (17×).
+     *
+     * O fator é a razão para o site TÍPICO do acervo, pelo eixo que estiver mais
+     * apertado. Site típico segue com o orçamento de sempre; o que é o dobro
+     * ganha o dobro. O teto existe porque uma página infinita não pode segurar a
+     * fila para sempre, e é generoso de propósito — cobre com folga o maior site
+     * do catálogo.
+     */
+    const fatorDoSite = Math.min(
+      TETO_DE_AMPLIACAO,
+      Math.max(
+        1,
+        structuralMap.length / NOS_DO_SITE_TIPICO,
+        coletaFinal.pageHeight / ALTURA_DO_SITE_TIPICO,
+      ),
+    );
+    if (
+      tel.ampliarTotal(
+        limits.orcamentoTotalMs * fatorDoSite,
+        `site ${fatorDoSite.toFixed(1)}× o típico (${structuralMap.length} nós, ${Math.round(coletaFinal.pageHeight)}px)`,
+      )
+    ) {
+      log('orcamento-ampliado', {
+        fator: Number(fatorDoSite.toFixed(2)),
+        nos: structuralMap.length,
+        altura: Math.round(coletaFinal.pageHeight),
+        totalMs: Math.round(limits.orcamentoTotalMs * fatorDoSite),
+      });
+    }
 
     // ── Atribuição do movimento ───────────────────────────────────────────
     // Aqui o `animated` deixa de ser `false` por padrão e passa a valer o que foi
