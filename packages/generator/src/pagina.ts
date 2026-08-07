@@ -26,6 +26,7 @@ import {
   distribuirTokens,
   ehPecaDeFundo,
   escalaDeReferencia,
+  listarAssetsFaltando,
   projectGeneratedVersionDir,
   projectMediaDir,
   reguasParaOrigem,
@@ -156,6 +157,17 @@ export type ResultadoDaPagina = {
    * folha o alinhamento não alcança, e é a única forma de saber disso.
    */
   reescala: { reescritas: number; mantidas: number };
+  /**
+   * O site sobrevive sozinho?
+   *
+   * `fechadoEmSi` responde a pergunta que o dono fez em voz alta: apagar um kit,
+   * uma peça da Biblioteca ou reextrair uma origem pode quebrar um site que já
+   * foi entregue? Com ele verdadeiro, não — tudo o que a página pede está na
+   * pasta dela. `externas` lista o que vem da internet (fonte de CDN, por
+   * exemplo): não quebra por apagar nada aqui, mas depende de rede, e quem
+   * entrega precisa saber.
+   */
+  independente: { fechadoEmSi: boolean; pendentes: string[]; externas: string[] };
 };
 
 /** Troca cada chave pelo valor, uma vez; o que não casar vira aviso. */
@@ -1510,6 +1522,44 @@ ${scriptsHtml}
 </html>`;
   escrever('index.html', finalHtml);
 
+  /**
+   * O site entregue tem de SOBREVIVER SOZINHO — e isto confere, não presume.
+   *
+   * O dono foi direto: "os sites que já foram gerados têm que ser independentes,
+   * pois já foram gerados e não dependem mais dos componentes, já que está em
+   * disco". Ele está certo, e a montagem já copiava tudo — mas isso era um
+   * acidente feliz. Apagar um kit, uma peça da Biblioteca ou reextrair uma
+   * origem não pode quebrar um site que já foi entregue ao cliente, e a única
+   * forma de garantir é olhar o resultado.
+   *
+   * A conferência é o que se pode conferir sem rede: toda referência do HTML
+   * final tem de ser relativa ao próprio site e existir em disco. O que aponta
+   * para fora — CDN de fonte, `mailto:`, `tel:` — é declarado, porque é decisão
+   * de desenho, não descuido: uma fonte do Google é um endereço que o site
+   * carrega, e quem entrega precisa saber disso.
+   */
+  // `listarAssetsFaltando` é a MESMA regra que valida a extração — e é a regra
+  // certa porque já sabe a distinção que custou caro aprender: `<a href="/home">`
+  // é navegação, não arquivo. Duplicar o laço aqui repetiria o engano (o
+  // primeiro rascunho reprovou o próprio teste por causa de um `<a>`).
+  const pendentesEmDisco = listarAssetsFaltando(outputDir, finalHtml);
+  const dependenciasExternas: string[] = [];
+  for (const m of finalHtml.matchAll(/<[a-z][\w-]*\b[^>]*?\s(?:href|src)\s*=\s*"([^"]+)"/gi)) {
+    const ref = m[1];
+    if (ref === undefined || !/^(?:https?:)?\/\//i.test(ref)) continue;
+    if (!dependenciasExternas.includes(ref)) dependenciasExternas.push(ref);
+  }
+  if (pendentesEmDisco.length > 0) {
+    avisos.push(
+      `O site NÃO está fechado em si: ${pendentesEmDisco.length} referência(s) apontam para arquivo que não foi copiado (${pendentesEmDisco.slice(0, 3).join(', ')}). Ele quebra se a peça de origem sair do disco.`,
+    );
+  }
+  if (dependenciasExternas.length > 0) {
+    avisos.push(
+      `O site carrega ${dependenciasExternas.length} endereço(s) da internet (${dependenciasExternas.slice(0, 2).join(', ')}): funciona offline no resto, mas isto depende de rede.`,
+    );
+  }
+
   return {
     outputDir,
     arquivos,
@@ -1518,5 +1568,10 @@ ${scriptsHtml}
     recoloracao: recoloracaoTotais,
     retipografia: retipografiaTotais,
     reescala: reescalaTotais,
+    independente: {
+      fechadoEmSi: pendentesEmDisco.length === 0,
+      pendentes: pendentesEmDisco,
+      externas: dependenciasExternas,
+    },
   };
 };

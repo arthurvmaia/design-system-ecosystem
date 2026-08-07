@@ -1172,3 +1172,72 @@ test('vídeo da origem é trocado pelo do projeto, com src, source e capa', () =
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+test('o site gerado é FECHADO EM SI: apagar a peça de origem não o quebra', () => {
+  // O dono foi direto: "os sites que já foram gerados têm que ser independentes,
+  // pois já foram gerados e não dependem mais dos componentes, já que está em
+  // disco". A montagem já copiava tudo, mas isso era acidente feliz — aqui vira
+  // garantia conferida, e o teste apaga a origem para provar.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-independente-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    mkdirSync(join(dir, 'assets', 'image'), { recursive: true });
+    writeFileSync(join(dir, 'assets', 'image', 'foto.jpg'), 'bytes', 'utf8');
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<section><img src="assets/image/foto.jpg" alt="x"><a href="/contato">contato</a></section>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const saida = join(raiz, 'saida');
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_p',
+            name: 'Peça',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Abertura', componentIds: ['cmp_p'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      outputDir: saida,
+    });
+
+    assert.ok(r.independente.fechadoEmSi, `pendentes: ${r.independente.pendentes.join(', ')}`);
+
+    // A prova de verdade: some com a peça de origem e o site continua inteiro.
+    rmSync(dir, { recursive: true, force: true });
+    const index = readFileSync(join(saida, 'index.html'), 'utf8');
+    for (const m of index.matchAll(/<[a-z][\w-]*\b[^>]*?\s(?:href|src)\s*=\s*"([^"]+)"/gi)) {
+      const ref = m[1] ?? '';
+      const tag = (m[0].match(/^<([a-z][\w-]*)/i)?.[1] ?? '').toLowerCase();
+      // `<a href>` é navegação, não arquivo — a mesma distinção do validador.
+      if (tag === 'a' || tag === 'form' || tag === 'area' || tag === 'base') continue;
+      if (ref.startsWith('#') || /^(?:https?:)?\/\/|^(?:data|mailto|tel):/i.test(ref)) continue;
+      assert.ok(
+        existsSync(join(saida, ref.split(/[?#]/)[0] ?? '')),
+        `${ref} sumiu junto com a peça de origem`,
+      );
+    }
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
