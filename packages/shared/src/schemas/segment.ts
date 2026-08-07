@@ -28,6 +28,12 @@ import { ScrollBehavior } from './scroll.js';
 export const ComponentCategory = z.enum([
   'typography',
   'interaction',
+  // O ponteiro personalizado, pedido por nome pelo dono: "tem sites em que o
+  // mouse é personalizado e eu quero que isso seja um componente que eu possa
+  // escolher". Categoria própria, e não `interaction` genérica, por duas
+  // razões: é assim que ele o procura na Galeria, e é uma peça de PÁGINA —
+  // `ehPecaDeComportamento` a reconhece e a tira do fluxo de seções.
+  'cursor',
   'background',
   'overlay',
   'hero',

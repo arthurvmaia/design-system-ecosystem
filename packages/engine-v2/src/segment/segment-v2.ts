@@ -1364,6 +1364,121 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     posicao++;
   }
 
+  // ── Ponteiro personalizado ────────────────────────────────────────────────
+  //
+  // O dono pediu esta categoria por nome: "tem sites como esse por exemplo que
+  // o mouse é personalizado e eu quero que isso seja um componente que eu possa
+  // escolher também".
+  //
+  // A prova é forte e sai de graça, porque o `cursor` computado de cada nó já
+  // era coletado: um site com ponteiro próprio esconde o nativo em `cursor:none`
+  // no corpo da página. Nenhum site faz isso por acidente — é sempre para pôr
+  // outro no lugar. O elemento que faz esse papel se identifica pelo nome (a
+  // convenção é universal: `cursor`, `cursor-dot`, `custom-cursor`) e por ser
+  // posicionado fora do fluxo, que é o que permite a ele seguir o ponteiro.
+  //
+  // Vale como peça de PÁGINA, não de seção: quem o escolhe está escolhendo um
+  // comportamento do site inteiro. `ehPecaDeComportamento` conhece a categoria.
+  {
+    const corpo = entrada.structuralMap.find((n) => n.fingerprint.tag === 'body' || n.depth === 0);
+    const escondeONativo = corpo?.fingerprint.cursor === 'none';
+    const temNome = (n: StructuralNode): boolean =>
+      /(^|[-_ ])cursor([-_ ]|$)/i.test(
+        `${(n.fingerprint.stableClasses ?? []).join(' ')} ${n.fingerprint.id ?? ''}`,
+      );
+    const alvos = escondeONativo
+      ? entrada.structuralMap.filter(
+          (n) => temNome(n) && entrada.htmlPorHash.has(n.fingerprint.hash),
+        )
+      : [];
+    const html = alvos
+      .map((n) => entrada.htmlPorHash.get(n.fingerprint.hash) ?? '')
+      .filter((h) => h.trim().length > 0)
+      .join('\n');
+    if (html.trim().length > 0) {
+      const hashes = alvos.map((n) => n.fingerprint.hash);
+      const reprDoCursor = classificarRepresentacao({
+        runtimes: [],
+        midias: [],
+        assetsLocais: true,
+        assetsExternos: 0,
+        scriptsNaoLocalizados: entrada.scriptsNaoLocalizados,
+        iframeCrossOrigin: false,
+        shadowFechado: false,
+        estadosCapturados: 0,
+        movimentoMedido: true,
+        movimentoPorCss: false,
+        // O ponteiro se move porque um script o move; isso é o MECANISMO, não
+        // uma falta. Sem esta marca ele cairia na regra do movimento
+        // inexplicado e viraria foto — de um elemento de 24 pixels.
+        movimentoEhDaPagina: true,
+        reageAoPonteiro: true,
+        regiaoReativaSemDom: false,
+        dependeDeJs: true,
+        bootstrapIdentificado: false,
+      });
+      const fidelidadeDoCursor = montarFidelidade({
+        representacao: reprDoCursor,
+        cssExternoFaltando: entrada.cssExternoFaltando,
+        temTexto: false,
+        temMovimento: true,
+        movimentoPorCss: false,
+        backgrounds: [],
+        midias: [],
+        externos: 0,
+        totalAssets: 0,
+        assetsLocais: entrada.assetsLocais,
+        estados: 0,
+        acoes: [],
+        ponteiro: [],
+        scroll: [],
+        runtimes: [],
+        temFrame: false,
+      });
+      segmentos.push({
+        position: posicao,
+        category: 'cursor',
+        kind: 'animation',
+        name: 'Ponteiro personalizado',
+        htmlSnippet: html,
+        hash: `cursor-${hashes[0] ?? ''}`,
+        evidence: {
+          segmentId: `cursor-${hashes[0] ?? ''}`,
+          members: hashes,
+          signals: [
+            {
+              kind: 'interacao',
+              weight: PESO.interacao,
+              detail: `a página esconde o ponteiro nativo (cursor:none) e desenha ${alvos.length} elemento(s) no lugar`,
+            },
+          ],
+          backgroundIds: [],
+          mediaIds: [],
+          runtimeIds: [],
+          stateIds: [],
+          pointerResponseIds: [],
+          scrollIds: [],
+          assetKeys: [],
+          tokenIds: [],
+          nameEvidence: ['cursor:none no corpo da página'],
+          // Mesmo critério da camada de fundo e do comportamento: não passa
+          // pela escada de evidência, então 'alta' seria declaração, não medida.
+          confidence: 'media',
+        },
+        representation: reprDoCursor,
+        fidelity: fidelidadeDoCursor,
+        support: seloDe(fidelidadeDoCursor, reprDoCursor),
+        interactions: [],
+        limitations: [
+          'O ponteiro é desenhado por script: ele aparece na prévia quando o mouse entra na área.',
+        ],
+        filhos: [],
+      });
+      for (const h of hashes) hashesJaEmitidos.add(h);
+      posicao++;
+    }
+  }
+
   // ── Comportamentos ─────────────────────────────────────────────────────────
   // "Quero que meus cards apareçam assim quando eu rolo" é um pedido de
   // componente, não de etiqueta. Aqui o que a captura mediu vira item da

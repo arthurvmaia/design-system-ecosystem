@@ -30,6 +30,7 @@ const fp = (over: {
   classes?: string[];
   text?: string;
   siblingIndex?: number;
+  cursor?: string;
 }) =>
   montarFingerprint({
     tag: over.tag ?? 'div',
@@ -43,6 +44,7 @@ const fp = (over: {
     siblingIndex: over.siblingIndex ?? 0,
     structuralSignature: '',
     listeners: [],
+    ...(over.cursor !== undefined ? { cursor: over.cursor } : {}),
   });
 
 const node = (
@@ -1299,4 +1301,56 @@ test('o texto VISÍVEL não classifica: rodapé com "Sobre" não é equipe', () 
     role: 'unknown',
   });
   assert.equal(inferirCategoria(comClasse, sinais, [], false).categoria, 'team');
+});
+
+test('ponteiro personalizado vira peça própria quando a página esconde o nativo', () => {
+  // O dono pediu esta categoria por nome. A prova sai de graça, porque o
+  // `cursor` computado de cada nó já era coletado: um site com ponteiro próprio
+  // esconde o nativo em `cursor:none`. Nenhum site faz isso por acidente.
+  const corpoFp = fp({ tag: 'body', cursor: 'none' });
+  const pontFp = fp({ tag: 'div', classes: ['cursor-dot', 'fixed'] });
+  const html = new Map([[pontFp.hash, '<div class="cursor-dot fixed"></div>']]);
+
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      structuralMap: [
+        node({ fingerprint: corpoFp, role: 'section', pageBox: { x: 0, y: 0, w: 1440, h: 3600 } }),
+        node({
+          fingerprint: pontFp,
+          role: 'other',
+          parent: corpoFp.hash,
+          pageBox: { x: 0, y: 0, w: 24, h: 24 },
+        }),
+      ],
+      htmlPorHash: html,
+    }),
+  );
+
+  const cursor = r.segmentos.find((s) => s.category === 'cursor');
+  assert.ok(cursor !== undefined, 'a peça do ponteiro foi emitida');
+  assert.equal(cursor?.name, 'Ponteiro personalizado');
+  // Não pode virar foto: ele se move porque um script o move, e isso é o
+  // mecanismo, não uma falta. Congelar um elemento de 24 pixels não serve.
+  assert.notEqual(cursor?.representation.type, 'referencia-visual');
+});
+
+test('sem `cursor:none` no corpo, nenhuma peça de ponteiro é inventada', () => {
+  // Uma classe chamada "cursor" sozinha não prova nada: `cursor-pointer` é
+  // utilitária de Tailwind e aparece em todo botão do acervo.
+  const corpoFp = fp({ tag: 'body' });
+  const botaoFp = fp({ tag: 'button', classes: ['cursor-pointer'] });
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      structuralMap: [
+        node({ fingerprint: corpoFp, role: 'section', pageBox: { x: 0, y: 0, w: 1440, h: 3600 } }),
+        node({ fingerprint: botaoFp, role: 'other', parent: corpoFp.hash }),
+      ],
+      htmlPorHash: new Map([[botaoFp.hash, '<button class="cursor-pointer">ok</button>']]),
+    }),
+  );
+  assert.equal(
+    r.segmentos.filter((s) => s.category === 'cursor').length,
+    0,
+    'nenhum ponteiro inventado',
+  );
 });
