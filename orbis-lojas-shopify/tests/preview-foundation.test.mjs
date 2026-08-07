@@ -125,3 +125,19 @@ test("RECUPERAÇÃO F5: a escala da miniatura acompanha a largura em qualquer vi
   assert.match(card, /window\.addEventListener\("resize", apply/);
   assert.match(card, /host\.clientWidth \/ baseWidth/, "escala derivada da largura real do card");
 });
+
+test("links do tema navegam a prévia em qualquer modo, e Visualizar abre em tela cheia", async () => {
+  const render = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
+  /* o clique em link é tratado ANTES do desvio do modo de seleção: selecionar
+     a seção não pode mais impedir a navegação entre páginas */
+  assert.match(render, /if\(anchor\)\{var href=anchor\.getAttribute\("href"\);event\.preventDefault\(\);/);
+  assert.match(render, /orbisNavigate:href/);
+  const appShell = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
+  assert.match(appShell, /function ThemeFullscreenPreview/);
+  assert.match(appShell, /className="fullscreen-preview-close"/, "X de saída");
+  assert.match(appShell, /event\.key === "Escape"/, "Esc também fecha");
+  assert.match(appShell, /mode="interagir"/, "na tela cheia a loja é navegável");
+  assert.doesNotMatch(appShell, /ThemeModalPreview/, "o modal antigo saiu de cena");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.fullscreen-preview \{[^}]*position: fixed;[^}]*inset: 0/, "ocupa a tela toda");
+});

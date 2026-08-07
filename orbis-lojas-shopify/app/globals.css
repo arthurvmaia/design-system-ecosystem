@@ -201,6 +201,21 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .preview-card-media.is-loading::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(150, 200, 195, 0.09) 50%, transparent 70%); animation: pc-shimmer 1.3s infinite; }
 @keyframes pc-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 .preview-card-badge { position: absolute; left: 10px; bottom: 10px; padding: 3px 8px; background: var(--green, #22d49b); color: #04211a; font: 700 9px var(--font-geist-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+/* Visualizar em tela cheia: a loja inteira, com saída no canto direito */
+.fullscreen-preview { position: fixed; inset: 0; z-index: 90; display: grid; grid-template-rows: 46px 1fr; background: #050c0c; }
+.fullscreen-preview-bar { display: flex; align-items: center; gap: 14px; padding: 0 12px; border-bottom: 1px solid #1d3232; background: #0a1414; }
+.fullscreen-preview-bar strong { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fullscreen-preview-pages { margin-left: auto; }
+.fullscreen-preview-pages select { height: 30px; padding: 0 8px; font-size: 11px; }
+.fullscreen-preview-close { display: grid; place-items: center; width: 34px; height: 34px; margin-left: auto; border: 1px solid #2b4040; background: #081111; color: #cbd7d7; cursor: pointer; }
+.fullscreen-preview-pages + .fullscreen-preview-close { margin-left: 0; }
+.fullscreen-preview-close:hover { border-color: #f27f6c; color: #f27f6c; }
+.fullscreen-preview-close:focus-visible { outline: 2px solid var(--green, #22d49b); outline-offset: 2px; }
+.fullscreen-preview-stage { min-height: 0; background: #ffffff; }
+.fullscreen-preview-stage .live-render-wrap, .fullscreen-preview-stage .live-render-frame { width: 100%; height: 100%; border: 0; }
+.fullscreen-preview-stage .storefront { height: 100%; overflow-y: auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
 /* Miniatura REAL: a home verdadeira num viewport reduzido e inerte */
 .home-thumb { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0e1b1b; }
 .home-thumb.is-loading::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(150, 200, 195, 0.09) 50%, transparent 70%); animation: pc-shimmer 1.3s infinite; }

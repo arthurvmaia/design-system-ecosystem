@@ -809,8 +809,13 @@ function limparHover(){if(hoverAlvo){hoverAlvo.style.outline="";hoverAlvo.style.
 document.addEventListener("submit",function(event){event.preventDefault();},true);
 document.addEventListener("mouseover",function(event){if(mode!=="selecionar"){return;}var alvo=event.target.closest("[data-block-id],[data-orbis-section]");if(alvo===hoverAlvo){return;}limparHover();if(alvo){hoverAlvo=alvo;alvo.style.outline="1px dashed rgba(47,128,237,0.85)";alvo.style.outlineOffset="-1px";}},true);
 document.addEventListener("click",function(event){var anchor=event.target.closest("a");
-if(mode==="selecionar"){event.preventDefault();event.stopPropagation();var block=event.target.closest("[data-block-id]");var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section"),orbisBlock:block?block.getAttribute("data-block-id"):null},"*");}return;}
-if(anchor){event.preventDefault();var href=anchor.getAttribute("href");if(href&&href.charAt(0)!=="#"&&window.parent!==window){window.parent.postMessage({orbisNavigate:href},"*");return;}}},true);
+/* link SEMPRE navega a prévia (nunca a aba real), em qualquer modo: menu,
+   produto, coleção. No modo de seleção ele também informa a seção clicada,
+   para o painel acompanhar sem impedir a navegação. */
+if(anchor){var href=anchor.getAttribute("href");event.preventDefault();
+if(mode==="selecionar"){var s=anchor.closest("[data-orbis-section]");var b=anchor.closest("[data-block-id]");if(s&&window.parent!==window){window.parent.postMessage({orbisSection:s.getAttribute("data-orbis-section"),orbisBlock:b?b.getAttribute("data-block-id"):null},"*");}}
+if(href&&href.charAt(0)!=="#"&&window.parent!==window){window.parent.postMessage({orbisNavigate:href},"*");}return;}
+if(mode==="selecionar"){event.preventDefault();event.stopPropagation();var block=event.target.closest("[data-block-id]");var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section"),orbisBlock:block?block.getAttribute("data-block-id"):null},"*");}return;}},true);
 window.addEventListener("message",function(event){var data=event&&event.data;if(!data){return;}
 if(data.orbisMode){mode=String(data.orbisMode);limparHover();return;}
 if(!data.orbisScrollTo){return;}var target=document.getElementById("shopify-section-"+data.orbisScrollTo);if(!target){return;}target.scrollIntoView({behavior:"smooth",block:"start"});if(mode==="previa"){return;}target.style.outline="2px solid #2f80ed";target.style.outlineOffset="-2px";window.clearTimeout(target.__orbisFlash);target.__orbisFlash=window.setTimeout(function(){target.style.outline="";target.style.outlineOffset="";},1600);});})();</script>`;

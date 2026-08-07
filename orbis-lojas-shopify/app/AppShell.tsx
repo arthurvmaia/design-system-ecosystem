@@ -257,10 +257,7 @@ export function AppShell({ identity }: { identity: Identity }) {
         </main>
       </div>
 
-      {previewTheme && <Modal title={`Prévia: ${previewTheme.name}`} onClose={() => setPreviewTheme(null)} wide>
-        <div className="modal-preview"><ThemeModalPreview theme={previewTheme} /></div>
-        <div className="modal-actions"><button className="secondary-button" onClick={() => setPreviewTheme(null)}>Voltar</button><button className="primary-button" disabled={busy === "use-theme"} onClick={() => { const theme = previewTheme; setPreviewTheme(null); void openTheme(theme); }}>{busy === "use-theme" ? "Criando projeto…" : "Editar este tema"} <ArrowRight size={16} /></button></div>
-      </Modal>}
+      {previewTheme && <ThemeFullscreenPreview theme={previewTheme} onClose={() => setPreviewTheme(null)} />}
 
       {toast && <div className="toast" role="status"><Orbis className="orbis-mini" /> {toast}</div>}
     </div>
@@ -561,12 +558,50 @@ function ThemeCard({ theme, size, favorite, onPreview, onUse, onEditCode, onFavo
   );
 }
 
-function ThemeModalPreview({ theme }: { theme: Theme }) {
+/**
+ * Visualizar em tela cheia: a loja ocupa a tela inteira, com a página atual e
+ * o X de saída no canto superior direito (Esc também fecha). Os links do tema
+ * navegam aqui dentro — nada sai do aplicativo.
+ */
+function ThemeFullscreenPreview({ theme, onClose }: { theme: Theme; onClose: () => void }) {
   const customization = normalizeCustomization(theme.defaultSettings);
   const shopify = customization.shopify as ShopifyThemeImport | null;
   const [pageId, setPageId] = useState("index");
   const page = shopify?.pages.find((item) => item.id === pageId) ?? shopify?.pages.find((item) => item.id === "index") ?? shopify?.pages[0];
-  return shopify && page ? <ShopifyLiveRender shopify={shopify} pageId={page.id} onNavigatePage={setPageId} fallback={<ShopifyStorePreview theme={shopify} page={page} device="desktop" selectedSectionId="" onSelectSection={() => undefined} onNavigatePage={setPageId} />} /> : <StorefrontPreview customization={customization} device="desktop" />;
+  const fecharRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) { if (event.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    /* o foco começa no X: dá para sair só com o teclado */
+    fecharRef.current?.focus();
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = anterior; };
+  }, [onClose]);
+
+  const paginas = (shopify?.pages ?? []).filter((item) => !item.id.includes("-group")).slice(0, 8);
+  return (
+    <div className="fullscreen-preview" role="dialog" aria-modal="true" aria-label={`Prévia em tela cheia: ${theme.name}`}>
+      <header className="fullscreen-preview-bar">
+        <strong>{theme.name}</strong>
+        {paginas.length > 1 && (
+          <label className="fullscreen-preview-pages">
+            <span className="sr-only">Página da loja</span>
+            <select value={page?.id ?? "index"} onChange={(event) => setPageId(event.target.value)} aria-label="Página da loja">
+              {paginas.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+        )}
+        <button ref={fecharRef} className="fullscreen-preview-close" onClick={onClose} aria-label="Fechar prévia (Esc)" title="Fechar (Esc)"><X size={20} /></button>
+      </header>
+      <div className="fullscreen-preview-stage">
+        {shopify && page
+          ? <ShopifyLiveRender shopify={shopify} pageId={page.id} mode="interagir" onNavigatePage={setPageId} fallback={<ShopifyStorePreview theme={shopify} page={page} device="desktop" selectedSectionId="" onSelectSection={() => undefined} onNavigatePage={setPageId} />} />
+          : <StorefrontPreview customization={customization} device="desktop" />}
+      </div>
+    </div>
+  );
 }
 
 function ProjectsView({ data, onCreate, onEdit, onAction, busy }: { data: BootstrapData; onCreate: () => void; onEdit: (id: string) => void; onAction: (payload: Record<string, unknown>, message: string) => Promise<void>; busy: string | null }) {
