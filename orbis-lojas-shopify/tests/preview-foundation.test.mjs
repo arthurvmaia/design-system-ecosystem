@@ -85,6 +85,11 @@ test("RECUPERAÇÃO F2: a miniatura é a home REAL pelo motor existente, não um
      miniatura ficaria presa em carregando — a geometria é quem decide */
   assert.match(card, /getBoundingClientRect\(\)/, "verificação geométrica como rede de segurança");
   assert.match(card, /addEventListener\("scroll", checar/, "rolagem reavalia sem depender do observer");
+  /* nem observer nem eventos chegam em toda situação (aba sem composição,
+     viewport trocado por fora, card que ganha layout depois): sem a ronda a
+     home fica presa em "carregando" ou na escala antiga */
+  assert.match(card, /setInterval\(checar/, "ronda de segurança para a visibilidade");
+  assert.match(card, /setInterval\(apply/, "ronda de segurança para a escala");
   assert.match(card, /pointer-events/.source ? /tabIndex=\{-1\}/ : /tabIndex=\{-1\}/, "iframe inerte para foco");
   assert.match(card, /Tentar de novo/, "erro real com nova tentativa, sem imagem falsa");
   assert.match(card, /homeSrc \? \(\s*<RealHomeThumbnail/, "quando a home real existe, o mock NUNCA aparece");

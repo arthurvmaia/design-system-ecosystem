@@ -46,8 +46,14 @@ export function RealHomeThumbnail({ src, title, baseWidth = 1280 }: { src: strin
     observer.observe(host);
     window.addEventListener("scroll", checar, { passive: true, capture: true });
     window.addEventListener("resize", checar, { passive: true });
+    /* Última rede: layout pode aparecer sem evento nenhum (card montado antes
+       do layout, janela restaurada, aba que volta a compor). Sem esta ronda a
+       miniatura ficaria presa em "carregando" para sempre; ela para assim que
+       o card entra em cena. */
+    const ronda = window.setInterval(checar, 500);
     return () => {
       observer.disconnect();
+      window.clearInterval(ronda);
       window.removeEventListener("scroll", checar, { capture: true });
       window.removeEventListener("resize", checar);
     };
@@ -60,16 +66,24 @@ export function RealHomeThumbnail({ src, title, baseWidth = 1280 }: { src: strin
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const apply = () => setFrame((current) => {
+    const apply = () => {
       const scale = host.clientWidth / baseWidth;
       const height = host.clientHeight;
-      return current.scale === scale && current.height === height ? current : { scale, height };
-    });
+      /* só muda estado quando a medida muda de verdade — a ronda abaixo não
+         provoca re-render à toa */
+      setFrame((current) => (current.scale === scale && current.height === height ? current : { scale, height }));
+    };
     apply();
     const observer = new ResizeObserver(apply);
     observer.observe(host);
     window.addEventListener("resize", apply, { passive: true });
-    return () => { observer.disconnect(); window.removeEventListener("resize", apply); };
+    /* A ronda é permanente de propósito: o observer e o evento de resize não
+       chegam em toda situação (aba sem composição, viewport trocado por fora,
+       card que ganha layout depois), e a home ficaria presa em "carregando"
+       ou na escala antiga — cortada. Uma leitura de largura por segundo por
+       card é irrelevante perto de renderizar a página do tema. */
+    const ronda = window.setInterval(apply, 1000);
+    return () => { observer.disconnect(); window.clearInterval(ronda); window.removeEventListener("resize", apply); };
   }, [baseWidth]);
 
   useEffect(() => {
