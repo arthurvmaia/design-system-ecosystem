@@ -1,5 +1,6 @@
 export * from './acervo.js';
 export * from './assets.js';
+export * from './regras-de-aceite.js';
 export * from './asset-rewrite.js';
 export * from './contract.js';
 export * from './engine.js';
