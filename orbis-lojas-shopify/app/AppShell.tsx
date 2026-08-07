@@ -11,6 +11,7 @@ import {
   Copy,
   Eye,
   FileArchive,
+  FileCode2,
   FolderKanban,
   Globe2,
   Heart,
@@ -40,13 +41,13 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { BootstrapData, Project, Theme, Viewer } from "@/lib/types";
 import { normalizeCustomization } from "@/lib/business-rules.mjs";
 import { enderecoDoPortal } from "@/app/portal";
 import { DesligarOrbis } from "@/app/DesligarOrbis";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySectionSchema, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
-import { ShopifyLiveRender, ShopifyStorePreview } from "@/app/ShopifyStorePreview";
+import { ShopifyLiveRender, ShopifyStorePreview, schemePalette, themePalette } from "@/app/ShopifyStorePreview";
 import { Orbis as OrbisNucleo } from "@/app/Orbis";
 import { EntryGate } from "@/app/EntryGate";
 import { ClientFlow } from "@/app/ClientFlow";
@@ -79,16 +80,19 @@ function OrbisSays({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-type Tab = "home" | "extract" | "themes" | "projects" | "editor";
+type Tab = "home" | "extract" | "code" | "themes" | "projects" | "editor";
 type Device = "desktop" | "tablet" | "mobile";
 type Customization = ReturnType<typeof normalizeCustomization>;
 
+/* Ordem deliberada (programa de fases, Fase 1): o Editor em destaque acima de
+   Temas, Projetos SEMPRE por último; Importar/Editar código são apoio. */
 const navItems = [
   { id: "home" as const, label: "Início", icon: Home, index: "01" },
-  { id: "extract" as const, label: "Importar temas", icon: FileArchive, index: "02" },
+  { id: "editor" as const, label: "Editor", icon: SlidersHorizontal, index: "02" },
   { id: "themes" as const, label: "Temas", icon: LayoutTemplate, index: "03" },
-  { id: "projects" as const, label: "Projetos", icon: FolderKanban, index: "04" },
-  { id: "editor" as const, label: "Editor", icon: SlidersHorizontal, index: "05" },
+  { id: "extract" as const, label: "Importar temas", icon: FileArchive, index: "04" },
+  { id: "code" as const, label: "Editar código", icon: FileCode2, index: "05" },
+  { id: "projects" as const, label: "Projetos", icon: FolderKanban, index: "06" },
 ];
 
 export function AppShell({ identity }: { identity: Identity }) {
@@ -99,6 +103,7 @@ export function AppShell({ identity }: { identity: Identity }) {
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [previewTheme, setPreviewTheme] = useState<Theme | null>(null);
+  const [codeThemeId, setCodeThemeId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -229,7 +234,8 @@ export function AppShell({ identity }: { identity: Identity }) {
                 if (loadedTheme) setPreviewTheme(loadedTheme);
                 setToast(`${payload.compatibility.architecture} carregado, senhor. A prévia aguarda suas ordens.`);
               }} />}
-              {tab === "themes" && <ThemesView data={data} onPreview={setPreviewTheme} onUse={(theme) => void openTheme(theme)} onFavorite={async (themeId, favorite) => {
+              {tab === "code" && <ThemeCodeView data={data} initialThemeId={codeThemeId} onMessage={setToast} />}
+              {tab === "themes" && <ThemesView data={data} onPreview={setPreviewTheme} onUse={(theme) => void openTheme(theme)} onEditCode={(theme) => { setCodeThemeId(theme.id); setTab("code"); }} onFavorite={async (themeId, favorite) => {
                 try { await action({ action: "toggleFavorite", themeId, favorite }); } catch (requestError) { setError(humanError(requestError)); }
               }} onDelete={async (themeId) => {
                 setBusy("deleteTheme");
@@ -331,7 +337,7 @@ function ExtractThemeView({ onImported }: { onImported: (payload: { data: Bootst
   }
 
   return <div className="content-wrap page-view extract-view">
-    <PageIntro eyebrow="IMPORTAR · 02" title="Entregue-me o tema, senhor." body="Escolha o ZIP uma única vez. Eu encontro o tema dentro do pacote, instalo banners, imagens e todos os recursos, e abro a prévia da loja pronta para o senhor editar." />
+    <PageIntro eyebrow="IMPORTAR · 04" title="Entregue-me o tema, senhor." body="Escolha o ZIP uma única vez. Eu encontro o tema dentro do pacote, instalo banners, imagens e todos os recursos, e abro a prévia da loja pronta para o senhor editar." />
     <div className={`theme-dropzone ${dragging ? "dragging" : ""} ${file ? "has-file" : ""} ${importing ? "loading-theme" : ""}`} onDragEnter={(event) => { event.preventDefault(); if (!importing) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); if (!importing) choose(event.dataTransfer.files[0]); }}>
       <Orbis className="orbis-sm" girando={importing} />
       <span className="eyebrow">ORBIS · CARREGAMENTO AUTOMÁTICO</span>
@@ -347,6 +353,120 @@ function ExtractThemeView({ onImported }: { onImported: (payload: { data: Bootst
       <div><span>03</span><b>Editor como na Shopify</b><p>Páginas e seções à esquerda, loja no centro e ajustes à direita, como o senhor merece.</p></div>
     </div>
     <div className="extract-actions"><span>O carregamento começa no instante em que o senhor escolher o ZIP.</span></div>
+  </div>;
+}
+
+type CodeFile = { path: string; size: number; editable: boolean };
+const CODE_FOLDER_ORDER = ["layout", "templates", "sections", "blocks", "snippets", "assets", "config", "locales"];
+
+/**
+ * Editar código, como na Shopify: explorer com as pastas reais do tema
+ * (layout, sections, snippets, assets…) e editor de texto. A fonte é o ZIP
+ * preservado — salvar aqui muda a prévia e o ZIP exportado.
+ */
+function ThemeCodeView({ data, initialThemeId, onMessage }: { data: BootstrapData; initialThemeId: string | null; onMessage: (message: string) => void }) {
+  const codeThemes = data.themes.filter((theme) => {
+    const shopifyData = normalizeCustomization(theme.defaultSettings).shopify as ShopifyThemeImport | null;
+    return Boolean(shopifyData?.compatibility?.preservedSource);
+  });
+  const [themeId, setThemeId] = useState(() => (initialThemeId && codeThemes.some((theme) => theme.id === initialThemeId) ? initialThemeId : codeThemes[0]?.id ?? ""));
+  const [files, setFiles] = useState<CodeFile[]>([]);
+  const [filter, setFilter] = useState("");
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const [content, setContent] = useState("");
+  const [savedContent, setSavedContent] = useState("");
+  const [binarySize, setBinarySize] = useState<number | null>(null);
+  const [loadingFile, setLoadingFile] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dirty = binarySize === null && content !== savedContent;
+
+  useEffect(() => {
+    if (!themeId) return;
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/theme-code?themeId=${encodeURIComponent(themeId)}`);
+        const payload = await response.json() as { files?: CodeFile[]; error?: string };
+        if (!response.ok || !payload.files) throw new Error(payload.error ?? "CODE_READ_FAILED");
+        if (cancelled) return;
+        setFiles(payload.files);
+        setOpenPath(null); setContent(""); setSavedContent(""); setBinarySize(null); setError(null);
+      } catch (requestError) {
+        if (!cancelled) setError(humanError(requestError));
+      }
+    }, 0);
+    return () => { cancelled = true; window.clearTimeout(timeout); };
+  }, [themeId]);
+
+  async function openFile(path: string) {
+    if (dirty && !window.confirm("Descartar as alterações não salvas, senhor?")) return;
+    setLoadingFile(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/theme-code?themeId=${encodeURIComponent(themeId)}&path=${encodeURIComponent(path)}`);
+      const payload = await response.json() as { content?: string; binary?: boolean; size?: number; error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "CODE_READ_FAILED");
+      setOpenPath(path);
+      if (payload.binary) { setBinarySize(payload.size ?? 0); setContent(""); setSavedContent(""); }
+      else { setBinarySize(null); setContent(payload.content ?? ""); setSavedContent(payload.content ?? ""); }
+    } catch (requestError) {
+      setError(humanError(requestError));
+    } finally {
+      setLoadingFile(false);
+    }
+  }
+
+  async function save() {
+    if (!openPath || !dirty || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/theme-code", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ themeId, path: openPath, content }) });
+      const payload = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) throw new Error(payload.error ?? "CODE_SAVE_FAILED");
+      setSavedContent(content);
+      onMessage(`Salvei ${openPath}, senhor. A prévia e o ZIP exportado já usam este código.`);
+    } catch (requestError) {
+      setError(humanError(requestError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const filtered = files.filter((file) => !filter || file.path.toLowerCase().includes(filter.toLowerCase()));
+  const folders = new Map<string, CodeFile[]>();
+  for (const file of filtered) {
+    const folder = file.path.includes("/") ? file.path.split("/")[0] : "raiz";
+    folders.set(folder, [...(folders.get(folder) ?? []), file]);
+  }
+  const orderedFolders = Array.from(folders.entries()).sort(([left], [right]) => {
+    const leftIndex = CODE_FOLDER_ORDER.indexOf(left);
+    const rightIndex = CODE_FOLDER_ORDER.indexOf(right);
+    return (leftIndex < 0 ? 99 : leftIndex) - (rightIndex < 0 ? 99 : rightIndex) || left.localeCompare(right);
+  });
+
+  return <div className="content-wrap page-view">
+    <PageIntro eyebrow="EDITAR CÓDIGO · 05" title="Os arquivos do tema, senhor." body="Layout, templates, sections, snippets, assets, config e locales do ZIP preservado. O que o senhor salvar aqui vale na prévia e no ZIP exportado." />
+    {!codeThemes.length ? <EmptyState icon={FileCode2} title="Nenhum tema com código disponível" body="Importe um tema em Importar temas; o código aparece quando o ZIP original fica preservado." /> : <div className="code-editor-shell">
+      <aside className="code-explorer">
+        <label className="editor-page-select"><span>Tema</span><select value={themeId} onChange={(event) => setThemeId(event.target.value)}>{codeThemes.map((theme) => <option key={theme.id} value={theme.id}>{theme.name}</option>)}</select></label>
+        <input className="code-filter" placeholder="Filtrar arquivos…" value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Filtrar arquivos do tema" />
+        <div className="code-file-tree">
+          {orderedFolders.map(([folder, items], folderIndex) => <details key={folder} open={Boolean(filter) || folderIndex === 0}>
+            <summary><ChevronRight size={12} /> {folder} <small>{items.length}</small></summary>
+            {items.map((file) => <button key={file.path} className={openPath === file.path ? "selected" : ""} onClick={() => void openFile(file.path)} title={`${file.path} · ${(file.size / 1024).toFixed(1)} KB`}>{file.path.split("/").slice(1).join("/") || file.path}{!file.editable && <i>bin</i>}</button>)}
+          </details>)}
+        </div>
+      </aside>
+      <section className="code-editor-pane">
+        {error && <div className="error-banner" role="alert"><CircleAlert size={17} /><span>{error}</span></div>}
+        {!openPath ? <div className="code-editor-empty"><FileCode2 size={28} /><p>Escolha um arquivo à esquerda, senhor. Liquid, JSON, CSS, JS e SVG são editáveis; imagens e fontes ficam preservadas byte a byte.</p></div> : binarySize !== null ? <div className="code-editor-empty"><p><b>{openPath}</b> é um arquivo binário ({(binarySize / 1024).toFixed(1)} KB). Ele é preservado como está no ZIP; para trocá-lo, use o editor visual ou reimporte o tema.</p></div> : <>
+          <div className="code-editor-bar"><b>{openPath}</b><span className={dirty ? "code-dirty" : ""}>{loadingFile ? "carregando…" : dirty ? "alterações não salvas" : "sem alterações"}</span><button className="primary-button" disabled={!dirty || saving || loadingFile} onClick={() => void save()}><Save size={14} /> {saving ? "Salvando…" : "Salvar"}</button></div>
+          <textarea className="code-editor-area" spellCheck={false} value={content} onChange={(event) => setContent(event.target.value)} disabled={loadingFile} aria-label={`Conteúdo de ${openPath}`} />
+        </>}
+      </section>
+    </div>}
   </div>;
 }
 
@@ -397,27 +517,30 @@ function FlowCard({ index, icon: Icon, title, body, onClick }: { index: string; 
   return <button type="button" className="flow-card" onClick={onClick}><div><span>{index}</span><Icon size={17} /></div><h3>{title}</h3><p>{body}</p><ChevronRight size={17} className="flow-arrow" /></button>;
 }
 
-function ThemesView({ data, onPreview, onUse, onFavorite, onDelete, busy }: { data: BootstrapData; onPreview: (theme: Theme) => void; onUse: (theme: Theme) => void; onFavorite: (id: string, favorite: boolean) => void; onDelete: (id: string) => Promise<void>; busy: string | null }) {
+function ThemesView({ data, onPreview, onUse, onEditCode, onFavorite, onDelete, busy }: { data: BootstrapData; onPreview: (theme: Theme) => void; onUse: (theme: Theme) => void; onEditCode: (theme: Theme) => void; onFavorite: (id: string, favorite: boolean) => void; onDelete: (id: string) => Promise<void>; busy: string | null }) {
   const [deleteTarget, setDeleteTarget] = useState<Theme | null>(null);
   return (
     <div className="content-wrap page-view">
       <PageIntro eyebrow="TEMAS · 03" title="Sua coleção, senhor." body="Cada tema que o senhor me confia aparece aqui com suas páginas, seções, recursos e configurações." />
-      {data.themes.length ? <div className={data.themes.length === 1 ? "single-theme-grid" : "theme-grid imported-theme-grid"}>{data.themes.map((theme, index) => <ThemeCard key={theme.id} theme={theme} index={index} favorite={data.favorites.includes(theme.id)} onPreview={() => onPreview(theme)} onUse={() => onUse(theme)} onFavorite={() => onFavorite(theme.id, !data.favorites.includes(theme.id))} onDelete={() => setDeleteTarget(theme)} deleting={busy === "deleteTheme"} />)}</div> : <EmptyState icon={LayoutTemplate} title="Nenhum tema sob minha guarda" body="Senhor, entregue-me um ZIP em Importar temas e eu cuidarei do resto." />}
+      {data.themes.length ? <div className={data.themes.length === 1 ? "single-theme-grid" : "theme-grid imported-theme-grid"}>{data.themes.map((theme, index) => <ThemeCard key={theme.id} theme={theme} index={index} favorite={data.favorites.includes(theme.id)} onPreview={() => onPreview(theme)} onUse={() => onUse(theme)} onEditCode={() => onEditCode(theme)} onFavorite={() => onFavorite(theme.id, !data.favorites.includes(theme.id))} onDelete={() => setDeleteTarget(theme)} deleting={busy === "deleteTheme"} />)}</div> : <EmptyState icon={LayoutTemplate} title="Nenhum tema sob minha guarda" body="Senhor, entregue-me um ZIP em Importar temas e eu cuidarei do resto." />}
       {deleteTarget && <Modal title="Apagar tema?" onClose={() => busy !== "deleteTheme" && setDeleteTarget(null)}><div className="delete-summary"><div className="delete-icon"><Trash2 size={23} /></div><p>Senhor, o tema <strong>{deleteTarget.name}</strong> e todos os projetos ligados a ele serão removidos deste computador. Poderei recebê-lo novamente em <strong>Importar temas</strong>.</p></div><div className="modal-actions"><button className="secondary-button" disabled={busy === "deleteTheme"} onClick={() => setDeleteTarget(null)}>Cancelar</button><button className="danger-button" disabled={busy === "deleteTheme"} onClick={() => { const theme = deleteTarget; void onDelete(theme.id).then(() => setDeleteTarget(null)); }}>{busy === "deleteTheme" ? "Apagando…" : "Apagar tema"}</button></div></Modal>}
     </div>
   );
 }
 
-function ThemeCard({ theme, index, favorite, onPreview, onUse, onFavorite, onDelete, deleting }: { theme: Theme; index: number; favorite: boolean; onPreview: () => void; onUse: () => void; onFavorite: () => void; onDelete: () => void; deleting: boolean }) {
+function ThemeCard({ theme, index, favorite, onPreview, onUse, onEditCode, onFavorite, onDelete, deleting }: { theme: Theme; index: number; favorite: boolean; onPreview: () => void; onUse: () => void; onEditCode: () => void; onFavorite: () => void; onDelete: () => void; deleting: boolean }) {
   const palette = normalizeCustomization(theme.defaultSettings);
   const shopifyData = palette.shopify as ShopifyThemeImport | null;
   const photo = shopifyData?.assetPreview;
+  /* a miniatura pinta com as cores REAIS do tema importado; a paleta demo só
+     vale para o caminho legado sem dados Shopify */
+  const shopifyPalette = shopifyData ? themePalette(shopifyData.globalValues) : null;
   return (
     <article className={`theme-card ${theme.featured ? "featured" : ""}`}>
-      <div className={`theme-visual ${photo ? "theme-visual-photo" : ""}`} style={{ "--preview-primary": palette.hero.accentColor, "--preview-bg": palette.hero.background, "--preview-text": palette.hero.textColor } as React.CSSProperties}>
+      <div className={`theme-visual ${photo ? "theme-visual-photo" : ""}`} style={{ "--preview-primary": shopifyPalette?.accent ?? palette.hero.accentColor, "--preview-bg": shopifyPalette?.background ?? palette.hero.background, "--preview-text": shopifyPalette?.text ?? palette.hero.textColor } as React.CSSProperties}>
         {photo ? <img src={photo} alt={`Prévia real do tema ${theme.name}`} /> : <>
           <div className="mini-browser"><span /><span /><span /><i /></div>
-          <div className="mini-store"><b>{palette.header.brand}</b><div className="mini-links"><span /><span /><span /></div><div className="mini-hero"><em /><div><strong /><small /><button /></div></div><div className="mini-products"><span /><span /><span /></div></div>
+          <div className="mini-store"><b>{shopifyData ? theme.name : palette.header.brand}</b><div className="mini-links"><span /><span /><span /></div><div className="mini-hero"><em /><div><strong /><small /><button /></div></div><div className="mini-products"><span /><span /><span /></div></div>
         </>}
         <button className={`favorite-button ${favorite ? "active" : ""}`} onClick={onFavorite} aria-label={favorite ? `Remover ${theme.name} dos favoritos` : `Favoritar ${theme.name}`}><Heart size={16} fill={favorite ? "currentColor" : "none"} /></button>
         {theme.badge && <span className="theme-badge">{theme.badge}</span>}
@@ -427,7 +550,7 @@ function ThemeCard({ theme, index, favorite, onPreview, onUse, onFavorite, onDel
         <div className="theme-title-row"><h2>{theme.name}</h2><span><Check size={14} /> LIVRE</span></div>
         <p>{theme.description}</p>
         <div className="theme-facts"><span>{theme.sectionCount} seções</span><span>{theme.languages.join(" · ")}</span></div>
-        <div className="card-actions"><button className="secondary-button" onClick={onPreview}><Eye size={15} /> Visualizar</button><button className="primary-button" onClick={onUse}>Editar tema <ArrowUpRight size={15} /></button><button className="icon-button delete-theme-button" onClick={onDelete} disabled={deleting} aria-label={`Apagar ${theme.name}`} title="Apagar tema"><Trash2 size={16} /></button></div>
+        <div className="card-actions"><button className="secondary-button" onClick={onPreview}><Eye size={15} /> Visualizar</button><button className="primary-button" onClick={onUse}>Editar tema <ArrowUpRight size={15} /></button><button className="secondary-button" onClick={onEditCode} title="Abrir os arquivos do tema (layout, sections, snippets, assets…)"><FileCode2 size={15} /> Editar código</button><button className="icon-button delete-theme-button" onClick={onDelete} disabled={deleting} aria-label={`Apagar ${theme.name}`} title="Apagar tema"><Trash2 size={16} /></button></div>
       </div>
     </article>
   );
@@ -438,14 +561,14 @@ function ThemeModalPreview({ theme }: { theme: Theme }) {
   const shopify = customization.shopify as ShopifyThemeImport | null;
   const [pageId, setPageId] = useState("index");
   const page = shopify?.pages.find((item) => item.id === pageId) ?? shopify?.pages.find((item) => item.id === "index") ?? shopify?.pages[0];
-  return shopify && page ? <ShopifyLiveRender shopify={shopify} pageId={page.id} fallback={<ShopifyStorePreview theme={shopify} page={page} device="desktop" selectedSectionId="" onSelectSection={() => undefined} onNavigatePage={setPageId} />} /> : <StorefrontPreview customization={customization} device="desktop" />;
+  return shopify && page ? <ShopifyLiveRender shopify={shopify} pageId={page.id} onNavigatePage={setPageId} fallback={<ShopifyStorePreview theme={shopify} page={page} device="desktop" selectedSectionId="" onSelectSection={() => undefined} onNavigatePage={setPageId} />} /> : <StorefrontPreview customization={customization} device="desktop" />;
 }
 
 function ProjectsView({ data, onCreate, onEdit, onAction, busy }: { data: BootstrapData; onCreate: () => void; onEdit: (id: string) => void; onAction: (payload: Record<string, unknown>, message: string) => Promise<void>; busy: string | null }) {
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   return (
     <div className="content-wrap page-view">
-      <div className="page-intro-row"><PageIntro eyebrow="PROJETOS · 04" title="Sob minha guarda, senhor." body="Cada projeto mantém suas personalizações e pode ganhar novas versões sem afetar os demais. Eu vigio todos." /><button className="primary-button" onClick={onCreate}><Plus size={16} /> Novo projeto</button></div>
+      <div className="page-intro-row"><PageIntro eyebrow="PROJETOS · 06" title="Sob minha guarda, senhor." body="Cada projeto mantém suas personalizações e pode ganhar novas versões sem afetar os demais. Eu vigio todos." /><button className="primary-button" onClick={onCreate}><Plus size={16} /> Novo projeto</button></div>
       {data.projects.length ? <div className="projects-list">{data.projects.map((project) => (
         <ProjectRow key={project.id} project={project} onEdit={() => onEdit(project.id)} onDelete={() => setDeleteTarget(project)} onDuplicate={() => void onAction({ action: "duplicateProject", projectId: project.id }, "Projeto duplicado, senhor.")} onPublish={() => void onAction({ action: "publishProject", projectId: project.id }, "Publicado, senhor. Como ordenou.")} busy={busy} />
       ))}</div> : <EmptyState icon={PackageOpen} title="Nenhum projeto ainda" body="Escolha um tema na galeria, senhor, e eu prepararei seu primeiro projeto." />}
@@ -456,9 +579,11 @@ function ProjectsView({ data, onCreate, onEdit, onAction, busy }: { data: Bootst
 
 function ProjectRow({ project, onEdit, onDelete, onDuplicate, onPublish, busy }: { project: Project; onEdit: () => void; onDelete?: () => void; onDuplicate?: () => void; onPublish?: () => void; busy?: string | null }) {
   const palette = normalizeCustomization(project.customization);
+  const shopifyData = palette.shopify as ShopifyThemeImport | null;
+  const shopifyPalette = shopifyData ? themePalette(shopifyData.globalValues) : null;
   return (
     <article className="project-row">
-      <div className="project-thumb" style={{ "--project-color": palette.hero.accentColor, "--project-bg": palette.hero.background } as React.CSSProperties}><span /><span /><span /></div>
+      <div className="project-thumb" style={{ "--project-color": shopifyPalette?.accent ?? palette.hero.accentColor, "--project-bg": shopifyPalette?.background ?? palette.hero.background } as React.CSSProperties}><span /><span /><span /></div>
       <div className="project-info"><div><span className={`status status-${project.status}`}>{statusLabel(project.status)}</span><span>{project.themeName}</span></div><h3>{project.name}</h3><p>Atualizado {formatRelative(project.updatedAt)}</p></div>
       <div className="project-actions"><button className="primary-button" onClick={onEdit}>Editar <ArrowRight size={15} /></button>{onDelete && <button className="icon-button delete-project-button" onClick={onDelete} aria-label={`Apagar ${project.name}`} title="Apagar projeto"><Trash2 size={16} /></button>}{onDuplicate && <button className="icon-button" onClick={onDuplicate} disabled={busy === "duplicateProject"} aria-label={`Duplicar ${project.name}`}><Copy size={16} /></button>}{onPublish && project.status !== "published" && <button className="icon-button" onClick={onPublish} disabled={busy === "publishProject"} aria-label={`Publicar ${project.name}`}><Globe2 size={16} /></button>}</div>
     </article>
@@ -540,7 +665,7 @@ function EditorView({ project, onChooseProject, onDataChange, onMessage }: { pro
     return () => window.clearTimeout(timeout);
   }, [draft, project]);
 
-  if (!project) return <div className="editor-empty"><EmptyState icon={SlidersHorizontal} title="Crie seu projeto, senhor" body="Abra o ShrinePro na área Temas e eu montarei tudo para o senhor." /><button className="primary-button" onClick={onChooseProject}>Ver projetos</button></div>;
+  if (!project) return <div className="editor-empty"><EmptyState icon={SlidersHorizontal} title="Crie seu projeto, senhor" body="Importe um tema em Importar temas ou abra um da galeria, e eu montarei tudo para o senhor." /><button className="primary-button" onClick={onChooseProject}>Ver projetos</button></div>;
 
   function update(path: string[], value: EditableValue) {
     const current = draftRef.current;
@@ -640,13 +765,13 @@ function EditorView({ project, onChooseProject, onDataChange, onMessage }: { pro
     if (pageIdx < 0) return;
     update([...path, String(index), "disabled"], !current[index]?.disabled);
   }
-  function addShopifySectionTo(pageId: string, type: string) {
+  function addShopifySectionTo(pageId: string, type: string, presetIndex = 0) {
     const { pageIdx, sections: current, path } = pageBundle(pageId);
     if (!shopify || pageIdx < 0) return;
     const schema = shopify.sectionSchemas.find((item) => item.type === type);
     if (!schema) return;
     const id = `section-${crypto.randomUUID()}`;
-    const preset = schema.presets?.[0];
+    const preset = schema.presets?.[presetIndex] ?? schema.presets?.[0];
     const settings = { ...Object.fromEntries(schema.settings.filter((setting) => setting.default !== undefined).map((setting) => [setting.id, setting.default])), ...(preset?.settings ?? {}) } as Record<string, ShopifyValue>;
     const blocks = (preset?.blocks ?? []).map((block, index) => ({ id: `block-${crypto.randomUUID()}-${index}`, type: block.type, settings: block.settings }));
     update(path, [...current, { id, type, name: schema.name, settings, blocks }]);
@@ -733,9 +858,13 @@ function EditorView({ project, onChooseProject, onDataChange, onMessage }: { pro
         ))}
       </div>
       <div className={`editor-body mobile-${painelMobile}`}>
-        {shopify && activeShopifyPage ? <>
+        {shopify && !activeShopifyPage ? (
+          /* tema Shopify presente mas sem páginas: avisar em vez de cair em
+             silêncio no editor de demonstração — isso mascararia o problema */
+          <div className="editor-empty"><EmptyState icon={CircleAlert} title="O tema não trouxe páginas editáveis" body="A importação deste tema não produziu nenhuma página. Reimporte o ZIP em Importar temas para atualizar o projeto." /></div>
+        ) : shopify && activeShopifyPage ? <>
           <ShopifyStructurePanel theme={shopify} page={activeShopifyPage} selectedSectionId={shopifySectionId} onPageChange={(nextId) => { setShopifyPageId(nextId); const nextPage = shopify.pages.find((item) => item.id === nextId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} onSelectSection={(nextSectionId) => { setShopifySectionId(nextSectionId); setPainelMobile("ajustes"); }} onAddSection={addShopifySectionTo} onMoveSection={moveShopifySection} onDuplicateSection={duplicateShopifySection} onRemoveSection={removeShopifySection} onToggleSection={toggleShopifySection} onAddBlock={addShopifyBlock} onMoveBlock={moveShopifyBlock} onDuplicateBlock={duplicateShopifyBlock} onRemoveBlock={removeShopifyBlock} />
-          <div className="preview-stage"><div className={`preview-frame preview-${device}`} style={{ zoom }}><ShopifyLiveRender shopify={shopify} pageId={shopifyPageId} onSelectSection={setShopifySectionId} fallback={<ShopifyStorePreview theme={shopify} page={activeShopifyPage} device={device} selectedSectionId={shopifySectionId} onSelectSection={(nextSectionId, ownerPageId) => { if (ownerPageId && ownerPageId !== shopifyPageId) setShopifyPageId(ownerPageId); setShopifySectionId(nextSectionId); }} onNavigatePage={(nextPageId) => { setShopifyPageId(nextPageId); const nextPage = shopify.pages.find((item) => item.id === nextPageId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} />} /></div></div>
+          <div className="preview-stage"><div className={`preview-frame preview-${device}`} style={{ zoom }}><ShopifyLiveRender shopify={shopify} pageId={shopifyPageId} onSelectSection={setShopifySectionId} onNavigatePage={(nextPageId) => { setShopifyPageId(nextPageId); const nextPage = shopify.pages.find((item) => item.id === nextPageId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} selectedSectionId={shopifySectionId} fallback={<ShopifyStorePreview theme={shopify} page={activeShopifyPage} device={device} selectedSectionId={shopifySectionId} onSelectSection={(nextSectionId, ownerPageId) => { if (ownerPageId && ownerPageId !== shopifyPageId) setShopifyPageId(ownerPageId); setShopifySectionId(nextSectionId); }} onNavigatePage={(nextPageId) => { setShopifyPageId(nextPageId); const nextPage = shopify.pages.find((item) => item.id === nextPageId); setShopifySectionId(nextPage?.sections[0]?.id ?? "__global__"); }} />} /></div></div>
           <aside className="properties-panel">
             <div className="panel-heading"><span>{shopifySectionId === "__global__" ? "CONFIGURAÇÕES DO TEMA" : (activeShopifySection?.name ?? "SEÇÃO").toUpperCase()}</span><PanelRight size={15} /></div>
             <ShopifyProperties theme={shopify} pageIndex={activeSectionPageIndex} section={activeShopifySection} sectionIndex={activeShopifySectionIndex} global={shopifySectionId === "__global__"} update={update} />
@@ -775,7 +904,7 @@ function sectionAllowedOnPage(schema: ShopifySectionSchema, page: ShopifyPage) {
   return true;
 }
 
-function ShopifyStructurePanel({ theme, page, selectedSectionId, onPageChange, onSelectSection, onAddSection, onMoveSection, onDuplicateSection, onRemoveSection, onToggleSection, onAddBlock, onMoveBlock, onDuplicateBlock, onRemoveBlock }: { theme: ShopifyThemeImport; page: ShopifyPage; selectedSectionId: string; onPageChange: (id: string) => void; onSelectSection: (id: string) => void; onAddSection: (pageId: string, type: string) => void; onMoveSection: (pageId: string, index: number, direction: -1 | 1) => void; onDuplicateSection: (pageId: string, index: number) => void; onRemoveSection: (pageId: string, index: number) => void; onToggleSection: (pageId: string, index: number) => void; onAddBlock: (type: string) => void; onMoveBlock: (blockIndex: number, direction: -1 | 1) => void; onDuplicateBlock: (blockIndex: number) => void; onRemoveBlock: (blockIndex: number) => void }) {
+function ShopifyStructurePanel({ theme, page, selectedSectionId, onPageChange, onSelectSection, onAddSection, onMoveSection, onDuplicateSection, onRemoveSection, onToggleSection, onAddBlock, onMoveBlock, onDuplicateBlock, onRemoveBlock }: { theme: ShopifyThemeImport; page: ShopifyPage; selectedSectionId: string; onPageChange: (id: string) => void; onSelectSection: (id: string) => void; onAddSection: (pageId: string, type: string, presetIndex?: number) => void; onMoveSection: (pageId: string, index: number, direction: -1 | 1) => void; onDuplicateSection: (pageId: string, index: number) => void; onRemoveSection: (pageId: string, index: number) => void; onToggleSection: (pageId: string, index: number) => void; onAddBlock: (type: string) => void; onMoveBlock: (blockIndex: number, direction: -1 | 1) => void; onDuplicateBlock: (blockIndex: number) => void; onRemoveBlock: (blockIndex: number) => void }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [newSectionType, setNewSectionType] = useState("");
@@ -823,6 +952,7 @@ function ShopifyStructurePanel({ theme, page, selectedSectionId, onPageChange, o
         </div>)}
         {isSelected && (schema?.blocks.length ?? 0) > 0 && <div className="block-add">
           <select value={newBlockType} onChange={(event) => setNewBlockType(event.target.value)} aria-label="Tipo de bloco"><option value="">Adicionar bloco…</option>{schema?.blocks.map((block) => <option key={block.type} value={block.type}>{block.name}</option>)}</select>
+          {typeof schema?.maxBlocks === "number" && <span className="block-count" title="Blocos usados / limite do schema">{section.blocks.length}/{schema.maxBlocks}</span>}
           <button disabled={!newBlockType || blockLimitReached} onClick={() => { onAddBlock(newBlockType); setNewBlockType(""); }} aria-label="Adicionar bloco" title={blockLimitReached ? `Limite de ${schema?.maxBlocks} blocos` : "Adicionar"}><Plus size={12} /></button>
         </div>}
         {isSelected && blockLimitReached && <small className="block-limit">Limite do schema: {schema?.maxBlocks} blocos.</small>}
@@ -833,10 +963,21 @@ function ShopifyStructurePanel({ theme, page, selectedSectionId, onPageChange, o
   function addSectionRow(ownerPage: ShopifyPage) {
     const allowed = theme.sectionSchemas.filter((schema) => sectionAllowedOnPage(schema, ownerPage));
     if (!allowed.length) return null;
-    if (addingTo !== ownerPage.id) return <button className="add-section-link" onClick={() => { setAddingTo(ownerPage.id); setNewSectionType(allowed[0]?.type ?? ""); }}><Plus size={13} /> Adicionar seção</button>;
+    /* como na Shopify: cada PRESET do schema é uma opção própria — um tema com
+       "Banner" e "Banner com vídeo" oferece os dois, não só o primeiro */
+    const presetOptions = allowed.flatMap((schema) => schema.presets.length > 1
+      ? schema.presets.map((preset, index) => ({ value: `${schema.type}::${index}`, label: `${schema.name} · ${preset.name}` }))
+      : [{ value: `${schema.type}::0`, label: schema.name }]);
+    const currentOption = presetOptions.some((option) => option.value === newSectionType) ? newSectionType : presetOptions[0]?.value ?? "";
+    const confirmAdd = () => {
+      const [type, presetIndex] = currentOption.split("::");
+      onAddSection(ownerPage.id, type, Number(presetIndex) || 0);
+      setAddingTo(null);
+    };
+    if (addingTo !== ownerPage.id) return <button className="add-section-link" onClick={() => { setAddingTo(ownerPage.id); setNewSectionType(presetOptions[0]?.value ?? ""); }}><Plus size={13} /> Adicionar seção</button>;
     return <div className="block-add add-section-inline">
-      <select value={allowed.some((schema) => schema.type === newSectionType) ? newSectionType : allowed[0]?.type ?? ""} onChange={(event) => setNewSectionType(event.target.value)} aria-label="Tipo de seção">{allowed.map((schema) => <option key={schema.type} value={schema.type}>{schema.name}</option>)}</select>
-      <button onClick={() => { onAddSection(ownerPage.id, allowed.some((schema) => schema.type === newSectionType) ? newSectionType : allowed[0]?.type ?? ""); setAddingTo(null); }} aria-label="Confirmar adição de seção"><Plus size={12} /></button>
+      <select value={currentOption} onChange={(event) => setNewSectionType(event.target.value)} aria-label="Tipo de seção">{presetOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+      <button onClick={confirmAdd} aria-label="Confirmar adição de seção"><Plus size={12} /></button>
       <button onClick={() => setAddingTo(null)} aria-label="Cancelar adição">✕</button>
     </div>;
   }
@@ -858,7 +999,7 @@ function ShopifyStructurePanel({ theme, page, selectedSectionId, onPageChange, o
 
 /** Coleta handles de coleções/produtos/menus referenciados no tema para sugerir nos pickers. */
 function collectResourceHandles(theme: ShopifyThemeImport) {
-  const handles = new Set<string>(["colecao-demo", "produto-demo", "main-menu"]);
+  const handles = new Set<string>();
   const harvest = (settings: Record<string, ShopifyValue>) => {
     for (const [id, value] of Object.entries(settings)) {
       if (typeof value === "string" && /^[a-z0-9][a-z0-9-_]{1,60}$/.test(value) && /collection|product|menu|blog|page|article|link/i.test(id)) handles.add(value);
@@ -866,20 +1007,22 @@ function collectResourceHandles(theme: ShopifyThemeImport) {
   };
   for (const page of theme.pages) for (const section of page.sections) { harvest(section.settings); for (const block of section.blocks) harvest(block.settings); }
   harvest(theme.globalValues);
+  /* sementes demo só quando o tema não referencia recurso nenhum */
+  if (!handles.size) for (const seed of ["colecao-demo", "produto-demo", "main-menu"]) handles.add(seed);
   return Array.from(handles).slice(0, 80);
 }
 
 function ShopifyProperties({ theme, pageIndex, section, sectionIndex, global, update }: { theme: ShopifyThemeImport; pageIndex: number; section?: ShopifySectionInstance; sectionIndex: number; global: boolean; update: (path: string[], value: EditableValue) => void }) {
   const handleSuggestions = collectResourceHandles(theme);
-  if (global) return <div className="shopify-properties"><div className="shopify-import-summary"><FileArchive size={18} /><div><b>{theme.themeName}</b><span>{theme.compatibility?.architecture ?? "Tema Shopify"} · {theme.summary.fileCount} arquivos · {theme.summary.editableSettingCount} ajustes · {theme.compatibility?.preservedSource ? "ZIP preservado" : "estrutura preservada"}</span></div></div>{theme.globalGroups.map((group, index) => <PropertyGroup key={`${group.name}-${index}`} icon={Settings2} title={group.name} open={index === 0}>{group.settings.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={theme.globalValues[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "globalValues", setting.id], value)} context={theme.globalValues} suggestions={handleSuggestions} assetUrls={theme.assetUrls} />)}</PropertyGroup>)}</div>;
+  if (global) return <div className="shopify-properties"><div className="shopify-import-summary"><FileArchive size={18} /><div><b>{theme.themeName}</b><span>{theme.compatibility?.architecture ?? "Tema Shopify"} · {theme.summary.fileCount} arquivos · {theme.summary.editableSettingCount} ajustes · {theme.compatibility?.preservedSource ? "ZIP preservado" : "estrutura preservada"}</span></div></div>{theme.globalGroups.map((group, index) => <PropertyGroup key={`${group.name}-${index}`} icon={Settings2} title={group.name} open={index === 0}>{group.settings.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={theme.globalValues[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "globalValues", setting.id], value)} context={theme.globalValues} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />)}</PropertyGroup>)}</div>;
   if (!section || sectionIndex < 0) return <div className="property-empty">Selecione uma seção da página.</div>;
   const schema = theme.sectionSchemas.find((item) => item.type === section.type);
   const sectionDefinitions = mergeShopifyDefinitions(schema?.settings ?? [], section.settings);
   return <div className="shopify-properties">
     <div className="shopify-import-summary"><Layers3 size={18} /><div><b>{section.name}</b><span>{section.type} · {section.blocks.length} blocos</span></div></div>
     <div className="shopify-section-visibility"><ToggleField label="Exibir esta seção na loja" checked={!section.disabled} onChange={(visible) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "disabled"], !visible)} /></div>
-    <PropertyGroup icon={Type} title="Configurações da seção" open>{sectionDefinitions.length ? sectionDefinitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={section.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "settings", setting.id], value)} context={section.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} />) : <p className="property-note">Esta seção não possui campos próprios; use os blocos abaixo.</p>}</PropertyGroup>
-    {section.blocks.map((block, blockIndex) => { const blockSchema = schema?.blocks.find((item) => item.type === block.type); const definitions = mergeShopifyDefinitions(blockSchema?.settings ?? [], block.settings); return <PropertyGroup key={block.id} icon={Layers3} title={`Bloco · ${blockSchema?.name ?? humanizeShopify(block.type)}`} open={blockIndex === 0}>{definitions.length ? definitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={block.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "blocks", String(blockIndex), "settings", setting.id], value)} context={block.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} />) : <p className="property-note">Bloco sem configurações editáveis.</p>}</PropertyGroup>; })}
+    <PropertyGroup icon={Type} title="Configurações da seção" open>{sectionDefinitions.length ? sectionDefinitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={section.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "settings", setting.id], value)} context={section.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />) : <p className="property-note">Esta seção não possui campos próprios; use os blocos abaixo.</p>}</PropertyGroup>
+    {section.blocks.map((block, blockIndex) => { const blockSchema = schema?.blocks.find((item) => item.type === block.type); const definitions = mergeShopifyDefinitions(blockSchema?.settings ?? [], block.settings); return <PropertyGroup key={block.id} icon={Layers3} title={`Bloco · ${blockSchema?.name ?? humanizeShopify(block.type)}`} open={blockIndex === 0}>{definitions.length ? definitions.map((setting) => <ShopifySettingControl key={setting.id} setting={setting} value={block.settings[setting.id] ?? setting.default ?? defaultShopifyValue(setting.type)} onChange={(value) => update(["shopify", "pages", String(pageIndex), "sections", String(sectionIndex), "blocks", String(blockIndex), "settings", setting.id], value)} context={block.settings} suggestions={handleSuggestions} assetUrls={theme.assetUrls} globalValues={theme.globalValues} />) : <p className="property-note">Bloco sem configurações editáveis.</p>}</PropertyGroup>; })}
   </div>;
 }
 
@@ -903,13 +1046,29 @@ function visibleIfSatisfied(expression: string | undefined, context: Record<stri
 
 const RESOURCE_SETTING_TYPES = ["collection", "product", "page", "blog", "article", "link_list", "menu", "metaobject"];
 
-function ShopifySettingControl({ setting, value, onChange, context = {}, suggestions = [], assetUrls }: { setting: ShopifySettingDefinition; value: ShopifyValue | undefined; onChange: (value: EditableValue) => void; context?: Record<string, ShopifyValue>; suggestions?: string[]; assetUrls?: Record<string, string> }) {
+function ShopifySettingControl({ setting, value, onChange, context = {}, suggestions = [], assetUrls, globalValues }: { setting: ShopifySettingDefinition; value: ShopifyValue | undefined; onChange: (value: EditableValue) => void; context?: Record<string, ShopifyValue>; suggestions?: string[]; assetUrls?: Record<string, string>; globalValues?: Record<string, ShopifyValue> }) {
   const type = setting.type;
+  const uid = useId();
   if (!visibleIfSatisfied(setting.visibleIf, context)) return null;
   if (type === "header") return <div className="setting-header"><span>{setting.label}</span>{setting.info && <small>{setting.info}</small>}</div>;
   if (type === "paragraph") return <p className="property-note">{setting.label}</p>;
   if (type === "color_scheme_group") return <ShopifyColorSchemeControl setting={setting} value={value} onChange={onChange} />;
   const stringValue = value == null ? "" : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value);
+  if (type === "color_scheme" && globalValues && Object.keys(shopifyObject(globalValues.color_schemes)).length) {
+    return <ShopifySchemeSelect label={setting.label} value={stringValue || String(setting.default ?? "")} globalValues={globalValues} onChange={onChange} info={setting.info} />;
+  }
+  if (["url", "video_url"].includes(type)) {
+    return <Field label={setting.label}><input type="url" value={stringValue} placeholder={setting.placeholder ?? (type === "video_url" ? "https://youtube.com/…" : "https:// ou shopify://…")} onChange={(event) => onChange(event.target.value)} /><small>{type === "video_url" ? "URL de vídeo (YouTube/Vimeo), preservada na exportação." : "Link preservado como está na exportação."}</small>{setting.info && <small>{setting.info}</small>}</Field>;
+  }
+  if (type === "video") {
+    return <Field label={setting.label}><input value={stringValue} placeholder="vídeo da loja (arquivo ou handle)" onChange={(event) => onChange(event.target.value)} /><small>Vídeo da loja ({type}); a prévia não reproduz mídia da CDN Shopify, o valor é preservado.</small>{setting.info && <small>{setting.info}</small>}</Field>;
+  }
+  if (["product_list", "collection_list", "metaobject_list"].includes(type)) {
+    return <ShopifyHandleListField label={setting.label} type={type} value={value} onChange={onChange} info={setting.info} suggestions={suggestions} />;
+  }
+  if (type === "radio" && setting.options?.length) {
+    return <Field label={setting.label}><div className="radio-options" role="radiogroup" aria-label={setting.label}>{setting.options.map((option) => <label key={option.value} className="radio-option"><input type="radio" name={`radio-${uid}`} checked={stringValue === option.value} onChange={() => onChange(option.value)} /><span>{option.label}</span></label>)}</div>{setting.info && <small>{setting.info}</small>}</Field>;
+  }
   if (RESOURCE_SETTING_TYPES.includes(type)) {
     const listId = `resource-${setting.id}`;
     return <div className="shopify-setting"><Field label={setting.label}>
@@ -921,11 +1080,84 @@ function ShopifySettingControl({ setting, value, onChange, context = {}, suggest
   }
   if (type === "checkbox") return <div className="shopify-setting"><ToggleField label={setting.label} checked={Boolean(value)} onChange={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
   if (type === "range") return <div className="shopify-setting"><RangeField label={setting.label} value={typeof value === "number" ? value : Number(setting.default ?? setting.min ?? 0)} min={setting.min ?? 0} max={setting.max ?? 100} step={setting.step} suffix={setting.unit ?? ""} onChange={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
+  if (type === "font_picker") return <div className="shopify-setting"><ShopifyFontPickerControl setting={setting} value={stringValue} onChange={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
   if (type === "color" && normalizeHexColor(stringValue)) return <div className="shopify-setting"><ColorField label={setting.label} value={normalizeHexColor(stringValue) ?? "#000000"} onChange={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
   if (["select", "radio"].includes(type) && setting.options?.length) return <Field label={setting.label}><select value={stringValue} onChange={(event) => onChange(event.target.value)}>{setting.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{setting.info && <small>{setting.info}</small>}</Field>;
   if (type === "image_picker") return <div className="shopify-setting"><MediaField label={setting.label} value={stringValue} assetUrls={assetUrls} onUploaded={onChange} />{setting.info && <small>{setting.info}</small>}</div>;
   if (["textarea", "richtext", "html", "liquid", "inline_richtext"].includes(type) || (value && typeof value === "object")) return <Field label={setting.label}><textarea value={stringValue} rows={4} onChange={(event) => { if (value && typeof value === "object") { try { onChange(JSON.parse(event.target.value)); } catch { /* mantém o último JSON válido */ } } else onChange(event.target.value); }} />{setting.info && <small>{setting.info}</small>}</Field>;
   return <Field label={setting.label}><input type={type === "number" ? "number" : "text"} value={stringValue} onChange={(event) => onChange(type === "number" ? Number(event.target.value) : event.target.value)} />{setting.info && <small>{setting.info}</small>}</Field>;
+}
+
+/** Famílias comuns da biblioteca de fontes da Shopify (espelho do Google Fonts). O handle atual sempre entra na lista, seja qual for. */
+const SHOPIFY_FONT_FAMILIES = ["Assistant", "Archivo", "Bitter", "Cormorant", "Crimson Text", "DM Sans", "Dosis", "EB Garamond", "Fjalla One", "Harmonia Sans", "Inter", "Josefin Sans", "Karla", "Lato", "Libre Baskerville", "Lora", "Merriweather", "Montserrat", "Mulish", "Nunito", "Nunito Sans", "Open Sans", "Oswald", "Playfair Display", "Poppins", "PT Sans", "PT Serif", "Quicksand", "Raleway", "Roboto", "Rubik", "Source Sans Pro", "Space Grotesk", "Work Sans"];
+
+/** Handle Shopify (poppins_n7) ⇄ família + peso + itálico. */
+function parseFontHandle(handle: string) {
+  const match = handle.trim().toLowerCase().match(/^(.*?)_(n|i)(\d{1,2})$/);
+  const family = (match ? match[1] : handle.trim().toLowerCase()).replace(/_/g, " ").trim().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return { family: family || "Assistant", weight: match ? Math.min(900, Math.max(100, Number(match[3]) * 100)) : 400, italic: match?.[2] === "i" };
+}
+function buildFontHandle(family: string, weight: number, italic: boolean) {
+  return `${family.trim().toLowerCase().replace(/\s+/g, "_")}_${italic ? "i" : "n"}${Math.round(weight / 100)}`;
+}
+
+function ShopifyFontPickerControl({ setting, value, onChange }: { setting: ShopifySettingDefinition; value: string; onChange: (value: EditableValue) => void }) {
+  const parsed = parseFontHandle(value || String(setting.default ?? "assistant_n4"));
+  const families = SHOPIFY_FONT_FAMILIES.includes(parsed.family) ? SHOPIFY_FONT_FAMILIES : [parsed.family, ...SHOPIFY_FONT_FAMILIES];
+  const listId = `font-${setting.id}`;
+  return <Field label={setting.label}>
+    <input list={listId} value={parsed.family} onChange={(event) => onChange(buildFontHandle(event.target.value, parsed.weight, parsed.italic))} aria-label={`${setting.label}: família`} />
+    <datalist id={listId}>{families.map((family) => <option key={family} value={family} />)}</datalist>
+    <div className="font-picker-row">
+      <select value={parsed.weight} onChange={(event) => onChange(buildFontHandle(parsed.family, Number(event.target.value), parsed.italic))} aria-label={`${setting.label}: peso`}>
+        {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((weight) => <option key={weight} value={weight}>{weight}</option>)}
+      </select>
+      <label className="font-picker-italic"><input type="checkbox" checked={parsed.italic} onChange={(event) => onChange(buildFontHandle(parsed.family, parsed.weight, event.target.checked))} /> Itálico</label>
+    </div>
+    <small>Fonte da Shopify ({value || "padrão"}). O preview carrega a família real; se ela não existir no Google Fonts, vale o fallback declarado.</small>
+  </Field>;
+}
+
+/**
+ * Seletor de esquema de cores por seção, como no editor da Shopify: cada
+ * esquema REAL do tema vira uma opção com amostras (fundo/texto/destaque).
+ */
+function ShopifySchemeSelect({ label, value, globalValues, onChange, info }: { label: string; value: string; globalValues: Record<string, ShopifyValue>; onChange: (value: EditableValue) => void; info?: string }) {
+  const ids = Object.keys(shopifyObject(globalValues.color_schemes));
+  return <div className="shopify-setting"><Field label={label}>
+    <div className="scheme-options" role="radiogroup" aria-label={label}>
+      {ids.map((id) => {
+        const palette = schemePalette(globalValues, id) ?? {};
+        const selected = value === id;
+        return <button key={id} type="button" role="radio" aria-checked={selected} className={`scheme-option ${selected ? "selected" : ""}`} onClick={() => onChange(id)} title={id}>
+          <span className="scheme-chips" style={{ background: palette.background ?? "#ffffff" }}><i style={{ background: palette.text ?? "#121212" }} /><i style={{ background: palette.accent ?? palette.text ?? "#444444" }} /></span>
+          <small>{humanizeShopify(id)}</small>
+        </button>;
+      })}
+    </div>
+    {info && <small>{info}</small>}
+  </Field></div>;
+}
+
+/** Lista de handles (product_list/collection_list): editada como texto, salva como array — o formato que a Shopify espera. */
+function ShopifyHandleListField({ label, type, value, onChange, info, suggestions = [] }: { label: string; type: string; value: ShopifyValue | undefined; onChange: (value: EditableValue) => void; info?: string; suggestions?: string[] }) {
+  const incoming = Array.isArray(value) ? value.map(String) : [];
+  const committed = incoming.join(", ");
+  const [raw, setRaw] = useState(committed);
+  const [lastCommitted, setLastCommitted] = useState(committed);
+  /* valor mudou por fora (troca de seção/undo): ressincroniza durante o
+     render — padrão de estado derivado, sem efeito */
+  if (committed !== lastCommitted) {
+    setLastCommitted(committed);
+    const parsed = raw.split(",").map((item) => item.trim()).filter(Boolean).join(", ");
+    if (parsed !== committed) setRaw(committed);
+  }
+  return <Field label={label}>
+    <input value={raw} placeholder="handle-1, handle-2" onChange={(event) => { setRaw(event.target.value); onChange(event.target.value.split(",").map((item) => item.trim()).filter(Boolean)); }} />
+    <small>Handles separados por vírgula ({type}); exportado como lista. A prévia usa dados de demonstração.</small>
+    {suggestions.length > 0 && <small>Sugestões do tema: {suggestions.slice(0, 6).join(", ")}</small>}
+    {info && <small>{info}</small>}
+  </Field>;
 }
 
 function ShopifyColorSchemeControl({ setting, value, onChange }: { setting: ShopifySettingDefinition; value: ShopifyValue | undefined; onChange: (value: EditableValue) => void }) {
@@ -1183,7 +1415,7 @@ function Modal({ title, onClose, wide, children }: { title: string; onClose: () 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className={`modal ${wide ? "modal-wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby="modal-title"><div className="modal-head"><div><span className="eyebrow">ORBIS · PRÉVIA</span><h2 id="modal-title">{title}</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Fechar"><X size={18} /></button></div>{children}</div></div>;
 }
 
-function tabTitle(tab: Tab) { return ({ home: "Início", extract: "Importar temas", themes: "Temas Shopify", projects: "Meus projetos", editor: "Editor visual" })[tab]; }
+function tabTitle(tab: Tab) { return ({ home: "Início", extract: "Importar temas", code: "Editar código", themes: "Temas Shopify", projects: "Meus projetos", editor: "Editor visual" })[tab]; }
 function statusLabel(status: Project["status"]) { return ({ draft: "RASCUNHO", editing: "EM EDIÇÃO", published: "PUBLICADO", archived: "ARQUIVADO" })[status]; }
 function formatRelative(value: string) { const date = new Date(`${value.replace(" ", "T")}Z`); const minutes = Math.max(1, Math.round((Date.now() - date.getTime()) / 60000)); return minutes < 60 ? `há ${minutes} min` : minutes < 1440 ? `há ${Math.round(minutes / 60)} h` : `em ${new Intl.DateTimeFormat("pt-BR").format(date)}`; }
 function humanError(error: unknown) { const message = error instanceof Error ? error.message : "UNEXPECTED_ERROR"; if (message.includes("DATABASE_UNAVAILABLE")) return "Perdoe-me, senhor. O banco de dados ainda não está disponível neste ambiente."; if (message.includes("AUTHENTICATION_REQUIRED")) return "Senhor, abra o aplicativo pelo modo local para que eu possa servi-lo."; return "Perdoe-me, senhor. Algo não saiu como esperado. Permita-me tentar novamente."; }
