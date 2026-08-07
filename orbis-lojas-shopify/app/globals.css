@@ -265,6 +265,27 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .preview-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font: 10px var(--font-geist-mono); color: #7f9797; }
 .preview-card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .preview-card-skeleton .pcs-line { height: 10px; margin: 4px 0; background: #142424; }
+/* Catálogo Google Fonts (Fase 6) */
+.font-catalog { display: grid; gap: 12px; max-height: 62vh; }
+.font-catalog-state { padding: 30px; text-align: center; color: #7f9797; }
+.font-catalog-warning { padding: 8px 10px; border: 1px solid #f2c14e; color: #f2c14e; font-size: 11px; }
+.font-catalog-tools { display: grid; gap: 8px; }
+.font-catalog-search { display: flex; gap: 8px; align-items: center; padding: 0 10px; border: 1px solid #2b4040; background: #081111; }
+.font-catalog-search input { flex: 1; height: 34px; border: 0; background: none; }
+.font-catalog-categories { display: flex; flex-wrap: wrap; gap: 6px; }
+.font-catalog-categories button { padding: 4px 10px; border: 1px solid #2b4040; background: #081111; color: #9db4b4; font-size: 10px; cursor: pointer; }
+.font-catalog-categories button.selected { border-color: var(--green, #22d49b); color: var(--green, #22d49b); }
+.font-catalog-tools small { color: #7f9797; font-size: 10px; }
+.font-catalog-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; overflow-y: auto; max-height: 42vh; }
+.font-catalog-list button { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: baseline; width: 100%; padding: 8px 10px; border: 1px solid transparent; background: none; color: inherit; text-align: left; cursor: pointer; }
+.font-catalog-list button:hover { background: #10201f; }
+.font-catalog-list button.selected { border-color: var(--green, #22d49b); }
+.font-catalog-name { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.font-catalog-info { font-size: 9px; color: #7f9797; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+.font-catalog-weights { font: 9px var(--font-geist-mono); color: #7f9797; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.font-catalog-more { justify-self: center; }
+.font-catalog-open { white-space: nowrap; }
+
 /* Prévia do fluxo do cliente (Fase 5) */
 .cf-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; width: min(1180px, 100%); margin: 0 auto; }
 .cf-layout > .cf-panel { width: 100%; }

@@ -50,6 +50,7 @@ import type { ShopifyPage, ShopifySectionInstance, ShopifySectionSchema, Shopify
 import { ShopifyLiveRender, ShopifyStorePreview, schemePalette } from "@/app/ShopifyStorePreview";
 import { PreviewCard } from "@/app/PreviewCard";
 import { previewFromProject, previewFromTheme } from "@/app/preview-model";
+import { FontCatalog } from "@/app/FontCatalog";
 import { Orbis as OrbisNucleo } from "@/app/Orbis";
 import { EntryGate } from "@/app/EntryGate";
 import { ClientFlow } from "@/app/ClientFlow";
@@ -1105,6 +1106,7 @@ function ShopifyFontPickerControl({ setting, value, onChange }: { setting: Shopi
   const parsed = parseFontHandle(value || String(setting.default ?? "assistant_n4"));
   const families = SHOPIFY_FONT_FAMILIES.includes(parsed.family) ? SHOPIFY_FONT_FAMILIES : [parsed.family, ...SHOPIFY_FONT_FAMILIES];
   const listId = `font-${setting.id}`;
+  const [catalogOpen, setCatalogOpen] = useState(false);
   return <Field label={setting.label}>
     <input list={listId} value={parsed.family} onChange={(event) => onChange(buildFontHandle(event.target.value, parsed.weight, parsed.italic))} aria-label={`${setting.label}: família`} />
     <datalist id={listId}>{families.map((family) => <option key={family} value={family} />)}</datalist>
@@ -1113,8 +1115,17 @@ function ShopifyFontPickerControl({ setting, value, onChange }: { setting: Shopi
         {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((weight) => <option key={weight} value={weight}>{weight}</option>)}
       </select>
       <label className="font-picker-italic"><input type="checkbox" checked={parsed.italic} onChange={(event) => onChange(buildFontHandle(parsed.family, parsed.weight, event.target.checked))} /> Itálico</label>
+      <button type="button" className="secondary-button font-catalog-open" onClick={() => setCatalogOpen(true)}>Catálogo Google Fonts</button>
     </div>
     <small>Fonte da Shopify ({value || "padrão"}). O preview carrega a família real; se ela não existir no Google Fonts, vale o fallback declarado.</small>
+    {catalogOpen && <Modal title="Catálogo Google Fonts" wide onClose={() => setCatalogOpen(false)}>
+      <FontCatalog currentFamily={parsed.family} onPick={(font) => {
+        /* peso preservado quando a família tem; senão o mais próximo de 400 */
+        const weight = font.weights.includes(parsed.weight) ? parsed.weight : font.weights.find((candidate) => candidate >= 400) ?? font.weights[0] ?? 400;
+        onChange(buildFontHandle(font.family, weight, parsed.italic && font.italic));
+        setCatalogOpen(false);
+      }} />
+    </Modal>}
   </Field>;
 }
 
