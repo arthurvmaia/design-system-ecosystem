@@ -47,6 +47,18 @@ scripts/_tmp-*
 # projeto): a pasta enche a cada sessão e nada no app a lê.
 .playwright-mcp/
 
+# Print de validação largado na RAIZ. Conferir um site gerado no navegador
+# produz meia dúzia de imagens por rodada, e elas sobrevivem à sessão que as
+# criou: doze delas estavam aqui, de duas rodadas diferentes, ocupando 800 KB e
+# atrapalhando quem abre a pasta para achar o `package.json`.
+#
+# Só a raiz, de propósito: imagem dentro de `apps/`, `packages/` ou `fixtures/`
+# é asset do projeto e continua versionada.
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+
 # Planejamento interno. Este repositório é PÚBLICO, e estes dois documentos não
 # são feitos para ser lidos por quem chega pelo GitHub: trazem diagnóstico de
 # produto, ordem de execução, estratégia e conversa sobre sócios.
