@@ -1,9 +1,37 @@
 # HANDOFF — Orbis · Criação de lojas Shopify
 
-> Documento de passagem de trabalho. Última atualização: **2026-08-06 (rodada
-> fidelidade: cores, esquemas e fontes do tema saem iguais aos da Shopify)**.
-> Mora em `orbis-lojas-shopify/`, dentro do repositório
-> `design-system-ecosystem`. Sessões conduzidas com Claude no Claude Code.
+> Documento de passagem de trabalho. Última atualização: **2026-08-07
+> (programa de fases 0-10: navegação, previews, catálogo Google Fonts,
+> inspetor visual e edição de cores)**. Mora em `orbis-lojas-shopify/`,
+> dentro do repositório `design-system-ecosystem`. Sessões conduzidas com
+> Claude no Claude Code.
+
+## 🚀 Programa 2026-08-07 — fases 0 a 10 (um commit por fase)
+
+Roteiro completo em [docs/plano-editor-visual.md](docs/plano-editor-visual.md).
+O que cada fase entregou (commits `eb55d25` → fase 10):
+
+- **F0** baseline + mapas + plano (`eb55d25`); **F1** navegação: Início ·
+  Editor · Temas · Importar · Editar código · Projetos por último
+  (`f7ba7ef`); **F2** fundação dos previews (`previewFromTheme/Project` +
+  `PreviewCard` com skeleton/fallback/erro, `8c2dcbb`); **F3** Temas no padrão
+  Shopify: primeiro tema em card grande + biblioteca (`c31e882`); **F4**
+  Projetos sobre a mesma fundação (`6a4b6ee`); **F5** prévia ao vivo no fluxo
+  do cliente com a marca do wizard — bloqueio da Marca do design system
+  documentado no plano (`6c8269e`); **F6** catálogo Google Fonts completo
+  (1.942 famílias, metadata público + cache R2 24h + reserva declarada,
+  busca/categorias/paginação, preview por subset `text=`, `f15f1f8`); **F7**
+  aplicação/persistência: pesos restritos aos reais da família, itálico só
+  quando existe, restaurar padrão, prova de carga mínima no teste de render
+  (`ec4313f`); **F8** inspetor: modos Selecionar/Interagir/Prévia na ponte,
+  seleção de BLOCO pelo `shopify_attributes`, hover, formulários bloqueados,
+  clique abre e rola o grupo do bloco no painel (`76a09e6`); **F9** cores:
+  `ShopifyColorField` com alfa, amostras das cores reais do tema, recentes,
+  origem declarada (padrão × editado no tema/seção/bloco), restauração e
+  alerta de contraste WCAG que nunca troca sozinho + `lib/color-tools.ts`
+  (`0e6d7a4`); **F10** integração: CSS morto dos cards antigos removido,
+  regressão de export 283/284 byte-idênticos, render sem vars quebradas,
+  varredura de todos os fluxos em desktop e 375px. Suíte final: **49/49**.
 
 ## 🗂️ Rodada 2026-08-06 (3) — navegação por link no preview e Editar código
 
