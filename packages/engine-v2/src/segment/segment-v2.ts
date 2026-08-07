@@ -866,11 +866,35 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
 
     const sinais = contarSinais(html);
     const temMovimento = temporais.some((t) => t.moving);
+    /**
+     * Runtimes que NÃO podem ser a fonte de um movimento.
+     *
+     * `iconify` desenha ícone, `tailwind-cdn` compila CSS: o próprio vocabulário
+     * já os descreve como "runtimes que DESENHAM o que o HTML só declara — estes
+     * não animam nada". Mesmo assim eles zeravam a chance de o segmento declarar
+     * movimento por CSS, porque a regra pedia `runtimes.length === 0`. Uma
+     * página feita com Tailwind por CDN não podia ter uma única peça animada por
+     * CSS — e é o caso da maior parte do acervo.
+     */
+    const runtimesQueNaoAnimam = new Set<RuntimeKind>(['iconify', 'tailwind-cdn']);
+    const runtimesQuePodemAnimar = runtimes.filter((r) => !runtimesQueNaoAnimam.has(r.kind));
     const movimentoPorCss =
       temMovimento &&
       temporais.every((t) => t.domStable === false) === false &&
       entrada.animacoesCssQueRodaram.length > 0 &&
-      runtimes.length === 0;
+      runtimesQuePodemAnimar.length === 0;
+    /**
+     * O movimento medido é da PÁGINA, não do item?
+     *
+     * Duas provas juntas: nenhuma observação viu o DOM mudar (tudo é "pintura
+     * fora do DOM"), e há camada de fundo da página passando atrás. Aí o que se
+     * mediu foi o fundo, não a peça — e condená-la a foto por isso descartaria
+     * um HTML que reproduz sozinho.
+     */
+    const movimentoEhDaPagina =
+      temMovimento &&
+      temporais.every((t) => !t.moving || t.domStable === true) &&
+      camadasDeFundo.length > 0;
     const reageAoPonteiro = ponteiro.some(
       (p) =>
         p.reactions.includes('pixels') ||
@@ -914,6 +938,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       estadosCapturados: estados.length,
       movimentoMedido: temMovimento,
       movimentoPorCss,
+      movimentoEhDaPagina,
       reageAoPonteiro,
       regiaoReativaSemDom,
       dependeDeJs,
