@@ -201,6 +201,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .preview-card-media.is-loading::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(150, 200, 195, 0.09) 50%, transparent 70%); animation: pc-shimmer 1.3s infinite; }
 @keyframes pc-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 .preview-card-badge { position: absolute; left: 10px; bottom: 10px; padding: 3px 8px; background: var(--green, #22d49b); color: #04211a; font: 700 9px var(--font-geist-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+/* Miniatura REAL: a home verdadeira num viewport reduzido e inerte */
+.home-thumb { position: relative; width: 100%; height: 100%; overflow: hidden; background: #0e1b1b; }
+.home-thumb.is-loading::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(150, 200, 195, 0.09) 50%, transparent 70%); animation: pc-shimmer 1.3s infinite; }
+.home-thumb-frame { display: block; border: 0; transform-origin: top left; pointer-events: none; background: #ffffff; }
+.home-thumb-error { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 16px; text-align: center; color: #9db4b4; font-size: 11px; }
+
 .preview-card-mock { display: flex; flex-direction: column; height: 100%; background: #dfe6e6; }
 .pcm-browser { display: flex; gap: 4px; align-items: center; padding: 6px 8px; background: #cfd8d8; }
 .pcm-browser span { width: 6px; height: 6px; border-radius: 50%; background: #9fb0b0; }

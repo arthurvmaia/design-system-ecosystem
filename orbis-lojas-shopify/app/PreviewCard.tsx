@@ -1,8 +1,93 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- as imagens vêm da rota local autenticada de assets do tema */
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { PreviewCardModel } from "@/app/preview-model";
+
+/* O HTML da home é buscado uma vez por origem e reaproveitado entre cards e
+   re-renders; o cap evita crescer sem limite numa sessão longa. */
+const homeHtmlCache = new Map<string, string>();
+const HOME_CACHE_MAX = 24;
+
+/**
+ * Miniatura REAL (recuperação, fase 2): a MESMA home que o editor abre,
+ * renderizada pelo MESMO motor Liquid (GET /api/theme-render), reduzida em
+ * escala para caber no card — nunca uma aproximação geométrica.
+ *
+ * Disciplinas: carrega só quando o card entra na viewport (lazy), o HTML é
+ * cacheado por URL, o iframe é inerte (pointer-events none + tabIndex -1) e
+ * os estados carregando/erro são declarados, com tentar de novo.
+ */
+export function RealHomeThumbnail({ src, title, baseWidth = 1280 }: { src: string; title: string; baseWidth?: number }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [frame, setFrame] = useState({ scale: 0, height: 0 });
+  const [html, setHtml] = useState<string | null>(homeHtmlCache.get(src) ?? null);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setVisible(true);
+    }, { rootMargin: "300px" });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const apply = () => setFrame({ scale: host.clientWidth / baseWidth, height: host.clientHeight });
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [baseWidth]);
+
+  useEffect(() => {
+    if (!visible || html) return;
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch(src);
+        if (!response.ok) throw new Error(String(response.status));
+        const text = await response.text();
+        homeHtmlCache.set(src, text);
+        if (homeHtmlCache.size > HOME_CACHE_MAX) {
+          const oldest = homeHtmlCache.keys().next().value;
+          if (oldest) homeHtmlCache.delete(oldest);
+        }
+        if (!cancelled) { setHtml(text); setFailed(false); }
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    }, 0);
+    return () => { cancelled = true; window.clearTimeout(timeout); };
+  }, [visible, html, src, attempt]);
+
+  const ready = html !== null && frame.scale > 0;
+  return (
+    <div ref={hostRef} className={`home-thumb ${!ready && !failed ? "is-loading" : ""}`} role="img" aria-label={`Prévia real da página inicial de ${title}`}>
+      {failed ? (
+        <div className="home-thumb-error">
+          <p>A prévia desta home não pôde ser gerada.</p>
+          <button type="button" className="secondary-button" onClick={() => { homeHtmlCache.delete(src); setFailed(false); setHtml(null); setAttempt((count) => count + 1); }}>Tentar de novo</button>
+        </div>
+      ) : ready ? (
+        <iframe
+          className="home-thumb-frame"
+          title={`Prévia real de ${title}`}
+          tabIndex={-1}
+          sandbox="allow-scripts allow-same-origin"
+          srcDoc={html}
+          style={{ width: baseWidth, height: frame.height / frame.scale, transform: `scale(${frame.scale})` }}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Cartão-base dos previews (Fase 2): mesma linguagem visual para Temas e
@@ -12,15 +97,18 @@ import type { PreviewCardModel } from "@/app/preview-model";
  * Estados cobertos: imagem carregando (skeleton), imagem com erro ou ausente
  * (mock de vitrine pintado com a paleta REAL), sem dados (mock neutro).
  */
-export function PreviewCard({ model, size = "media", actions, onOpen, children }: {
+export function PreviewCard({ model, size = "media", actions, onOpen, homeSrc, children }: {
   model: PreviewCardModel;
   size?: "grande" | "media" | "lista";
   actions?: ReactNode;
   onOpen?: () => void;
+  /** URL do render REAL da home (GET /api/theme-render?…). Quando presente, a
+   *  mídia é a home verdadeira em escala — nunca o mock. */
+  homeSrc?: string;
   children?: ReactNode;
 }) {
   const [imageState, setImageState] = useState<"loading" | "ok" | "erro">("loading");
-  const showImage = Boolean(model.image) && imageState !== "erro";
+  const showImage = !homeSrc && Boolean(model.image) && imageState !== "erro";
   const paletteVars = {
     "--pc-bg": model.palette.background,
     "--pc-text": model.palette.text,
@@ -29,7 +117,9 @@ export function PreviewCard({ model, size = "media", actions, onOpen, children }
 
   const media = (
     <div className={`preview-card-media ${showImage && imageState === "loading" ? "is-loading" : ""}`} style={paletteVars}>
-      {showImage ? (
+      {homeSrc ? (
+        <RealHomeThumbnail src={homeSrc} title={model.title} />
+      ) : showImage ? (
         <img
           src={model.image}
           alt={`Prévia de ${model.title}`}

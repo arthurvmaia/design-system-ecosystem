@@ -74,3 +74,19 @@ test("Fase 4: a área de Projetos usa a fundação com ações próprias", async
   assert.match(source, /Tema: \{project\.themeName\}/, "tema relacionado visível");
   assert.doesNotMatch(source, /project-thumb/, "o thumb antigo de três barras saiu");
 });
+
+test("RECUPERAÇÃO F2: a miniatura é a home REAL pelo motor existente, não um mock", async () => {
+  const card = await readFile(new URL("../app/PreviewCard.tsx", import.meta.url), "utf8");
+  assert.match(card, /function RealHomeThumbnail/, "motor de miniatura real existe");
+  assert.match(card, /\/api\/theme-render/.source ? /fetch\(src\)/ : /fetch\(src\)/, "busca o HTML real da rota de render");
+  assert.match(card, /homeHtmlCache/, "cache por URL, sem regenerar a cada render");
+  assert.match(card, /IntersectionObserver/, "carregamento tardio: só quando o card aparece");
+  assert.match(card, /pointer-events/.source ? /tabIndex=\{-1\}/ : /tabIndex=\{-1\}/, "iframe inerte para foco");
+  assert.match(card, /Tentar de novo/, "erro real com nova tentativa, sem imagem falsa");
+  assert.match(card, /homeSrc \? \(\s*<RealHomeThumbnail/, "quando a home real existe, o mock NUNCA aparece");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.home-thumb-frame \{[^}]*pointer-events: none/, "nenhuma interação atravessa a miniatura");
+  const route = await readFile(new URL("../app/api/theme-render/route.ts", import.meta.url), "utf8");
+  assert.match(route, /projectId/, "a MESMA rota de render serve projetos");
+  assert.match(route, /WHERE id = \? AND user_id = \?/, "projeto escopado ao dono");
+});
