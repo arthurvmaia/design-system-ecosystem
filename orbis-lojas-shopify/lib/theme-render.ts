@@ -6,6 +6,7 @@
 import { Liquid, type TagToken, type TopLevelToken, type Context, type Emitter } from "liquidjs";
 import { strFromU8 } from "fflate";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
+import { CATALOGO_LOJA, type CatalogoProduto } from "./catalogo-loja";
 
 /** Item do carrinho simulado: o preview guarda só o essencial. */
 export type PreviewCartItem = { variantId: number; quantity: number };
@@ -53,50 +54,103 @@ class ThemeImage {
 
 function demoImage(label: string, tone?: string) { return new ThemeImage(PLACEHOLDER_SVG(label, tone)); }
 
-function demoVariant(productTitle: string, price: number) {
-  return {
-    id: 1000001, title: "Padrão", price, compare_at_price: null, available: true,
-    inventory_management: null, inventory_policy: "deny", inventory_quantity: 99,
-    options: ["Padrão"], option1: "Padrão", option2: null, option3: null,
-    featured_image: null, featured_media: null, url: "#", weight: 0, unit_price: null,
-    requires_shipping: true, taxable: true, barcode: "", sku: `DEMO-${productTitle.slice(0, 4).toUpperCase()}`,
-    selected: true, requires_selling_plan: false, selling_plan_allocations: [],
-  };
-}
+/**
+ * Monta um produto no formato que os temas leem a partir de uma entrada do
+ * catálogo real (`lib/catalogo-loja.ts`): título, descrição, preços, opções,
+ * variantes e imagens saem todos da loja de origem.
+ */
+function produtoDoCatalogo(fonte: CatalogoProduto) {
+  const imagens = fonte.images.map((img) => new ThemeImage(img.src, img.alt, img.width, img.height));
+  const principal = imagens[0] ?? demoImage(fonte.title);
+  const midias = imagens.map((image, posicao) => ({
+    id: image.id, media_type: "image", position: posicao + 1, preview_image: image,
+    alt: image.alt, aspect_ratio: image.aspect_ratio, width: image.width, height: image.height, src: image.src,
+  }));
+  const imagemDaVariante = (src: string | null) => (src ? imagens.find((img) => img.src === src) ?? new ThemeImage(src, fonte.title) : null);
 
-function demoProduct(handle: string, index = 0) {
-  const names = ["Daily Ritual", "Balance", "Pure Form", "Focus+", "Restore", "Starter Kit"];
-  const tones = ["#dbeafe", "#ede9fe", "#ffedd5", "#dcfce7", "#fce7f3", "#e0f2fe"];
-  const title = names[index % names.length];
-  const price = [12990, 14990, 17990, 11990, 13990, 23990][index % 6];
-  const compareAt = index % 2 === 0 ? price + 3000 : null;
-  const image = demoImage(title, tones[index % tones.length]);
-  const variant = demoVariant(title, price);
-  const media = { id: image.id, media_type: "image", position: 1, preview_image: image, alt: title, aspect_ratio: 1, width: image.width, height: image.height, src: image.src };
-  const productHandle = handle || title.toLowerCase().replace(/\W+/g, "-");
+  const variantes = fonte.variants.map((v) => ({
+    id: v.id, title: v.title, price: v.price, compare_at_price: v.compareAtPrice, available: v.available,
+    inventory_management: "shopify", inventory_policy: "deny", inventory_quantity: v.available ? 25 : 0,
+    options: [v.option1, v.option2, v.option3].filter((opcao): opcao is string => Boolean(opcao)),
+    option1: v.option1, option2: v.option2, option3: v.option3,
+    featured_image: imagemDaVariante(v.imageSrc), featured_media: null,
+    url: `/products/${fonte.handle}?variant=${v.id}`, weight: 0, unit_price: null,
+    requires_shipping: true, taxable: true, barcode: "", sku: v.sku,
+    selected: false, requires_selling_plan: false, selling_plan_allocations: [],
+  }));
+  const primeira = variantes[0];
+  primeira.selected = true;
+
+  const precos = variantes.map((v) => v.price);
+  const comparados = variantes.map((v) => v.compare_at_price ?? 0);
+  const precoMin = Math.min(...precos);
+  const precoMax = Math.max(...precos);
+  const comparadoMax = Math.max(...comparados);
+
   return {
-    id: 7000000 + index, title, handle: productHandle,
-    url: `/products/${productHandle}`, available: true, price, price_min: price, price_max: price, price_varies: false,
-    compare_at_price: compareAt, compare_at_price_min: compareAt ?? 0, compare_at_price_max: compareAt ?? 0, compare_at_price_varies: false,
-    featured_image: image, featured_media: media, images: [image], media: [media],
-    options: ["Título"], options_with_values: [{ name: "Título", position: 1, values: ["Padrão"], selected_value: "Padrão" }],
-    variants: [variant], selected_or_first_available_variant: variant, selected_variant: null, first_available_variant: variant,
-    has_only_default_variant: true, vendor: "Demonstração", type: "Demo",
-    description: "<p>Produto de demonstração. Conecte os produtos reais da loja para substituí-lo.</p>",
-    content: "<p>Produto de demonstração. Conecte os produtos reais da loja para substituí-lo.</p>",
-    tags: [], collections: [], template_suffix: null, published_at: new Date().toISOString(), created_at: new Date().toISOString(),
+    id: fonte.id, title: fonte.title, handle: fonte.handle,
+    url: `/products/${fonte.handle}`, available: variantes.some((v) => v.available),
+    price: primeira.price, price_min: precoMin, price_max: precoMax, price_varies: precoMin !== precoMax,
+    compare_at_price: primeira.compare_at_price, compare_at_price_min: Math.min(...comparados),
+    compare_at_price_max: comparadoMax, compare_at_price_varies: Math.min(...comparados) !== comparadoMax,
+    featured_image: principal, featured_media: midias[0] ?? null, images: imagens, media: midias,
+    options: fonte.options.map((opcao) => opcao.name),
+    options_with_values: fonte.options.map((opcao) => ({
+      name: opcao.name, position: opcao.position, values: opcao.values,
+      selected_value: opcao.position === 1 ? primeira.option1 : opcao.position === 2 ? primeira.option2 : primeira.option3,
+    })),
+    variants: variantes, selected_or_first_available_variant: primeira, selected_variant: null,
+    first_available_variant: variantes.find((v) => v.available) ?? primeira,
+    has_only_default_variant: variantes.length === 1 && fonte.options.length <= 1,
+    vendor: fonte.vendor, type: fonte.type,
+    description: fonte.descriptionHtml, content: fonte.descriptionHtml,
+    tags: fonte.tags, collections: [], template_suffix: null,
+    published_at: fonte.publishedAt, created_at: fonte.publishedAt,
     requires_selling_plan: false, selling_plan_groups: [], quantity_price_breaks_configured: false, gift_card: false, metafields: {},
   };
 }
 
-const DEMO_PRODUCTS = [0, 1, 2, 3, 4, 5].map((index) => demoProduct("", index));
+/** Os 10 produtos reais que abastecem toda prévia de tema importado. */
+const DEMO_PRODUCTS = CATALOGO_LOJA.map(produtoDoCatalogo);
 
-/** A variante de cada produto demo tem id próprio, para o carrinho casar item com produto. */
-for (const [index, product] of DEMO_PRODUCTS.entries()) {
-  const variantId = 1000001 + index;
-  product.variants[0].id = variantId;
-  product.selected_or_first_available_variant.id = variantId;
-  product.first_available_variant.id = variantId;
+type ProdutoDaLoja = (typeof DEMO_PRODUCTS)[number];
+
+/** Todas as variantes do catálogo, para o carrinho casar item com produto. */
+const VARIANTE_PARA_PRODUTO = new Map<number, ProdutoDaLoja>();
+for (const produto of DEMO_PRODUCTS) {
+  for (const variante of produto.variants) VARIANTE_PARA_PRODUTO.set(variante.id, produto);
+}
+
+/**
+ * Resolve o produto de um handle qualquer pedido pelo tema. Handle conhecido
+ * devolve o produto real; handle desconhecido gira pelo catálogo (índice) para
+ * cada slot da página mostrar um produto diferente.
+ */
+/** Índice variante → dados de linha, para a ponte do carrinho dentro do preview. */
+function catalogoPorVariante() {
+  const mapa: Record<string, unknown> = {};
+  for (const produto of DEMO_PRODUCTS) {
+    for (const variante of produto.variants) {
+      const imagem = variante.featured_image ?? produto.featured_image;
+      mapa[String(variante.id)] = {
+        title: produto.has_only_default_variant ? produto.title : `${produto.title} - ${variante.title}`,
+        product_title: produto.title,
+        variant_title: produto.has_only_default_variant ? null : variante.title,
+        price: variante.price, image: imagem?.src ?? null,
+        handle: produto.handle, product_id: produto.id, url: variante.url,
+      };
+    }
+  }
+  return mapa;
+}
+
+function demoProduct(handle: string, index = 0): ProdutoDaLoja {
+  const alvo = handle.trim().toLowerCase();
+  if (alvo) {
+    const exato = DEMO_PRODUCTS.find((produto) => produto.handle === alvo);
+    if (exato) return exato;
+  }
+  return DEMO_PRODUCTS[index % DEMO_PRODUCTS.length];
 }
 
 /**
@@ -107,19 +161,22 @@ for (const [index, product] of DEMO_PRODUCTS.entries()) {
 function buildCart(items: PreviewCartItem[] | undefined) {
   const linhas = (items ?? [])
     .map((item, index) => {
-      const produto = DEMO_PRODUCTS.find((candidate) => candidate.variants[0].id === item.variantId) ?? DEMO_PRODUCTS[index % DEMO_PRODUCTS.length];
+      const produto = VARIANTE_PARA_PRODUTO.get(item.variantId) ?? DEMO_PRODUCTS[index % DEMO_PRODUCTS.length];
       const quantidade = Math.max(1, Math.min(99, Math.floor(item.quantity) || 1));
-      const variante = produto.variants[0];
-      const preco = produto.price;
+      const variante = produto.variants.find((candidate) => candidate.id === item.variantId) ?? produto.variants[0];
+      const preco = variante.price;
+      const semVariacao = produto.has_only_default_variant;
       return {
         id: variante.id, key: `${variante.id}:${index}`, quantity: quantidade,
-        title: produto.title, product_title: produto.title, variant_title: null,
+        title: semVariacao ? produto.title : `${produto.title} - ${variante.title}`,
+        product_title: produto.title, variant_title: semVariacao ? null : variante.title,
         product_id: produto.id, variant_id: variante.id, handle: produto.handle,
-        url: produto.url, product_has_only_default_variant: true,
+        url: variante.url, product_has_only_default_variant: semVariacao,
         price: preco, final_price: preco, original_price: preco, discounted_price: preco,
         line_price: preco * quantidade, final_line_price: preco * quantidade,
         original_line_price: preco * quantidade, total_discount: 0,
-        image: produto.featured_image, featured_image: produto.featured_image,
+        image: variante.featured_image ?? produto.featured_image,
+        featured_image: variante.featured_image ?? produto.featured_image,
         product: produto, variant: variante, options_with_values: produto.options_with_values,
         properties: {}, selling_plan_allocation: null, discounts: [], line_level_discount_allocations: [],
         requires_shipping: true, taxable: true, gift_card: false, sku: variante.sku, vendor: produto.vendor,
@@ -142,7 +199,10 @@ function demoCollection(handle: string) {
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
     products: DEMO_PRODUCTS, products_count: DEMO_PRODUCTS.length, all_products_count: DEMO_PRODUCTS.length,
-    image: null, featured_image: DEMO_PRODUCTS[0].featured_image, all_tags: [], all_types: [], all_vendors: [],
+    image: DEMO_PRODUCTS[0].featured_image, featured_image: DEMO_PRODUCTS[0].featured_image,
+    all_tags: [...new Set(DEMO_PRODUCTS.flatMap((produto) => produto.tags))],
+    all_types: [...new Set(DEMO_PRODUCTS.map((produto) => produto.type).filter(Boolean))],
+    all_vendors: [...new Set(DEMO_PRODUCTS.map((produto) => produto.vendor))],
     sort_by: "", default_sort_by: "best-selling", filters: [], template_suffix: null,
   };
 }
@@ -199,7 +259,7 @@ function resolveSettingValues(
     if (type === "collection") { resolved[id] = demoCollection(typeof value === "string" ? value : ""); continue; }
     if (type === "product") { resolved[id] = demoProduct(typeof value === "string" ? value : "", 2); continue; }
     if (type === "collection_list") { resolved[id] = ["colecao-1", "colecao-2", "colecao-3", "colecao-4"].map((handle) => demoCollection(handle)); continue; }
-    if (type === "product_list") { resolved[id] = DEMO_PRODUCTS.slice(0, 4); continue; }
+    if (type === "product_list") { resolved[id] = DEMO_PRODUCTS; continue; }
     if (type === "link_list" || type === "menu") { resolved[id] = { title: "Menu", handle: String(value ?? "main-menu"), links: DEMO_LINKS, levels: 1 }; continue; }
     if (type === "blog") { const blogHandle = String(value ?? "blog"); resolved[id] = { title: "Blog", handle: blogHandle, url: `/blogs/${blogHandle}`, articles: [], articles_count: 0, all_tags: [] }; continue; }
     if (type === "article") { resolved[id] = null; continue; }
@@ -508,13 +568,13 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     images: imagesProxy,
     blogs: proxyWithFallback<unknown>({}, (handle) => ({ title: "Blog", handle, url: `/blogs/${handle}`, articles: [], articles_count: 0, all_tags: [] })),
     articles: proxyWithFallback<unknown>({}, () => null),
-    product: demoProduct("produto-demo", 0),
+    product: DEMO_PRODUCTS[0],
     collection: demoCollection("colecao-demo"),
     article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "/blogs/news/artigo-demo", tags: [], comments: [], comments_count: 0, comments_enabled: false },
     blog: { title: "Blog", url: "/blogs/news", articles: [], articles_count: 0, all_tags: [] },
     page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "/pages/pagina" },
     search: { performed: false, terms: "", results: [], results_count: 0, types: ["product"], filters: [], sort_by: "relevance", default_sort_by: "relevance" },
-    recommendations: { performed: false, products_count: 0, products: [], intent: "related" },
+    recommendations: { performed: true, products_count: 4, products: DEMO_PRODUCTS.slice(1, 5), intent: "related" },
     predictive_search: { performed: false, resources: { products: [], collections: [], pages: [], articles: [] } },
     paginate: null,
     current_page: 1, current_tags: null, handle: pageBase,
@@ -900,10 +960,13 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
      e pede ao editor o HTML novo das seções — é assim que a gaveta abre com
      item, quantidade e total de verdade, sem backend de loja. */
   const carrinhoPonte = `<script>window.__ORBIS_CART_INICIAL__=${JSON.stringify(cartItems ?? [])};(function(){
+/* catálogo real indexado por id de variante: o item do carrinho nasce com
+   título, preço e imagem do produto, sem depender de raspar o DOM do tema */
+var catalogo=${JSON.stringify(catalogoPorVariante())};
 var itens=[];var pedidos={};var seq=0;
 function moeda(c){return "R$ "+(c/100).toFixed(2).replace(".",",");}
 function estado(){var total=0,contagem=0;for(var i=0;i<itens.length;i++){total+=itens[i].price*itens[i].quantity;contagem+=itens[i].quantity;}
-return {token:"orbis-preview-cart",item_count:contagem,total_price:total,original_total_price:total,items_subtotal_price:total,total_discount:0,currency:"BRL",requires_shipping:itens.length>0,note:null,attributes:{},items:itens.map(function(it,idx){return {id:it.id,key:it.id+":"+idx,quantity:it.quantity,title:it.title,product_title:it.title,variant_title:null,price:it.price,final_price:it.price,line_price:it.price*it.quantity,final_line_price:it.price*it.quantity,original_line_price:it.price*it.quantity,url:it.url,image:it.image,featured_image:{url:it.image,alt:it.title},product_id:it.product_id,variant_id:it.id,handle:it.handle,quantity_rule:{min:1,max:null,increment:1},properties:{}};})};}
+return {token:"orbis-preview-cart",item_count:contagem,total_price:total,original_total_price:total,items_subtotal_price:total,total_discount:0,currency:"BRL",requires_shipping:itens.length>0,note:null,attributes:{},items:itens.map(function(it,idx){return {id:it.id,key:it.id+":"+idx,quantity:it.quantity,title:it.title,product_title:it.product_title||it.title,variant_title:it.variant_title||null,price:it.price,final_price:it.price,line_price:it.price*it.quantity,final_line_price:it.price*it.quantity,original_line_price:it.price*it.quantity,url:it.url,image:it.image,featured_image:{url:it.image,alt:it.title},product_id:it.product_id,variant_id:it.id,handle:it.handle,quantity_rule:{min:1,max:null,increment:1},properties:{}};})};}
 function dadosDoBotao(alvo){var form=alvo&&alvo.closest?alvo.closest("form"):null;var card=alvo&&alvo.closest?alvo.closest("[data-product-id],.card-wrapper,.grid__item,product-card,.card"):null;
 var id=null;if(form){var input=form.querySelector('[name="id"]');if(input&&input.value)id=parseInt(input.value,10);}
 var titulo=(card&&(card.querySelector(".card__heading,.card-information__text,h3,h2")||{}).textContent||"").replace(/\\s+/g," ").trim();
@@ -911,10 +974,11 @@ var img=card?card.querySelector("img"):null;var preco=null;var precoEl=card?card
 if(precoEl){var n=precoEl.textContent.replace(/[^0-9,]/g,"").replace(",",".");if(n)preco=Math.round(parseFloat(n)*100);}
 return {id:id||Date.now()%100000,title:titulo||"Produto",price:preco||0,image:img?img.currentSrc||img.src:null,handle:(titulo||"produto").toLowerCase().replace(/[^a-z0-9]+/g,"-"),product_id:id||0,url:"/products/"+((titulo||"produto").toLowerCase().replace(/[^a-z0-9]+/g,"-"))};}
 var ultimoAlvo=null;document.addEventListener("click",function(e){ultimoAlvo=e.target;},true);
-function adicionar(payload){var base=dadosDoBotao(ultimoAlvo);var id=payload&&payload.id?parseInt(payload.id,10):base.id;var qtd=payload&&payload.quantity?parseInt(payload.quantity,10):1;
+function adicionar(payload){var doDom=dadosDoBotao(ultimoAlvo);var id=payload&&payload.id?parseInt(payload.id,10):doDom.id;var qtd=payload&&payload.quantity?parseInt(payload.quantity,10):1;
+var base=catalogo[String(id)]||doDom;
 var existente=null;for(var i=0;i<itens.length;i++){if(itens[i].id===id)existente=itens[i];}
 if(existente){existente.quantity+=qtd;return existente;}
-var novo={id:id,title:base.title,price:base.price,image:base.image,handle:base.handle,product_id:base.product_id,url:base.url,quantity:qtd};itens.push(novo);return novo;}
+var novo={id:id,title:base.title,product_title:base.product_title||base.title,variant_title:base.variant_title||null,price:base.price,image:base.image,handle:base.handle,product_id:base.product_id,url:base.url,quantity:qtd};itens.push(novo);return novo;}
 function mudar(payload){var chave=payload.id||payload.line;var qtd=parseInt(payload.quantity,10);
 if(payload.line){var idx=parseInt(payload.line,10)-1;if(itens[idx]){if(qtd<=0)itens.splice(idx,1);else itens[idx].quantity=qtd;}}
 else {for(var i=itens.length-1;i>=0;i--){if(String(itens[i].id)===String(chave)||itens[i].id+":"+i===String(chave)){if(qtd<=0)itens.splice(i,1);else itens[i].quantity=qtd;}}}
@@ -994,7 +1058,7 @@ var form=formDoBotao(botao);
 if(!form)return;
 e.preventDefault();e.stopPropagation();comprar(form);},true);
 /* estado inicial vindo do editor, para o carrinho sobreviver à troca de página */
-try{if(window.__ORBIS_CART_INICIAL__&&window.__ORBIS_CART_INICIAL__.length){itens=window.__ORBIS_CART_INICIAL__.map(function(i){var base=dadosDoBotao(null);return {id:i.variantId,quantity:i.quantity,title:i.title||base.title,price:i.price||0,image:null,handle:"produto",product_id:i.variantId,url:"/cart"};});}}catch(e){}
+try{if(window.__ORBIS_CART_INICIAL__&&window.__ORBIS_CART_INICIAL__.length){itens=window.__ORBIS_CART_INICIAL__.map(function(i){var base=catalogo[String(i.variantId)]||dadosDoBotao(null);return {id:i.variantId,quantity:i.quantity,title:base.title,product_title:base.product_title||base.title,variant_title:base.variant_title||null,price:base.price||0,image:base.image||null,handle:base.handle||"produto",product_id:base.product_id||i.variantId,url:base.url||"/cart"};});}}catch(e){}
 /* fechar a gaveta é responsabilidade do preview também: muitos temas ligam o
    X ao próprio JS, que aqui não tem loja atrás */
 function fecharGaveta(){var alvos=alvosDaGaveta();if(!alvos.length)return false;

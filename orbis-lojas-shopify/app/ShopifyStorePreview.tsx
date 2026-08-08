@@ -4,6 +4,7 @@
 import { ArrowRight, Check, Plus, Search, ShieldCheck, ShoppingBag, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import type { ShopifyPage, ShopifySectionInstance, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
+import { CATALOGO_LOJA } from "../lib/catalogo-loja";
 
 /**
  * Prévia ao vivo: renderiza o Liquid REAL do tema no servidor (igual à Shopify)
@@ -163,7 +164,7 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
 }
 
 type Device = "desktop" | "tablet" | "mobile";
-type DemoProduct = { id: string; name: string; category: string; price: number; compareAt?: number; rating: number; tone: string; description: string };
+type DemoProduct = { id: string; name: string; category: string; price: number; compareAt?: number; image: string; description: string };
 type Runtime = {
   products: DemoProduct[];
   product: DemoProduct;
@@ -182,14 +183,27 @@ type Runtime = {
   checkout: () => void;
 };
 
-const PRODUCTS: DemoProduct[] = [
-  { id: "ritual", name: "Daily Ritual", category: "Essenciais", price: 129.9, compareAt: 159.9, rating: 4.9, tone: "#a7d8cf", description: "Fórmula completa para transformar sua rotina todos os dias." },
-  { id: "balance", name: "Balance", category: "Bem-estar", price: 149.9, rating: 4.8, tone: "#cbb7e8", description: "Equilíbrio, leveza e cuidado em uma experiência simples." },
-  { id: "pure", name: "Pure Form", category: "Favoritos", price: 179.9, compareAt: 199.9, rating: 4.9, tone: "#f2bf8f", description: "O favorito da comunidade, criado para resultados consistentes." },
-  { id: "focus", name: "Focus+", category: "Performance", price: 119.9, rating: 4.7, tone: "#9fc2e9", description: "Mais clareza e foco para acompanhar o ritmo da sua semana." },
-  { id: "restore", name: "Restore", category: "Recuperação", price: 139.9, rating: 4.8, tone: "#d2d9a0", description: "Uma pausa completa para recuperar corpo e mente." },
-  { id: "starter", name: "Starter Kit", category: "Kits", price: 239.9, compareAt: 289.9, rating: 5, tone: "#e8b5bb", description: "Três essenciais reunidos em um kit com melhor custo-benefício." },
-];
+/** Descrição do catálogo vem em HTML; aqui vira texto curto para o cartão. */
+function textoSimples(html: string, limite: number) {
+  const puro = html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  if (puro.length <= limite) return puro;
+  const corte = puro.slice(0, limite);
+  return `${corte.slice(0, corte.lastIndexOf(" ")) || corte}…`;
+}
+
+/** Mesmos 10 produtos reais que o motor de render usa (lib/catalogo-loja.ts). */
+const PRODUCTS: DemoProduct[] = CATALOGO_LOJA.map((produto) => {
+  const variante = produto.variants[0];
+  return {
+    id: produto.handle,
+    name: produto.title,
+    category: produto.type || produto.tags[0] || produto.vendor,
+    price: variante.price / 100,
+    compareAt: variante.compareAtPrice ? variante.compareAtPrice / 100 : undefined,
+    image: produto.images[0]?.src ?? "",
+    description: textoSimples(produto.descriptionHtml, 150),
+  };
+});
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -296,7 +310,7 @@ function SectionPreview({ theme, pageId, section: source, accent: themeAccent, b
   }
   if (type === "main-cart-items") return <section className={`${className} shopify-cart-page`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow="CARRINHO" title="Seu carrinho" /><CartItems cart={runtime.cart} onChange={runtime.changeCart} emptyAction={() => runtime.goTo("collection")} /></section>;
   if (type === "main-cart-footer") { const total = runtime.products.reduce((sum, item) => sum + item.price * (runtime.cart[item.id] ?? 0), 0); return <section className={`${className} shopify-cart-summary`} style={{ background, color: textColor }} onClick={onSelect}><div><span>Subtotal</span><strong>{BRL.format(total)}</strong></div><p>Frete e descontos calculados no checkout.</p><button style={{ background: accent }} disabled={!total} onClick={(event) => { stop(event); runtime.checkout(); }}>Finalizar compra com segurança</button></section>; }
-  if (type === "main-product" || type === "featured-product") return <section className={`${className} shopify-product-page`} style={{ background, color: textColor }} onClick={onSelect}>{media[0] ? <img className="shopify-product-photo" src={media[0]} alt={runtime.product.name} /> : <ProductArt product={runtime.product} large />}<div className="shopify-product-info"><small>{runtime.product.category}</small><div className="shopify-rating">★★★★★ <span>{runtime.product.rating}</span> <i className="shopify-demo-flag">DEMONSTRAÇÃO</i></div><h1>{runtime.product.name}</h1><div className="shopify-price"><strong>{BRL.format(runtime.product.price)}</strong>{runtime.product.compareAt && <del>{BRL.format(runtime.product.compareAt)}</del>}</div><p>{runtime.product.description}</p><div className="shopify-variant-row"><span>Variantes <i className="shopify-demo-flag">DEMONSTRAÇÃO</i></span><div><button className="active">Opção 1</button><button>Opção 2</button><button>Opção 3</button></div></div><div className="shopify-buy-row"><div><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity - 1); }}>−</button><span>{runtime.productQuantity}</span><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity + 1); }}>+</button></div><button style={{ background: accent }} onClick={(event) => { stop(event); runtime.addToCart(runtime.product.id, runtime.productQuantity); }}>Adicionar ao carrinho</button></div><ul><li><Check size={11} /> Compra protegida</li><li><Zap size={11} /> Envio rápido</li><li><ShieldCheck size={11} /> Garantia de 30 dias</li></ul></div></section>;
+  if (type === "main-product" || type === "featured-product") return <section className={`${className} shopify-product-page`} style={{ background, color: textColor }} onClick={onSelect}>{media[0] ? <img className="shopify-product-photo" src={media[0]} alt={runtime.product.name} /> : <ProductArt product={runtime.product} large />}<div className="shopify-product-info"><small>{runtime.product.category}</small><h1>{runtime.product.name}</h1><div className="shopify-price"><strong>{BRL.format(runtime.product.price)}</strong>{runtime.product.compareAt && <del>{BRL.format(runtime.product.compareAt)}</del>}</div><p>{runtime.product.description}</p><VariantRow handle={runtime.product.id} /><div className="shopify-buy-row"><div><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity - 1); }}>−</button><span>{runtime.productQuantity}</span><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity + 1); }}>+</button></div><button style={{ background: accent }} onClick={(event) => { stop(event); runtime.addToCart(runtime.product.id, runtime.productQuantity); }}>Adicionar ao carrinho</button></div><ul><li><Check size={11} /> Compra protegida</li><li><Zap size={11} /> Envio rápido</li><li><ShieldCheck size={11} /> Garantia de 30 dias</li></ul></div></section>;
   if (type === "main-search" || type.includes("predictive-search")) {
     const results = runtime.products.filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(runtime.searchQuery.toLowerCase()));
     return <section className={`${className} shopify-search-page`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow={section.name} title={heading} /><label><Search size={16} /><input value={runtime.searchQuery} onClick={stop} onChange={(event) => runtime.setSearchQuery(event.target.value)} placeholder="Buscar produtos" /></label><p>{runtime.searchQuery ? `${results.length} resultado(s) para “${runtime.searchQuery}”` : "Produtos populares"}</p>{results.length || !runtime.searchQuery ? <ProductGrid products={results} onProduct={runtime.openProduct} onAdd={runtime.addToCart} /> : <div className="shopify-no-results"><Search size={23} /><b>Nenhum resultado encontrado</b><span>Tente buscar por outro nome ou categoria.</span></div>}</section>;
@@ -328,7 +342,14 @@ function ProductGrid({ products, onProduct, onAdd }: { products: DemoProduct[]; 
   return <div className="shopify-product-grid">{products.map((product) => <article className="shopify-product-card" key={product.id}><button className="shopify-product-link" onClick={() => onProduct(product.id)}><ProductArt product={product} /><span>{product.category}</span><h3>{product.name}</h3><div><strong>{BRL.format(product.price)}</strong>{product.compareAt && <del>{BRL.format(product.compareAt)}</del>}</div></button><button className="shopify-quick-add" onClick={() => onAdd(product.id)} aria-label={`Adicionar ${product.name} ao carrinho`}><Plus size={14} /></button></article>)}</div>;
 }
 
-function ProductArt({ product, large, hero }: { product: DemoProduct; large?: boolean; hero?: boolean }) { return <div className={`shopify-product-art ${large ? "large" : ""} ${hero ? "hero" : ""}`} style={{ "--product-tone": product.tone } as CSSProperties}><span /><span /><b>{product.name.slice(0, 1)}</b>{product.compareAt && <i>OFERTA</i>}</div>; }
+/** Opções e valores reais do produto do catálogo; sem opção, nada é mostrado. */
+function VariantRow({ handle }: { handle: string }) {
+  const produto = CATALOGO_LOJA.find((item) => item.handle === handle);
+  if (!produto || !produto.options.length || produto.variants.length < 2) return null;
+  return <>{produto.options.map((opcao) => <div className="shopify-variant-row" key={opcao.name}><span>{opcao.name}</span><div>{opcao.values.slice(0, 5).map((valor, indice) => <button className={indice === 0 ? "active" : ""} key={valor}>{valor}</button>)}</div></div>)}</>;
+}
+
+function ProductArt({ product, large, hero }: { product: DemoProduct; large?: boolean; hero?: boolean }) { return <div className={`shopify-product-art ${large ? "large" : ""} ${hero ? "hero" : ""}`}>{product.image ? <img className="shopify-product-photo-fill" src={product.image} alt={product.name} loading="lazy" /> : <b>{product.name.slice(0, 1)}</b>}{product.compareAt && <i>OFERTA</i>}</div>; }
 
 function CartItems({ cart, onChange, emptyAction }: { cart: Record<string, number>; onChange: (id: string, delta: number) => void; emptyAction: () => void }) {
   const items = PRODUCTS.filter((item) => cart[item.id]);
