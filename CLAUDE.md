@@ -46,15 +46,13 @@ O `pnpm extrair` abre a URL num navegador de verdade (Playwright), espera o cont
 
 **Não use WebFetch nem siga os 6 STEPs do `prompt.ts` à mão.** Aquele processo (reescrever/traduzir o HTML via LLM) só enxergava o HTML servido e perdia justamente os sites pesados. O `prompt.ts` continua existindo para o modo `api`, mas no modo `queue` a captura fiel vem do navegador, não de reconstrução manual.
 
-**Captura parcial não é defeito.** O orçamento padrão é 180 s (`DS_EXPLORER_ORCAMENTO_TOTAL_MS`), e num site pesado a fase de percurso — que rola a página e varre o ponteiro em cada parada — não termina nesse tempo. O que sai é bom: todos os segmentos com bundle, CSS completo, ícones desenhados. O que falta são comportamentos das dobras de baixo, e a Galeria diz isso por extenso.
+**O orçamento se dimensiona sozinho.** Ele não é mais uma constante, e a razão está medida: o percurso custa **295 s de mediana** e recebia 61; a soma de todas as fases passa de 560 s; e o configurado era 180. Três vezes menor que o trabalho que o motor era mandado fazer — por isso **43 das 58 capturas do acervo saíam parciais**. Não eram sites patológicos, era aritmética.
 
-Medido numa página pesada: o percurso pediu **mais de 308 s** e ainda foi cortado; a captura inteira levou 420 s. Se você quiser essa página completa, suba o orçamento:
+Hoje o total sai da soma MEDIDA das fases (o histórico que o próprio motor grava, com 20% de folga), multiplicada pelo tamanho do site — altura e número de elementos contra as medianas do acervo, medidos depois que a página assenta. Teto absoluto de 12 minutos, porque orçamento sem fim é fila travada.
 
-```powershell
-$env:DS_EXPLORER_ORCAMENTO_TOTAL_MS = "900000"; pnpm extrair <job_id>
-```
+Medido no mesmo site, antes e depois: 9 segmentos em 91 s com corte, contra 24 segmentos em 317 s sem corte. Quase o triplo de peças, porque a captura termina o trabalho.
 
-Não vale subir por padrão: a maioria dos sites termina bem dentro dos 180 s, e o custo cairia sobre todos eles.
+**Captura parcial agora É sinal.** Antes era rotina e não dizia nada; agora significa que aquele site estourou até o teto ampliado, e vale olhar. `DS_EXPLORER_ORCAMENTO_TOTAL_MS` continua existindo como piso configurável — o dimensionamento só cresce a partir dele, nunca encolhe.
 
 **Sem Playwright instalado**, o `pnpm extrair` cai para fetch estático e avisa — sites protegidos/SPA podem vir incompletos. Para a captura completa, instale uma vez:
 

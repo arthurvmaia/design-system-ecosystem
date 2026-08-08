@@ -52,6 +52,7 @@ import {
   vaultSegmentsManifest,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
+import { lerBundleInfo } from '../apps/server/src/lib/bundle-v2.js';
 
 type Nota = {
   segId: string;
@@ -97,6 +98,7 @@ const avaliar = (seg: {
   category: string;
   kind: string;
   htmlSnippet: string | null;
+  position: number;
   inLibrary: boolean;
 }): Nota => {
   const manifesto = manifestoDe(seg.designSystemId);
@@ -116,6 +118,9 @@ const avaliar = (seg: {
    * para ORDENAR, mas quem decide se a peça pode subir é a regra — senão haveria
    * dois critérios, e o mais frouxo venceria na primeira pressa.
    */
+  const repr =
+    (lerBundleInfo(seg.designSystemId as `ds_${string}`, { position: seg.position })
+      ?.representation as PecaParaAceite['representacao'] | undefined) ?? null;
   const aceite = conferirPecaDaGaleria({
     categoria: seg.category,
     kind: seg.kind,
@@ -156,7 +161,7 @@ const avaliar = (seg: {
   nota += fid;
   if (fid > 0) motivos.push(`fidelidade ${fid}`);
 
-  if (insight?.representation === 'capsula-runtime') {
+  if (repr === 'capsula-runtime') {
     nota += 8;
     motivos.push('cena viva (cápsula de runtime)');
   }
@@ -206,6 +211,7 @@ const principal = (): void => {
       category: s.category,
       kind: s.kind,
       htmlSnippet: s.htmlSnippet,
+      position: s.position,
       inLibrary: s.inLibrary === true,
     }),
   );

@@ -22,6 +22,7 @@ import {
   type StoredState,
   ancorarContratoDoBundle,
   coletarAssetRefs,
+  conferirPecaDaGaleria,
   construirIndiceAssets,
   libraryComponentBundleDir,
   libraryComponentDir,
@@ -653,16 +654,56 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
   const seg = db.select().from(tables.segments).where(eq(tables.segments.id, segmentId)).get();
   if (!seg) return c.json({ error: 'segment_not_found' }, 404);
 
-  // Gate de qualidade: um bloco que a captura NÃO consegue reproduzir fora do
-  // site de origem não entra na Biblioteca — entraria quebrado e apareceria
-  // quebrado no site gerado. A recusa explica, não esconde.
+  /**
+   * A REGRA DE ACEITE DA GALERIA (`docs/regras-de-aceite.md`).
+   *
+   * É a conferência que o dono pediu, "antes de você realmente colocar isso na
+   * galeria". Ela morava só no script de curadoria, e o botão de curtir do app
+   * tinha um portão próprio, mais frouxo — dois critérios para a mesma decisão,
+   * e o mais frouxo venceria sempre que alguém clicasse em vez de rodar o
+   * script.
+   *
+   * Reprovação BARRA, porque é defeito e defeito tem conserto. Pendência
+   * DEIXA PASSAR e fica declarada: uma cena que depende de runtime remoto
+   * proprietário não reproduz sozinha, e barrá-la só esconderia o acervo de
+   * quem poderia decidir usá-la mesmo assim.
+   */
   const insight = lerInsightDoSegmento(seg.designSystemId as `ds_${string}`, seg.id);
+  const aceite = conferirPecaDaGaleria({
+    categoria: seg.category,
+    kind: seg.kind,
+    htmlSnippet: seg.htmlSnippet,
+    // A representação mora no manifesto do BUNDLE, não no insight — foi assim
+    // que ela apareceu aqui: `insight.representation` não existe, e um `as`
+    // escondia isso do compilador enquanto o valor chegava `undefined`.
+    representacao:
+      lerBundleInfo(seg.designSystemId as `ds_${string}`, {
+        position: seg.position,
+      })?.representation ?? null,
+    runtimes: [],
+    movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
+    classesDeRevelacao: [],
+    temObservadorDeRolagem: false,
+    refsQuebradas: [],
+    assetsNaOrigem: [],
+  });
+  const reprovacao = aceite.vereditos.find((v) => v.estado === 'reprovou');
   if (insight?.support === 'nao-suportado') {
     return c.json(
       {
         error: 'sem_suporte',
         message:
           'Este bloco não se sustenta fora do site de origem — a captura não conseguiu reproduzi-lo. Por isso ele não pode entrar na Biblioteca.',
+      },
+      422,
+    );
+  }
+  if (reprovacao !== undefined) {
+    return c.json(
+      {
+        error: 'reprovado_no_aceite',
+        codigo: reprovacao.codigo,
+        message: `${reprovacao.titulo}: ${reprovacao.motivo}`,
       },
       422,
     );
