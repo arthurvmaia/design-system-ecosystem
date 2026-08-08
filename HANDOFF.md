@@ -1,5 +1,52 @@
 # HANDOFF — onde o trabalho está
 
+> ## ⚡ ONDE PARAMOS — 2026-08-08, fim da sessão
+>
+> **11 commits na branch `conserto/defeitos-do-dono-e-rastreamento`.** O `main`
+> está intocado e o push segue NÃO autorizado. A branch está a um
+> `git merge --ff-only` de distância, se o dono mandar.
+>
+> ### A mudança que rege o resto
+>
+> A conferência passou a MEDIR o que era chutado. A regra S4 ("o texto se lê")
+> morava no aceite da montagem recebendo `contrastesAbaixoDoPiso: 0` — a
+> constante, cravada no código — e por isso deu verde em TODO site gerado sem
+> nunca ter comparado duas cores. Ela saiu de lá.
+>
+> Agora existe **`pnpm conferir <pasta> [--corrigir]`**: abre o site em 1440 e
+> 390 e mede contraste real, texto apagado, slot de mídia vazio, transbordo e
+> seção que tem conteúdo e não ocupa espaço — **S4, S13, S11, S12, S14**. Com
+> `--corrigir`, escreve o conserto no `assets/ajustes.css`.
+>
+> **O critério do dono, e que vale para todo trabalho novo aqui:** cada ajuste
+> feito à mão tem de virar métrica que serve a qualquer site.
+>
+> ### O que fazer ao sentar
+>
+> 1. **O SJDR** (`prj_01KZGQBQHW59W5Y71MPGP2NVPF`) está a 14 trechos de passar,
+>    e a causa já está diagnosticada: a recoloração migra o TEXTO para a tinta
+>    clara da marca e deixa a SEÇÃO com o creme da origem — meia migração. O
+>    conserto é no motor (`recolorir.ts`), não na folha de ajustes.
+> 2. **Imagens saem do Magnific** (MCP, nano banana 2 em 1k), nunca mais da
+>    Pexels — em qualquer site e no próprio app. Os seis prompts do SJDR estão
+>    em `scratchpad/prompts-sjdr.json` da sessão; se sumiram, a régua está na
+>    memória. O ponto do motor é `apps/server/src/lib/marca-automatica.ts`.
+> 3. **Faltam três sites**: Meridiano (relógios), Voltz (eletrônicos) e AVDSGN
+>    (portfólio). Os projetos existem, com marca e mídia.
+>
+> ### Entregue e aprovado
+>
+> O site da **clínica** (`prj_01KZFRJGVXNE2XREDF70CWHDRT`) passou em todas as
+> regras de aceite, sem pendência, validado em 1440 e 390.
+>
+> ### Armadilha que pegou três vezes
+>
+> O bloco `MEDIR` do `scripts/conferir-site.ts` é um **template literal**. Crase
+> dentro dele FECHA o template e o erro aparece como `Expected ;` em outra linha.
+> Barra invertida some do mesmo jeito: `\s` vira `s` e a regex passa a casar com
+> a letra. Está documentado no topo do bloco.
+
+
 *Atualizado em 2026-08-08. Suíte 1.443 testes, 1.441 verdes.*
 
 > ## Rodada 2026-08-07/08 — o motor passou a ser medido, e as regras a mandar
