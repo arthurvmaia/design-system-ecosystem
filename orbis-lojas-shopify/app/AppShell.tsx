@@ -18,7 +18,10 @@ import {
   Home,
   Layers3,
   LayoutTemplate,
+  Maximize2,
   Menu,
+  Minimize2,
+  Minus,
   Monitor,
   PackageOpen,
   Palette,
@@ -581,6 +584,9 @@ function ThemeFullscreenPreview({ theme, onClose }: { theme: Theme; onClose: () 
   const customization = normalizeCustomization(theme.defaultSettings);
   const shopify = customization.shopify as ShopifyThemeImport | null;
   const [pageId, setPageId] = useState("index");
+  /* três tamanhos, como uma janela: cheia, média (dá para mexer no app atrás)
+     e minimizada (só a barra no canto, sem perder a página aberta) */
+  const [janela, setJanela] = useState<"cheia" | "media" | "minimizada">("cheia");
   const page = shopify?.pages.find((item) => item.id === pageId) ?? shopify?.pages.find((item) => item.id === "index") ?? shopify?.pages[0];
   const fecharRef = useRef<HTMLButtonElement | null>(null);
 
@@ -589,20 +595,28 @@ function ThemeFullscreenPreview({ theme, onClose }: { theme: Theme; onClose: () 
     window.addEventListener("keydown", onKey);
     /* o foco começa no X: dá para sair só com o teclado */
     fecharRef.current?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  /* só a tela cheia trava a rolagem do app: nos outros tamanhos a pessoa
+     precisa continuar usando o editor por trás */
+  useEffect(() => {
+    if (janela !== "cheia") return;
     const anterior = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = anterior; };
-  }, [onClose]);
+    return () => { document.body.style.overflow = anterior; };
+  }, [janela]);
 
   /* TODAS as páginas navegáveis: cortar a lista fazia o seletor mostrar a
      página errada quando um link do tema levava a uma página de fora do corte
      (login, 404, cadastro) — a loja ia certo e o rótulo mentia. */
   const paginas = (shopify?.pages ?? []).filter((item) => !item.id.includes("-group"));
+  const minimizada = janela === "minimizada";
   return (
-    <div className="fullscreen-preview" role="dialog" aria-modal="true" aria-label={`Prévia em tela cheia: ${theme.name}`}>
+    <div className={`fullscreen-preview janela-${janela}`} role="dialog" aria-modal={janela === "cheia"} aria-label={`Prévia da loja: ${theme.name}`}>
       <header className="fullscreen-preview-bar">
         <strong>{theme.name}</strong>
-        {paginas.length > 1 && (
+        {!minimizada && paginas.length > 1 && (
           <label className="fullscreen-preview-pages">
             <span className="sr-only">Página da loja</span>
             <select value={page?.id ?? "index"} onChange={(event) => setPageId(event.target.value)} aria-label="Página da loja">
@@ -610,9 +624,15 @@ function ThemeFullscreenPreview({ theme, onClose }: { theme: Theme; onClose: () 
             </select>
           </label>
         )}
-        <button ref={fecharRef} className="fullscreen-preview-close" onClick={onClose} aria-label="Fechar prévia (Esc)" title="Fechar (Esc)"><X size={20} /></button>
+        {/* controles de janela, na paleta do app */}
+        <div className="janela-controles">
+          <button className="janela-botao" onClick={() => setJanela(minimizada ? "media" : "minimizada")} aria-label={minimizada ? "Restaurar prévia" : "Minimizar prévia"} title={minimizada ? "Restaurar" : "Minimizar"}><Minus size={15} /></button>
+          <button className="janela-botao" onClick={() => setJanela(janela === "cheia" ? "media" : "cheia")} aria-label={janela === "cheia" ? "Deixar em tela média" : "Deixar em tela cheia"} title={janela === "cheia" ? "Tela média" : "Tela cheia"}>{janela === "cheia" ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button>
+          <button ref={fecharRef} className="janela-botao janela-fechar fullscreen-preview-close" onClick={onClose} aria-label="Fechar prévia (Esc)" title="Fechar (Esc)"><X size={16} /></button>
+        </div>
       </header>
-      <div className="fullscreen-preview-stage">
+      {/* a loja segue montada ao minimizar: restaurar não recarrega nada */}
+      <div className="fullscreen-preview-stage" hidden={minimizada}>
         {shopify && page
           ? <ShopifyLiveRender shopify={shopify} pageId={page.id} mode="interagir" onNavigatePage={setPageId} fallback={<ShopifyStorePreview theme={shopify} page={page} device="desktop" selectedSectionId="" onSelectSection={() => undefined} onNavigatePage={setPageId} />} />
           : <StorefrontPreview customization={customization} device="desktop" />}

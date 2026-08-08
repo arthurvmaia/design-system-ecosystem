@@ -139,8 +139,12 @@ test("links do tema navegam a prévia em qualquer modo, e Visualizar abre em tel
   assert.match(render, /orbisNavigate:href/);
   const appShell = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
   assert.match(appShell, /function ThemeFullscreenPreview/);
-  assert.match(appShell, /className="fullscreen-preview-close"/, "X de saída");
+  assert.match(appShell, /className="janela-botao janela-fechar fullscreen-preview-close"/, "X de saída");
   assert.match(appShell, /event\.key === "Escape"/, "Esc também fecha");
+  /* janela em três tamanhos, para poder mexer no app por trás */
+  assert.match(appShell, /useState<"cheia" \| "media" \| "minimizada">/);
+  assert.match(appShell, /aria-label=\{minimizada \? "Restaurar prévia" : "Minimizar prévia"\}/);
+  assert.match(appShell, /hidden=\{minimizada\}/, "ao minimizar a loja fica montada, sem recarregar");
   assert.match(appShell, /mode="interagir"/, "na tela cheia a loja é navegável");
   assert.doesNotMatch(appShell, /ThemeModalPreview/, "o modal antigo saiu de cena");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
