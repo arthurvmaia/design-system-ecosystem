@@ -66,9 +66,53 @@ const CAMPO_DE_MARCA = /(shop.?name|store.?name|brand|logo.?text|site.?title|nom
 const CAMPO_DE_AVISO = /(announce|aviso|bar.?text|topbar)/i;
 const CAMPO_DE_LISTA = /(collection_list|link_list|menu)/i;
 
+/**
+ * As famílias que o `font_picker` da Shopify aceita.
+ *
+ * A lista existe porque o campo NÃO é uma caixa de texto: ele só conhece a
+ * biblioteca da Shopify. Uma família de fora (Google Fonts qualquer) é gravada
+ * no settings_data e depois ignorada na loja — a tipografia da marca some sem
+ * nenhum aviso, que foi exatamente o que aconteceu com "Cormorant Garamond" e
+ * "Baloo 2". Aqui ficam só as que existem lá, com o substituto mais próximo
+ * para o que a pessoa digitar à mão.
+ */
+export const FONTES_SHOPIFY = Object.freeze([
+  "Abel", "Alegreya", "Alegreya Sans", "Anton", "Archivo", "Archivo Black", "Archivo Narrow",
+  "Arvo", "Asap", "Assistant", "Barlow", "Barlow Condensed", "Bebas Neue", "Bitter", "Cabin",
+  "Cardo", "Catamaran", "Chakra Petch", "Chivo", "Comfortaa", "Cormorant", "Crimson Text",
+  "DM Sans", "DM Serif Display", "DM Serif Text", "Domine", "EB Garamond", "Epilogue", "Figtree",
+  "Fira Sans", "Fraunces", "Fredoka", "Geist", "IBM Plex Sans", "IBM Plex Serif", "Inter",
+  "Josefin Sans", "Jost", "Karla", "Lato", "Libre Baskerville", "Lora", "Manrope", "Marcellus",
+  "Merriweather", "Montserrat", "Noto Sans", "Noto Serif", "Nunito", "Nunito Sans", "Open Sans",
+  "Oswald", "Outfit", "PT Sans", "PT Serif", "Playfair Display", "Plus Jakarta Sans", "Poppins",
+  "Questrial", "Quicksand", "Rajdhani", "Raleway", "Red Hat Display", "Roboto", "Roboto Condensed",
+  "Roboto Slab", "Rubik", "Saira", "Source Sans Pro", "Source Serif 4", "Space Grotesk", "Syne",
+  "Tenor Sans", "Titillium Web", "Ubuntu", "Urbanist", "Work Sans", "Young Serif", "Zilla Slab",
+]);
+
+const FONTES_POR_NOME = new Map(FONTES_SHOPIFY.map((familia) => [familia.toLowerCase(), familia]));
+const PARECE_SERIF = /(serif|garamond|baskerville|playfair|lora|cormorant|georgia|times|didot|bodoni)/i;
+
+/**
+ * A família mais próxima que existe na Shopify.
+ *
+ * Casa pelo nome; não achando, tenta a primeira palavra ("Cormorant Garamond"
+ * vira "Cormorant"); e em último caso devolve uma da mesma natureza, para o
+ * texto não voltar à fonte de fábrica do tema.
+ */
+export function familiaSuportada(familia: string): string {
+  const nome = String(familia ?? "").trim();
+  if (!nome) return "Inter";
+  const exata = FONTES_POR_NOME.get(nome.toLowerCase());
+  if (exata) return exata;
+  const primeira = FONTES_POR_NOME.get(nome.split(/\s+/)[0].toLowerCase());
+  if (primeira) return primeira;
+  return PARECE_SERIF.test(nome) ? "Lora" : "Inter";
+}
+
 /** `Playfair Display` → `playfair_display_n4`, o formato que o tema guarda. */
 export function handleDeFonte(familia: string, peso = 4, italico = false): string {
-  const base = String(familia ?? "")
+  const base = familiaSuportada(familia)
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()

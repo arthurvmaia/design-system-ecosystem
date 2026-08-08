@@ -184,6 +184,35 @@ test("quem já tem marca envia as próprias imagens, com prévia", async () => {
   assert.match(rota, /exportThemeZip\(tema, originais, midias\)/);
 });
 
+test("toda fonte da marca existe na biblioteca da Shopify", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { FONTES_SHOPIFY, familiaSuportada, handleDeFonte } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+    const biblioteca = new Set(FONTES_SHOPIFY);
+
+    /* o font_picker não é caixa de texto: família de fora é gravada e depois
+       ignorada na loja, e a tipografia da marca some sem aviso nenhum */
+    for (const nicho of NICHOS) {
+      for (const par of nicho.fontes) {
+        for (const familia of [par.titulo, par.corpo]) {
+          assert.ok(biblioteca.has(familia), `${nicho.id} usa "${familia}", que não existe na biblioteca da Shopify`);
+        }
+      }
+    }
+
+    /* o que a pessoa digita à mão também tem que cair em algo que existe */
+    assert.equal(familiaSuportada("Cormorant Garamond"), "Cormorant", "cai na família mais próxima pelo primeiro nome");
+    assert.equal(familiaSuportada("Fonte Que Não Existe"), "Inter");
+    assert.equal(familiaSuportada("Alguma Coisa Serif"), "Lora", "serif desconhecida não vira sans");
+    assert.equal(familiaSuportada(""), "Inter");
+    assert.equal(handleDeFonte("Playfair Display", 7), "playfair_display_n7");
+    assert.equal(handleDeFonte("Baloo 2", 7), "inter_n7", "família de fora não escapa pelo handle");
+  } finally {
+    await server.close();
+  }
+});
+
 test("SVG de terceiro não passa pelo sanitizador", () => {
   const malicioso = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')}`;
   assert.equal(sanitizeBrand({ name: "X", logoDataUri: malicioso }).logoDataUri, "");

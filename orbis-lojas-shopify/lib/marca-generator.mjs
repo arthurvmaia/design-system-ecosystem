@@ -75,7 +75,7 @@ export const NICHOS = Object.freeze([
     ],
     fontes: [
       { titulo: "Playfair Display", corpo: "Inter" },
-      { titulo: "Cormorant Garamond", corpo: "Karla" },
+      { titulo: "Cormorant", corpo: "Karla" },
       { titulo: "DM Serif Display", corpo: "DM Sans" },
     ],
     vozes: ["editorial e calma", "próxima e direta", "elegante sem afetação"],
@@ -153,7 +153,7 @@ export const NICHOS = Object.freeze([
     ],
     fontes: [
       { titulo: "Marcellus", corpo: "Nunito Sans" },
-      { titulo: "Lora", corpo: "Source Sans 3" },
+      { titulo: "Lora", corpo: "Source Sans Pro" },
       { titulo: "Quicksand", corpo: "Quicksand" },
     ],
     vozes: ["acolhedora e cuidadosa", "clara e sem promessa milagrosa", "leve e otimista"],
@@ -204,8 +204,8 @@ export const NICHOS = Object.freeze([
       { primaria: "#9a3412", fundo: "#fef8f4", destaque: "#38bdf8" },
     ],
     fontes: [
-      { titulo: "Baloo 2", corpo: "Nunito" },
-      { titulo: "Fredoka", corpo: "Rubik" },
+      { titulo: "Fredoka", corpo: "Nunito" },
+      { titulo: "Comfortaa", corpo: "Rubik" },
       { titulo: "Poppins", corpo: "Poppins" },
     ],
     vozes: ["carinhosa e brincalhona", "prática e amiga", "calorosa"],
@@ -231,7 +231,7 @@ export const NICHOS = Object.freeze([
     ],
     fontes: [
       { titulo: "Anton", corpo: "Inter" },
-      { titulo: "Teko", corpo: "Roboto" },
+      { titulo: "Bebas Neue", corpo: "Roboto" },
       { titulo: "Archivo Black", corpo: "Archivo" },
     ],
     vozes: ["direta e motivadora", "técnica e sem hype", "enérgica"],
@@ -258,7 +258,7 @@ export const NICHOS = Object.freeze([
     fontes: [
       { titulo: "Space Grotesk", corpo: "Inter" },
       { titulo: "Chakra Petch", corpo: "IBM Plex Sans" },
-      { titulo: "Sora", corpo: "Sora" },
+      { titulo: "Outfit", corpo: "Outfit" },
     ],
     vozes: ["técnica e sem exagero", "moderna e enxuta", "informativa"],
     colecoes: ["Áudio", "Carregadores", "Casa inteligente", "Acessórios", "Lançamentos", "Ofertas"],
@@ -282,7 +282,7 @@ export const NICHOS = Object.freeze([
       { primaria: "#15803d", fundo: "#f5fbf6", destaque: "#fb923c" },
     ],
     fontes: [
-      { titulo: "Baloo 2", corpo: "Nunito" },
+      { titulo: "Fredoka", corpo: "Nunito" },
       { titulo: "Comfortaa", corpo: "Quicksand" },
       { titulo: "Poppins", corpo: "Poppins" },
     ],
@@ -308,8 +308,8 @@ export const NICHOS = Object.freeze([
       { primaria: "#1f2937", fundo: "#f7f7f6", destaque: "#b8b8b8" },
     ],
     fontes: [
-      { titulo: "Cormorant Garamond", corpo: "Jost" },
-      { titulo: "Italiana", corpo: "Inter" },
+      { titulo: "Cormorant", corpo: "Jost" },
+      { titulo: "Tenor Sans", corpo: "Inter" },
       { titulo: "Playfair Display", corpo: "Karla" },
     ],
     vozes: ["delicada e precisa", "sofisticada e curta", "afetiva"],
