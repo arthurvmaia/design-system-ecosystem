@@ -256,15 +256,11 @@ export type SiteParaAceite = {
   gridMedido: boolean;
   /** Seções que saíram sem conteúdo nenhum. */
   secoesVazias: readonly string[];
-  /** Pares texto/fundo abaixo do piso de contraste. */
-  contrastesAbaixoDoPiso: number;
   /** Há favicon declarado no `<head>`? */
   temFavicon: boolean;
   /** Quantas peças com movimento entraram no site. */
   pecasComMovimento: number;
 };
-
-const PISO_DE_CONTRASTE_TEXTO = 'contraste mínimo de 3:1';
 
 export const conferirSiteGerado = (s: SiteParaAceite): ResultadoDeAceite => {
   const v: VereditoDaRegra[] = [];
@@ -315,18 +311,6 @@ export const conferirSiteGerado = (s: SiteParaAceite): ResultadoDeAceite => {
             estado: 'pendente',
             motivo: midia,
           },
-  );
-
-  // S4 — o texto se lê.
-  v.push(
-    s.contrastesAbaixoDoPiso === 0
-      ? { codigo: 'S4', titulo: 'O texto se lê', estado: 'passou', motivo: '' }
-      : {
-          codigo: 'S4',
-          titulo: 'O texto se lê',
-          estado: 'reprovou',
-          motivo: `${s.contrastesAbaixoDoPiso} par(es) de texto e fundo abaixo do ${PISO_DE_CONTRASTE_TEXTO}.`,
-        },
   );
 
   // S5 — o grid é um só.
@@ -394,6 +378,130 @@ export const conferirSiteGerado = (s: SiteParaAceite): ResultadoDeAceite => {
           titulo: 'Nenhuma seção vazia',
           estado: 'pendente',
           motivo: `${s.secoesVazias.length} seção(ões) sem peça e sem HTML criado: ${s.secoesVazias.slice(0, 3).join(', ')}.`,
+        },
+  );
+
+  return juntar(v);
+};
+
+// ── Site RENDERIZADO ────────────────────────────────────────────────────────
+
+/**
+ * O que só existe depois de desenhar.
+ *
+ * A S4 ("o texto se lê") morava no aceite da montagem e recebia
+ * `contrastesAbaixoDoPiso: 0` — a constante, cravada no código, porque medir
+ * contraste exige navegador e a montagem é determinística e sem rede. Ela passou
+ * verde em todo site gerado sem nunca ter olhado um par de cores, e foi por essa
+ * porta que saíram um hero ilegível, uma barra de menu clara sobre página escura
+ * e um cartão escuro com texto escuro. O dono viu os três em print; a máquina,
+ * nenhum.
+ *
+ * Regra alimentada por constante é pior que regra ausente: ela ocupa o lugar da
+ * conferência e ainda dá o carimbo. Por isso a S4 saiu de lá e vive aqui, junto
+ * das outras que dependem de layout resolvido — e quem não roda esta passagem
+ * simplesmente não tem veredito sobre elas, em vez de ter um veredito falso.
+ */
+export type SiteNoNavegador = {
+  /** Largura em que a medição foi feita, para o motivo dizer onde dói. */
+  largura: number;
+  /**
+   * Pares texto/fundo abaixo do piso, já resolvidos: a cor que o navegador
+   * calculou, contra o primeiro ancestral com fundo opaco.
+   */
+  contrastesAbaixoDoPiso: readonly { texto: string; contraste: number; onde: string }[];
+  /**
+   * Texto que está na página com opacidade quase zero — quase sempre uma
+   * revelação por rolagem que nunca disparou.
+   */
+  textoApagado: readonly { texto: string; opacidade: number; onde: string }[];
+  /** `<img>` que não carregou: slot de mídia que ficou como bloco vazio. */
+  slotsDeMidiaVazios: readonly string[];
+  /** Elementos que passam da borda da tela sem estar dentro de um recorte. */
+  transbordam: readonly string[];
+};
+
+/** 3:1 é o piso de texto grande do WCAG; abaixo disso não se lê com folga. */
+export const PISO_DE_CONTRASTE = 3;
+
+export const conferirSiteNoNavegador = (m: SiteNoNavegador): ResultadoDeAceite => {
+  const v: VereditoDaRegra[] = [];
+
+  // S4 — o texto se lê. Agora com o número medido, não com zero.
+  const piores = [...m.contrastesAbaixoDoPiso]
+    .sort((a, b) => a.contraste - b.contraste)
+    .slice(0, 3)
+    .map((c) => `"${c.texto.slice(0, 28)}" em ${c.onde} (${c.contraste.toFixed(1)}:1)`);
+  v.push(
+    m.contrastesAbaixoDoPiso.length === 0
+      ? { codigo: 'S4', titulo: 'O texto se lê', estado: 'passou', motivo: '' }
+      : {
+          codigo: 'S4',
+          titulo: 'O texto se lê',
+          estado: 'reprovou',
+          motivo: `${m.contrastesAbaixoDoPiso.length} trecho(s) abaixo do ${PISO_DE_CONTRASTE}:1 em ${m.largura}px: ${piores.join('; ')}.`,
+        },
+  );
+
+  /**
+   * S13 — nenhum texto fica apagado.
+   *
+   * O hero de um site saiu ilegível e a conferência deu verde: o texto estava
+   * lá, ocupando espaço, com opacidade perto de zero porque a revelação por
+   * rolagem não disparou. Eu chegara a PULAR esses elementos na medição, como se
+   * fossem decoração — e assim a máquina concordava com um site que ninguém
+   * conseguia ler.
+   *
+   * Quem escreve `opacity:0` conta com um observador. Quando ele não vem, o
+   * defeito não é de contraste: é conteúdo que não apareceu.
+   */
+  const apagadosPiores = [...m.textoApagado]
+    .sort((a, b) => a.opacidade - b.opacidade)
+    .slice(0, 3)
+    .map((t) => `"${t.texto.slice(0, 28)}" em ${t.onde} (${(t.opacidade * 100).toFixed(0)}%)`);
+  v.push(
+    m.textoApagado.length === 0
+      ? { codigo: 'S13', titulo: 'Nenhum texto fica apagado', estado: 'passou', motivo: '' }
+      : {
+          codigo: 'S13',
+          titulo: 'Nenhum texto fica apagado',
+          estado: 'reprovou',
+          motivo: `${m.textoApagado.length} trecho(s) com opacidade quase zero em ${m.largura}px: ${apagadosPiores.join('; ')}. Quase sempre é a revelação por rolagem que não disparou.`,
+        },
+  );
+
+  /**
+   * S11 — todo slot de mídia foi preenchido.
+   *
+   * Uma faixa de dezesseis cartões saiu com blocos de cor no lugar das fotos: a
+   * peça pedia imagem, o projeto não tinha, e ninguém reclamou. Bloco vazio não
+   * é "quase pronto" — é a seção anunciando que não tinha o que mostrar.
+   */
+  v.push(
+    m.slotsDeMidiaVazios.length === 0
+      ? { codigo: 'S11', titulo: 'Todo slot de mídia foi preenchido', estado: 'passou', motivo: '' }
+      : {
+          codigo: 'S11',
+          titulo: 'Todo slot de mídia foi preenchido',
+          estado: 'reprovou',
+          motivo: `${m.slotsDeMidiaVazios.length} imagem(ns) não carregaram e saíram como bloco vazio (${m.slotsDeMidiaVazios.slice(0, 3).join(', ')}): gere ou envie a mídia, ou tire a seção que a pede.`,
+        },
+  );
+
+  /**
+   * S12 — nada transborda a tela.
+   *
+   * No celular, uma seção saía 72px fora da tela. Não havia rolagem horizontal
+   * (o corte escondia), então nada parecia errado até alguém olhar o print.
+   */
+  v.push(
+    m.transbordam.length === 0
+      ? { codigo: 'S12', titulo: 'Nada transborda a tela', estado: 'passou', motivo: '' }
+      : {
+          codigo: 'S12',
+          titulo: 'Nada transborda a tela',
+          estado: 'reprovou',
+          motivo: `${m.transbordam.length} elemento(s) passam da borda em ${m.largura}px (${m.transbordam.slice(0, 3).join(', ')}): no celular o conteúdo sai cortado.`,
         },
   );
 

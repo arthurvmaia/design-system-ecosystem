@@ -1403,6 +1403,67 @@ test('@font-face que pede arquivo que não veio sai da folha, em vez de dar 404'
   }
 });
 
+test('a substituição vale em TODAS as ocorrências, não só na primeira', () => {
+  // Medido numa faixa de cartões: "KRAFTON" aparecia quatro vezes, o criativo
+  // mandou trocar, e três ficaram — o site do cliente saiu com o nome de uma
+  // empresa de games repetido, sem nada avisar. A regra S2 não pega: ali não é
+  // o nome da ORIGEM, é o conteúdo que ela exibia.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-subst-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({ source: { url: 'https://exemplo-grade.com/' } }),
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<ul><li>KRAFTON</li><li>KRAFTON</li><li>KRAFTON</li><li>KRAFTON Studios</li></ul>
+</body></html>`,
+      'utf8',
+    );
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_subst',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_g',
+            name: 'Grade',
+            category: 'features',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Grade', componentIds: ['cmp_g'] }],
+      }),
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Minha Marca' },
+      secoes: [{ secaoId: 'sec_1', substituicoes: { '>KRAFTON<': '>Número vitalício<' } }],
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.equal(index.match(/Número vitalício/g)?.length, 3, 'as três da lista trocaram');
+    assert.ok(!/>KRAFTON</.test(index), 'nenhuma sobrou na forma que o criativo pediu');
+    // A quarta é `KRAFTON Studios`: a chave `>KRAFTON<` não a descreve — o
+    // texto não termina ali —, e ela fica. O criativo pede o que enxerga.
+    assert.ok(index.includes('KRAFTON Studios'), 'o que a chave não descreve não é tocado');
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
 test('o RASTREAMENTO da origem não entra no site do cliente', () => {
   // Um site gerado carregava a `gtag.js` de 572 KB e o snippet
   // `gtag('config','G-…')` da empresa de origem, vindos dentro dos bundles

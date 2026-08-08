@@ -189,7 +189,21 @@ export type ResultadoDaPagina = {
   aceite: ResultadoDeAceite;
 };
 
-/** Troca cada chave pelo valor, uma vez; o que não casar vira aviso. */
+/**
+ * Troca cada chave pelo valor em TODAS as ocorrências; o que não casar vira aviso.
+ *
+ * Trocava só a primeira, e isso deixava rastro de outra empresa na página. Medido
+ * numa faixa de cartões: "KRAFTON" aparecia quatro vezes, o criativo mandou
+ * trocar, e três ficaram — o site do cliente saiu com o nome de uma empresa de
+ * games repetido três vezes, sem nada avisar. A regra S2 não pega isso, porque
+ * ali não é o nome da ORIGEM: é o conteúdo que a origem exibia.
+ *
+ * Quem quiser textos DIFERENTES para trechos iguais continua conseguindo: basta
+ * a chave carregar o contexto que os distingue (a tag em volta, o número ao
+ * lado), e aí ela deixa de ser igual. O padrão passa a ser o que quase sempre se
+ * quis dizer — "troque isto por aquilo" —, e o caso raro é que pede o trabalho
+ * extra, não o comum.
+ */
 const aplicarSubstituicoes = (
   html: string,
   substituicoes: Record<string, string> | undefined,
@@ -199,14 +213,13 @@ const aplicarSubstituicoes = (
   if (substituicoes === undefined) return html;
   let saida = html;
   for (const [de, para] of Object.entries(substituicoes)) {
-    const idx = saida.indexOf(de);
-    if (idx < 0) {
+    if (!saida.includes(de)) {
       avisos.push(
         `[${rotulo}] uma substituição não casou (o HTML de origem não contém o trecho que começa com "${de.slice(0, 60)}").`,
       );
       continue;
     }
-    saida = saida.slice(0, idx) + para + saida.slice(idx + de.length);
+    saida = saida.split(de).join(para);
   }
   return saida;
 };
@@ -2111,9 +2124,12 @@ ${scriptsHtml}
    * se descobre o que consertar. O veredito viaja no resultado, e quem chama
    * decide: consertar o motor, ou mandar para pendências com o motivo escrito.
    *
-   * O contraste fica de fora aqui: medi-lo exige o navegador, e a montagem é
-   * determinística e sem rede. Ele é conferido na validação da prévia, que já
-   * abre a página.
+   * O contraste NÃO é conferido aqui, e agora isso é dito em vez de fingido:
+   * medi-lo exige o navegador, e a montagem é determinística e sem rede. Antes
+   * a regra S4 morava neste veredito recebendo `contrastesAbaixoDoPiso: 0` — a
+   * constante —, e passava verde em todo site sem olhar um par de cores. Ela
+   * vive em `conferirSiteNoNavegador`, junto das outras que dependem de layout
+   * resolvido, e quem não roda `pnpm conferir` fica SEM veredito sobre elas.
    */
   if (rastreadores.removidos.length > 0) {
     avisos.push(
@@ -2142,7 +2158,6 @@ ${scriptsHtml}
     rastreadoresDaOrigem: rastreadores.mantidos.length,
     gridMedido: molduraPorOrigem.size > 0,
     secoesVazias: paraOAceite.secoesVazias,
-    contrastesAbaixoDoPiso: 0,
     temFavicon: faviconHref !== null,
     pecasComMovimento: entrada.kit.components.filter((c) => c.kind === 'animation').length,
   });

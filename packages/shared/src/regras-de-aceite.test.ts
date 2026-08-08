@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   type PecaParaAceite,
+  type SiteNoNavegador,
   type SiteParaAceite,
   conferirPecaDaGaleria,
   conferirSiteGerado,
+  conferirSiteNoNavegador,
 } from './regras-de-aceite.js';
 
 const peca = (over: Partial<PecaParaAceite> = {}): PecaParaAceite => ({
@@ -31,7 +33,6 @@ const site = (over: Partial<SiteParaAceite> = {}): SiteParaAceite => ({
   rastreadoresDaOrigem: 0,
   gridMedido: true,
   secoesVazias: [],
-  contrastesAbaixoDoPiso: 0,
   temFavicon: true,
   pecasComMovimento: 2,
   ...over,
@@ -186,9 +187,15 @@ test('S2: rastreador da origem que sobrou REPROVA, e diz o que está acontecendo
   assert.ok(!r.aprovado);
 });
 
-test('S4: contraste abaixo do piso reprova', () => {
-  const r = conferirSiteGerado(site({ contrastesAbaixoDoPiso: 2 }));
-  assert.ok(!r.aprovado);
+test('a montagem NÃO opina sobre contraste — quem mede é o navegador', () => {
+  // A S4 morava aqui recebendo a constante zero e passava verde em todo site,
+  // sem nunca olhar um par de cores. Regra alimentada por constante é pior que
+  // regra ausente: ocupa o lugar da conferência e ainda dá o carimbo.
+  const r = conferirSiteGerado(site());
+  assert.equal(
+    r.vereditos.find((v) => v.codigo === 'S4'),
+    undefined,
+  );
 });
 
 test('S7: título da aba tem de ser o nome da marca e nada mais', () => {
@@ -219,7 +226,6 @@ test('todo veredito reprovado ou pendente explica o motivo em uma frase', () => 
   const r = conferirSiteGerado(
     site({
       refsQuebradas: ['a.css'],
-      contrastesAbaixoDoPiso: 1,
       fotosDaOrigemMantidas: 1,
       temFavicon: false,
       gridMedido: false,
@@ -251,4 +257,67 @@ test('G7: nav, header, footer e hero podem ter navegação — é o papel deles'
     );
     assert.equal(cod(r, 'G7')?.estado, 'passou', `${categoria} carrega navegação por natureza`);
   }
+});
+
+// ── Site renderizado ────────────────────────────────────────────────────────
+
+const noNavegador = (over: Partial<SiteNoNavegador> = {}): SiteNoNavegador => ({
+  largura: 1440,
+  contrastesAbaixoDoPiso: [],
+  textoApagado: [],
+  slotsDeMidiaVazios: [],
+  transbordam: [],
+  ...over,
+});
+
+test('site desenhado sem defeito passa nas três', () => {
+  const r = conferirSiteNoNavegador(noNavegador());
+  assert.ok(r.aprovado);
+  assert.equal(r.vereditos.length, 4);
+});
+
+test('S4: texto da MESMA cor do fundo reprova, e o motivo mostra o pior', () => {
+  // Medido no site do SJDR: 33 trechos a 1.0:1 — o texto tinha exatamente a cor
+  // do fundo. O dono disse "aqui eu nem consigo ler o que tem"; a conferência
+  // dizia verde, porque a regra recebia zero cravado no código.
+  const r = conferirSiteNoNavegador(
+    noNavegador({
+      contrastesAbaixoDoPiso: [
+        { texto: 'CARTEIRINHA', contraste: 1, onde: 'hero › span' },
+        { texto: 'PLANOS', contraste: 2.4, onde: 'hero › span' },
+      ],
+    }),
+  );
+  const s4 = r.vereditos.find((v) => v.codigo === 'S4');
+  assert.equal(s4?.estado, 'reprovou');
+  assert.ok(s4?.motivo.includes('CARTEIRINHA'), 'o pior par vem primeiro no motivo');
+  assert.ok(s4?.motivo.includes('1440px'), 'e diz em que largura dói');
+  assert.ok(!r.aprovado);
+});
+
+test('S13: texto com opacidade quase zero é conteúdo que não apareceu', () => {
+  // A revelação por rolagem não disparou e os cartões ficaram na opacidade
+  // inicial. Não é contraste: é texto que ocupa espaço e ninguém lê.
+  const r = conferirSiteNoNavegador(
+    noNavegador({
+      textoApagado: [{ texto: 'Sou São João', opacidade: 0.25, onde: 'features › p' }],
+    }),
+  );
+  const s13 = r.vereditos.find((v) => v.codigo === 'S13');
+  assert.equal(s13?.estado, 'reprovou');
+  assert.ok(s13?.motivo.includes('25%'));
+});
+
+test('S11 e S12: slot vazio e transbordo reprovam', () => {
+  const r = conferirSiteNoNavegador(
+    noNavegador({
+      largura: 390,
+      slotsDeMidiaVazios: ['catalog › img (foto.jpg)'],
+      transbordam: ['features › div (+72px)'],
+    }),
+  );
+  assert.equal(r.vereditos.find((v) => v.codigo === 'S11')?.estado, 'reprovou');
+  const s12 = r.vereditos.find((v) => v.codigo === 'S12');
+  assert.equal(s12?.estado, 'reprovou');
+  assert.ok(s12?.motivo.includes('390px'), 'transbordo é sempre uma conversa sobre largura');
 });

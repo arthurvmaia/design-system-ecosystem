@@ -42,6 +42,7 @@
     "verificar": "pnpm lint && pnpm typecheck && pnpm test && pnpm medir-fidelidade --falhar-se-piorar",
     "voz": "tsx scripts/voz-orbis.ts",
     "pagina": "tsx scripts/pagina-montar.ts",
+    "conferir": "tsx scripts/conferir-site.ts",
     "publicar": "tsx scripts/publicar.ts",
     "resegmentar": "tsx scripts/resegmentar.ts"
   },
@@ -49,7 +50,8 @@
     "@biomejs/biome": "^1.9.4",
     "tsx": "^4.19.2",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "playwright": "^1.61.1"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {

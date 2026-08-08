@@ -168,6 +168,57 @@ Contraste mínimo de 3:1 entre texto e o fundo em que ele pousa.
 *Por que:* "jogo de cores dos textos tem que ter destaque." Um título saiu a
 1,34:1.
 
+*Onde roda:* **no navegador** (`pnpm conferir`), e isso é o conserto de um
+defeito da própria regra. Ela morava no aceite da MONTAGEM recebendo
+`contrastesAbaixoDoPiso: 0` — a constante, cravada no código, porque medir
+contraste exige layout resolvido. Passou verde em todo site gerado sem nunca ter
+comparado duas cores. Regra alimentada por constante é pior que regra ausente:
+ocupa o lugar da conferência e ainda dá o carimbo.
+
+*Medido depois do conserto:* 33 trechos abaixo do piso num site, sendo vários a
+**1,0:1** — o texto tinha exatamente a cor do fundo.
+
+*Armadilha na medição:* não parseie cor com regex. O navegador devolve
+`color(srgb …)` e `oklch(…)` para tudo que passou pela recoloração, e uma regex
+de `rgb()` devolve nulo justamente nos trechos ilegíveis, que então são pulados.
+A conversão certa é pintar num canvas de 1×1 e ler o pixel.
+
+### S11. Todo slot de mídia foi preenchido
+
+Nenhuma `<img>` da página fica sem carregar.
+
+*Por que:* uma faixa de dezesseis cartões saiu com blocos de cor no lugar das
+fotos. A peça pedia imagem, o projeto não tinha, e o site subiu assim. Bloco
+vazio não é "quase pronto" — é a seção anunciando que não tinha o que mostrar.
+
+*Onde roda:* no navegador. `src` presente não quer dizer imagem carregada.
+
+### S12. Nada transborda a tela
+
+Nenhum elemento passa da borda, em 1440 e em 390.
+
+*Por que:* no celular uma seção saía 72px fora da tela. Não havia rolagem
+horizontal — o recorte escondia —, então nada parecia errado até alguém olhar o
+print. O que está fora do recorte conta; o que a origem corta de propósito, não.
+
+*Onde roda:* no navegador, nas duas larguras. Quase todo defeito de transbordo só
+existe na estreita.
+
+### S13. Nenhum texto fica apagado
+
+Nenhum trecho de texto na página com opacidade efetiva abaixo de 35%.
+
+*Por que:* o hero de um site saiu ilegível com o texto na opacidade inicial da
+revelação por rolagem, que nunca disparou. O dono disse "aqui eu nem consigo ler
+o que tem". Não é contraste: é conteúdo que ocupa espaço e não aparece.
+
+*Como se mede:* a opacidade MULTIPLICA pela cadeia de ancestrais — um pai a 0,05
+apaga o filho a 1. Medir só o elemento não acha nada.
+
+*Armadilha:* a primeira versão da medição PULAVA texto quase invisível, tratando
+como decoração. Era exatamente o defeito, e por isso a conferência concordava com
+um site que ninguém conseguia ler.
+
 ### S5. O grid é um só, e nada encosta na borda
 
 Todas as seções no mesmo eixo. Nenhum conteúdo cortado ou colado na borda da
