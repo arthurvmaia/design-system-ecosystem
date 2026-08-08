@@ -242,6 +242,16 @@ export type SiteParaAceite = {
   fotosDaOrigemMantidas: number;
   /** Vídeos da origem que continuaram na página. */
   videosDaOrigemMantidos: number;
+  /**
+   * Nomes da empresa de ORIGEM que sobraram no que a pessoa lê — texto da
+   * página e atributos visíveis (`alt`, `title`, `placeholder`…).
+   */
+  nomesDaOrigemNoTexto: readonly string[];
+  /**
+   * Scripts de rastreamento da ORIGEM que continuaram na página — os que
+   * misturam analytics com comportamento e não puderam sair inteiros.
+   */
+  rastreadoresDaOrigem: number;
   /** A moldura foi aplicada a partir da geometria medida? */
   gridMedido: boolean;
   /** Seções que saíram sem conteúdo nenhum. */
@@ -259,19 +269,52 @@ const PISO_DE_CONTRASTE_TEXTO = 'contraste mínimo de 3:1';
 export const conferirSiteGerado = (s: SiteParaAceite): ResultadoDeAceite => {
   const v: VereditoDaRegra[] = [];
 
-  // S2 — nada da origem sobrevive.
+  /**
+   * S2 — nada da origem sobrevive. Nem mídia, nem NOME.
+   *
+   * O documento sempre disse "nem nome, nem texto, nem foto, nem vídeo", mas a
+   * conferência só olhava foto e vídeo. Foi assim que um site de clínica saiu
+   * com "CANVAS" em letras gigantes no rodapé e "© 2024 CANVAS SYSTEMS"
+   * embaixo, com S2 marcando "passou".
+   *
+   * Os dois casos não pesam igual, e por isso o veredito escolhe o pior:
+   *
+   * - **Mídia é pendência.** Apagar a foto abriria buraco e quebraria S1; ela
+   *   fica até existir substituta, e o aviso diz o que resolver.
+   * - **Nome é reprovação.** Não abre buraco nenhum — sai trocado pelo da marca,
+   *   e o motor sabe fazer isso. Nome de outra empresa no site do cliente é
+   *   defeito, e defeito se conserta.
+   * - **Rastreador é reprovação, e a mais séria.** Um site gerado carregava a
+   *   `gtag.js` e o `gtag('config','G-…')` da empresa de origem, vindos dentro
+   *   dos bundles capturados: cada visitante do cliente virava evento na conta
+   *   de outra empresa. Os que são só rastreamento o motor tira sozinho; chegam
+   *   aqui só os que vêm misturados com comportamento de verdade, e esses
+   *   precisam de decisão humana antes de a página sair.
+   */
   const daOrigem = s.fotosDaOrigemMantidas + s.videosDaOrigemMantidos;
+  const midia = `${s.fotosDaOrigemMantidas} foto(s) e ${s.videosDaOrigemMantidos} vídeo(s) do site de origem continuam na página: gere ou envie a mídia da marca para esta seção.`;
+  const nomes = `o nome da empresa de origem aparece no texto da página (${s.nomesDaOrigemNoTexto.slice(0, 3).join(', ')}): o site do cliente está entregando a marca de outra empresa. Confira se o projeto tem nome de marca preenchido.`;
+  const rastreio = `${s.rastreadoresDaOrigem} script(s) de rastreamento da empresa de origem continuam na página: o visitante deste site está sendo contado na conta de analytics de outra empresa. Eles misturam rastreamento com comportamento — separe no motor antes de entregar.`;
+  const graves = [
+    ...(s.rastreadoresDaOrigem > 0 ? [rastreio] : []),
+    ...(s.nomesDaOrigemNoTexto.length > 0 ? [nomes] : []),
+  ];
   v.push(
-    daOrigem === 0
-      ? { codigo: 'S2', titulo: 'Nada da origem sobrevive', estado: 'passou', motivo: '' }
-      : {
+    graves.length > 0
+      ? {
           codigo: 'S2',
-          // Pendência: apagar deixaria buraco e quebraria S1. A mídia da marca
-          // resolve, e quem entrega precisa saber que ainda não resolveu.
           titulo: 'Nada da origem sobrevive',
-          estado: 'pendente',
-          motivo: `${s.fotosDaOrigemMantidas} foto(s) e ${s.videosDaOrigemMantidos} vídeo(s) do site de origem continuam na página: gere ou envie a mídia da marca para esta seção.`,
-        },
+          estado: 'reprovou',
+          motivo: daOrigem === 0 ? graves.join(' E ') : `${graves.join(' E ')} E ${midia}`,
+        }
+      : daOrigem === 0
+        ? { codigo: 'S2', titulo: 'Nada da origem sobrevive', estado: 'passou', motivo: '' }
+        : {
+            codigo: 'S2',
+            titulo: 'Nada da origem sobrevive',
+            estado: 'pendente',
+            motivo: midia,
+          },
   );
 
   // S4 — o texto se lê.

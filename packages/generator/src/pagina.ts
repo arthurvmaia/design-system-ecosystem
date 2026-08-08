@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import {
   type MapaDeRecoloracao,
@@ -588,6 +596,314 @@ const trocarVideosDaOrigem = (
   return { html: saida, usados, mantidos };
 };
 
+/**
+ * Palavras que aparecem em endereço de site e não são nome de marca.
+ *
+ * Sem esta lista, `design-studio.example.com` mandaria trocar "design" e
+ * "studio" pelo nome do cliente, e o site sairia com "Sorriso Vivo System" no
+ * lugar de "Design System". A régua é: só troca o que só pode ser um nome
+ * próprio.
+ */
+const NAO_E_NOME_DE_MARCA = new Set([
+  'design',
+  'system',
+  'systems',
+  'studio',
+  'agency',
+  'digital',
+  'visual',
+  'creative',
+  'media',
+  'labs',
+  'tech',
+  'landing',
+  'template',
+  'theme',
+  'demo',
+  'preview',
+  'site',
+  'website',
+  'page',
+  'aura',
+  'build',
+  'academy',
+  'shop',
+  'store',
+  'online',
+  'group',
+  'company',
+  'solutions',
+  'services',
+  'global',
+  'world',
+  'brasil',
+  'brazil',
+]);
+
+/**
+ * O nome da EMPRESA DE ORIGEM, deduzido do endereço que o bundle guarda.
+ *
+ * O dono viu "CANVAS" em letras gigantes no rodapé do site de uma clínica, e
+ * "© 2024 CANVAS SYSTEMS" embaixo. O kit empresta o desenho; o nome da outra
+ * empresa não pode ir junto — e a regra S2 dizia isso mas só conferia foto e
+ * vídeo, nunca texto.
+ *
+ * O endereço é a fonte certa porque existe em toda captura e não depende de
+ * ninguém ter preenchido nada: `canvas-visual.aura.build` entrega `canvas`.
+ * Palavra genérica de domínio fica de fora, e menos de quatro letras também —
+ * trocar "app" ou "co" espalharia estrago pelo texto inteiro.
+ */
+/**
+ * Terminações que fazem de um trecho de caminho um ARQUIVO, não um domínio.
+ *
+ * `style.css` tem a mesma forma de `marca.com`, e daria "style" como nome de
+ * empresa — trocado no texto inteiro, seria um estrago difícil de rastrear até
+ * aqui.
+ */
+const EXTENSOES = new Set([
+  'html',
+  'htm',
+  'css',
+  'js',
+  'mjs',
+  'json',
+  'php',
+  'asp',
+  'aspx',
+  'jsp',
+  'xml',
+  'txt',
+  'md',
+  'png',
+  'jpg',
+  'jpeg',
+  'svg',
+  'webp',
+  'gif',
+  'avif',
+  'pdf',
+  'ico',
+  'woff',
+  'woff2',
+  'mp4',
+  'webm',
+]);
+
+/** O trecho tem cara de domínio (`canvas-visual.aura.build`) e não de arquivo? */
+const pareceDominio = (trecho: string): boolean => {
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(trecho)) return false;
+  const fim = trecho.split('.').at(-1)?.toLowerCase() ?? '';
+  return fim.length >= 2 && !EXTENSOES.has(fim);
+};
+
+const nomesDaOrigem = (bundlePath: string): string[] => {
+  try {
+    const caminho = join(bundlePath, 'manifest.json');
+    if (!existsSync(caminho)) return [];
+    const m = JSON.parse(readFileSync(caminho, 'utf8')) as { source?: { url?: string } };
+    const url = m.source?.url;
+    if (url === undefined) return [];
+    const u = new URL(url);
+    /**
+     * O acervo não veio dos sites: veio de um CATÁLOGO que guarda cada um deles
+     * numa pasta com o nome do domínio original. O endereço da peça é
+     * `ds.asimov.academy/1_temas_escuros/canvas-visual.aura.build/design-system`
+     * — o host é o catálogo, e a marca está no CAMINHO.
+     *
+     * Medido: 246 das 288 peças da Biblioteca são assim. Lendo só o host, a
+     * troca não achava nome em 85% do acervo e não fazia nada — foi por essa
+     * fresta que "CANVAS" chegou ao rodapé do site da clínica com a troca já
+     * ligada. Havendo domínio no caminho, ele MANDA: o host, ali, é quem
+     * hospeda a cópia, e trocar "asimov" pelo nome do cliente seria trocar o
+     * nome do arquivista.
+     */
+    const doCaminho = u.pathname.split('/').find(pareceDominio);
+    const dominio = doCaminho ?? u.hostname;
+    // O rótulo mais específico do domínio é o primeiro: em
+    // `canvas-visual.aura.build`, `canvas-visual`. Os outros são o serviço que
+    // hospeda, não a marca.
+    const rotulo = dominio.split('.')[0] ?? '';
+    return [...new Set(rotulo.split(/[-_]/).filter((t) => t.length >= 4))].filter(
+      (t) => !NAO_E_NOME_DE_MARCA.has(t.toLowerCase()),
+    );
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Atributos que a pessoa LÊ ou OUVE.
+ *
+ * `alt` é lido em voz alta pelo leitor de tela e aparece quando a foto não
+ * carrega; `title` vira balão ao parar o mouse; `placeholder` fica dentro do
+ * campo; `content` de `<meta>` é o que o buscador mostra. Nome de outra empresa
+ * em qualquer um deles é o mesmo defeito do rodapé, só que mais escondido.
+ *
+ * Os demais atributos são maquinaria: `class`, `id`, `src`, `href`. Reescrevê-los
+ * quebraria o CSS e os links.
+ */
+const ATRIBUTOS_VISIVEIS = new Set(['alt', 'title', 'aria-label', 'placeholder', 'content']);
+
+/**
+ * Percorre o documento separando o que a pessoa LÊ do que é maquinaria.
+ *
+ * A troca e a conferência precisam enxergar exatamente a mesma coisa. Se a troca
+ * pula o endereço dentro de um `content` de `og:url` e a conferência não
+ * pulasse, todo site reprovaria por um nome que ninguém vê — a regra viraria
+ * ruído e alguém aprenderia a ignorá-la. Por isso as duas passam por aqui, em
+ * vez de cada uma manter a própria régua.
+ *
+ * `transformar` recebe cada trecho visível e devolve o que fica no lugar; quem
+ * só quer LER devolve o trecho intacto e anota o que viu.
+ */
+const percorrerTextoVisivel = (html: string, transformar: (trecho: string) => string): string =>
+  html.replace(
+    /(<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>)|(<[^>]*>)|([^<]+)/gi,
+    (inteiro, bloco: string | undefined, tag: string | undefined, texto: string | undefined) => {
+      if (bloco !== undefined) return inteiro;
+      if (texto !== undefined) return transformar(texto);
+      if (tag === undefined) return inteiro;
+      return tag.replace(
+        /\b([a-zA-Z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g,
+        (todo, attr: string, dupla: string | undefined, simples: string | undefined) => {
+          if (!ATRIBUTOS_VISIVEIS.has(attr.toLowerCase())) return todo;
+          const valor = dupla ?? simples ?? '';
+          // Barra dentro do valor quer dizer endereço, não frase: trocar ali
+          // corromperia o link em vez de limpar o texto.
+          if (valor.includes('/')) return todo;
+          const novo = transformar(valor);
+          if (novo === valor) return todo;
+          const aspas = dupla !== undefined ? '"' : "'";
+          return `${attr}=${aspas}${novo}${aspas}`;
+        },
+      );
+    },
+  );
+
+/**
+ * Troca o nome da origem pelo da marca, respeitando a CAIXA de cada ocorrência.
+ *
+ * `CANVAS` vira `SORRISO VIVO`, `Canvas` vira `Sorriso Vivo`, `canvas` vira
+ * `sorriso vivo`. Sem isso o rodapé em versalete sairia com uma palavra em caixa
+ * mista no meio, e a troca ficaria mais visível que o problema.
+ *
+ * Só toca no que a pessoa lê — nunca em script, estilo ou atributo de máquina.
+ * Um nome de classe como `canvas-grid` ou a tag `<canvas>` não são o nome da
+ * empresa, e reescrevê-los quebraria o CSS e o desenho.
+ */
+const trocarNomeDaOrigem = (
+  html: string,
+  nomes: readonly string[],
+  marca: string,
+): { html: string; trocas: number } => {
+  if (nomes.length === 0 || marca.trim() === '') return { html, trocas: 0 };
+  let trocas = 0;
+  const naCaixaDe = (original: string): string => {
+    if (original === original.toUpperCase()) return marca.toUpperCase();
+    if (original[0] === original[0]?.toUpperCase()) return marca;
+    return marca.toLowerCase();
+  };
+  const saida = percorrerTextoVisivel(html, (trecho) => {
+    let t = trecho;
+    for (const nome of nomes) {
+      t = t.replace(new RegExp(`\\b${nome}\\b`, 'gi'), (m) => {
+        trocas += 1;
+        return naCaixaDe(m);
+      });
+    }
+    return t;
+  });
+  return { html: saida, trocas };
+};
+
+/**
+ * Os nomes de origem que SOBRARAM no que a pessoa lê. Alimenta a regra S2.
+ *
+ * A troca acontece peça a peça, com os nomes daquela origem. Esta varredura
+ * roda uma vez, no site pronto, com a união de todos eles — é a diferença entre
+ * "eu tentei" e "não ficou nenhum". Sem marca preenchida a troca não tem para
+ * que trocar, e é justamente aí que a regra precisa falar.
+ */
+const nomesQueSobraram = (html: string, nomes: readonly string[]): string[] => {
+  if (nomes.length === 0) return [];
+  const achados = new Set<string>();
+  percorrerTextoVisivel(html, (trecho) => {
+    for (const nome of nomes) {
+      if (new RegExp(`\\b${nome}\\b`, 'i').test(trecho)) achados.add(nome);
+    }
+    return trecho;
+  });
+  return [...achados];
+};
+
+/**
+ * Marcas de RASTREAMENTO de terceiro dentro de um script.
+ *
+ * Não são todas as que existem — são as que aparecem em site real com folga
+ * suficiente para valer a busca. O que não estiver aqui passa, e é por isso que
+ * a conferência de rede na validação continua sendo obrigatória.
+ */
+const MARCAS_DE_RASTREIO = [
+  /\bgtag\s*\(/,
+  /\bdataLayer\s*\.\s*push\b/,
+  /\bGoogleAnalyticsObject\b/,
+  /\bfbq\s*\(/,
+  /\bttq\s*\.\s*(load|page|track)\b/,
+  /\b_hjSettings\b/,
+  /\bclarity\s*\(/,
+  /\bsnaptr\s*\(/,
+  /\b_linkedin_partner_id\b/,
+  /\bG-[A-Z0-9]{8,}\b/,
+  /\bAW-\d{9,}\b/,
+  /\bUA-\d{4,}-\d+\b/,
+  /\bGTM-[A-Z0-9]{5,}\b/,
+];
+
+/** Endereços que existem para CARREGAR o rastreador — o script é o vendedor. */
+const CARREGADORES_DE_RASTREIO = [
+  'googletagmanager.com',
+  'google-analytics.com',
+  'googleadservices.com',
+  'connect.facebook.net',
+  'static.hotjar.com',
+  'clarity.ms',
+  'snap.licdn.com',
+  'analytics.tiktok.com',
+];
+
+/**
+ * O que este script é, do ponto de vista de quem vai ENTREGAR o site.
+ *
+ * Um site gerado carregava a `gtag.js` de 572 KB e o snippet
+ * `gtag('config','G-…')` da EMPRESA DE ORIGEM, vindos dentro dos bundles
+ * capturados. No navegador eles carregavam de verdade: cada visitante do site do
+ * cliente virava `page_view` e `scroll` na conta de outra empresa. Nada quebrava,
+ * nada aparecia no console — o estrago só existe do lado de fora.
+ *
+ * Três respostas, porque o conserto de cada caso é diferente:
+ *
+ * - **`puro`**: o arquivo existe só para rastrear (é a biblioteca do fornecedor,
+ *   ou o snippet de quatro linhas que a inicia). Sai inteiro, e o site não perde
+ *   nada — ninguém escolheu aquele desenho por causa do analytics.
+ * - **`misturado`**: tem rastreamento E outra coisa junta. Tirar o arquivo
+ *   levaria comportamento real embora, então ele FICA e a regra S2 reprova: quem
+ *   entrega precisa decidir, não descobrir depois.
+ * - **`null`**: não é rastreamento.
+ *
+ * A régua do `puro`: ou o script carrega o fornecedor pelo endereço dele (aí é o
+ * vendedor, não código do site), ou é pequeno o bastante para ser só o snippet de
+ * inicialização e não registra evento nenhum de interface (`addEventListener`).
+ */
+const RASTREIO_PEQUENO = 4096;
+const rastreamentoDeTerceiro = (js: string): 'puro' | 'misturado' | null => {
+  const temMarca = MARCAS_DE_RASTREIO.some((r) => r.test(js));
+  const carregaFornecedor = CARREGADORES_DE_RASTREIO.some((d) => js.includes(d));
+  if (!temMarca && !carregaFornecedor) return null;
+  if (carregaFornecedor) return 'puro';
+  if (js.length <= RASTREIO_PEQUENO && !/\baddEventListener\s*\(/.test(js)) return 'puro';
+  return 'misturado';
+};
+
 /** Os `<script src>` remotos de um documento de bundle, na ordem. */
 const scriptsRemotosDe = (html: string): string[] => {
   const out: string[] = [];
@@ -813,6 +1129,12 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    * falta de substituta" — no HTML pronto as duas são só um `<img>`.
    */
   const paraOAceite = { fotosDaOrigem: 0, videosDaOrigem: 0, secoesVazias: [] as string[] };
+  /** Quantas vezes o nome da empresa de origem foi trocado pelo da marca. */
+  let nomesTrocados = 0;
+  /** Os nomes de todas as origens do kit, para a varredura final da regra S2. */
+  const nomesDeOrigemVistos = new Set<string>();
+  /** Rastreadores de terceiro: o que saiu, e o que não deu para tirar. */
+  const rastreadores = { removidos: [] as string[], mantidos: [] as string[] };
   const retipografiaTotais = { reescritas: 0 };
   const reescalaTotais = { reescritas: 0, mantidas: 0 };
 
@@ -1055,6 +1377,32 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       documentoAttrs: atributosDoDocumentoDaPeca(documento),
     });
 
+    /**
+     * O NOME DA EMPRESA DE ORIGEM sai do que a pessoa lê.
+     *
+     * O dono viu "CANVAS" em letras gigantes no rodapé de um site de clínica, e
+     * "© 2024 CANVAS SYSTEMS" logo abaixo. A regra S2 já dizia que nada da
+     * origem sobrevive, mas só conferia foto e vídeo — texto passava direto.
+     *
+     * Vem DEPOIS das substituições do criativo, e isso é a ordem certa: o
+     * criativo casa com frases do site de origem, e trocar o nome antes faria
+     * essas buscas não acharem mais nada. O que ele não alcançou — rodapé,
+     * marca-d'água, aviso de copyright — esta troca alcança, porque é cega.
+     *
+     * Fica FORA do bloco de assets de propósito. Rodapé e barra de menu costumam
+     * não ter pasta `assets/`, e é exatamente neles que o nome aparece: preso
+     * ali dentro, o conserto não pegava justamente as peças que o motivaram.
+     */
+    const nomesDestaOrigem = nomesDaOrigem(cmp.bundlePath);
+    for (const n of nomesDestaOrigem) nomesDeOrigemVistos.add(n);
+    const nome = trocarNomeDaOrigem(
+      corpo,
+      nomesDestaOrigem,
+      entrada.branding.brandName?.trim() ?? '',
+    );
+    corpo = nome.html;
+    nomesTrocados += nome.trocas;
+
     // Assets do bundle → assets/<cmpId>/ (menos o css, que entrou na folha).
     const assetsDir = join(cmp.bundlePath, 'assets');
     if (existsSync(assetsDir)) {
@@ -1115,6 +1463,31 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       (tag, attrs: string, conteudo: string) => {
         const src = /\bsrc\s*=\s*"([^"]+)"/i.exec(attrs)?.[1];
         if (src !== undefined && /^(https?:)?\/\//i.test(src)) return '';
+        /**
+         * O RASTREAMENTO da empresa de origem não entra no site do cliente.
+         *
+         * O corpo do script é lido antes de qualquer outra decisão porque este
+         * é o único ponto por onde todo script local passa. Puro sai e o
+         * arquivo some do disco junto: deixá-lo copiado seria entregar o
+         * rastreador de outra empresa na pasta do cliente, sem tag mas ali.
+         */
+        const corpoDoScript =
+          src === undefined
+            ? conteudo
+            : existsSync(join(outputDir, src))
+              ? readFileSync(join(outputDir, src), 'utf8')
+              : '';
+        const rastreio = rastreamentoDeTerceiro(corpoDoScript);
+        if (rastreio === 'puro') {
+          rastreadores.removidos.push(src ?? `trecho embutido em ${rotulo}`);
+          if (src !== undefined && existsSync(join(outputDir, src))) {
+            rmSync(join(outputDir, src), { force: true });
+          }
+          return '';
+        }
+        if (rastreio === 'misturado') {
+          rastreadores.mantidos.push(src ?? `trecho embutido em ${rotulo}`);
+        }
         let chave: string;
         if (src !== undefined) {
           // O nome do arquivo é hash de conteúdo nos bundles novos, mas o
@@ -1507,6 +1880,59 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     writeFileSync(join(outputDir, rel), conteudo, 'utf8');
     arquivos.push(rel);
   };
+  /**
+   * `@font-face` que aponta para arquivo que não veio sai da folha.
+   *
+   * Medido: um CSS de fonte capturado pedia 8 arquivos `.woff2` e a captura
+   * baixou 2. Os outros 6 continuavam declarados, e o navegador pedia cada um —
+   * 404 a cada carregamento, sem nada quebrar na tela (a família cai na próxima
+   * da pilha). Ficava invisível para quem gera e visível para quem mede.
+   *
+   * Só o `src` que falta é descartado; a declaração fica de pé enquanto sobrar
+   * um arquivo que existe. Sem nenhum, o bloco inteiro sai — uma família sem
+   * arquivo nenhum não veste texto, só custa requisição.
+   *
+   * A conta acontece AQUI, e não onde a folha é concatenada, porque é aqui que
+   * todos os assets das peças já foram copiados: antes disso "não existe em
+   * disco" ainda não quer dizer nada.
+   */
+  const limparFontesSemArquivo = (
+    css: string,
+  ): { css: string; srcRemovidos: number; blocosRemovidos: number } => {
+    let srcRemovidos = 0;
+    let blocosRemovidos = 0;
+    const saida = css.replace(/@font-face\s*\{[^}]*\}/gi, (bloco) => {
+      if (!/\burl\(/i.test(bloco)) return bloco;
+      let aindaTem = false;
+      const novo = bloco.replace(/src\s*:\s*([^;}]+)/gi, (_decl, valor: string) => {
+        const partes = valor.split(',').filter((parte) => {
+          const ref = /url\(\s*["']?([^"')]+)["']?\s*\)/i.exec(parte)?.[1];
+          // `local(...)` e fonte remota não são arquivo desta pasta: ficam.
+          if (ref === undefined) return true;
+          if (/^(https?:)?\/\/|^data:/i.test(ref)) return true;
+          // A folha mora em `assets/styles.css`: o relativo resolve dali.
+          if (existsSync(join(outputDir, 'assets', ref.split('?')[0] ?? ref))) return true;
+          srcRemovidos += 1;
+          return false;
+        });
+        if (partes.length === 0) return 'src:';
+        aindaTem = true;
+        return `src:${partes.join(',')}`;
+      });
+      if (aindaTem) return novo;
+      blocosRemovidos += 1;
+      return '';
+    });
+    return { css: saida, srcRemovidos, blocosRemovidos };
+  };
+  const fontes = limparFontesSemArquivo(concatCss);
+  concatCss = fontes.css;
+  if (fontes.srcRemovidos > 0) {
+    avisos.push(
+      `${fontes.srcRemovidos} arquivo(s) de fonte declarados no CSS não vieram na captura e foram retirados da folha (${fontes.blocosRemovidos} família(s) ficaram sem arquivo nenhum): o navegador pedia cada um e recebia 404. O texto usa a próxima fonte da pilha.`,
+    );
+  }
+
   escrever('assets/styles.css', concatCss);
   escrever('assets/criadas.css', entrada.cssCriado ?? '/* nenhuma seção criada */');
   escrever(
@@ -1662,12 +2088,31 @@ ${scriptsHtml}
    * determinística e sem rede. Ele é conferido na validação da prévia, que já
    * abre a página.
    */
+  if (rastreadores.removidos.length > 0) {
+    avisos.push(
+      `${rastreadores.removidos.length} script(s) de RASTREAMENTO da empresa de origem foram removidos do site e do disco (${rastreadores.removidos.slice(0, 3).join(', ')}): eles mandavam o visitante deste site para a conta de analytics de outra empresa.`,
+    );
+  }
+  if (rastreadores.mantidos.length > 0) {
+    avisos.push(
+      `${rastreadores.mantidos.length} script(s) misturam rastreamento com comportamento de verdade e NÃO puderam ser removidos inteiros (${rastreadores.mantidos.slice(0, 3).join(', ')}): separe o rastreamento no motor antes de entregar.`,
+    );
+  }
+
+  if (nomesTrocados > 0) {
+    avisos.push(
+      `Nome da empresa de origem trocado pelo da marca em ${nomesTrocados} lugar(es): rodapé, marca-d'água e avisos de copyright entram nessa conta.`,
+    );
+  }
+
   const aceite = conferirSiteGerado({
     html: finalHtml,
     nomeDaMarca: entrada.branding.brandName ?? '',
     refsQuebradas: pendentesEmDisco,
     fotosDaOrigemMantidas: paraOAceite.fotosDaOrigem,
     videosDaOrigemMantidos: paraOAceite.videosDaOrigem,
+    nomesDaOrigemNoTexto: nomesQueSobraram(finalHtml, [...nomesDeOrigemVistos]),
+    rastreadoresDaOrigem: rastreadores.mantidos.length,
     gridMedido: molduraPorOrigem.size > 0,
     secoesVazias: paraOAceite.secoesVazias,
     contrastesAbaixoDoPiso: 0,

@@ -1241,3 +1241,390 @@ test('o site gerado é FECHADO EM SI: apagar a peça de origem não o quebra', (
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+test('o nome da empresa de ORIGEM não sobrevive no texto do site', () => {
+  // O dono viu "CANVAS" em letras gigantes no rodapé de um site de clínica e
+  // "© 2024 CANVAS SYSTEMS" logo abaixo. O kit empresta o desenho; o nome da
+  // outra empresa não vai junto.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-nome-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    // O endereço é a fonte do nome: existe em toda captura e não depende de
+    // ninguém ter preenchido nada.
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({ source: { url: 'https://canvas-visual.aura.build/design-system' } }),
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<footer class="canvas-grid"><h2>CANVAS</h2><p>© 2024 Canvas Systems.</p>
+<a href="#" title="Canvas">Sobre a canvas</a><canvas id="fundo"></canvas>
+<abbr title="https://canvas-visual.aura.build/sobre">fonte</abbr>
+<input placeholder="Seu e-mail na Canvas" data-arquivo="canvas-logo.png"></footer>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_r',
+            name: 'Rodapé',
+            category: 'footer',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Rodapé', componentIds: ['cmp_r'] }],
+      }),
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Sorriso Vivo' },
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    // A caixa de cada ocorrência é respeitada: sem isso o rodapé em versalete
+    // sairia com uma palavra em caixa mista e a troca ficaria mais visível que
+    // o problema.
+    assert.ok(index.includes('SORRISO VIVO'), 'CANVAS vira SORRISO VIVO');
+    assert.ok(index.includes('Sorriso Vivo Systems'), 'Canvas vira Sorriso Vivo');
+    assert.ok(index.includes('Sobre a sorriso vivo'), 'canvas minúsculo também');
+
+    // O `title` vira balão ao parar o mouse e o `placeholder` fica dentro do
+    // campo. São texto que a pessoa lê, mesmo morando em atributo.
+    assert.ok(index.includes('title="Sorriso Vivo"'), 'o title também é texto');
+    assert.ok(
+      index.includes('placeholder="Seu e-mail na Sorriso Vivo"'),
+      'o placeholder também é texto',
+    );
+
+    // E o que NÃO é nome de empresa fica: classe de CSS, tag `<canvas>`,
+    // atributo de máquina, e qualquer valor que seja ENDEREÇO — trocar dentro
+    // dele corromperia o link em vez de limpar o texto.
+    assert.ok(index.includes('class="canvas-grid"'), 'a classe não é tocada');
+    assert.ok(index.includes('<canvas id="fundo">'), 'a tag <canvas> não é tocada');
+    assert.ok(index.includes('canvas-visual.aura.build/sobre'), 'endereço fica inteiro');
+    assert.ok(index.includes('data-arquivo="canvas-logo.png"'), 'atributo de máquina fica');
+
+    // E a regra S2 confirma, no site pronto, que não sobrou nenhum.
+    assert.equal(r.aceite.vereditos.find((v) => v.codigo === 'S2')?.estado, 'passou');
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('@font-face que pede arquivo que não veio sai da folha, em vez de dar 404', () => {
+  // Medido: um CSS de fonte capturado pedia 8 `.woff2` e a captura baixou 2. Os
+  // outros seis continuavam declarados e o navegador pedia cada um — 404 a cada
+  // carregamento, sem nada quebrar na tela.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-fonte-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    mkdirSync(join(dir, 'assets', 'font'), { recursive: true });
+    writeFileSync(join(dir, 'assets', 'font', 'existe.woff2'), 'x', 'utf8');
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({ source: { url: 'https://exemplo-tipos.com/' } }),
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'assets', 'css', 'tokens.css'),
+      [
+        '@font-face{font-family:"Meia";src:url("../font/existe.woff2") format("woff2"),url("sumiu.woff2") format("woff2")}',
+        '@font-face{font-family:"Fantasma";src:url("nao-veio.woff2") format("woff2")}',
+        '@font-face{font-family:"DaRede";src:url("https://cdn.exemplo.com/f.woff2") format("woff2")}',
+        '.faixa{color:#111}',
+      ].join('\n'),
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      '<!doctype html><html><head></head><body><section class="faixa"><h2>Tipos</h2></section></body></html>',
+      'utf8',
+    );
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_fonte',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_f',
+            name: 'Faixa',
+            category: 'features',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Faixa', componentIds: ['cmp_f'] }],
+      }),
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Minha Marca' },
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const css = readFileSync(join(r.outputDir, 'assets', 'styles.css'), 'utf8');
+    assert.ok(!css.includes('sumiu.woff2'), 'o src que não existe some');
+    assert.ok(!css.includes('nao-veio.woff2'), 'e o único src da outra família também');
+    assert.ok(!css.includes('Fantasma'), 'família sem arquivo nenhum sai inteira');
+    // O que existe fica: a família continua vestindo o texto.
+    assert.ok(css.includes('existe.woff2'), 'o arquivo que veio continua declarado');
+    assert.ok(css.includes('Meia'), 'e a família dele também');
+    // Fonte remota não é arquivo desta pasta e não é problema desta regra.
+    assert.ok(css.includes('cdn.exemplo.com/f.woff2'), 'fonte da rede não é tocada');
+    assert.ok(
+      r.avisos.some((a) => a.includes('404')),
+      'o que foi retirado é declarado',
+    );
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('o RASTREAMENTO da origem não entra no site do cliente', () => {
+  // Um site gerado carregava a `gtag.js` de 572 KB e o snippet
+  // `gtag('config','G-…')` da empresa de origem, vindos dentro dos bundles
+  // capturados. Cada visitante do cliente virava `page_view` na conta de outra
+  // empresa; nada quebrava e nada aparecia no console.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-rastreio-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'js'), { recursive: true });
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({ source: { url: 'https://exemplo-loja.com/' } }),
+      'utf8',
+    );
+    // Três scripts: o carregador do fornecedor, o snippet de init, e um de
+    // comportamento de verdade que precisa sobreviver.
+    writeFileSync(
+      join(dir, 'assets', 'js', 'vendor.js'),
+      '// Copyright 2012 Google Inc.\nvar u="https://www.googletagmanager.com/gtag/js?id=G-ABCD123456";\n',
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'assets', 'js', 'init.js'),
+      "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}\ngtag('config','G-ABCD123456');\n",
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'assets', 'js', 'menu.js'),
+      "document.querySelectorAll('.abre').forEach(function(b){b.addEventListener('click',function(){b.classList.toggle('aberto');});});\n",
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<section class="faixa"><h2>Loja</h2></section>
+<script src="assets/js/vendor.js"></script>
+<script src="assets/js/init.js"></script>
+<script src="assets/js/menu.js"></script>
+</body></html>`,
+      'utf8',
+    );
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_rastreio',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_s',
+            name: 'Faixa',
+            category: 'features',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Faixa', componentIds: ['cmp_s'] }],
+      }),
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Minha Marca' },
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.ok(!index.includes('vendor.js'), 'o carregador do fornecedor não é referenciado');
+    assert.ok(!index.includes('init.js'), 'o snippet de init também não');
+    assert.ok(index.includes('menu.js'), 'o comportamento de verdade continua');
+
+    // E o arquivo some do DISCO: sem tag, mas copiado, seria entregar o
+    // rastreador de outra empresa dentro da pasta do cliente.
+    assert.ok(!existsSync(join(r.outputDir, 'assets', 'cmp_s', 'js', 'vendor.js')));
+    assert.ok(existsSync(join(r.outputDir, 'assets', 'cmp_s', 'js', 'menu.js')));
+
+    assert.equal(r.aceite.vereditos.find((v) => v.codigo === 'S2')?.estado, 'passou');
+    assert.ok(
+      r.avisos.some((a) => a.includes('RASTREAMENTO')),
+      'a remoção é declarada, não calada',
+    );
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('o nome sai do CAMINHO quando o acervo veio de um catálogo espelho', () => {
+  // 246 das 288 peças da Biblioteca vieram de `ds.asimov.academy`, que guarda
+  // cada site numa pasta com o nome do domínio original. Lendo só o host, a
+  // troca não achava nome em 85% do acervo — foi por essa fresta que "CANVAS"
+  // chegou ao rodapé do site da clínica com a troca já ligada.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-nome-espelho-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({
+        source: {
+          url: 'https://ds.asimov.academy/1_temas_escuros/canvas-visual.aura.build/design-system',
+        },
+      }),
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<nav><span>Canvas</span></nav><footer><p>© 2024 CANVAS</p><p>por Asimov Academy</p></footer>
+</body></html>`,
+      'utf8',
+    );
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_espelho',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_n',
+            name: 'Navegação',
+            category: 'nav',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Navegação', componentIds: ['cmp_n'] }],
+      }),
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Sorriso Vivo' },
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.ok(index.includes('<span>Sorriso Vivo</span>'), 'o nome do caminho é o que vale');
+    assert.ok(index.includes('© 2024 SORRISO VIVO'), 'e em qualquer caixa');
+    // O host é o CATÁLOGO que hospeda a cópia, não a empresa de origem: trocar
+    // "asimov" pelo nome do cliente seria trocar o nome do arquivista.
+    assert.ok(index.includes('por Asimov Academy'), 'o nome do catálogo não é tocado');
+    assert.equal(r.aceite.vereditos.find((v) => v.codigo === 'S2')?.estado, 'passou');
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('peça SEM pasta de assets também é limpa, e sem marca a regra S2 reprova', () => {
+  // Rodapé e barra de menu costumam não ter `assets/` — e é justamente neles
+  // que o nome da outra empresa aparece. A primeira versão da troca morava
+  // dentro do bloco de assets e não pegava nenhum dos dois.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-nome-sem-assets-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({ source: { url: 'https://canvas-visual.aura.build/' } }),
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<footer><h2>CANVAS</h2><p>© 2024 Canvas Systems.</p></footer>
+</body></html>`,
+      'utf8',
+    );
+
+    const kit = {
+      id: 'kit_t',
+      components: [
+        {
+          id: 'cmp_r',
+          name: 'Rodapé',
+          category: 'footer',
+          kind: 'component',
+          bundlePath: dir,
+          designSystemId: 'ds_a',
+        },
+      ],
+    };
+    const layout = ProjectLayout.parse({
+      secoes: [{ id: 'sec_1', nome: 'Rodapé', componentIds: ['cmp_r'] }],
+    });
+
+    const comMarca = montarPaginaDoKit({
+      projectId: 'prj_a',
+      titulo: 'T',
+      kit,
+      layout,
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Sorriso Vivo' },
+      outputDir: join(raiz, 'com-marca'),
+    });
+    const html = readFileSync(join(comMarca.outputDir, 'index.html'), 'utf8');
+    assert.ok(html.includes('SORRISO VIVO'), 'peça sem assets também é limpa');
+    assert.equal(comMarca.aceite.vereditos.find((v) => v.codigo === 'S2')?.estado, 'passou');
+
+    // Sem nome de marca não há por que trocar — e é aí que a regra precisa
+    // falar, em vez de deixar o site subir com a marca de outra empresa.
+    const semMarca = montarPaginaDoKit({
+      projectId: 'prj_b',
+      titulo: 'T',
+      kit,
+      layout,
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: '' },
+      outputDir: join(raiz, 'sem-marca'),
+    });
+    const s2 = semMarca.aceite.vereditos.find((v) => v.codigo === 'S2');
+    assert.equal(s2?.estado, 'reprovou');
+    assert.ok(s2?.motivo.includes('canvas'), 'o nome que sobrou é dito por extenso');
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});

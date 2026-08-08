@@ -27,6 +27,8 @@ const site = (over: Partial<SiteParaAceite> = {}): SiteParaAceite => ({
   refsQuebradas: [],
   fotosDaOrigemMantidas: 0,
   videosDaOrigemMantidos: 0,
+  nomesDaOrigemNoTexto: [],
+  rastreadoresDaOrigem: 0,
   gridMedido: true,
   secoesVazias: [],
   contrastesAbaixoDoPiso: 0,
@@ -151,6 +153,37 @@ test('S2: mídia da origem que sobrou é PENDÊNCIA, não reprovação', () => {
   assert.equal(r.vereditos.find((v) => v.codigo === 'S2')?.estado, 'pendente');
   assert.ok(r.aprovado);
   assert.ok(r.comPendencia);
+});
+
+test('S2: nome da empresa de origem no texto REPROVA', () => {
+  // Foi o defeito que o dono viu: "CANVAS" gigante no rodapé de um site de
+  // clínica. Diferente da foto, nome não abre buraco ao sair — o motor troca
+  // pelo da marca. Então é defeito, e defeito reprova.
+  const r = conferirSiteGerado(site({ nomesDaOrigemNoTexto: ['canvas'] }));
+  assert.equal(r.vereditos.find((v) => v.codigo === 'S2')?.estado, 'reprovou');
+  assert.ok(!r.aprovado);
+});
+
+test('S2: nome no texto pesa mais que foto pendente, e os dois aparecem no motivo', () => {
+  const r = conferirSiteGerado(
+    site({ nomesDaOrigemNoTexto: ['canvas'], fotosDaOrigemMantidas: 2 }),
+  );
+  const s2 = r.vereditos.find((v) => v.codigo === 'S2');
+  assert.equal(s2?.estado, 'reprovou');
+  assert.ok(s2?.motivo.includes('canvas'), 'o nome achado é dito');
+  assert.ok(s2?.motivo.includes('2 foto(s)'), 'a foto pendente não some do motivo');
+});
+
+test('S2: rastreador da origem que sobrou REPROVA, e diz o que está acontecendo', () => {
+  // Um site gerado carregava a gtag.js e o `gtag('config','G-…')` da empresa de
+  // origem: cada visitante do cliente virava evento na conta de outra empresa.
+  // Nada quebrava e nada aparecia no console — o estrago só existe do lado de
+  // fora, e por isso a regra precisa gritar.
+  const r = conferirSiteGerado(site({ rastreadoresDaOrigem: 2 }));
+  const s2 = r.vereditos.find((v) => v.codigo === 'S2');
+  assert.equal(s2?.estado, 'reprovou');
+  assert.ok(s2?.motivo.includes('analytics'), 'o motivo diz onde o dado está indo parar');
+  assert.ok(!r.aprovado);
 });
 
 test('S4: contraste abaixo do piso reprova', () => {
