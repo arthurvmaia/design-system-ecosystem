@@ -537,7 +537,33 @@ const midiaDaSecao = async (
   hero: boolean,
 ): Promise<{ conteudo: string | Buffer; ext: 'svg' | 'jpg'; mime: string; credito?: string }> => {
   const retrato = ehPapelDeRetrato(dica);
-  const foto = (await buscarFotos(termoDeFoto(receita, cena, indice, retrato), 1, { retrato }))[0];
+
+  /**
+   * O NICHO QUE O DONO ESCREVEU vem primeiro; a cena é a reserva.
+   *
+   * A cena é um balde grosso, e casar por palavra erra: "clínica odontológica,
+   * implantes e estética dental" casou com a receita de BELEZA por causa de
+   * "estética", e o site do dentista saiu com fotos de barbearia — cortador de
+   * cabelo, tesoura, navalha. O próprio comentário de `termoDeFoto` já dizia que
+   * o nicho é "a melhor descrição disponível do que ele vende", mas só o usava
+   * quando NENHUMA receita casava; casando errado, o nicho era descartado.
+   *
+   * Agora a busca tenta o nicho primeiro e cai na cena quando ele não devolve
+   * nada. Nunca fica pior que antes, e no caso do dentista fica muito melhor.
+   * Retrato continua com o termo próprio: rosto é rosto em qualquer nicho.
+   */
+  const doNicho = receita.segmento.trim();
+  const tentativas = retrato
+    ? [termoDeFoto(receita, cena, indice, true)]
+    : [
+        ...(doNicho.length > 0 ? [`${doNicho} ${indice > 0 ? 'detail' : ''}`.trim()] : []),
+        termoDeFoto(receita, cena, indice, false),
+      ];
+  let foto: Awaited<ReturnType<typeof buscarFotos>>[number] | undefined;
+  for (const termo of tentativas) {
+    foto = (await buscarFotos(termo, 1, { retrato }))[0];
+    if (foto !== undefined) break;
+  }
   if (foto !== undefined) {
     return { conteudo: foto.bytes, ext: foto.ext, mime: foto.mime, credito: foto.credito };
   }

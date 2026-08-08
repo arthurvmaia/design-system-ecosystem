@@ -70,6 +70,27 @@ const valorDe = (attrs: string | undefined, nome: string): string => {
 const escaparAtributo = (v: string): string => v.replace(/"/g, '&quot;');
 
 /**
+ * Classes do `<body>` de origem que impõem o tamanho da PÁGINA, e por isso não
+ * podem viajar para dentro de uma peça.
+ *
+ * `min-h-screen` no corpo do site de origem quer dizer "a página ocupa pelo
+ * menos a tela". Copiada para o proxy de cada peça, ela passa a querer dizer
+ * "esta BARRA DE MENU ocupa pelo menos a tela" — e foi exatamente o que
+ * aconteceu: a nav de um site gerado saiu com 1000 px de altura e a primeira
+ * dobra ficou vazia, com o menu boiando sozinho num gradiente.
+ *
+ * O resto das classes do corpo continua viajando, e deve: é delas que vem o
+ * tema, a cor de tinta e a fonte que a peça espera ter em volta.
+ */
+const TAMANHO_DA_PAGINA = /^(?:min-)?h-(?:screen|full|dvh|svh|lvh)$|^min-h-\[/;
+
+const semTamanhoDePagina = (classes: string): string =>
+  classes
+    .split(/\s+/)
+    .filter((c) => c.length > 0 && !TAMANHO_DA_PAGINA.test(c))
+    .join(' ');
+
+/**
  * Envolve o HTML de uma peça nos dois proxies.
  *
  * Os atributos que NÃO são `class` também viajam (`data-theme`, `lang`,
@@ -89,20 +110,18 @@ export const envolverEmProxies = (peca: PecaComposta): string => {
       .replace(/\blang\s*=\s*("[^"]*"|'[^']*')/i, '')
       .trim();
 
+  const classesDaRaiz = semTamanhoDePagina(valorDe(attrsHtml, 'class'));
   const abreRaiz = [
     `<div ${raiz}="${escaparAtributo(valor)}"`,
-    valorDe(attrsHtml, 'class').length > 0
-      ? ` class="${escaparAtributo(valorDe(attrsHtml, 'class'))}"`
-      : '',
+    classesDaRaiz.length > 0 ? ` class="${escaparAtributo(classesDaRaiz)}"` : '',
     semClasseNemLang(attrsHtml).length > 0 ? ` ${semClasseNemLang(attrsHtml)}` : '',
     '>',
   ].join('');
 
+  const classesDoCorpo = semTamanhoDePagina(valorDe(attrsBody, 'class'));
   const abreCorpo = [
     `<div ${corpo}="${escaparAtributo(valor)}"`,
-    valorDe(attrsBody, 'class').length > 0
-      ? ` class="${escaparAtributo(valorDe(attrsBody, 'class'))}"`
-      : '',
+    classesDoCorpo.length > 0 ? ` class="${escaparAtributo(classesDoCorpo)}"` : '',
     semClasseNemLang(attrsBody).length > 0 ? ` ${semClasseNemLang(attrsBody)}` : '',
     '>',
   ].join('');

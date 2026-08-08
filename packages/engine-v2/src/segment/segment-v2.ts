@@ -1386,9 +1386,27 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       /(^|[-_ ])cursor([-_ ]|$)/i.test(
         `${(n.fingerprint.stableClasses ?? []).join(' ')} ${n.fingerprint.id ?? ''}`,
       );
+    /**
+     * O ponteiro é MINÚSCULO — e sem essa exigência a detecção erra feio.
+     *
+     * Medido no site de uma clínica: a regra pelo nome casou com `cursor-glow`,
+     * que é uma classe de brilho no hover de um CARTÃO, e promoveu o artigo
+     * inteiro a "ponteiro personalizado". O cartão de 400 px foi parar colado
+     * por cima da página, fixo, cobrindo o conteúdo.
+     *
+     * Um ponteiro tem algumas dezenas de pixels; nenhum tem 400. O tamanho é a
+     * prova que faltava, e ela está medida no mapa desde sempre.
+     */
+    const CABE_NUM_PONTEIRO = 120;
     const alvos = escondeONativo
       ? entrada.structuralMap.filter(
-          (n) => temNome(n) && entrada.htmlPorHash.has(n.fingerprint.hash),
+          (n) =>
+            temNome(n) &&
+            entrada.htmlPorHash.has(n.fingerprint.hash) &&
+            n.pageBox !== undefined &&
+            n.pageBox.w > 0 &&
+            n.pageBox.w <= CABE_NUM_PONTEIRO &&
+            n.pageBox.h <= CABE_NUM_PONTEIRO,
         )
       : [];
     const html = alvos

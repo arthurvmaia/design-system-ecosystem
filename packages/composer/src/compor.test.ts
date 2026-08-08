@@ -143,3 +143,25 @@ test('compor com recoloração: a origem mapeada consome a marca, a outra fica o
   assert.ok(!parteB.includes('--marca-'), 'ds_b intocada');
   assert.ok(r.avisos.some((a) => a.includes('recoloração: 1')));
 });
+
+test('o tamanho da PÁGINA não viaja para dentro da peça', () => {
+  // Medido num site gerado: o `<body>` da origem tinha `min-h-screen`, os
+  // proxies copiaram a classe para cada peça, e a BARRA DE MENU saiu com 1000px
+  // de altura — a primeira dobra ficou vazia, com o menu boiando num gradiente.
+  // "A página ocupa ao menos a tela" não quer dizer "esta nav ocupa a tela".
+  const html = envolverEmProxies({
+    origem: 'ds_a',
+    html: '<nav>menu</nav>',
+    css: '',
+    documentoAttrs: {
+      html: 'class="h-full dark"',
+      body: 'class="antialiased min-h-screen text-slate-100 bg-slate-900"',
+    },
+  });
+  assert.ok(!html.includes('min-h-screen'), 'o min-h-screen do corpo não viaja');
+  assert.ok(!html.includes('h-full'), 'nem o h-full do html');
+  // O resto continua viajando: é dele que vem o tema, a tinta e a fonte.
+  assert.ok(html.includes('antialiased'), 'as outras classes do corpo ficam');
+  assert.ok(html.includes('text-slate-100'), 'a tinta fica');
+  assert.ok(html.includes('dark'), 'o tema fica');
+});

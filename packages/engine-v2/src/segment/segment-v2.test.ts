@@ -1334,6 +1334,31 @@ test('ponteiro personalizado vira peça própria quando a página esconde o nati
   assert.notEqual(cursor?.representation.type, 'referencia-visual');
 });
 
+test('elemento GRANDE com classe cursor-* não é ponteiro', () => {
+  // Medido: `cursor-glow` é classe de brilho no hover de um cartão, e a regra
+  // pelo nome promoveu o artigo inteiro a ponteiro — um cartão de 400px foi
+  // parar fixo por cima da página. Ponteiro tem dezenas de pixels, não centenas.
+  const corpoFp = fp({ tag: 'body', cursor: 'none' });
+  const cardFp = fp({ tag: 'article', classes: ['cursor-glow', 'rounded-3xl'] });
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      structuralMap: [
+        node({ fingerprint: corpoFp, role: 'section', pageBox: { x: 0, y: 0, w: 1440, h: 3600 } }),
+        node({
+          fingerprint: cardFp,
+          role: 'unknown',
+          parent: corpoFp.hash,
+          pageBox: { x: 0, y: 0, w: 420, h: 380 },
+        }),
+      ],
+      htmlPorHash: new Map([
+        [cardFp.hash, '<article class="cursor-glow">um cartão inteiro</article>'],
+      ]),
+    }),
+  );
+  assert.equal(r.segmentos.filter((s) => s.category === 'cursor').length, 0);
+});
+
 test('sem `cursor:none` no corpo, nenhuma peça de ponteiro é inventada', () => {
   // Uma classe chamada "cursor" sozinha não prova nada: `cursor-pointer` é
   // utilitária de Tailwind e aparece em todo botão do acervo.

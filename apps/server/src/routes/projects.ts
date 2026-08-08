@@ -88,7 +88,8 @@ const lerManifest = (mediaManifestJson: string | null): MediaItem[] => {
 };
 
 /** Reescreve content.json/branding.json no disco — a fonte que o gerador lê. */
-const gravarConfig = (
+/** Exportada pelo mesmo motivo de `secoesQueAceitamMidia`. */
+export const gravarConfig = (
   id: `prj_${string}`,
   content: ProjectContent,
   branding: ProjectBranding,
@@ -442,8 +443,15 @@ projectsRoute.patch('/:id', zValidator('json', PatchProjectInput), (c) => {
  * bancada de Marca; quem aplica e salva é a tela — o projeto não é alterado
  * aqui além da mídia, que já nasce no manifesto.
  */
-/** As seções que ACEITAM mídia, com a mesma régua da etapa de Mídia. */
-const secoesQueAceitamMidia = (row: {
+/**
+ * As seções que ACEITAM mídia, com a mesma régua da etapa de Mídia.
+ *
+ * Exportada para `scripts/projeto-de-kit.ts`: criar um projeto a partir de um
+ * kit escolhido precisa exatamente desta lista para ancorar as fotos nas
+ * seções. Reimplementar num script seria a segunda régua da mesma decisão — e a
+ * que fica para trás quando esta melhora.
+ */
+export const secoesQueAceitamMidia = (row: {
   layoutJson: string | null;
   kitId: string | null;
 }): Array<{ id: string; nome: string; papel?: string; quantas: number; oQue: string }> => {

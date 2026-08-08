@@ -171,15 +171,28 @@ export const conferirPecaDaGaleria = (p: PecaParaAceite): ResultadoDeAceite => {
    */
   const comportamentoMalRotulado = PEQUENAS_POR_NATUREZA.has(p.categoria) && p.kind !== 'animation';
   const movimentoViradoImagem = p.movimentoProprio && p.kind === 'asset';
+  /**
+   * Ponteiro é PEQUENO. Um `cursor` com quilobytes de HTML não é ponteiro — é
+   * outra coisa que foi rotulada assim por engano.
+   *
+   * Medido: a deteccao casou com `cursor-glow`, classe de brilho no hover de um
+   * cartão, e promoveu o artigo inteiro. Na composição ele foi para o embrulho
+   * fixo do comportamento e cobriu a página com um cartão de 400 px. A captura
+   * agora exige tamanho pequeno; esta regra protege o que entrou antes dela.
+   */
+  const ponteiroGrandeDemais = p.categoria === 'cursor' && p.htmlSnippet.trim().length > 1500;
+  const motivoG6 = ponteiroGrandeDemais
+    ? `um ponteiro com ${p.htmlSnippet.trim().length} caracteres de HTML não é um ponteiro: a classificação pegou outro elemento, e na página ele cobriria o conteúdo.`
+    : movimentoViradoImagem
+      ? 'a peça se mexe e foi promovida como imagem congelada do site de origem: ela não aceita a copy nem a cor da marca.'
+      : `peça de ${p.categoria} precisa ser classificada como animação para poder ser escolhida como comportamento da página.`;
   v.push(
-    comportamentoMalRotulado || movimentoViradoImagem
+    comportamentoMalRotulado || movimentoViradoImagem || ponteiroGrandeDemais
       ? {
           codigo: 'G6',
           titulo: 'O que a peça diz que é, ela é',
           estado: 'reprovou',
-          motivo: movimentoViradoImagem
-            ? 'a peça se mexe e foi promovida como imagem congelada do site de origem: ela não aceita a copy nem a cor da marca.'
-            : `peça de ${p.categoria} precisa ser classificada como animação para poder ser escolhida como comportamento da página.`,
+          motivo: motivoG6,
         }
       : { codigo: 'G6', titulo: 'O que a peça diz que é, ela é', estado: 'passou', motivo: '' },
   );

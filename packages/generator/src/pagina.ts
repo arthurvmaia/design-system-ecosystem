@@ -1186,15 +1186,50 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   // resto não ocupa espaço nenhum de qualquer forma.
   let comportamentoHtml = '';
   if (comportamento.comportamentos.length > 0) {
-    const corpos = comportamento.comportamentos
-      .map((c) => processarPeca(c.id, undefined, 'comportamento da página'))
-      .filter((c): c is string => c !== null);
+    /**
+     * A peça de comportamento também recebe fotos do projeto.
+     *
+     * Parece contraditório — comportamento não tem conteúdo —, mas o HTML dela
+     * é a UNIÃO dos elementos que ela anima, e alguns deles têm imagem. Medido
+     * no site de uma clínica: a peça "Revelar ao rolar" entregou 4 fotos do
+     * site de origem, porque roda fora do laço das seções e a fila de fotos
+     * chegava vazia. Ela consome o que as seções não usaram.
+     */
+    fotosDaSecao = [...midiaPorSecao.values()].flatMap((m) => m.fotos);
+    videosDaSecao = [...midiaPorSecao.values()].flatMap((m) => m.videos);
+    /**
+     * O HTML de uma peça de INTERAÇÃO não vai para a página — só o CSS e o
+     * script dela.
+     *
+     * A distinção nasceu de um defeito medido no site de uma clínica. A peça
+     * "Revelar ao rolar" carrega, como HTML, a UNIÃO DOS ELEMENTOS QUE ELA
+     * ANIMA: cartões, títulos e parágrafos de verdade, tirados das dobras da
+     * origem. Renderizar isso dentro do embrulho fixo colava aquele conteúdo
+     * inteiro por cima da página, em x=0, sobre todo o resto. O que a peça
+     * entrega de útil — o `.reveal{opacity:0}` e o observador — já viajou pelo
+     * efeito colateral de `processarPeca`, que põe o CSS na cascata e o script
+     * no fim do body.
+     *
+     * O PONTEIRO é o oposto, e por isso o dele fica: o elemento É a peça, e sem
+     * o `<div class="cursor">` não há o que seguir o mouse.
+     */
+    const corpos: string[] = [];
+    const soComportamento: string[] = [];
+    for (const c of comportamento.comportamentos) {
+      const corpo = processarPeca(c.id, undefined, 'comportamento da página');
+      if (corpo === null) continue;
+      if (c.category === 'cursor') corpos.push(corpo);
+      else soComportamento.push(c.name);
+    }
+    if (soComportamento.length > 0) {
+      avisos.push(
+        `${soComportamento.length} comportamento(s) entraram só como CSS e script (${soComportamento.join(', ')}): o HTML deles é a amostra dos alvos na origem, não conteúdo para esta página.`,
+      );
+    }
     if (corpos.length > 0) {
       const ids = comportamento.comportamentos.map((c) => c.id).join(' ');
       comportamentoHtml = `\n<div data-ds-comportamento="${ids}" style="position:fixed;inset:0;pointer-events:none;z-index:9999">\n${corpos.join('\n')}\n</div>\n`;
-      avisos.push(
-        `${corpos.length} comportamento(s) da página aplicados: o CSS e o script deles valem para todas as seções, não para uma faixa.`,
-      );
+      avisos.push(`${corpos.length} peça(s) de ponteiro aplicadas sobre a página inteira.`);
     }
   }
 
