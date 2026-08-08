@@ -93,7 +93,7 @@ export function ProjectsPage() {
       </div>
 
       <div className="mt-6">
-        <QueuePanel />
+        <QueuePanel escopo="geracao" />
       </div>
 
       {kitCount === 0 && (

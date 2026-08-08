@@ -1643,6 +1643,18 @@ ${scriptsHtml}
     if (v.estado === 'passou') continue;
     avisos.push(`[aceite ${v.codigo}] ${v.titulo}: ${v.motivo}`);
   }
+  /**
+   * O veredito fica GRAVADO ao lado do site.
+   *
+   * Sem isto ele só existiria no retorno da função, e quem gerou o site pela
+   * fila veria os avisos passarem no terminal e sumirem. A tela de pendências
+   * precisa poder ler, depois, o que cada site deve — e o dono precisa poder
+   * abrir um site de três dias atrás e saber por que ele subiu com ressalva.
+   *
+   * Ao lado do site, como o histórico de ajustes, e pela mesma razão: pertence
+   * ÀQUELA versão, viaja no .zip e some junto quando ela é apagada.
+   */
+  escrever('aceite.json', JSON.stringify({ formato: 1, geradoEm: Date.now(), ...aceite }, null, 2));
 
   return {
     outputDir,

@@ -48,7 +48,25 @@ const SEMAFORO: Record<Semaforo, { cor: string; texto: string }> = {
   vermelho: { cor: '#f85149', texto: 'sem resposta' },
 };
 
-export function QueuePanel() {
+/**
+ * Os tipos de job que cada tela mostra.
+ *
+ * O painel mostrava a fila INTEIRA em todo lugar: quem estava na tela de gerar
+ * site via a extração de cinquenta sites correndo, e quem estava extraindo via
+ * pedidos de geração que não tinham nada com o que ele fazia ali. Fila é sobre
+ * o trabalho DAQUELA tela; qualquer outra coisa é ruído com cara de progresso.
+ *
+ * `ajustar` acompanha `generate` porque retoque é sobre um site já gerado, e é
+ * na tela dos sites que a pessoa está quando pede um.
+ */
+export type EscopoDaFila = 'extracao' | 'geracao';
+
+const TIPOS_DO_ESCOPO: Record<EscopoDaFila, readonly string[]> = {
+  extracao: ['extract', 'classify'],
+  geracao: ['generate', 'ajustar'],
+};
+
+export function QueuePanel({ escopo }: { escopo?: EscopoDaFila }) {
   const qc = useQueryClient();
   const { data, isError } = useQuery({
     queryKey: ['queue'],
@@ -91,7 +109,19 @@ export function QueuePanel() {
 
   if (data === undefined || data.mode !== 'queue') return null;
 
-  const pendentes = data.pending;
+  // Sem escopo, mostra tudo — é o comportamento de quem ainda não escolheu um.
+  const doEscopo = (j: Job): boolean =>
+    escopo === undefined || (TIPOS_DO_ESCOPO[escopo] ?? []).includes(j.type);
+  const pendentes = data.pending.filter(doEscopo);
+  const feitos = data.done.filter(doEscopo);
+
+  // Sem nada desta tela na fila, o painel some. Um painel que diz "nenhum
+  // pedido" ao lado de uma extração correndo em outra tela confunde mais do que
+  // informa.
+  if (escopo !== undefined && pendentes.length === 0 && feitos.length === 0 && data.erros === 0) {
+    return null;
+  }
+
   const estado: Semaforo = data.erros > 0 ? 'amarelo' : 'verde';
 
   return (
@@ -105,7 +135,7 @@ export function QueuePanel() {
         <FluxoProgresso
           percentual={data.progresso.percentual}
           total={data.progresso.total}
-          tipo={pendentes[0]?.type ?? data.done[0]?.type ?? 'extract'}
+          tipo={pendentes[0]?.type ?? feitos[0]?.type ?? 'extract'}
         />
       )}
 

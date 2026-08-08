@@ -420,6 +420,24 @@ export const montarComponente = (
 
   const dsId = seg.designSystemId as `ds_${string}`;
   const insight = lerInsightDoSegmento(dsId, seg.id);
+  /**
+   * A URL DE ORIGEM viaja com a peça — e não viajava.
+   *
+   * `sourceUrl` era gravado como `null` desde sempre, e o motivo é
+   * compreensível: a peça precisa sobreviver à exclusão da extração, então a
+   * promoção corta os laços com o vault de propósito.
+   *
+   * Só que cortar o ENDEREÇO foi longe demais. Sem ele não há como revisitar o
+   * site para tentar de novo quando a peça sai ruim — que é exatamente o que o
+   * botão "faça-me aprender" precisa fazer. O endereço é uma string: ele não
+   * cria dependência de disco nenhuma, e é a única pista de volta.
+   */
+  const urlDeOrigem =
+    getDb()
+      .select({ u: tables.designSystems.sourceUrl })
+      .from(tables.designSystems)
+      .where(eq(tables.designSystems.id, dsId))
+      .get()?.u ?? null;
   // Estados V2 referenciam blobs em `capture-v2/` — resolvidos AQUI, na
   // promoção: o componente da Biblioteca precisa sobreviver à exclusão da
   // extração, então o HTML entra inline e a referência ao vault morre.
@@ -586,7 +604,7 @@ export const montarComponente = (
         name: seg.name,
         category: seg.category,
         kind: seg.kind,
-        origin: { designSystemId: seg.designSystemId, segmentId: seg.id, sourceUrl: null },
+        origin: { designSystemId: seg.designSystemId, segmentId: seg.id, sourceUrl: urlDeOrigem },
         addedAt: Date.now(),
         tags: [],
         notes: null,

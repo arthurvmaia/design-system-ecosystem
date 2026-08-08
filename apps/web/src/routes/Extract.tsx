@@ -273,7 +273,7 @@ export function ExtractPage() {
 
       {isQueueMode && (
         <div className="mt-8">
-          <QueuePanel />
+          <QueuePanel escopo="extracao" />
         </div>
       )}
 
