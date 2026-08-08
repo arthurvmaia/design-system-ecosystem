@@ -193,6 +193,55 @@ CRIATIVO, entregue como dado:
 vez de contornar num script descartável. Os restos de `_tmp-*` de gerações
 antigas são exatamente o que este contrato aposenta.
 
+### `ajustar`
+
+Um retoque num site **já gerado**: "esse título está pequeno", "esse azul não é
+o meu azul". O payload traz `{ projectId, versao, ajusteId, pedido }`.
+
+**Não regere o site.** Regerar refaz tudo o que já estava bom, custa a
+composição inteira e o retoque some na próxima geração. O site entregue é
+independente, então o ajuste pousa nele:
+
+1. Leia o pedido em `projects/<id>/generated/<versao>/ajustes.json` e ABRA o
+   site para ver do que a pessoa está falando. Retoque sem olhar é chute.
+2. Escreva o CSS em `generated/<versao>/assets/ajustes.css`, que já existe vazia
+   e é a **última** da cascata — o que estiver ali vence sem `!important`. Cada
+   bloco começa com um comentário citando o pedido que o originou; é isso que
+   torna o ajuste reversível um a um.
+3. Atualize a entrada em `ajustes.json`: `estado: 'aplicado'`, `aplicadoEm`, o
+   `css` que você escreveu e uma `resposta` de uma frase dizendo o que fez.
+   "Aplicado" sozinho não informa: quem pediu "deixa o botão mais destacado"
+   precisa saber se isso virou cor, tamanho ou sombra.
+4. Não conseguiu? `estado: 'recusado'` com a `resposta` explicando por quê. Um
+   pedido que não dá para atender precisa dizer isso, não ficar pendente para
+   sempre.
+
+**Nunca edite o `index.html` nem as outras folhas.** É o que garante que a
+composição original continue reproduzível e que o retoque se desfaça apagando um
+bloco.
+
+### `aprender`
+
+O botão "faça-me aprender" da tela de Pendências. O payload traz
+`{ projectId, versao, codigo, motivo, alvo }` — o código é o da regra de aceite
+(`docs/regras-de-aceite.md`), e o motivo é a frase que ela escreveu.
+
+Isto **não é retoque**: a peça ou o site não saiu bom, e o que se pede é que
+você ESTUDE aquele caso e tente **outra abordagem**. Investigação, não conserto
+de superfície.
+
+1. Leia a regra que falhou em `docs/regras-de-aceite.md` e o `aceite.json` da
+   versão. Entenda o que ela cobra e por quê.
+2. Vá à ORIGEM. `library/<cmp>/metadata.json` guarda `origin.sourceUrl`: abra o
+   site, veja como aquela região funciona de verdade, que tecnologia ela usa.
+3. Tente outro caminho. Se a cena depende de um runtime, ele pode viajar? Se o
+   movimento não reproduz, existe outro mecanismo que dê o mesmo resultado?
+4. **Conserte o motor, não o caso.** Se você descobrir como fazer aquela peça
+   passar, a correção vale para todas as peças iguais — e é assim que o acervo
+   melhora. Um remendo naquele arquivo resolve um site e deixa os outros.
+5. Não deu? Registre por quê, com o que você tentou. A pendência continua, mas
+   agora ela sabe mais do que antes, e a próxima tentativa não repete o caminho.
+
 ## Avisando que está trabalhando
 
 Um job de extração ou de geração leva minutos. Nesse tempo, quem está com o app
