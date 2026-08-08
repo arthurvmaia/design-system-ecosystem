@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- as imagens do tema importado são servidas por uma rota local autenticada */
 
 import { ArrowRight, Check, Plus, Search, ShieldCheck, ShoppingBag, X, Zap } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import type { ShopifyPage, ShopifySectionInstance, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
 
 /**
@@ -78,13 +78,21 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
   }, [selectedSectionId, status, html]);
 
   /* o modo (selecionar/interagir/previa) governa o comportamento da ponte */
+  const modeRef = useRef(mode);
   useEffect(() => {
+    modeRef.current = mode;
     if (status !== "live" || !html) return;
     const timeout = window.setTimeout(() => {
       frameRef.current?.contentWindow?.postMessage({ orbisMode: mode }, "*");
     }, 120);
     return () => window.clearTimeout(timeout);
   }, [mode, status, html]);
+  /* cada troca de página monta um iframe NOVO, que nasce em "selecionar":
+     sem reenviar o modo no load, o editor dizia "Interagir" e o preview
+     continuava bloqueando cliques (o carrinho não recebia o produto) */
+  const enviarModo = useCallback(() => {
+    frameRef.current?.contentWindow?.postMessage({ orbisMode: modeRef.current }, "*");
+  }, []);
 
   useEffect(() => {
     if (!canRender) return;
@@ -148,7 +156,7 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
   return (
     <div className="live-render-wrap">
       {status === "loading" && !html && <div className="live-render-loading"><span>ORBIS · RENDERIZANDO O TEMA REAL…</span></div>}
-      {html && <iframe ref={frameRef} className="live-render-frame" title="Prévia real do tema" sandbox="allow-scripts allow-same-origin allow-forms" srcDoc={html} />}
+      {html && <iframe ref={frameRef} className="live-render-frame" title="Prévia real do tema" sandbox="allow-scripts allow-same-origin allow-forms" srcDoc={html} onLoad={enviarModo} />}
       {html && <span className="live-render-badge">RENDER REAL · LIQUID</span>}
     </div>
   );

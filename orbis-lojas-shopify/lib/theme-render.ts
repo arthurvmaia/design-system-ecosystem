@@ -975,8 +975,24 @@ pedirSecoes(secoesDaGaveta()).then(function(html){aplicarSecoes(html);
 if(!abrirGaveta()&&window.parent!==window){/* tema sem gaveta: mostra a página do carrinho, para o item aparecer */window.parent.postMessage({orbisNavigate:"/cart"},"*");}
 document.dispatchEvent(new CustomEvent("cart:refresh",{bubbles:true}));});}
 document.addEventListener("submit",function(e){var form=e.target;if(form&&form.matches&&form.matches('form[data-type="add-to-cart-form"]')){e.preventDefault();comprar(form);}},true);
-document.addEventListener("click",function(e){var botao=e.target.closest&&e.target.closest('form[data-type="add-to-cart-form"] button:not([type="button"]), button[name="add"]');
-if(botao){var form=botao.closest("form");if(form){e.preventDefault();comprar(form);}}},false);
+/* O botão de compra nem sempre está DENTRO do formulário: muitos temas põem
+   um botão no cartão e ligam por JS próprio (que aqui não tem loja atrás).
+   Então procuramos o formulário de compra do cartão em volta do botão. */
+function formDoBotao(botao){var dentro=botao.closest('form[data-type="add-to-cart-form"]');if(dentro)return dentro;
+var cartao=botao.closest('[class*="card" i],[class*="product-item" i],[class*="product-card" i],[class*="grid__item" i],article,li,.product');
+for(var passo=0;cartao&&passo<3;passo++){var f=cartao.querySelector('form[data-type="add-to-cart-form"]');if(f)return f;cartao=cartao.parentElement&&cartao.parentElement.closest('[class*="card" i],[class*="product-item" i],[class*="grid__item" i],article,li');}
+return null;}
+document.addEventListener("click",function(e){
+/* no modo de seleção o clique serve para escolher a seção, não para comprar */
+if(window.__orbisModo==="selecionar")return;
+var botao=e.target.closest&&e.target.closest('button, a[role="button"], [data-add-to-cart]');
+if(!botao)return;
+var texto=((botao.textContent||"")+" "+(botao.getAttribute("aria-label")||"")).toLowerCase();
+var ehCompra=botao.getAttribute("name")==="add"||botao.closest('form[data-type="add-to-cart-form"]')||/adicionar|add to cart|add to bag|sacola|carrinho|comprar/.test(texto);
+if(!ehCompra)return;
+var form=formDoBotao(botao);
+if(!form)return;
+e.preventDefault();e.stopPropagation();comprar(form);},true);
 /* estado inicial vindo do editor, para o carrinho sobreviver à troca de página */
 try{if(window.__ORBIS_CART_INICIAL__&&window.__ORBIS_CART_INICIAL__.length){itens=window.__ORBIS_CART_INICIAL__.map(function(i){var base=dadosDoBotao(null);return {id:i.variantId,quantity:i.quantity,title:i.title||base.title,price:i.price||0,image:null,handle:"produto",product_id:i.variantId,url:"/cart"};});}}catch(e){}
 /* fechar a gaveta é responsabilidade do preview também: muitos temas ligam o
@@ -996,7 +1012,7 @@ pedirSecoes(secoesDaGaveta()).then(function(html){aplicarSecoes(html);abrirGavet
 window.__orbisCarrinho={estado:estado,itens:function(){return itens;},comprar:comprar,abrir:abrirGaveta,fechar:fecharGaveta};
 })();</script>`;
 
-  const bridge = `<script>(function(){var mode="selecionar";var hoverAlvo=null;
+  const bridge = `<script>(function(){var mode="selecionar";window.__orbisModo=mode;var hoverAlvo=null;
 function limparHover(){if(hoverAlvo){hoverAlvo.style.outline="";hoverAlvo.style.outlineOffset="";hoverAlvo=null;}}
 document.addEventListener("submit",function(event){event.preventDefault();},true);
 document.addEventListener("mouseover",function(event){if(mode!=="selecionar"){return;}var alvo=event.target.closest("[data-block-id],[data-orbis-section]");if(alvo===hoverAlvo){return;}limparHover();if(alvo){hoverAlvo=alvo;alvo.style.outline="1px dashed rgba(47,128,237,0.85)";alvo.style.outlineOffset="-1px";}},true);
@@ -1020,7 +1036,7 @@ document.addEventListener("click",function(event){var anchor=event.target.closes
 var href=anchor.getAttribute("href")||"";if(!href||href.charAt(0)==="#"){return;}
 event.preventDefault();if(window.parent!==window){window.parent.postMessage({orbisNavigate:href},"*");}});
 window.addEventListener("message",function(event){var data=event&&event.data;if(!data){return;}
-if(data.orbisMode){mode=String(data.orbisMode);limparHover();return;}
+if(data.orbisMode){mode=String(data.orbisMode);window.__orbisModo=mode;limparHover();return;}
 if(!data.orbisScrollTo){return;}var target=document.getElementById("shopify-section-"+data.orbisScrollTo);if(!target){return;}target.scrollIntoView({behavior:"smooth",block:"start"});if(mode==="previa"){return;}target.style.outline="2px solid #2f80ed";target.style.outlineOffset="-2px";window.clearTimeout(target.__orbisFlash);target.__orbisFlash=window.setTimeout(function(){target.style.outline="";target.style.outlineOffset="";},1600);});})();</script>`;
   /* o carrinho entra ANTES do bridge e antes do JS do tema agir: ele precisa
      substituir o fetch cedo para interceptar a primeira adição */
