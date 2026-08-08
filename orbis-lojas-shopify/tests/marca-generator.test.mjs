@@ -213,6 +213,57 @@ test("toda fonte da marca existe na biblioteca da Shopify", async () => {
   }
 });
 
+test("nenhum data URI entra em setting de tema, nem sobrevive à exportação", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { aplicarMarcaNoTema } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+    const marca = gerarMarca({ nicheId: "roupas", semente: "404" });
+
+    const tema = {
+      format: "shopify-os-2.0", themeName: "Tema", version: "1", author: "", sourceFile: "t.zip",
+      sourceFingerprint: "0000000000000000", importedAt: "", summary: {}, sourceFiles: [], compatibility: {},
+      globalGroups: [{ name: "Marca", settings: [{ id: "logo", type: "image_picker", label: "Logo" }] }],
+      globalValues: { logo: "" },
+      sectionSchemas: [{
+        type: "slideshow", name: "Slideshow", blocks: [], presets: [],
+        settings: [{ id: "image", type: "image_picker", label: "Imagem" }],
+      }],
+      pages: [{ id: "index", name: "Início", template: "templates/index.json", sections: [{ id: "s1", type: "slideshow", name: "Slideshow", settings: { image: "shopify://shop_images/original.png" }, blocks: [] }] }],
+    };
+
+    /* a arte local é SVG em data URI: serve à prévia, e em setting de tema
+       derruba o template inteiro (a home da loja publicada virou 404) */
+    const comArteLocal = aplicarMarcaNoTema(tema, { ...marca, imagens: { logo: `data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C%2Fsvg%3E`, "banner-desktop": "data:image/png;base64,AAAA" } });
+    const texto = JSON.stringify(comArteLocal.theme);
+    assert.doesNotMatch(texto, /"data:image\//, "data URI não pode entrar em setting de tema");
+    assert.equal(comArteLocal.theme.globalValues.logo, "", "sem imagem real, o campo fica como estava");
+    assert.equal(comArteLocal.theme.pages[0].sections[0].settings.image, "shopify://shop_images/original.png", "a imagem que o tema já tinha continua");
+
+    /* imagem de verdade entra */
+    const comMidia = aplicarMarcaNoTema(tema, { ...marca, imagens: { logo: "/api/media/abcdef0123456789abcd" } });
+    assert.equal(comMidia.theme.globalValues.logo, "/api/media/abcdef0123456789abcd");
+
+    /* cinto de segurança: se algum data URI escapar, o exportador o remove */
+    const { exportThemeZip } = await server.ssrLoadModule("/lib/theme-export.ts");
+    const sujo = JSON.parse(JSON.stringify(tema));
+    sujo.pages[0].sections[0].settings.image = "data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C%2Fsvg%3E";
+    const arquivos = new Map([
+      ["layout/theme.liquid", new TextEncoder().encode("{{ content_for_layout }}")],
+      ["sections/slideshow.liquid", new TextEncoder().encode("{% schema %}{\"name\":\"Slideshow\"}{% endschema %}")],
+      ["templates/index.json", new TextEncoder().encode(JSON.stringify({ sections: { s1: { type: "slideshow", settings: {} } }, order: ["s1"] }))],
+    ]);
+    const { zip, warnings } = exportThemeZip(sujo, arquivos);
+    const { unzipSync } = await import("fflate");
+    const saida = unzipSync(zip);
+    const indexJson = new TextDecoder().decode(saida["templates/index.json"]);
+    assert.doesNotMatch(indexJson, /data:image\//, "o exportador tem que remover o data URI que não sabe converter");
+    assert.ok(warnings.some((aviso) => /data URI/i.test(aviso)), "a remoção precisa aparecer como aviso");
+  } finally {
+    await server.close();
+  }
+});
+
 test("SVG de terceiro não passa pelo sanitizador", () => {
   const malicioso = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')}`;
   assert.equal(sanitizeBrand({ name: "X", logoDataUri: malicioso }).logoDataUri, "");

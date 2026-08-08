@@ -145,6 +145,22 @@ function createMediaRewriter(
       const extension = INLINE_EXTENSION[inline[1].toLowerCase()] ?? "png";
       return `shopify://shop_images/${registerAsset(`orbis-inline-${fnv1a(inline[2])}.${extension}`, data)}`;
     }
+    /**
+     * Data URI que não deu para converter NÃO pode ir para o arquivo.
+     *
+     * O `image_picker` da Shopify espera uma referência de arquivo; um data URI
+     * ali invalida o template inteiro, e a página some com 404 na loja
+     * publicada. Foi o que aconteceu com SVG percent-encoded, que não casa com
+     * o formato base64 tratado acima. Melhor sair sem imagem, com aviso, do que
+     * sair com a página quebrada.
+     */
+    if (/^data:image\//i.test(raw)) {
+      if (!warned.has("data-uri-solto")) {
+        warned.add("data-uri-solto");
+        warnings.push("imagem em data URI não suportada pela Shopify foi removida do tema; envie o arquivo para virar asset");
+      }
+      return "";
+    }
     return raw;
   };
 
@@ -244,7 +260,9 @@ export function exportThemeZip(
   /* templates JSON e section groups */
   for (const page of theme.pages) {
     const path = page.template;
-    if (!path.endsWith(".json")) continue;
+    /* página sem arquivo de origem (gerada pelo importador) não tem onde ser
+       gravada; sem esta guarda a exportação inteira estourava */
+    if (typeof path !== "string" || !path.endsWith(".json")) continue;
     const originalRaw = files.get(path);
     if (!originalRaw) { warnings.push(`template ${path} não existe no ZIP original (página gerada)`); continue; }
     const parsed = parseJsonLoose<Record<string, unknown>>(strFromU8(originalRaw), {});

@@ -193,7 +193,20 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
 
   const definicoes = achatar(theme.globalGroups.flatMap((grupo) => grupo.settings));
   const valores = theme.globalValues;
-  const imagens = marca.imagens ?? {};
+  /**
+   * Só imagem de verdade entra em setting de tema.
+   *
+   * O `image_picker` da Shopify espera uma referência de arquivo. Gravar um
+   * data URI ali derruba o template inteiro: foi assim que a home de uma loja
+   * publicada virou 404, porque a arte local (SVG) foi escrita crua no
+   * `templates/index.json`. A arte da Orbis serve à prévia; o tema recebe só o
+   * que o cliente enviou ou o provedor gerou.
+   */
+  const ehImagemDeVerdade = (valor: string) => /^(\/api\/media\/[0-9a-fA-F-]{16,64}|shopify:\/\/)/.test(valor);
+  const imagens: Record<string, string> = {};
+  for (const [chave, valor] of Object.entries(marca.imagens ?? {})) {
+    if (typeof valor === "string" && ehImagemDeVerdade(valor)) imagens[chave] = valor;
+  }
   /* as capas de coleção entram na ordem em que as seções as pedem */
   const capas = Object.keys(imagens)
     .filter((chave) => chave.startsWith("colecao-"))

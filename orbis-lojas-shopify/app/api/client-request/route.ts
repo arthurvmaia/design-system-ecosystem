@@ -8,7 +8,7 @@ import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
 import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
 import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { collectEditorMediaIds, exportThemeZip, type EditorMediaFile } from "@/lib/theme-export";
-import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
+import { pecasDaMarca } from "@/lib/marca-imagens";
 
 /**
  * Solicitação de loja do Fluxo Cliente.
@@ -133,15 +133,19 @@ export async function POST(request: Request) {
        cabeçalho do site entregue ficava com o espaço da marca vazio */
     if (!marca.logoDataUri) marca.logoDataUri = logoDaMarca(marca).dataUri;
 
-    /* As imagens da loja: as que o cliente mandou gerar entram como estão, e o
-       resto das peças ganha o desenho local. A loja nunca sai com buraco. */
+    /**
+     * As imagens que vão para o TEMA são só as reais: o que o cliente enviou ou
+     * o provedor gerou. A arte local da Orbis fica na prévia e no site estático
+     * entregue — em setting de tema ela é um data URI, e data URI no
+     * `image_picker` derruba o template na Shopify (a home vira 404). Onde não
+     * há imagem real, o tema segue com a imagem que ele já trazia.
+     */
     const pecas = pecasDaMarca({ ...marca, nicheId: parsed.data.nicheId });
     const imagens: Record<string, string> = {};
     for (const peca of pecas) {
-      imagens[peca.chave] = parsed.data.imagens?.[peca.chave] ?? fallbackDataUri(peca);
+      const enviada = parsed.data.imagens?.[peca.chave];
+      if (enviada) imagens[peca.chave] = enviada;
     }
-    /* a logo desenhada pela Orbis vale mais que o símbolo local do nicho */
-    if (!parsed.data.imagens?.logo && marca.logoDataUri) imagens.logo = marca.logoDataUri;
 
     const escolhido = parsed.data.themeId ? await temaPublicado(parsed.data.themeId) : null;
     const themeId = escolhido?.id ?? "shrine-pro";
