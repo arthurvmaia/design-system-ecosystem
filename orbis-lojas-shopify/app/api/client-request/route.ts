@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1, saveProject, unlockTheme } from "@/lib/data";
 import { brandCustomization, generateClientSite, sanitizeBrand } from "@/lib/site-generator.mjs";
-import { gerarMarca } from "@/lib/marca-generator.mjs";
+import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
 import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
 import type { ShopifyThemeImport } from "@/lib/shopify-theme";
 
@@ -79,7 +79,10 @@ export async function POST(request: Request) {
        digitou vencendo campo a campo */
     const marca = parsed.data.nicheId
       ? gerarMarca({ nicheId: parsed.data.nicheId, semente: parsed.data.seed ?? "orbis", sobrescritas: parsed.data.brand })
-      : { ...parsed.data.brand, collections: [], announcement: "" };
+      : { ...parsed.data.brand, collections: [] as string[], announcement: "" };
+    /* toda loja sai com logo, inclusive a preenchida à mão: sem isto o
+       cabeçalho do site entregue ficava com o espaço da marca vazio */
+    if (!marca.logoDataUri) marca.logoDataUri = logoDaMarca(marca).dataUri;
 
     const escolhido = parsed.data.themeId ? await temaPublicado(parsed.data.themeId) : null;
     const themeId = escolhido?.id ?? "shrine-pro";

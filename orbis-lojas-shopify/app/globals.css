@@ -780,8 +780,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-nicho.selecionado { border-color: rgba(34,211,238,.65); background: rgba(6,182,212,.06); }
 .cf-nicho strong { font-size: 13px; }
 .cf-nicho small { color: var(--muted); font-size: 11px; line-height: 1.5; }
-.cf-nicho-cores { display: flex; gap: 4px; }
-.cf-nicho-cores i { width: 16px; height: 16px; border: 1px solid rgba(255,255,255,.12); }
+.cf-nicho-arte { width: 100%; height: 84px; object-fit: cover; display: block; border: 1px solid var(--line-soft); }
 
 /* Passo 02: a bancada da marca — um instrumento aberto por vez. */
 .cf-convite { display: flex; align-items: center; gap: 14px; padding: 16px; text-align: left; border: 1px solid rgba(34,211,238,.35); background: rgba(6,182,212,.06); color: var(--ink); cursor: pointer; transition: border-color .2s; }

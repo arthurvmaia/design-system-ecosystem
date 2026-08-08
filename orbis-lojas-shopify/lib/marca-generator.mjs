@@ -407,9 +407,69 @@ export function logoDataUri(svg) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+/* --------------------------------------------------------- arte dos nichos */
+
+/**
+ * O desenho de cada nicho, para o cartão de escolha.
+ *
+ * Três quadradinhos de cor não dizem se o cartão é de óculos ou de relógio — a
+ * pessoa lê o texto e ignora a imagem. Aqui cada nicho tem a sua coisa: a
+ * camiseta, os óculos, a pata, o halter. É SVG e não foto porque precisa abrir
+ * sem rede, pesar pouco e vestir a paleta do próprio nicho.
+ */
+const DESENHOS = {
+  roupas: (p, d) => `<path d="M56 30 70 24Q80 34 90 24L104 30 110 44 100 48V80H60V48L50 44Z" fill="${p}"/><path d="M70 24Q80 34 90 24" fill="none" stroke="${d}" stroke-width="3"/>`,
+  oculos: (p, d) => `<rect x="34" y="40" width="36" height="26" rx="12" fill="${p}"/><rect x="90" y="40" width="36" height="26" rx="12" fill="${p}"/><rect x="70" y="48" width="20" height="6" rx="3" fill="${d}"/><path d="M34 46 22 38M126 46 138 38" stroke="${p}" stroke-width="4" stroke-linecap="round"/>`,
+  relogios: (p, d) => `<rect x="69" y="14" width="22" height="24" rx="4" fill="${p}"/><rect x="69" y="62" width="22" height="24" rx="4" fill="${p}"/><circle cx="80" cy="50" r="23" fill="${p}"/><circle cx="80" cy="50" r="17" fill="${d}"/><path d="M80 50V39M80 50l9 6" stroke="${p}" stroke-width="3" stroke-linecap="round"/>`,
+  beleza: (p, d) => `<rect x="63" y="40" width="34" height="46" rx="8" fill="${p}"/><rect x="72" y="30" width="16" height="12" fill="${d}"/><rect x="73" y="12" width="14" height="18" rx="6" fill="${p}"/><path d="M117 30c5 7 8 11 8 15a8 8 0 0 1-16 0c0-4 3-8 8-15Z" fill="${d}"/>`,
+  casa: (p, d) => `<path d="M80 16 126 52H34Z" fill="${p}"/><rect x="47" y="52" width="66" height="34" fill="${p}"/><rect x="70" y="60" width="20" height="26" fill="${d}"/><rect x="53" y="60" width="12" height="12" fill="${d}"/>`,
+  pet: (p, d) => `<ellipse cx="80" cy="64" rx="23" ry="18" fill="${p}"/><circle cx="55" cy="42" r="9" fill="${d}"/><circle cx="71" cy="31" r="9" fill="${p}"/><circle cx="89" cy="31" r="9" fill="${p}"/><circle cx="105" cy="42" r="9" fill="${d}"/>`,
+  fitness: (p, d) => `<rect x="52" y="45" width="56" height="10" rx="5" fill="${p}"/><rect x="36" y="32" width="16" height="36" rx="5" fill="${p}"/><rect x="108" y="32" width="16" height="36" rx="5" fill="${p}"/><rect x="26" y="40" width="9" height="20" rx="4" fill="${d}"/><rect x="125" y="40" width="9" height="20" rx="4" fill="${d}"/>`,
+  gadgets: (p, d) => `<path d="M44 66a36 36 0 0 1 72 0" fill="none" stroke="${p}" stroke-width="9" stroke-linecap="round"/><rect x="34" y="58" width="18" height="28" rx="9" fill="${p}"/><rect x="108" y="58" width="18" height="28" rx="9" fill="${p}"/><rect x="39" y="65" width="8" height="14" rx="4" fill="${d}"/><rect x="113" y="65" width="8" height="14" rx="4" fill="${d}"/>`,
+  infantil: (p, d) => `<circle cx="61" cy="33" r="11" fill="${p}"/><circle cx="99" cy="33" r="11" fill="${p}"/><circle cx="80" cy="45" r="21" fill="${p}"/><ellipse cx="80" cy="77" rx="23" ry="15" fill="${p}"/><circle cx="80" cy="51" r="9" fill="${d}"/>`,
+  joias: (p, d) => `<circle cx="80" cy="64" r="21" fill="none" stroke="${p}" stroke-width="8"/><path d="M80 18 96 34 80 50 64 34Z" fill="${d}"/><path d="M64 34h32" stroke="${p}" stroke-width="2.5"/>`,
+};
+
+/** O SVG do nicho, já vestido com a primeira paleta dele. */
+export function ilustracaoDoNicho(id) {
+  const nicho = nichoPorId(id);
+  const paleta = nicho.paletas[0];
+  const desenho = DESENHOS[nicho.id] ?? DESENHOS.roupas;
+  const brilho = misturar(paleta.fundo, paleta.primaria, 0.1);
+  return [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 100" width="160" height="100" role="img">',
+    `<title>${escaparXml(nicho.nome)}</title>`,
+    `<rect width="160" height="100" fill="${paleta.fundo}"/>`,
+    `<rect y="70" width="160" height="30" fill="${brilho}"/>`,
+    desenho(paleta.primaria, paleta.destaque),
+    "</svg>",
+  ].join("");
+}
+
+export function ilustracaoDataUri(id) {
+  return logoDataUri(ilustracaoDoNicho(id));
+}
+
 /* ------------------------------------------------------------------- marca */
 
 const FORMAS = ["circulo", "losango", "arco", "escudo", "hexagono", "moldura"];
+
+/**
+ * A logo de uma marca qualquer, inclusive a que a pessoa escreveu à mão.
+ *
+ * Toda loja sai com logo: quem preenche o nome no modo manual não passava por
+ * `gerarMarca` e ficava sem nenhuma — o cabeçalho do site entregue mostrava um
+ * espaço vazio no lugar dela. A forma vem do nome, então a mesma marca sempre
+ * ganha o mesmo desenho, no navegador e no servidor.
+ */
+export function logoDaMarca({ name, primaryColor, accentColor }) {
+  const nome = String(name ?? "").trim() || "Minha Marca";
+  const primaria = cor(primaryColor) || "#0e7490";
+  const destaque = cor(accentColor) || primaria;
+  const forma = escolher(sorteador(`logo:${nome}`), FORMAS);
+  const svg = gerarLogoSvg({ nome, primaria, destaque, forma });
+  return { forma, svg, dataUri: logoDataUri(svg) };
+}
 
 /**
  * A marca inteira a partir de um nicho e de uma semente.

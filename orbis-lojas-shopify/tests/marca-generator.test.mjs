@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-import { NICHOS, gerarLogoSvg, gerarMarca, logoDataUri, nichoPorId, textoSobre } from "../lib/marca-generator.mjs";
+import { NICHOS, gerarLogoSvg, gerarMarca, ilustracaoDataUri, ilustracaoDoNicho, logoDaMarca, logoDataUri, nichoPorId, textoSobre } from "../lib/marca-generator.mjs";
 import { generateClientSite, sanitizeBrand } from "../lib/site-generator.mjs";
 
 /**
@@ -79,6 +79,39 @@ test("a logo é SVG legível, com contraste, e entra no pacote entregue", () => 
   assert.equal(limpa.logoDataUri, logoDataUri(marca.logoSvg), "o sanitizador aceita a logo que o gerador produz");
   const site = generateClientSite({ brand: marca, templateId: "vitrine" });
   assert.ok(Object.keys(site.files).includes("assets/logo.svg"), "a logo vira arquivo do site entregue");
+});
+
+test("cada nicho tem a sua arte, e nenhuma repete a do vizinho", () => {
+  const vistos = new Map();
+  for (const nicho of NICHOS) {
+    const svg = ilustracaoDoNicho(nicho.id);
+    assert.ok(svg.startsWith("<svg") && svg.endsWith("</svg>"), `SVG inválido em ${nicho.id}`);
+    assert.ok(svg.includes(nicho.paletas[0].primaria), `a arte de ${nicho.id} não usa a paleta do nicho`);
+    assert.ok(svg.includes(`<title>${nicho.nome}</title>`), `a arte de ${nicho.id} não se identifica`);
+    assert.doesNotMatch(svg, /<script|onload=/i);
+    const anterior = vistos.get(svg);
+    assert.equal(anterior, undefined, `${nicho.id} desenha igual a ${anterior}`);
+    vistos.set(svg, nicho.id);
+  }
+  assert.ok(ilustracaoDataUri("pet").startsWith("data:image/svg+xml;charset=utf-8,"));
+});
+
+test("toda loja sai com logo, inclusive a preenchida à mão", () => {
+  /* o modo manual não passa por gerarMarca: sem isto o cabeçalho do site
+     entregue ficava com o espaço da marca vazio */
+  const logo = logoDaMarca({ name: "Apenas um jovem", primaryColor: "#1f2937" });
+  assert.ok(logo.svg.startsWith("<svg"));
+  assert.ok(logo.svg.includes(">AU<"), "as iniciais do nome entram no desenho");
+  assert.deepEqual(logoDaMarca({ name: "Apenas um jovem", primaryColor: "#1f2937" }), logo, "servidor e navegador precisam desenhar a mesma logo");
+
+  const site = generateClientSite({ brand: { name: "Apenas um jovem", primaryColor: "#1f2937", logoDataUri: logo.dataUri }, templateId: "essencial" });
+  assert.ok(Object.keys(site.files).includes("assets/logo.svg"), "a logo tem que virar arquivo do site");
+  assert.match(site.files["index.html"], /<img src="assets\/logo\.svg"/, "o cabeçalho aponta para o arquivo que existe");
+
+  /* sem logo nenhuma, o cabeçalho não pode deixar um <img> quebrado */
+  const semLogo = generateClientSite({ brand: { name: "Sem Logo" }, templateId: "essencial" });
+  assert.doesNotMatch(semLogo.files["index.html"], /<img src=""/);
+  assert.ok(!Object.keys(semLogo.files).includes("assets/logo.svg"));
 });
 
 test("SVG de terceiro não passa pelo sanitizador", () => {

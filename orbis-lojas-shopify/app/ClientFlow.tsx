@@ -7,7 +7,7 @@ import { ClientSitePreview } from "@/app/ClientSitePreview";
 import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada";
 import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
-import { NICHOS, gerarMarca, novaSemente } from "@/lib/marca-generator.mjs";
+import { NICHOS, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
 
 /**
  * O balcão do cliente: quatro passos e uma loja na mão.
@@ -100,7 +100,13 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
 
   function ajustarMarca(parcial: Partial<MarcaCliente>) {
     setEditadoAMao((atual) => ({ ...atual, ...parcial }));
-    setMarca((atual) => ({ ...atual, ...parcial }));
+    setMarca((atual) => {
+      const proxima = { ...atual, ...parcial };
+      /* a logo acompanha o nome e as cores; no modo manual é a única forma de
+         a loja entregue ter uma — o servidor redesenha a mesma a partir daí */
+      if (proxima.name.trim()) proxima.logoDataUri = logoDaMarca(proxima).dataUri;
+      return proxima;
+    });
   }
 
   function escolherNicho(id: string) {
@@ -259,11 +265,10 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                 <>
                   <span className="cf-secao-titulo">Escolha o nicho da loja</span>
                   <div className="cf-nichos">
-                    {NICHOS.map((nicho: { id: string; nome: string; resumo: string; paletas: Array<{ primaria: string; fundo: string; destaque: string }> }) => (
+                    {NICHOS.map((nicho: { id: string; nome: string; resumo: string }) => (
                       <button key={nicho.id} className={`cf-nicho ${nicheId === nicho.id ? "selecionado" : ""}`} onClick={() => escolherNicho(nicho.id)}>
-                        <span className="cf-nicho-cores" aria-hidden="true">
-                          {nicho.paletas.slice(0, 3).map((paleta, indice) => <i key={indice} style={{ background: paleta.primaria }} />)}
-                        </span>
+                        {/* eslint-disable-next-line @next/next/no-img-element -- SVG gerado aqui, em data URI. */}
+                        <img className="cf-nicho-arte" src={ilustracaoDataUri(nicho.id)} alt="" />
                         <strong>{nicho.nome}</strong>
                         <small>{nicho.resumo}</small>
                         {nicheId === nicho.id && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
