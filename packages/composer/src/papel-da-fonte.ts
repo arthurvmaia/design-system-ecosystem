@@ -1,4 +1,4 @@
-import postcss from 'postcss';
+import { analisarCss } from './analisar-css.js';
 
 /**
  * Qual família é a de TÍTULO e qual é a de TEXTO, numa folha de origem.
@@ -130,12 +130,11 @@ type Placar = { display: number; body: number; ocorrencias: number; mono: boolea
  */
 export const placarDasFontes = (css: string): Map<string, Placar> => {
   const placar = new Map<string, Placar>();
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     return placar;
   }
+  const raiz = analise.raiz;
 
   raiz.walkDecls(/^font-family$/i, (decl) => {
     // Dentro de `@font-face` o `font-family` é a DECLARAÇÃO do nome, não um

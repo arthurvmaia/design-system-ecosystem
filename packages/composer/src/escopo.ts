@@ -1,5 +1,6 @@
-import postcss, { type AtRule, type Rule } from 'postcss';
+import type { AtRule, Rule } from 'postcss';
 import selectorParser from 'postcss-selector-parser';
+import { analisarCss, avisoDeReparo } from './analisar-css.js';
 
 /**
  * Escopar o CSS de uma origem sem mexer na cascata dela.
@@ -278,10 +279,8 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
   const renomeados: ResultadoEscopo['renomeados'] = [];
   let reescritas = 0;
 
-  let raizAst: postcss.Root;
-  try {
-    raizAst = postcss.parse(css);
-  } catch (err) {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     // CSS que não faz parse não é escopado, e isso é dito. Devolver a folha
     // crua mantém o site funcionando (com o risco de colisão declarado) em vez
     // de descartar todo o estilo de uma origem por um caractere.
@@ -290,10 +289,12 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       reescritas: 0,
       renomeados: [],
       avisos: [
-        `CSS não pôde ser analisado e seguiu SEM escopo: ${err instanceof Error ? err.message : String(err)}. Estilos desta origem podem colidir com os de outra.`,
+        `CSS não pôde ser analisado, nem depois de equilibrar as chaves, e seguiu SEM escopo: ${analise.erro}. Os utilitários desta origem valem para o DOCUMENTO TODO e vão colidir com os das outras — layout de três colunas virando uma, elemento sumindo por um \`.hidden\` alheio. Conserte a folha na origem.`,
       ],
     };
   }
+  const raizAst = analise.raiz;
+  if (analise.reparo !== null) avisos.push(avisoDeReparo(analise.reparo));
 
   // ── Nomes globais: renomear só o que colide ──────────────────────────────
   /**
@@ -428,12 +429,12 @@ export const nomesGlobaisDe = (
   const keyframes = new Set<string>();
   const fontFace = new Set<string>();
   const layer = new Set<string>();
-  let raizAst: postcss.Root;
-  try {
-    raizAst = postcss.parse(css);
-  } catch {
-    return { keyframes, fontFace, layer };
-  }
+  // Pelo mesmo equilíbrio de chaves: uma folha que não analisa devolveria
+  // conjuntos vazios, e aí as colisões de `@keyframes` e `@font-face` dela
+  // deixariam de ser detectadas para TODAS as origens seguintes.
+  const analise = analisarCss(css);
+  if ('erro' in analise) return { keyframes, fontFace, layer };
+  const raizAst = analise.raiz;
   raizAst.walkAtRules((at) => {
     if (/^(-\w+-)?keyframes$/i.test(at.name)) {
       const n = at.params.trim();

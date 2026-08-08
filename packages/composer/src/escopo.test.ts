@@ -318,7 +318,11 @@ test('@layer que colide é renomeado', () => {
 test('CSS que não faz parse segue sem escopo, com o risco DECLARADO', () => {
   // Descartar todo o estilo de uma origem por um caractere seria pior. O que
   // não pode é ficar em silêncio.
-  const r = escopar('.a{color:red} @@@ isto não é css {{{');
+  //
+  // O colchete sem fechar é o caso que sobra depois de equilibrar as chaves:
+  // desequilíbrio de `{}` hoje é reparado, e só o que o reparo não alcança cai
+  // aqui.
+  const r = escopar('.a[b{color:red}');
   assert.ok(r.avisos.length > 0 || r.css.length > 0);
   if (r.avisos.length > 0) assert.ok(r.avisos[0]?.includes('colidir'));
 });
@@ -355,4 +359,47 @@ test('sufixo com dois-pontos não vaza para o nome de @keyframes nem de @layer',
   assert.doesNotMatch(r.css, /::original/, 'nenhum nome global carrega dois-pontos');
   assert.match(r.css, /@keyframes girar--ds_a__original/, 'o sufixo virou identificador válido');
   assert.match(r.css, /@layer base--ds_a__original/, 'e a camada também');
+});
+
+test('uma `}` sobrando não faz a folha inteira perder o escopo', () => {
+  // Medido num site do acervo: UMA chave órfã no meio de 99 KB. O navegador a
+  // ignora; o postcss estrito lançava, e a folha seguia crua. Sem escopo, o
+  // `.grid-cols-1` desta origem passou a valer para o documento todo e venceu o
+  // `lg:grid-cols-12` de OUTRA — o hero de três colunas virou três blocos
+  // empilhados e o lado direito ficou vazio. Um `.hidden` alheio apagou, pela
+  // mesma porta, a linha vertical que se preenche na rolagem.
+  const r = escoparCss('.a{color:red}}\n.grid-cols-1{grid-template-columns:repeat(1,1fr)}', {
+    raiz: 'data-ds-raiz="x"',
+    corpo: 'data-ds-corpo="x"',
+    sufixo: 'x',
+  });
+  assert.ok(r.reescritas > 0, 'a folha foi escopada, não devolvida crua');
+  assert.match(r.css, /:where\(\[data-ds-corpo="x"\]\) \.grid-cols-1/);
+  assert.doesNotMatch(r.css, /(^|\n)\.grid-cols-1\{/, 'não sobra utilitário global');
+  // O reparo é declarado: reparo calado seria a mesma falha silenciosa ao avesso.
+  assert.equal(r.avisos.length, 1);
+  assert.match(r.avisos[0] ?? '', /sobrando/);
+});
+
+test('bloco sem fechar é fechado no fim, e chave dentro de string não conta', () => {
+  const r = escoparCss('.a::after{content:"}"}\n@media (min-width:1024px){.b{color:red}', {
+    raiz: 'data-ds-raiz="x"',
+    corpo: 'data-ds-corpo="x"',
+    sufixo: 'x',
+  });
+  assert.match(r.css, /content:"\}"/, 'a chave dentro da string continua sendo conteúdo');
+  assert.match(
+    r.css,
+    /:where\(\[data-ds-corpo="x"\]\) \.b/,
+    'a regra dentro do @media foi escopada',
+  );
+  assert.match(r.avisos[0] ?? '', /sem fechar/);
+});
+
+test('folha desequilibrada não some da detecção de nomes globais', () => {
+  // Sem isto, uma folha que não analisa devolvia conjuntos vazios — e as
+  // colisões de @keyframes e @font-face dela deixavam de ser detectadas para
+  // TODAS as origens seguintes.
+  const n = nomesGlobaisDe('@keyframes girar{from{opacity:0}to{opacity:1}}}');
+  assert.ok(n.keyframes.has('girar'));
 });

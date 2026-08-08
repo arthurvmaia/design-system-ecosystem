@@ -1,5 +1,6 @@
 import type { ReguaAlinhada } from '@ds/shared';
-import postcss, { type AtRule, type Container, type Document as Document_ } from 'postcss';
+import type { AtRule, Container, Document as Document_ } from 'postcss';
+import { analisarCss } from './analisar-css.js';
 
 /**
  * Reescala: troca os comprimentos de origem por degraus que a marca controla.
@@ -273,14 +274,13 @@ export const reescalarCss = (css: string, reguas: ReguasDeEscala): ResultadoDeRe
     return { css, reescritas: 0, mantidas: 0 };
   }
 
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     // Folha ilegível segue como está. O escopo já declara esse risco em aviso;
     // duplicar o aviso aqui só encheria a lista.
     return { css, reescritas: 0, mantidas: 0 };
   }
+  const raiz = analise.raiz;
 
   let reescritas = 0;
   let mantidas = 0;

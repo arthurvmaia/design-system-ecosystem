@@ -1,6 +1,6 @@
 import type { AjusteDeCor, ClusterDeCor, PapelDeCor } from '@ds/shared';
 import { CONFIANCA_MINIMA_PARA_RECOLORIR } from '@ds/shared';
-import postcss from 'postcss';
+import { analisarCss, avisoDeReparo } from './analisar-css.js';
 import { coresDoValor } from './inventario.js';
 
 /**
@@ -424,17 +424,19 @@ export const recolorirCss = (
     return { css, reescritas: 0, mantidas: 0, avisos: [] };
   }
 
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     return {
       css,
       reescritas: 0,
       mantidas: 0,
-      avisos: ['CSS não parseou: a origem ficou com as cores originais.'],
+      avisos: [`CSS não parseou: a origem ficou com as cores originais. ${analise.erro}`],
     };
   }
+  const raiz = analise.raiz;
+  // O reparo entra nos avisos daqui também: quem lê o relatório de uma origem
+  // precisa saber que a folha dela estava torta, e não só que a cor saiu certa.
+  const avisosDoReparo = analise.reparo === null ? [] : [avisoDeReparo(analise.reparo)];
 
   /**
    * As custom properties que a origem usa como TINTA.
@@ -522,5 +524,5 @@ export const recolorirCss = (
           `tema invertido em relação à marca: ${retemadas} cor(es) da origem que nenhum cluster cobria foram migradas para a paleta (superfícies para a superfície da marca, acentos para os acentos, texto para a tinta).`,
         ]
       : [];
-  return { css: raiz.toString(), reescritas, mantidas, avisos };
+  return { css: raiz.toString(), reescritas, mantidas, avisos: [...avisosDoReparo, ...avisos] };
 };

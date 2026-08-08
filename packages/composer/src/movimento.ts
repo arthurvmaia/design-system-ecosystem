@@ -1,4 +1,4 @@
-import postcss from 'postcss';
+import { analisarCss } from './analisar-css.js';
 
 /**
  * Os tokens de MOVIMENTO de uma folha de estilo: quanto tempo as coisas levam e
@@ -63,12 +63,11 @@ const mediana = (ordenada: number[]): number | null => {
  * dois descreve a reação de uma interface ao toque de alguém.
  */
 export const tokensDeMovimento = (css: string): TokensDeMovimento => {
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     return MOVIMENTO_PADRAO;
   }
+  const raiz = analise.raiz;
 
   const duracoes: number[] = [];
   const curvas = new Map<string, number>();

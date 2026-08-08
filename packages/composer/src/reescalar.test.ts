@@ -284,10 +284,19 @@ test('régua vazia devolve o CSS igual', () => {
 });
 
 test('CSS ilegível não derruba nada', () => {
-  const css = 'h1{font-size:';
+  // Colchete sem fechar é o que sobra depois de equilibrar as chaves: aqui a
+  // folha segue como veio, sem reescala e sem exceção.
+  const css = 'h1[x{font-size:48px}';
   const r = reescalarCss(css, REGUAS);
   assert.equal(r.css, css);
   assert.equal(r.reescritas, 0);
+});
+
+test('folha só desequilibrada É reescalada, em vez de ficar de fora', () => {
+  // Antes, um bloco sem fechar fazia a origem inteira perder a reescala em
+  // silêncio. O navegador fecha o bloco e desenha; aqui a régua passa a valer.
+  const r = reescalarCss('h1{font-size:48px', REGUAS);
+  assert.ok(r.reescritas > 0, 'a régua alcançou a declaração');
 });
 
 test('o que não casa não é reformatado de passagem', () => {
