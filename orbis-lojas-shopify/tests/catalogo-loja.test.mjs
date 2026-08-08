@@ -112,6 +112,22 @@ test("a ponte do preview resolve página buscada por fetch e troca de variante",
   assert.match(preview, /orbisPaginaHref/);
 });
 
+test("a ponte trata quantidade e remoção da linha do carrinho", async () => {
+  const render = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
+  const preview = await readFile(previewUrl, "utf8");
+  /* mais/menos, lixeira e quantidade digitada não dependem do JS do tema */
+  assert.match(render, /function definirQuantidade/);
+  assert.match(render, /function campoDaLinha/);
+  assert.match(render, /data-quantity-variant-id/);
+  assert.match(render, /nome==="minus"/);
+  assert.match(render, /cart-remove-button/);
+  /* redesenho comum a comprar, mudar e remover */
+  assert.match(render, /function sincronizarCarrinho/);
+  /* o carrinho do editor é a fonte da verdade quando o quadro é remontado */
+  assert.match(render, /orbisCartDefinir/);
+  assert.match(preview, /orbisCartDefinir/);
+});
+
 test("o tema renderizado mostra produto real e o carrinho recebe a variante clicada", async () => {
   const layout = "<!doctype html><html><body>{{ content_for_layout }}</body></html>";
   const secao = `{% for produto in collections.all.products %}<article class="card"><h3>{{ produto.title }}</h3><p class="preco">{{ produto.price | money }}</p><img src="{{ produto.featured_image | image_url: width: 400 }}" alt="{{ produto.title }}">{% form 'product', produto %}<input type="hidden" name="id" value="{{ produto.selected_or_first_available_variant.id }}"><button name="add">Adicionar</button>{% endform %}</article>{% endfor %}

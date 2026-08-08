@@ -109,7 +109,10 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
      sem reenviar o modo no load, o editor dizia "Interagir" e o preview
      continuava bloqueando cliques (o carrinho não recebia o produto) */
   const enviarModo = useCallback(() => {
-    frameRef.current?.contentWindow?.postMessage({ orbisMode: modeRef.current }, "*");
+    const alvo = frameRef.current?.contentWindow;
+    alvo?.postMessage({ orbisMode: modeRef.current }, "*");
+    /* o HTML pode ter sido montado antes da última mudança do carrinho */
+    alvo?.postMessage({ orbisCartDefinir: cartRef.current }, "*");
   }, []);
 
   useEffect(() => {

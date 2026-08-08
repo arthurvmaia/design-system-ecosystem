@@ -1068,12 +1068,48 @@ alvos.forEach(function(el){["active","is-open","open","drawer--active"].forEach(
 el.removeAttribute("hidden");if(el.hasAttribute("aria-hidden"))el.setAttribute("aria-hidden","false");
 var det=el.closest("details");if(det)det.open=true;});
 document.body.classList.add("overflow-hidden");return true;}
+/* Redesenha o que mostra o carrinho (gaveta ou página) com o estado novo e
+   avisa o editor. É o passo comum de comprar, mudar quantidade e remover. */
+function sincronizarCarrinho(abrindo){
+if(window.parent!==window){window.parent.postMessage({orbisCartEstado:itens.map(function(i){return {variantId:i.id,quantity:i.quantity};})},"*");}
+return pedirSecoes(secoesDaGaveta()).then(function(html){aplicarSecoes(html);
+var abriu=abrirGaveta();
+if(abrindo&&!abriu&&window.parent!==window){/* tema sem gaveta: mostra a página do carrinho, para o item aparecer */window.parent.postMessage({orbisNavigate:"/cart"},"*");}
+document.dispatchEvent(new CustomEvent("cart:refresh",{bubbles:true}));});}
 function comprar(form){var idInput=form.querySelector('[name="id"]');var qtdInput=form.querySelector('[name="quantity"]');
 adicionar({id:idInput&&idInput.value,quantity:qtdInput&&qtdInput.value?qtdInput.value:1});
-if(window.parent!==window){window.parent.postMessage({orbisCartEstado:itens.map(function(i){return {variantId:i.id,quantity:i.quantity};})},"*");}
-pedirSecoes(secoesDaGaveta()).then(function(html){aplicarSecoes(html);
-if(!abrirGaveta()&&window.parent!==window){/* tema sem gaveta: mostra a página do carrinho, para o item aparecer */window.parent.postMessage({orbisNavigate:"/cart"},"*");}
-document.dispatchEvent(new CustomEvent("cart:refresh",{bubbles:true}));});}
+sincronizarCarrinho(true);}
+/* Mais/menos e remover: cada tema liga esses controles ao próprio JS. Aqui a
+   linha é achada pelo campo de quantidade em volta do botão (data-index e
+   data-quantity-variant-id, que os temas Dawn e derivados escrevem). */
+function campoDaLinha(el){var no=el;while(no&&no!==document){if(no.querySelector){
+var campo=no.querySelector('input[name="updates[]"],input[data-index],input[name="quantity"][data-index]');if(campo)return campo;}
+no=no.parentElement;}return null;}
+function chaveDaLinha(campo){return {vid:campo.getAttribute("data-quantity-variant-id")||campo.getAttribute("data-variant-id")||"",linha:parseInt(campo.getAttribute("data-index")||"0",10)||0};}
+function quantidadeDaLinha(chave){for(var i=0;i<itens.length;i++){if(chave.vid&&String(itens[i].id)===String(chave.vid))return itens[i].quantity;}
+return chave.linha&&itens[chave.linha-1]?itens[chave.linha-1].quantity:0;}
+function definirQuantidade(chave,qtd){if(qtd<0)qtd=0;
+if(chave.vid)mudar({id:chave.vid,quantity:qtd});
+else if(chave.linha)mudar({line:chave.linha,quantity:qtd});
+else return;
+sincronizarCarrinho(false);}
+document.addEventListener("click",function(e){var alvo=e.target.closest&&e.target.closest("button,a");if(!alvo)return;
+var nome=alvo.getAttribute("name")||"";var classe=String(alvo.className||"");
+var rotulo=((alvo.getAttribute("aria-label")||"")+" "+classe).toLowerCase();
+var menos=nome==="minus"||/minus|decrease|diminuir/i.test(classe+" "+rotulo);
+var mais=nome==="plus"||/plus|increase|aumentar/i.test(classe+" "+rotulo);
+var remover=!!(alvo.closest&&alvo.closest("cart-remove-button"))||/remover|remove|excluir|delete|trash|lixeira/.test(rotulo)||String(alvo.getAttribute("href")||"").indexOf("quantity=0")>=0;
+if(!menos&&!mais&&!remover)return;
+var campo=campoDaLinha(alvo);if(!campo)return;
+e.preventDefault();e.stopPropagation();
+var chave=chaveDaLinha(campo);var atual=quantidadeDaLinha(chave);
+definirQuantidade(chave,remover?0:(mais?atual+1:atual-1));},true);
+/* quantidade digitada direto no campo da linha */
+document.addEventListener("change",function(e){var campo=e.target;
+if(!campo||campo.tagName!=="INPUT")return;
+if(campo.name!=="updates[]"&&!campo.hasAttribute("data-index"))return;
+var n=parseInt(campo.value,10);if(isNaN(n))return;
+e.stopPropagation();definirQuantidade(chaveDaLinha(campo),n);},true);
 document.addEventListener("submit",function(e){var form=e.target;if(form&&form.matches&&form.matches('form[data-type="add-to-cart-form"]')){e.preventDefault();comprar(form);}},true);
 /* O botão de compra nem sempre está DENTRO do formulário: muitos temas põem
    um botão no cartão e ligam por JS próprio (que aqui não tem loja atrás).
@@ -1085,6 +1121,8 @@ return null;}
 document.addEventListener("click",function(e){
 var botao=e.target.closest&&e.target.closest('button, a[role="button"], [data-add-to-cart]');
 if(!botao)return;
+/* controles da linha do carrinho têm handler próprio, mais abaixo */
+if(botao.getAttribute("name")==="minus"||botao.getAttribute("name")==="plus"||(botao.closest&&botao.closest("cart-remove-button")))return;
 var texto=((botao.textContent||"")+" "+(botao.getAttribute("aria-label")||"")).toLowerCase();
 var ehCompra=botao.getAttribute("name")==="add"||botao.closest('form[data-type="add-to-cart-form"]')||/adicionar|add to cart|add to bag|sacola|carrinho|comprar/.test(texto);
 if(!ehCompra)return;
@@ -1118,7 +1156,13 @@ document.addEventListener("change",function(e){var t=e.target;if(!t||!t.closest)
 if(t.type!=="radio"&&t.tagName!=="SELECT")return;
 setTimeout(function(){trocarVariante(escopoDaVariante(t));},0);},false);
 /* estado inicial vindo do editor, para o carrinho sobreviver à troca de página */
-try{if(window.__ORBIS_CART_INICIAL__&&window.__ORBIS_CART_INICIAL__.length){itens=window.__ORBIS_CART_INICIAL__.map(function(i){var base=catalogo[String(i.variantId)]||dadosDoBotao(null);return {id:i.variantId,quantity:i.quantity,title:base.title,product_title:base.product_title||base.title,variant_title:base.variant_title||null,price:base.price||0,image:base.image||null,handle:base.handle||"produto",product_id:base.product_id||i.variantId,url:base.url||"/cart"};});}}catch(e){}
+function definirItens(lista){itens=(lista||[]).map(function(i){var base=catalogo[String(i.variantId)]||dadosDoBotao(null);return {id:i.variantId,quantity:i.quantity,title:base.title,product_title:base.product_title||base.title,variant_title:base.variant_title||null,price:base.price||0,image:base.image||null,handle:base.handle||"produto",product_id:base.product_id||i.variantId,url:base.url||"/cart"};});}
+try{if(window.__ORBIS_CART_INICIAL__&&window.__ORBIS_CART_INICIAL__.length)definirItens(window.__ORBIS_CART_INICIAL__);}catch(e){}
+/* O HTML da página é montado antes do último clique chegar ao editor. Quando o
+   quadro é remontado, o editor manda o carrinho que ele guarda — sem isso um
+   item removido reaparecia depois de um redesenho. */
+window.addEventListener("message",function(e){var d=e&&e.data;if(!d||!d.orbisCartDefinir)return;
+definirItens(d.orbisCartDefinir);});
 /* fechar a gaveta é responsabilidade do preview também: muitos temas ligam o
    X ao próprio JS, que aqui não tem loja atrás */
 function fecharGaveta(){var alvos=alvosDaGaveta();if(!alvos.length)return false;
@@ -1156,6 +1200,9 @@ if(saida)return;
    responde, e travar isso fazia o botão parecer quebrado */
 var loja=event.target.closest('button[name="add"],[data-add-to-cart],[class*="quick-add" i],[class*="quick-buy" i],modal-opener,[data-product-url]');
 if(loja)return;
+/* dentro do carrinho tudo responde: quantidade, remover, finalizar */
+var carrinho=event.target.closest('cart-drawer, mini-cart, cart-items, cart-drawer-items, #CartDrawer, #mini-cart, .cart-drawer, .mini-cart, [class*="cart-item" i]');
+if(carrinho)return;
 event.preventDefault();event.stopPropagation();var block=event.target.closest("[data-block-id]");var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section"),orbisBlock:block?block.getAttribute("data-block-id"):null},"*");}return;}},true);
 /* BOLHA (depois do tema): se o proprio tema tratou o clique — carrinho que
    abre a gaveta, menu, modal — ele ja chamou preventDefault e a previa NAO
