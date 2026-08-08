@@ -48,6 +48,14 @@ const LARGURAS = [1440, 390] as const;
  * contraste contra um gradiente exige amostrar pixel, e um número inventado aqui
  * seria a mesma doença que esta passagem veio curar.
  */
+/**
+ * ATENÇÃO ao mexer aqui: isto é um template literal.
+ *
+ * Crase dentro deste bloco FECHA o template, e o erro que aparece é um
+ * "Expected ;" em outra linha — três vezes eu perdi tempo procurando no lugar
+ * errado. Barra invertida some do mesmo jeito: `\s` vira `s` e a regex passa a
+ * casar com a letra. Escreva sem crase e dobre a barra.
+ */
 const MEDIR = `() => {
   const luminancia = (r, g, b) => {
     const f = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
@@ -110,8 +118,17 @@ const MEDIR = `() => {
       .split(/\\s+/)
       .filter(Boolean)
       .map((c) => '.' + CSS.escape(c));
-    if (clsPai.length === 0) return null;
-    return escopo + clsPai.join('') + ' > ' + el.tagName.toLowerCase();
+    if (clsPai.length > 0) return escopo + clsPai.join('') + ' > ' + el.tagName.toLowerCase();
+    /**
+     * Ultimo recurso: a secao mais a tag.
+     *
+     * Grosso de proposito: pega todos os paragrafos daquela secao. Para COR
+     * isso costuma ser o certo (o defeito e do bloco inteiro), e e melhor que
+     * o anterior, que era desistir: dezoito achados ficavam sem alvo e a
+     * pagina seguia ilegivel com a maquina sabendo onde.
+     */
+    if (escopo === '') return null;
+    return escopo + el.tagName.toLowerCase();
   };
 
   // As tintas da marca, na ordem em que um designer as tentaria.
@@ -171,6 +188,24 @@ const MEDIR = `() => {
     if (cx.width === 0 || cx.height === 0) continue;
     const frente = rgb(e.color);
     if (!frente) continue;
+    /**
+     * Texto pintado pelo FUNDO nao se mede pela cor.
+     *
+     * bg-clip-text com text-transparent e um recorte: a cor do texto e
+     * transparente DE PROPOSITO e quem pinta e o gradiente atras. Medindo a
+     * cor, todo titulo desses aparecia como "opacidade zero" — oito falsos
+     * positivos num site so, e a correcao que eu escrevia para eles nao fazia
+     * efeito nenhum, porque nao havia defeito. Medir o gradiente exigiria
+     * amostrar pixel; enquanto nao amostro, nao opino.
+     */
+    const recorte = e.backgroundClip === 'text' || e.webkitBackgroundClip === 'text';
+    if (recorte) continue;
+    /**
+     * Camada de sobreposicao (hover, brilho) fica de fora: ela e invisivel por
+     * projeto e nao recebe clique. Texto que ninguem alcanca nao e conteudo
+     * escondido, e decoracao esperando o ponteiro.
+     */
+    if (e.pointerEvents === 'none' && Number.parseFloat(e.opacity) === 0) continue;
     /**
      * Texto quase invisível NÃO é decoração — é conteúdo que não apareceu.
      *
@@ -237,7 +272,30 @@ const MEDIR = `() => {
     fora.push(chave + ' (+' + Math.round(r.right - larguraVisivel) + 'px)');
   }
 
-  return { contrastes, apagados, vazios, fora };
+  /**
+   * Secao que TEM conteudo e nao ocupa espaco.
+   *
+   * Seis das oito secoes de um site sairam com altura zero: o texto estava no
+   * DOM, a secao existia, e a pagina tinha um buraco. Acontece quando a peca vem
+   * de um site cujo layout inteiro e orquestrado por rolagem — la os blocos sao
+   * tirados do fluxo e posicionados por script; recortados, nao tem altura
+   * propria nenhuma.
+   *
+   * Nenhuma das outras regras pega: o texto se le, nada esta apagado, nada
+   * transborda. So que ninguem ve.
+   */
+  const colapsadas = [];
+  for (const sec of document.querySelectorAll('[data-secao]')) {
+    const texto = (sec.textContent || '').trim();
+    if (texto.length < 30) continue;
+    const r = sec.getBoundingClientRect();
+    if (r.height >= 40) continue;
+    colapsadas.push(
+      (sec.getAttribute('data-secao') || 'secao') + ' (' + texto.length + ' caracteres, ' + Math.round(r.height) + 'px de altura)'
+    );
+  }
+
+  return { contrastes, apagados, vazios, fora, colapsadas };
 }`;
 
 /** As marcas do bloco: reescrever entre elas em vez de acumular retoque sobre retoque. */
@@ -296,13 +354,20 @@ const escreverCorrecoes = (
         semAlvo += 1;
         continue;
       }
-      // A revelação não disparou: o conteúdo precisa aparecer. A animação da
-      // origem continua declarada — o que muda é o estado em que ela repousa.
+      /**
+       * A revelação não disparou: o conteúdo precisa aparecer.
+       *
+       * `opacity: 1` sozinho não basta, e isso foi medido: o zero quase sempre
+       * vem de uma animação com `both`, que fixa o estado inicial e vence uma
+       * declaração comum. Some com a animação parada e o conteúdo aparece.
+       * Perder a entrada é ruim; um bloco de texto invisível é pior.
+       */
       const jaTem = porSeletor.get(t.seletor) ?? '';
       // Sem dedupe, o mesmo seletor acumulava `opacity: 1;` uma vez por trecho
       // de texto que ele cobria — quatro vezes a mesma declaração.
       if (!jaTem.includes('opacity: 1;')) {
-        porSeletor.set(t.seletor, `${jaTem}${jaTem === '' ? '' : QUEBRA}  opacity: 1;`);
+        const revela = `  opacity: 1;${QUEBRA}  animation: none;`;
+        porSeletor.set(t.seletor, `${jaTem}${jaTem === '' ? '' : QUEBRA}${revela}`);
       }
     }
   }
@@ -371,6 +436,7 @@ export const conferirNoNavegador = async (
         apagados: { texto: string; opacidade: number; onde: string; seletor: string | null }[];
         vazios: string[];
         fora: string[];
+        colapsadas: string[];
       };
       await pagina.close();
       const medida: SiteNoNavegador = {
@@ -379,6 +445,7 @@ export const conferirNoNavegador = async (
         textoApagado: bruto.apagados,
         slotsDeMidiaVazios: bruto.vazios,
         transbordam: bruto.fora,
+        secoesColapsadas: bruto.colapsadas,
       };
       saida.push({ largura, medida, aceite: conferirSiteNoNavegador(medida) });
     }

@@ -419,6 +419,8 @@ export type SiteNoNavegador = {
   slotsDeMidiaVazios: readonly string[];
   /** Elementos que passam da borda da tela sem estar dentro de um recorte. */
   transbordam: readonly string[];
+  /** Seções que têm conteúdo e saíram com altura zero. */
+  secoesColapsadas: readonly string[];
 };
 
 /** 3:1 é o piso de texto grande do WCAG; abaixo disso não se lê com folga. */
@@ -502,6 +504,30 @@ export const conferirSiteNoNavegador = (m: SiteNoNavegador): ResultadoDeAceite =
           titulo: 'Nada transborda a tela',
           estado: 'reprovou',
           motivo: `${m.transbordam.length} elemento(s) passam da borda em ${m.largura}px (${m.transbordam.slice(0, 3).join(', ')}): no celular o conteúdo sai cortado.`,
+        },
+  );
+
+  /**
+   * S14 — nenhuma seção colapsa.
+   *
+   * Seis das oito seções de um site saíram com altura zero: o texto estava no
+   * DOM, a seção existia, e a página tinha um buraco no lugar dela. É o que
+   * acontece quando a peça vem de um site cujo layout inteiro é orquestrado por
+   * rolagem — lá os blocos são tirados do fluxo e posicionados por script;
+   * recortados, não têm altura própria nenhuma.
+   *
+   * Nenhuma das outras regras pega isso: o texto se lê, nada está apagado, nada
+   * transborda. Só que ninguém vê. Reprova, e o conserto costuma ser trocar a
+   * peça — aquela origem não empresta pedaço.
+   */
+  v.push(
+    m.secoesColapsadas.length === 0
+      ? { codigo: 'S14', titulo: 'Nenhuma seção colapsa', estado: 'passou', motivo: '' }
+      : {
+          codigo: 'S14',
+          titulo: 'Nenhuma seção colapsa',
+          estado: 'reprovou',
+          motivo: `${m.secoesColapsadas.length} seção(ões) têm conteúdo e não ocupam espaço nenhum em ${m.largura}px (${m.secoesColapsadas.slice(0, 3).join('; ')}): a peça veio de um site cujo layout é orquestrado por rolagem e não sobrevive ao recorte. Troque a peça.`,
         },
   );
 
