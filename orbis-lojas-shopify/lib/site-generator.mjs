@@ -43,6 +43,25 @@ export const SITE_TEMPLATES = Object.freeze([
 
 const MAX_LOGO_DATA_URI = 2_000_000;
 const DATA_URI_IMAGE = /^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i;
+/* A logo gerada pelo Orbis Criativos é SVG e vem percent-encoded, não base64.
+   SVG carrega script, e o site entregue abre no navegador da pessoa — então o
+   conteúdo é DECODIFICADO e conferido contra a lista de tags que o nosso
+   desenho usa. Casar só o prefixo do data URI não serviria: o percent-encoding
+   esconde qualquer `<script>` de uma regex feita no texto codificado. */
+const PREFIXO_SVG = "data:image/svg+xml;charset=utf-8,";
+const TAGS_DA_LOGO = new Set(["svg", "title", "circle", "rect", "path", "text", "g", "polygon"]);
+
+export function svgDaLogoSeguro(dataUri) {
+  if (typeof dataUri !== "string" || !dataUri.startsWith(PREFIXO_SVG)) return "";
+  let svg = "";
+  try { svg = decodeURIComponent(dataUri.slice(PREFIXO_SVG.length)); } catch { return ""; }
+  if (!svg.startsWith("<svg") || !svg.endsWith("</svg>")) return "";
+  if (/\son\w+\s*=/i.test(svg) || /(xlink:)?href|javascript:|<!--|<!\[CDATA\[/i.test(svg)) return "";
+  for (const [, tag] of svg.matchAll(/<\/?([a-z0-9:-]+)/gi)) {
+    if (!TAGS_DA_LOGO.has(tag.toLowerCase())) return "";
+  }
+  return svg;
+}
 
 export function slugify(value) {
   const base = String(value ?? "")
@@ -69,7 +88,9 @@ export function sanitizeBrand(input = {}) {
     instagram: text(source.instagram, "", 60).replace(/^@/, ""),
     email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(source.email ?? "")) ? String(source.email).slice(0, 120) : "",
     logoDataUri:
-      typeof source.logoDataUri === "string" && source.logoDataUri.length <= MAX_LOGO_DATA_URI && DATA_URI_IMAGE.test(source.logoDataUri)
+      typeof source.logoDataUri === "string"
+      && source.logoDataUri.length <= MAX_LOGO_DATA_URI
+      && (DATA_URI_IMAGE.test(source.logoDataUri) || svgDaLogoSeguro(source.logoDataUri))
         ? source.logoDataUri
         : "",
   };
@@ -374,6 +395,8 @@ const ZAP_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 
 
 /** Decodifica a logo (data URI já validado pelo sanitizeBrand) em arquivo de asset. */
 function logoAssetFromDataUri(dataUri) {
+  const svg = svgDaLogoSeguro(dataUri);
+  if (svg) return { path: "assets/logo.svg", data: new TextEncoder().encode(svg) };
   const match = /^data:image\/(png|jpeg|webp);base64,([a-z0-9+/=]+)$/i.exec(dataUri ?? "");
   if (!match) return null;
   const extension = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();

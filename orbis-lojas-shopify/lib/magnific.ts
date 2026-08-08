@@ -1,0 +1,115 @@
+/**
+ * Provedor opcional de imagem e vídeo por IA: Magnific.
+ *
+ * O gerador de marca (`lib/marca-generator.mjs`) é local e determinístico — ele
+ * sempre funciona, sem chave e sem rede. Este arquivo é o degrau de cima: com
+ * uma chave configurada, a loja gerada ganha banner e imagens de verdade em vez
+ * do desenho vetorial.
+ *
+ * ## A chave é do dono do app, e o app nunca a vê pela tela
+ *
+ * A chave entra por variável de ambiente (`MAGNIFIC_API_KEY`), em `.dev.vars`
+ * no desenvolvimento e como secret do Worker em produção. Ela nunca sai daqui:
+ * o navegador fala com a nossa rota, a rota fala com a Magnific. Sem chave,
+ * `magnificDisponivel()` devolve falso e a área do cliente segue no gerador
+ * local, sem erro e sem tela quebrada.
+ *
+ * ## Contrato da API (docs.magnific.com)
+ *
+ * Base `https://api.magnific.com`, cabeçalho `x-magnific-api-key`. Cada modelo é
+ * um POST em `/v1/ai/<modelo>` que devolve `data.task_id`; o resultado sai por
+ * GET em `/v1/ai/<modelo>/<task_id>`, com `status` e `generated` (URLs).
+ */
+
+const BASE = "https://api.magnific.com";
+
+/**
+ * Modelos liberados, por papel. É lista fechada de propósito: o modelo chega do
+ * navegador e vira caminho de URL — aceitar texto livre aqui seria deixar o
+ * cliente escolher para onde a chave é enviada.
+ */
+export const MODELOS_MAGNIFIC = Object.freeze({
+  imagem: Object.freeze(["mystic", "flux-dev", "flux-2-turbo", "hyperflux", "seedream-4"]),
+  video: Object.freeze(["kling-v2.5-pro", "wan-2-5-i2v-1080p", "runway-gen4-turbo"]),
+  upscale: Object.freeze(["image-upscaler"]),
+});
+
+export type PapelMagnific = keyof typeof MODELOS_MAGNIFIC;
+export type TarefaMagnific = { taskId: string; modelo: string; status: string; imagens: string[] };
+
+export function modeloValido(papel: PapelMagnific, modelo: string): boolean {
+  return (MODELOS_MAGNIFIC[papel] as readonly string[]).includes(modelo);
+}
+
+export function modeloPadrao(papel: PapelMagnific): string {
+  return MODELOS_MAGNIFIC[papel][0];
+}
+
+export function magnificDisponivel(chave: string | undefined): boolean {
+  return typeof chave === "string" && chave.trim().length >= 8;
+}
+
+function extrair(payload: unknown): TarefaMagnific | null {
+  const raiz = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const dados = raiz.data && typeof raiz.data === "object" ? raiz.data as Record<string, unknown> : raiz;
+  const taskId = typeof dados.task_id === "string" ? dados.task_id : "";
+  if (!taskId) return null;
+  const gerado = Array.isArray(dados.generated) ? dados.generated : [];
+  return {
+    taskId,
+    modelo: "",
+    status: typeof dados.status === "string" ? dados.status : "CREATED",
+    imagens: gerado.filter((item): item is string => typeof item === "string"),
+  };
+}
+
+async function chamar(chave: string, caminho: string, init: RequestInit): Promise<unknown> {
+  const resposta = await fetch(`${BASE}${caminho}`, {
+    ...init,
+    headers: { "content-type": "application/json", "x-magnific-api-key": chave, ...(init.headers ?? {}) },
+  });
+  if (!resposta.ok) {
+    const detalhe = await resposta.text().catch(() => "");
+    throw new Error(`MAGNIFIC_${resposta.status}${detalhe ? `: ${detalhe.slice(0, 180)}` : ""}`);
+  }
+  return resposta.json();
+}
+
+/** Abre a tarefa de geração. O resultado vem depois, por `consultarTarefa`. */
+export async function pedirGeracao(
+  chave: string,
+  { papel, modelo, prompt, aspecto = "square_1_1", imagemBase64 }: { papel: PapelMagnific; modelo: string; prompt: string; aspecto?: string; imagemBase64?: string },
+): Promise<TarefaMagnific> {
+  if (!modeloValido(papel, modelo)) throw new Error("MODELO_NAO_PERMITIDO");
+  const corpo: Record<string, unknown> = papel === "upscale"
+    ? { image: imagemBase64, prompt, scale_factor: "2x" }
+    : { prompt, aspect_ratio: aspecto, num_images: 1 };
+  if (papel === "video" && imagemBase64) corpo.image = imagemBase64;
+  const bruto = await chamar(chave, `/v1/ai/${modelo}`, { method: "POST", body: JSON.stringify(corpo) });
+  const tarefa = extrair(bruto);
+  if (!tarefa) throw new Error("MAGNIFIC_SEM_TASK_ID");
+  return { ...tarefa, modelo };
+}
+
+export async function consultarTarefa(chave: string, papel: PapelMagnific, modelo: string, taskId: string): Promise<TarefaMagnific> {
+  if (!modeloValido(papel, modelo)) throw new Error("MODELO_NAO_PERMITIDO");
+  if (!/^[a-z0-9-]{8,64}$/i.test(taskId)) throw new Error("TASK_ID_INVALIDO");
+  const bruto = await chamar(chave, `/v1/ai/${modelo}/${taskId}`, { method: "GET" });
+  const tarefa = extrair(bruto);
+  if (!tarefa) throw new Error("MAGNIFIC_RESPOSTA_INVALIDA");
+  return { ...tarefa, modelo };
+}
+
+/**
+ * O texto que descreve a imagem da loja para o modelo.
+ *
+ * Fica aqui, e não na tela, porque é a tradução da marca gerada para a língua
+ * do modelo — muda junto com o gerador, não com o layout.
+ */
+export function promptDaVitrine({ nicho, marca, paleta }: { nicho: string; marca: string; paleta: string[] }): string {
+  return [
+    `Fotografia publicitária de vitrine para uma loja de ${nicho}, marca "${marca}".`,
+    `Paleta dominante: ${paleta.join(", ")}.`,
+    "Luz natural suave, composição limpa com espaço para texto à esquerda, sem letras nem logotipos na imagem, sem marca d'água.",
+  ].join(" ");
+}

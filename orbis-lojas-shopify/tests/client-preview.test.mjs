@@ -6,7 +6,7 @@ import test from "node:test";
 
 test("o fluxo do cliente mostra a prévia reativa com a marca e o modelo escolhidos", async () => {
   const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
-  assert.match(flow, /<ClientSitePreview brand=\{brand\} sections=\{template\.sections\}/, "a prévia recebe a MESMA marca e o MESMO modelo que vão ao gerador");
+  assert.match(flow, /<ClientSitePreview brand=\{marca\} sections=\{template\.sections\}/, "a prévia recebe a MESMA marca e o MESMO modelo que vão ao gerador");
   assert.match(flow, /className="cf-preview"/, "coluna de prévia presente");
 });
 

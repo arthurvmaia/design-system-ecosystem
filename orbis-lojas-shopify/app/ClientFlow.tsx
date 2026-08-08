@@ -1,127 +1,177 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, FolderOpen, RefreshCw, Store } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, FolderOpen, PenLine, RefreshCw, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Orbis } from "@/app/Orbis";
 import { ClientSitePreview } from "@/app/ClientSitePreview";
+import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada";
+import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
+import { NICHOS, gerarMarca, novaSemente } from "@/lib/marca-generator.mjs";
 
 /**
- * O balcão do cliente: quatro passos e um site na mão.
+ * O balcão do cliente: quatro passos e uma loja na mão.
  *
- * Deliberadamente simples: nada de editor, nada de tokens, nada de jargão de
- * tema. A pessoa conta quem é a marca, confirma o tema (só ShrinePro por
- * enquanto), escolhe uma das duas composições e recebe o site pronto na Área
- * de Trabalho, em ZIP e em pasta aberta. O projeto correspondente nasce de
- * verdade no estúdio ADM.
+ * Dois caminhos entram pela mesma porta. Quem já tem marca preenche a bancada e
+ * segue. Quem não tem — a maioria, que veio montar a loja justamente porque a
+ * marca ainda vai nascer — escolhe o nicho e recebe nome, paleta, tipografia,
+ * voz, logo e coleções prontos, mexendo só no que quiser.
+ *
+ * O tema não é mais um só: a lista é a mesma da área Temas do estúdio, com a
+ * home real de cada tema como miniatura. Escolhido o tema, a marca é aplicada
+ * sobre os settings reais dele no servidor.
+ *
+ * Nada de editor, de token ou de jargão de tema nesta tela: isso é do estúdio.
  */
 
-type Brand = {
-  name: string;
-  slogan: string;
-  description: string;
-  primaryColor: string;
-  backgroundColor: string;
-  whatsapp: string;
-  instagram: string;
-  email: string;
-  logoDataUri: string;
-};
-
-const EMPTY_BRAND: Brand = {
-  name: "",
-  slogan: "",
-  description: "",
-  primaryColor: "#0e7490",
-  backgroundColor: "#f6f8f7",
-  whatsapp: "",
-  instagram: "",
-  email: "",
-  logoDataUri: "",
-};
-
+type Modo = "gerada" | "manual";
 type Delivery = { zipPath: string; folderPath: string; entryPath: string } | null;
 type Status = "idle" | "working" | "done" | "error";
+type TemaDisponivel = { id: string; name: string; description?: string; sectionCount?: number };
 
-const STEPS = ["Sua marca", "Tema", "Modelo", "Revisão"] as const;
+const PASSOS = ["Projeto", "Marca", "Tema", "Revisão"] as const;
+
+const MARCA_VAZIA: MarcaCliente = {
+  name: "", slogan: "", description: "",
+  primaryColor: "#0e7490", backgroundColor: "#f6f8f7", accentColor: "#0e7490",
+  headingFont: "", bodyFont: "", voice: "",
+  whatsapp: "", instagram: "", email: "", logoDataUri: "", collections: [],
+};
+
+/** A marca gerada volta como `MarcaCliente`, com o que a pessoa digitou vencendo. */
+function marcaGerada(nicheId: string, semente: string, sobrescritas: Partial<MarcaCliente>): MarcaCliente {
+  const gerada = gerarMarca({ nicheId, semente, sobrescritas });
+  return {
+    name: gerada.name, slogan: gerada.slogan, description: gerada.description,
+    primaryColor: gerada.primaryColor, backgroundColor: gerada.backgroundColor, accentColor: gerada.accentColor,
+    headingFont: gerada.headingFont, bodyFont: gerada.bodyFont, voice: gerada.voice,
+    whatsapp: gerada.whatsapp, instagram: gerada.instagram, email: gerada.email,
+    logoDataUri: gerada.logoDataUri, collections: gerada.collections,
+  };
+}
 
 export function ClientFlow({ onExit }: { onExit: () => void }) {
-  const [step, setStep] = useState(0);
-  const [brand, setBrand] = useState<Brand>(EMPTY_BRAND);
+  const [passo, setPasso] = useState(0);
+  const [modo, setModo] = useState<Modo | null>(null);
+  const [nicheId, setNicheId] = useState("");
+  const [semente, setSemente] = useState("orbis");
+  const [gerada, setGerada] = useState(false);
+  const [marca, setMarca] = useState<MarcaCliente>(MARCA_VAZIA);
+  const [editadoAMao, setEditadoAMao] = useState<Partial<MarcaCliente>>({});
+  const [temas, setTemas] = useState<TemaDisponivel[]>([]);
+  const [temasCarregando, setTemasCarregando] = useState(true);
+  const [themeId, setThemeId] = useState("");
   const [templateId, setTemplateId] = useState<string>(SITE_TEMPLATES[0].id);
   const [status, setStatus] = useState<Status>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
   const [delivery, setDelivery] = useState<Delivery>(null);
   const [zip, setZip] = useState<{ blob: Blob; name: string } | null>(null);
 
-  const template = SITE_TEMPLATES.find((entry) => entry.id === templateId) ?? SITE_TEMPLATES[0];
-  const canAdvance = step !== 0 || brand.name.trim().length >= 2;
+  const template = SITE_TEMPLATES.find((entrada) => entrada.id === templateId) ?? SITE_TEMPLATES[0];
+  const temaEscolhido = temas.find((tema) => tema.id === themeId) ?? null;
 
-  function set<K extends keyof Brand>(key: K, value: Brand[K]) {
-    setBrand((current) => ({ ...current, [key]: value }));
+  /* a lista de temas é a MESMA da área Temas do estúdio: o que estiver lá,
+     aparece aqui para o cliente escolher */
+  useEffect(() => {
+    let ativo = true;
+    void (async () => {
+      try {
+        const resposta = await fetch("/api/bootstrap");
+        const dados = await resposta.json() as { themes?: TemaDisponivel[] };
+        if (!ativo) return;
+        const lista = Array.isArray(dados.themes) ? dados.themes : [];
+        setTemas(lista);
+        setThemeId((atual) => atual || lista[0]?.id || "");
+      } catch {
+        if (ativo) setTemas([]);
+      } finally {
+        if (ativo) setTemasCarregando(false);
+      }
+    })();
+    return () => { ativo = false; };
+  }, []);
+
+  const gerarMarcaAgora = useCallback((sementeNova: string) => {
+    if (!nicheId) return;
+    setSemente(sementeNova);
+    setMarca(marcaGerada(nicheId, sementeNova, editadoAMao));
+    setGerada(true);
+  }, [nicheId, editadoAMao]);
+
+  function ajustarMarca(parcial: Partial<MarcaCliente>) {
+    setEditadoAMao((atual) => ({ ...atual, ...parcial }));
+    setMarca((atual) => ({ ...atual, ...parcial }));
   }
 
-  function chooseLogo(file: File | undefined) {
-    if (!file) return;
-    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 1_400_000) {
-      setError("A logo precisa ser PNG, JPG ou WebP de até 1,4 MB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => set("logoDataUri", String(reader.result ?? ""));
-    reader.readAsDataURL(file);
+  function escolherNicho(id: string) {
+    setNicheId(id);
+    setModo("gerada");
+    const sementeNova = novaSemente();
+    setSemente(sementeNova);
+    setMarca(marcaGerada(id, sementeNova, editadoAMao));
+    setGerada(true);
   }
 
-  function downloadZip(current: { blob: Blob; name: string } | null) {
-    if (!current) return;
-    const url = URL.createObjectURL(current.blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `site-${current.name}.zip`;
-    anchor.click();
+  const podeAvancar = useMemo(() => {
+    if (passo === 0) return modo === "manual" || (modo === "gerada" && Boolean(nicheId));
+    if (passo === 1) return marca.name.trim().length >= 2;
+    if (passo === 2) return Boolean(themeId);
+    return true;
+  }, [passo, modo, nicheId, marca.name, themeId]);
+
+  function baixarZip(atual: { blob: Blob; name: string } | null) {
+    if (!atual) return;
+    const url = URL.createObjectURL(atual.blob);
+    const ancora = document.createElement("a");
+    ancora.href = url;
+    ancora.download = `loja-${atual.name}.zip`;
+    ancora.click();
     URL.revokeObjectURL(url);
   }
 
-  async function requestSite() {
+  async function pedirLoja() {
     setStatus("working");
-    setError(null);
+    setErro(null);
     try {
-      const response = await fetch("/api/client-request", {
+      const resposta = await fetch("/api/client-request", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ brand, templateId }),
+        body: JSON.stringify({
+          themeId,
+          templateId,
+          nicheId: modo === "gerada" ? nicheId : undefined,
+          seed: modo === "gerada" ? semente : undefined,
+          brand: {
+            name: marca.name, slogan: marca.slogan, description: marca.description,
+            primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
+            headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
+            whatsapp: marca.whatsapp, instagram: marca.instagram, email: marca.email,
+          },
+        }),
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error ?? "Não consegui gerar o site agora. Tente novamente.");
+      if (!resposta.ok) {
+        const payload = await resposta.json().catch(() => ({}));
+        throw new Error(payload.error ?? "Não consegui gerar a loja agora. Tente novamente.");
       }
-      const blob = await response.blob();
-      const name = response.headers.get("x-site-name") ?? "minha-marca";
-      const bundle = { blob, name };
-      setZip(bundle);
+      const blob = await resposta.blob();
+      const nome = resposta.headers.get("x-site-name") ?? "minha-marca";
+      const pacote = { blob, name: nome };
+      setZip(pacote);
 
-      const deliver = await fetch(`/local/deliver-site?name=${encodeURIComponent(name)}`, { method: "POST", body: blob });
-      if (deliver.ok) {
-        setDelivery(await deliver.json());
-      } else {
-        setDelivery(null);
-        downloadZip(bundle);
-      }
+      const entrega = await fetch(`/local/deliver-site?name=${encodeURIComponent(nome)}`, { method: "POST", body: blob });
+      if (entrega.ok) setDelivery(await entrega.json());
+      else { setDelivery(null); baixarZip(pacote); }
       setStatus("done");
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Não consegui gerar o site agora.");
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Não consegui gerar a loja agora.");
       setStatus("error");
     }
   }
 
-  function reset() {
-    setStep(0);
-    setBrand(EMPTY_BRAND);
-    setTemplateId(SITE_TEMPLATES[0].id);
-    setStatus("idle");
-    setError(null);
-    setDelivery(null);
-    setZip(null);
+  function recomecar() {
+    setPasso(0); setModo(null); setNicheId(""); setGerada(false);
+    setMarca(MARCA_VAZIA); setEditadoAMao({});
+    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null);
   }
 
   if (status === "working") {
@@ -129,9 +179,9 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       <main className="client-flow">
         <div className="entry-gate-brilho" aria-hidden="true" />
         <div className="cf-panel cf-center">
-          <Orbis tamanho={96} girando alt="Orbis montando o site" />
-          <h2>Montando o site de {brand.name.trim() || "sua marca"}…</h2>
-          <p>Estou aplicando sua marca ao tema, gerando as páginas e embrulhando tudo para o senhor.</p>
+          <Orbis tamanho={96} girando alt="Orbis montando a loja" />
+          <h2>Montando a loja de {marca.name.trim() || "sua marca"}…</h2>
+          <p>Estou aplicando sua marca ao tema, criando as coleções e embrulhando tudo para o senhor.</p>
         </div>
       </main>
     );
@@ -143,10 +193,10 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         <div className="entry-gate-brilho" aria-hidden="true" />
         <div className="cf-panel cf-center">
           <span className="cf-done-badge"><Check size={26} strokeWidth={2.4} /></span>
-          <h2>Site pronto, senhor.</h2>
+          <h2>Loja pronta, senhor.</h2>
           {delivery ? (
             <>
-              <p>Deixei tudo na sua Área de Trabalho. Para ver o site, abra a pasta e clique duas vezes no <b>index.html</b>.</p>
+              <p>Deixei tudo na sua Área de Trabalho. Para ver a loja, abra a pasta e clique duas vezes no <b>index.html</b>. O projeto também nasceu no estúdio, já com a marca aplicada ao tema.</p>
               <div className="cf-paths">
                 <div><FolderOpen size={15} /> <span>{delivery.folderPath}</span></div>
                 <div><Download size={15} /> <span>{delivery.zipPath}</span></div>
@@ -156,8 +206,8 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             <p>Não consegui gravar direto na Área de Trabalho, então baixei o ZIP pelo navegador. Extraia e clique no <b>index.html</b>.</p>
           )}
           <div className="cf-actions">
-            <button className="secondary-button" onClick={() => downloadZip(zip)}><Download size={15} /> Baixar o ZIP</button>
-            <button className="secondary-button" onClick={reset}><RefreshCw size={15} /> Fazer outro site</button>
+            <button className="secondary-button" onClick={() => baixarZip(zip)}><Download size={15} /> Baixar o ZIP</button>
+            <button className="secondary-button" onClick={recomecar}><RefreshCw size={15} /> Fazer outra loja</button>
             <button className="primary-button" onClick={onExit}>Concluir <ArrowRight size={15} /></button>
           </div>
         </div>
@@ -169,123 +219,149 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     <main className="client-flow">
       <div className="entry-gate-brilho" aria-hidden="true" />
       <div className="cf-layout">
-      <div className="cf-panel">
-        <header className="cf-head">
-          <Orbis tamanho={40} alt="" />
-          <div>
-            <strong>Solicitar meu site</strong>
-            <small>Quatro passos e o site sai no seu computador.</small>
-          </div>
-          <button className="text-button" onClick={onExit}>Sair</button>
-        </header>
-
-        <ol className="cf-steps">
-          {STEPS.map((label, index) => (
-            <li key={label} className={index === step ? "active" : index < step ? "done" : ""}>
-              <i>{index < step ? <Check size={11} /> : index + 1}</i>
-              {label}
-            </li>
-          ))}
-        </ol>
-
-        {error && <div className="error-banner" role="alert"><CircleAlert size={16} /><span>{error}</span><button onClick={() => setError(null)}>Entendi</button></div>}
-
-        {step === 0 && (
-          <div className="cf-body">
-            <label className="cf-field">
-              <span>Nome da marca *</span>
-              <input value={brand.name} maxLength={48} placeholder="Ex.: Aurora Café" onChange={(event) => set("name", event.target.value)} />
-            </label>
-            <label className="cf-field">
-              <span>Slogan (opcional)</span>
-              <input value={brand.slogan} maxLength={140} placeholder="Uma frase curta que apresenta a marca" onChange={(event) => set("slogan", event.target.value)} />
-            </label>
-            <label className="cf-field">
-              <span>Descrição (opcional)</span>
-              <textarea value={brand.description} maxLength={240} rows={2} placeholder="O que você vende e para quem" onChange={(event) => set("description", event.target.value)} />
-            </label>
-            <div className="cf-row">
-              <label className="cf-field">
-                <span>Cor principal</span>
-                <span className="cf-color"><input type="color" value={brand.primaryColor} onChange={(event) => set("primaryColor", event.target.value)} /><code>{brand.primaryColor}</code></span>
-              </label>
-              <label className="cf-field">
-                <span>Cor de fundo</span>
-                <span className="cf-color"><input type="color" value={brand.backgroundColor} onChange={(event) => set("backgroundColor", event.target.value)} /><code>{brand.backgroundColor}</code></span>
-              </label>
-              <label className="cf-field">
-                <span>Logo (opcional)</span>
-                <span className="cf-logo">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- prévia de data URI local; não passa pelo otimizador. */}
-                  {brand.logoDataUri && <img src={brand.logoDataUri} alt="Logo escolhida" />}
-                  <label className="secondary-button">{brand.logoDataUri ? "Trocar" : "Enviar"}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => chooseLogo(event.target.files?.[0])} /></label>
-                </span>
-              </label>
+        <div className="cf-panel">
+          <header className="cf-head">
+            <Orbis tamanho={40} alt="" />
+            <div>
+              <strong>Criar minha loja</strong>
+              <small>Quatro passos e a loja sai no seu computador.</small>
             </div>
-            <div className="cf-row">
-              <label className="cf-field"><span>WhatsApp (opcional)</span><input value={brand.whatsapp} maxLength={20} placeholder="5511999998888" onChange={(event) => set("whatsapp", event.target.value)} /></label>
-              <label className="cf-field"><span>Instagram (opcional)</span><input value={brand.instagram} maxLength={60} placeholder="@suamarca" onChange={(event) => set("instagram", event.target.value)} /></label>
-              <label className="cf-field"><span>E-mail (opcional)</span><input value={brand.email} maxLength={120} placeholder="contato@suamarca.com" onChange={(event) => set("email", event.target.value)} /></label>
-            </div>
-          </div>
-        )}
+            <button className="text-button" onClick={onExit}>Sair</button>
+          </header>
 
-        {step === 1 && (
-          <div className="cf-body">
-            <div className="cf-theme-card selected">
-              <Store size={22} strokeWidth={1.6} />
-              <div>
-                <strong>ShrinePro</strong>
-                <p>Tema de conversão para lojas: vitrine, prova social, comparação e captura de contatos. Outros temas chegarão em breve.</p>
-              </div>
-              <span className="cf-selected-badge"><Check size={12} /> Selecionado</span>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="cf-body cf-templates">
-            {SITE_TEMPLATES.map((entry) => (
-              <button key={entry.id} className={`cf-template ${templateId === entry.id ? "selected" : ""}`} onClick={() => setTemplateId(entry.id)}>
-                <span className="cf-template-thumb" aria-hidden="true">
-                  {entry.sections.filter((section) => section !== "announcement").slice(0, 6).map((section) => <i key={section} data-kind={section} />)}
-                </span>
-                <strong>{entry.name}</strong>
-                <p>{entry.tagline}</p>
-                <span className="cf-template-sections">{entry.sections.map((section) => SECTION_LABELS[section as keyof typeof SECTION_LABELS]).join(" · ")}</span>
-                {templateId === entry.id && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
-              </button>
+          <ol className="cf-steps">
+            {PASSOS.map((rotulo, indice) => (
+              <li key={rotulo} className={indice === passo ? "active" : indice < passo ? "done" : ""}>
+                <i>{indice < passo ? <Check size={11} /> : String(indice + 1).padStart(2, "0")}</i>
+                {rotulo}
+              </li>
             ))}
-          </div>
-        )}
+          </ol>
 
-        {step === 3 && (
-          <div className="cf-body">
-            <dl className="cf-review">
-              <div><dt>Marca</dt><dd>{brand.name.trim() || "Minha Marca"}</dd></div>
-              {brand.slogan && <div><dt>Slogan</dt><dd>{brand.slogan}</dd></div>}
-              <div><dt>Cores</dt><dd><i className="cf-swatch" style={{ background: brand.primaryColor }} /> {brand.primaryColor} · <i className="cf-swatch" style={{ background: brand.backgroundColor }} /> {brand.backgroundColor}</dd></div>
-              <div><dt>Tema</dt><dd>ShrinePro</dd></div>
-              <div><dt>Modelo</dt><dd>{template.name}: {template.tagline}</dd></div>
-              {(brand.whatsapp || brand.instagram || brand.email) && <div><dt>Contato</dt><dd>{[brand.whatsapp, brand.instagram, brand.email].filter(Boolean).join(" · ")}</dd></div>}
-              <div><dt>Entrega</dt><dd>ZIP e pasta prontos na sua Área de Trabalho, com o site abrindo pelo index.html.</dd></div>
-            </dl>
-          </div>
-        )}
+          {erro && <div className="error-banner" role="alert"><CircleAlert size={16} /><span>{erro}</span><button onClick={() => setErro(null)}>Entendi</button></div>}
 
-        <footer className="cf-foot">
-          {step > 0 ? <button className="secondary-button" onClick={() => setStep(step - 1)}><ArrowLeft size={15} /> Voltar</button> : <span />}
-          {step < STEPS.length - 1 ? (
-            <button className="primary-button" disabled={!canAdvance} onClick={() => setStep(step + 1)}>Avançar <ArrowRight size={15} /></button>
-          ) : (
-            <button className="primary-button" onClick={() => void requestSite()}>Solicitar meu site <ArrowRight size={15} /></button>
+          {passo === 0 && (
+            <div className="cf-body">
+              <div className="cf-modos">
+                <button className={`cf-modo ${modo === "gerada" ? "selecionado" : ""}`} onClick={() => setModo("gerada")}>
+                  <span className="cf-modo-icone"><Sparkles size={20} strokeWidth={1.6} /></span>
+                  <strong>A Orbis cria minha marca</strong>
+                  <p>Escolha o nicho e receba nome, paleta, tipografia, voz, logo e coleções. Depois é só escolher o tema.</p>
+                </button>
+                <button className={`cf-modo ${modo === "manual" ? "selecionado" : ""}`} onClick={() => { setModo("manual"); setNicheId(""); setGerada(false); }}>
+                  <span className="cf-modo-icone"><PenLine size={20} strokeWidth={1.6} /></span>
+                  <strong>Eu já tenho minha marca</strong>
+                  <p>Preencha nome, cores e contatos do seu jeito. O que ficar em branco eu resolvo com o kit.</p>
+                </button>
+              </div>
+
+              {modo === "gerada" && (
+                <>
+                  <span className="cf-secao-titulo">Escolha o nicho da loja</span>
+                  <div className="cf-nichos">
+                    {NICHOS.map((nicho: { id: string; nome: string; resumo: string; paletas: Array<{ primaria: string; fundo: string; destaque: string }> }) => (
+                      <button key={nicho.id} className={`cf-nicho ${nicheId === nicho.id ? "selecionado" : ""}`} onClick={() => escolherNicho(nicho.id)}>
+                        <span className="cf-nicho-cores" aria-hidden="true">
+                          {nicho.paletas.slice(0, 3).map((paleta, indice) => <i key={indice} style={{ background: paleta.primaria }} />)}
+                        </span>
+                        <strong>{nicho.nome}</strong>
+                        <small>{nicho.resumo}</small>
+                        {nicheId === nicho.id && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
-        </footer>
-      </div>
-      <aside className="cf-preview" aria-label="Prévia do site">
-        <span className="cf-preview-title">Prévia ao vivo</span>
-        <ClientSitePreview brand={brand} sections={template.sections} />
-      </aside>
+
+          {passo === 1 && (
+            <ClientMarcaBancada
+              marca={marca}
+              nicheId={nicheId}
+              gerada={gerada}
+              onChange={ajustarMarca}
+              onGerar={() => gerarMarcaAgora(novaSemente())}
+            />
+          )}
+
+          {passo === 2 && (
+            <div className="cf-body">
+              <span className="cf-secao-titulo">Temas disponíveis no estúdio</span>
+              {temasCarregando ? (
+                <p className="cf-painel-nota">Carregando os temas…</p>
+              ) : temas.length === 0 ? (
+                <p className="cf-painel-nota">Nenhum tema disponível ainda. Importe um tema em <b>Importar temas</b> e ele aparece aqui.</p>
+              ) : (
+                <div className="cf-temas">
+                  {temas.map((tema) => (
+                    <button key={tema.id} className={`cf-tema ${themeId === tema.id ? "selecionado" : ""}`} onClick={() => setThemeId(tema.id)}>
+                      <span className="cf-tema-thumb">
+                        <RealHomeThumbnail src={`/api/theme-render?themeId=${encodeURIComponent(tema.id)}&page=index`} title={tema.name} />
+                      </span>
+                      <strong>{tema.name}</strong>
+                      {tema.sectionCount ? <small>{tema.sectionCount} seções</small> : null}
+                      {themeId === tema.id && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <span className="cf-secao-titulo">Composição das páginas</span>
+              <div className="cf-templates">
+                {SITE_TEMPLATES.map((entrada) => (
+                  <button key={entrada.id} className={`cf-template ${templateId === entrada.id ? "selected" : ""}`} onClick={() => setTemplateId(entrada.id)}>
+                    <span className="cf-template-thumb" aria-hidden="true">
+                      {entrada.sections.filter((secao: string) => secao !== "announcement").slice(0, 6).map((secao: string) => <i key={secao} data-kind={secao} />)}
+                    </span>
+                    <strong>{entrada.name}</strong>
+                    <p>{entrada.tagline}</p>
+                    <span className="cf-template-sections">{entrada.sections.map((secao: string) => SECTION_LABELS[secao as keyof typeof SECTION_LABELS]).join(" · ")}</span>
+                    {templateId === entrada.id && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {passo === 3 && (
+            <div className="cf-body">
+              <dl className="cf-review">
+                <div><dt>Como foi criada</dt><dd>{modo === "gerada" ? `Gerada pela Orbis a partir de ${NICHOS.find((n: { id: string; nome: string }) => n.id === nicheId)?.nome ?? "um nicho"}` : "Preenchida por você"}</dd></div>
+                <div><dt>Marca</dt><dd>{marca.name.trim() || "Minha Marca"}</dd></div>
+                {marca.slogan && <div><dt>Slogan</dt><dd>{marca.slogan}</dd></div>}
+                <div><dt>Cores</dt><dd><i className="cf-swatch" style={{ background: marca.primaryColor }} /> {marca.primaryColor} · <i className="cf-swatch" style={{ background: marca.backgroundColor }} /> {marca.backgroundColor}</dd></div>
+                {marca.headingFont && <div><dt>Tipografia</dt><dd>{marca.headingFont} + {marca.bodyFont}</dd></div>}
+                <div><dt>Tema</dt><dd>{temaEscolhido?.name ?? "Nenhum escolhido"}</dd></div>
+                <div><dt>Modelo</dt><dd>{template.name}: {template.tagline}</dd></div>
+                {marca.collections.length > 0 && <div><dt>Coleções</dt><dd>{marca.collections.join(" · ")}</dd></div>}
+                {(marca.whatsapp || marca.instagram || marca.email) && <div><dt>Contato</dt><dd>{[marca.whatsapp, marca.instagram && `@${marca.instagram}`, marca.email].filter(Boolean).join(" · ")}</dd></div>}
+                <div><dt>Entrega</dt><dd>ZIP e pasta na sua Área de Trabalho, e o projeto no estúdio com a marca aplicada ao tema.</dd></div>
+              </dl>
+            </div>
+          )}
+
+          <footer className="cf-foot">
+            {passo > 0 ? <button className="secondary-button" onClick={() => setPasso(passo - 1)}><ArrowLeft size={15} /> Voltar</button> : <span />}
+            {passo === 1 && <span className="cf-foot-dica">Escreva o nome da marca. Ele aparece na loja inteira.</span>}
+            {passo < PASSOS.length - 1 ? (
+              <button className="primary-button" disabled={!podeAvancar} onClick={() => setPasso(passo + 1)}>Próximo <ArrowRight size={15} /></button>
+            ) : (
+              <button className="primary-button" onClick={() => void pedirLoja()}>Criar minha loja <ArrowRight size={15} /></button>
+            )}
+          </footer>
+        </div>
+
+        <aside className="cf-preview" aria-label="Prévia da loja">
+          <span className="cf-preview-title">Prévia ao vivo</span>
+          <ClientSitePreview brand={marca} sections={template.sections} />
+          {marca.logoDataUri && (
+            <div className="cf-preview-logo">
+              {/* eslint-disable-next-line @next/next/no-img-element -- data URI gerado localmente. */}
+              <img src={marca.logoDataUri} alt="Logo gerada" />
+              <span>Logo gerada pela Orbis</span>
+            </div>
+          )}
+        </aside>
       </div>
     </main>
   );

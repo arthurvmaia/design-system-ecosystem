@@ -765,6 +765,73 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-template-thumb i[data-kind="hero"] { height: 26px; background: rgba(34,211,238,.34); }
 .cf-template-thumb i[data-kind="products"] { height: 18px; background: rgba(34,211,238,.24); }
 .cf-template-thumb i[data-kind="footer"] { background: rgba(240,251,255,.14); }
+/* Passo 01: os dois caminhos de entrada (marca gerada ou marca própria). */
+.cf-modos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cf-modo { display: grid; gap: 8px; justify-items: start; text-align: left; padding: 18px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); cursor: pointer; transition: border-color .2s, background .2s; }
+.cf-modo:hover { border-color: rgba(34,211,238,.4); }
+.cf-modo.selecionado { border-color: rgba(34,211,238,.65); background: rgba(6,182,212,.06); }
+.cf-modo strong { font-size: 14.5px; }
+.cf-modo p { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.cf-modo-icone { display: grid; place-items: center; width: 40px; height: 40px; background: rgba(6,182,212,.14); color: var(--green-bright); }
+.cf-secao-titulo { color: var(--muted-2); font: 700 10px var(--font-geist-mono); letter-spacing: .16em; text-transform: uppercase; }
+.cf-nichos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.cf-nicho { position: relative; display: grid; gap: 6px; justify-items: start; text-align: left; padding: 14px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); cursor: pointer; transition: border-color .2s; }
+.cf-nicho:hover { border-color: rgba(34,211,238,.4); }
+.cf-nicho.selecionado { border-color: rgba(34,211,238,.65); background: rgba(6,182,212,.06); }
+.cf-nicho strong { font-size: 13px; }
+.cf-nicho small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.cf-nicho-cores { display: flex; gap: 4px; }
+.cf-nicho-cores i { width: 16px; height: 16px; border: 1px solid rgba(255,255,255,.12); }
+
+/* Passo 02: a bancada da marca — um instrumento aberto por vez. */
+.cf-convite { display: flex; align-items: center; gap: 14px; padding: 16px; text-align: left; border: 1px solid rgba(34,211,238,.35); background: rgba(6,182,212,.06); color: var(--ink); cursor: pointer; transition: border-color .2s; }
+.cf-convite:hover { border-color: rgba(34,211,238,.6); }
+.cf-convite-icone { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; background: rgba(6,182,212,.14); color: var(--green-bright); }
+.cf-convite-texto { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.cf-convite-selo { color: var(--green-bright); font: 700 10px var(--font-geist-mono); letter-spacing: .16em; text-transform: uppercase; }
+.cf-convite-texto strong { font-size: 15px; }
+.cf-convite-texto > span:last-child { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.cf-convite-acao { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--green-bright); font: 700 10px var(--font-geist-mono); letter-spacing: .14em; text-transform: uppercase; }
+.cf-bancada { gap: 14px; }
+.cf-bancada-nota { color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.cf-bancada-lista { border-top: 1px solid var(--line-soft); }
+.cf-bancada-linha { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 12px; text-align: left; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; color: var(--ink); cursor: pointer; transition: background .2s; }
+.cf-bancada-linha:hover { background: rgba(255,255,255,.03); }
+.cf-bancada-linha > svg { flex-shrink: 0; color: var(--muted-2); }
+.cf-bancada-nome { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.cf-bancada-nome b { font-size: 13.5px; font-weight: 500; }
+.cf-bancada-nome small { color: var(--muted-2); font-size: 11px; }
+.cf-bancada-resumo { flex-shrink: 0; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-2); font: 400 11px var(--font-geist-mono); }
+.cf-bancada-resumo.aceso { color: var(--green-bright); }
+.cf-ponto { display: inline-block; width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--line); }
+.cf-ponto-configurado { background: var(--green-bright); box-shadow: 0 0 8px rgba(34,211,238,.6); }
+.cf-ponto-padrao, .cf-ponto-opcional { background: var(--muted-2); }
+.cf-bancada-aberta { gap: 16px; }
+.cf-bancada-cabeca { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.cf-bancada-cabeca h3 { font-size: 19px; font-weight: 500; margin-top: 2px; }
+.cf-bancada-oque { color: var(--muted-2); font: 700 10px var(--font-geist-mono); letter-spacing: .16em; text-transform: uppercase; }
+.cf-painel { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line-soft); background: var(--panel-2); }
+.cf-painel.cf-row { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.cf-painel-nota { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.cf-painel-logo { display: flex; align-items: center; gap: 12px; }
+.cf-painel-logo img { width: 60px; height: 60px; object-fit: contain; border: 1px solid var(--line); background: #fff; }
+.cf-painel-logo span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+/* Passo 03: os temas do estúdio, com a home real de cada um. */
+.cf-temas { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.cf-tema { position: relative; display: grid; gap: 6px; justify-items: start; text-align: left; padding: 10px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); cursor: pointer; transition: border-color .2s; }
+.cf-tema:hover { border-color: rgba(34,211,238,.4); }
+.cf-tema.selecionado { border-color: rgba(34,211,238,.65); background: rgba(6,182,212,.06); }
+.cf-tema strong { font-size: 13px; }
+.cf-tema small { color: var(--muted-2); font-size: 10.5px; }
+.cf-tema-thumb { display: block; width: 100%; height: 140px; overflow: hidden; border: 1px solid var(--line-soft); background: #04090c; }
+.cf-tema-thumb > * { width: 100%; height: 100%; }
+.cf-foot-dica { color: var(--muted); font-size: 12px; text-align: right; flex: 1; }
+.cf-preview-logo { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line-soft); }
+.cf-preview-logo img { width: 34px; height: 34px; object-fit: contain; background: #fff; border: 1px solid var(--line); }
+.cf-preview-logo span { color: var(--muted-2); font-size: 11px; }
+@media (max-width: 720px) { .cf-modos { grid-template-columns: 1fr; } .cf-bancada-resumo { display: none; } }
+
 .cf-review { display: grid; gap: 10px; margin: 0; }
 .cf-review > div { display: grid; grid-template-columns: 120px 1fr; gap: 12px; padding: 10px 12px; border: 1px solid var(--line-soft); }
 .cf-review dt { color: var(--muted-2); font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; align-self: center; }
