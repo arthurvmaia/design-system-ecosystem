@@ -122,7 +122,25 @@ const principal = async (): Promise<void> => {
     });
   }
 
-  const layout = ProjectLayout.parse({ secoes, objetivo, preferDesignSystemId: null });
+  /**
+   * As permissões saem LIGADAS, como na via expressa.
+   *
+   * O comentário da montagem logo acima promete que "etapa sem peça vira seção
+   * criada no estilo do kit" — e é `criarSecoesFaltantes` que autoriza isso. Sem
+   * ela o schema cai no padrão `false`, a promessa não se cumpre e a seção sai
+   * VAZIA: medido no primeiro site, "Prova social" e "Contato" chegaram assim à
+   * página, com o aceite S9 pendente.
+   *
+   * A via expressa liga as duas na criação (`routes/projects.ts`) pelo mesmo
+   * motivo, e este script existe para ser a expressa com kit escolhido. Quem
+   * quiser um site só com o que o kit entrega desliga na tela.
+   */
+  const layout = ProjectLayout.parse({
+    secoes,
+    objetivo,
+    preferDesignSystemId: null,
+    permissoes: { criarSecoesFaltantes: true, criarArteDeApoio: true },
+  });
   const projectId = newProjectId();
   const agora = Date.now();
 
