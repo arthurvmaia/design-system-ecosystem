@@ -49,6 +49,8 @@ export type ResultadoDaMarca = {
   theme: ShopifyThemeImport;
   /** Ids de setting alterados, para a tela de revisão dizer o que mudou. */
   alterados: string[];
+  /** O que a Shopify recusaria; vazio é o esperado. Ver `violacoesDoTema`. */
+  violacoes: string[];
 };
 
 const PAPEL_FUNDO = /(background|bg|fundo|canvas|surface|page.?color)/i;
@@ -255,7 +257,7 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
       continue;
     }
     if ((definicao.type === "text" || definicao.type === "richtext") && CAMPO_DE_MARCA.test(`${definicao.id} ${definicao.label ?? ""}`)) {
-      valores[definicao.id] = marca.name;
+      valores[definicao.id] = valorDeTexto(definicao, marca.name);
       marcou(definicao.id);
     }
   }
@@ -314,12 +316,12 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
           }
           if (definicao.type !== "text" && definicao.type !== "richtext" && definicao.type !== "inline_richtext") continue;
           if (CAMPO_DE_MARCA.test(pista)) {
-            alvo.settings[definicao.id] = marca.name;
+            alvo.settings[definicao.id] = valorDeTexto(definicao, marca.name);
             marcou(`${secao.type}.${definicao.id}`);
             continue;
           }
           if (marca.announcement && CAMPO_DE_AVISO.test(`${secao.type} ${pista}`)) {
-            alvo.settings[definicao.id] = marca.announcement;
+            alvo.settings[definicao.id] = valorDeTexto(definicao, marca.announcement);
             marcou(`${secao.type}.${definicao.id}`);
             continue;
           }
@@ -327,10 +329,10 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
           const noPadrao = atual === undefined || atual === "" || atual === definicao.default;
           if (!noPadrao) continue;
           if (PAPEL_TITULO.test(pista) && marca.slogan) {
-            alvo.settings[definicao.id] = marca.slogan;
+            alvo.settings[definicao.id] = valorDeTexto(definicao, marca.slogan);
             marcou(`${secao.type}.${definicao.id}`);
           } else if (marca.description) {
-            alvo.settings[definicao.id] = marca.description;
+            alvo.settings[definicao.id] = valorDeTexto(definicao, marca.description);
             marcou(`${secao.type}.${definicao.id}`);
           }
         }
@@ -338,7 +340,71 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
     }
   }
 
-  return { theme, alterados };
+  /* último passo: nada sai daqui num formato que a Shopify recusaria */
+  return { theme, alterados, violacoes: violacoesDoTema(theme) };
+}
+
+/**
+ * Texto pronto para um setting `richtext`.
+ *
+ * A Shopify não aceita texto solto em `richtext`: o valor precisa vir dentro de
+ * uma tag de bloco. Texto puro ali faz o importador REJEITAR o arquivo inteiro,
+ * e a página some da loja — foi assim que `templates/cart.json` e a home não
+ * chegaram na Shopify, e o site respondeu 404.
+ */
+export function paraRichtext(texto: string): string {
+  const limpo = String(texto ?? "").trim();
+  if (!limpo) return "";
+  if (/^\s*<(p|ul|ol|h[1-6]|blockquote|div)\b/i.test(limpo)) return limpo;
+  const escapado = limpo.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] as string));
+  return `<p>${escapado}</p>`;
+}
+
+/**
+ * Todo valor que a marca grava, no formato que o tipo do setting exige.
+ *
+ * É o único ponto por onde texto da marca entra num setting, de propósito: a
+ * regra do `richtext` estava espalhada e escapou uma vez, o que basta para
+ * derrubar uma loja.
+ */
+function valorDeTexto(definicao: ShopifySettingDefinition, texto: string): string {
+  return definicao.type === "richtext" ? paraRichtext(texto) : texto;
+}
+
+/**
+ * Aponta o que a Shopify recusaria neste tema.
+ *
+ * Roda no fim da aplicação da marca e é o que impede a classe inteira de erro
+ * de voltar: um valor invàlido não dá erro no editor do Orbis, só some da loja
+ * publicada, e aí o rastro já se perdeu.
+ */
+export function violacoesDoTema(theme: ShopifyThemeImport): string[] {
+  const problemas: string[] = [];
+  const schemaPorTipo = new Map(theme.sectionSchemas.map((schema) => [schema.type, schema]));
+  const conferir = (onde: string, definicoes: ShopifySettingDefinition[], valores: Record<string, ShopifyValue>) => {
+    for (const definicao of achatar(definicoes)) {
+      const valor = valores[definicao.id];
+      if (typeof valor !== "string" || !valor) continue;
+      if (definicao.type === "image_picker" && /^data:/i.test(valor)) {
+        problemas.push(`${onde}.${definicao.id}: data URI em image_picker`);
+      }
+      if (definicao.type === "richtext" && !/^\s*</.test(valor)) {
+        problemas.push(`${onde}.${definicao.id}: richtext sem tag de bloco`);
+      }
+    }
+  };
+  conferir("settings", theme.globalGroups.flatMap((grupo) => grupo.settings), theme.globalValues);
+  for (const page of theme.pages) {
+    for (const secao of page.sections) {
+      const schema = schemaPorTipo.get(secao.type);
+      conferir(`${page.id}/${secao.type}`, schema?.settings ?? [], secao.settings);
+      for (const bloco of secao.blocks) {
+        const doBloco = schema?.blocks?.find((item) => item.type === bloco.type)?.settings ?? [];
+        conferir(`${page.id}/${secao.type}/${bloco.type}`, doBloco, bloco.settings);
+      }
+    }
+  }
+  return problemas;
 }
 
 /** "Óculos de sol" → "oculos-de-sol": o handle que o tema usa em menus e listas. */

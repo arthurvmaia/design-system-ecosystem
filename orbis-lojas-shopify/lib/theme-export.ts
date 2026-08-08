@@ -219,7 +219,20 @@ export function exportThemeZip(
   const output: Record<string, Uint8Array> = {};
   const modified: string[] = [];
   const warnings: string[] = [];
-  for (const [path, data] of files.entries()) output[path] = data;
+  for (const [path, data] of files.entries()) {
+    /**
+     * Template contextual fica de fora.
+     *
+     * `templates/index.context.<mercado>.json` aponta para um mercado da loja
+     * de ORIGEM. Em outra loja esse id não existe, e a Shopify recusa o arquivo
+     * na importação. Não é perda: sem ele o template normal atende todo mundo.
+     */
+    if (/^templates\/.*\.context\..*\.json$/.test(path)) {
+      warnings.push(`template de mercado da loja de origem removido: ${path}`);
+      continue;
+    }
+    output[path] = data;
+  }
 
   /* mídia do editor e data URIs viram assets reais, com as referências reescritas */
   const media = createMediaRewriter(files, editorMedia, warnings);

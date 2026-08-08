@@ -264,6 +264,98 @@ test("nenhum data URI entra em setting de tema, nem sobrevive à exportação", 
   }
 });
 
+test("a marca aplicada nunca produz valor que a Shopify recusaria", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { aplicarMarcaNoTema, violacoesDoTema, paraRichtext } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+
+    /* richtext exige tag de bloco; texto puro faz a Shopify REJEITAR o arquivo
+       inteiro na importação, e a página some da loja (o site deu 404) */
+    assert.equal(paraRichtext("Peças de vestuário"), "<p>Peças de vestuário</p>");
+    assert.equal(paraRichtext("<p>já é html</p>"), "<p>já é html</p>");
+    assert.equal(paraRichtext("<ul><li>lista</li></ul>"), "<ul><li>lista</li></ul>");
+    assert.equal(paraRichtext("  "), "");
+    assert.equal(paraRichtext("a < b & c"), "<p>a &lt; b &amp; c</p>", "o texto entra escapado");
+
+    const tema = {
+      format: "shopify-os-2.0", themeName: "Tema", version: "1", author: "", sourceFile: "t.zip",
+      sourceFingerprint: "0000000000000000", importedAt: "", summary: {}, sourceFiles: [], compatibility: {},
+      globalGroups: [{ name: "Marca", settings: [{ id: "brand_story", type: "richtext", label: "História da marca", default: "" }] }],
+      globalValues: { brand_story: "" },
+      sectionSchemas: [{
+        type: "featured-collection", name: "Coleção", presets: [],
+        settings: [
+          { id: "title", type: "text", label: "Título", default: "Coleção" },
+          { id: "description", type: "richtext", label: "Descrição", default: "" },
+          { id: "image", type: "image_picker", label: "Imagem" },
+        ],
+        blocks: [{ type: "texto", name: "Texto", settings: [{ id: "corpo", type: "richtext", label: "Corpo", default: "" }] }],
+      }],
+      pages: [{
+        id: "index", name: "Início", template: "templates/index.json",
+        sections: [{
+          id: "s1", type: "featured-collection", name: "Coleção",
+          settings: { title: "Coleção", description: "" },
+          blocks: [{ id: "b1", type: "texto", settings: { corpo: "" } }],
+        }],
+      }],
+    };
+
+    /* o mesmo teste para os dez nichos: a copy muda, a regra não */
+    for (const nicho of NICHOS) {
+      const marca = gerarMarca({ nicheId: nicho.id, semente: "richtext" });
+      const { theme, violacoes } = aplicarMarcaNoTema(tema, marca);
+      assert.deepEqual(violacoes, [], `${nicho.id} produziu valor inválido: ${violacoes.join("; ")}`);
+      const descricao = theme.pages[0].sections[0].settings.description;
+      if (descricao) assert.match(descricao, /^</, `${nicho.id}: richtext de seção sem tag de bloco`);
+      const corpo = theme.pages[0].sections[0].blocks[0].settings.corpo;
+      if (corpo) assert.match(corpo, /^</, `${nicho.id}: richtext de bloco sem tag de bloco`);
+    }
+
+    /* o detector precisa mesmo detectar, senão o teste acima não vale nada */
+    const quebrado = JSON.parse(JSON.stringify(tema));
+    quebrado.pages[0].sections[0].settings.description = "texto puro";
+    quebrado.pages[0].sections[0].settings.image = "data:image/svg+xml;charset=utf-8,%3Csvg%3E";
+    const achados = violacoesDoTema(quebrado);
+    assert.equal(achados.length, 2, `esperava 2 violações, veio ${achados.length}: ${achados.join("; ")}`);
+    assert.ok(achados.some((v) => /richtext/.test(v)));
+    assert.ok(achados.some((v) => /image_picker/.test(v)));
+  } finally {
+    await server.close();
+  }
+});
+
+test("templates de mercado da loja de origem não entram no ZIP", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { exportThemeZip } = await server.ssrLoadModule("/lib/theme-export.ts");
+    const { unzipSync } = await import("fflate");
+    const bytes = (texto) => new TextEncoder().encode(texto);
+    const arquivos = new Map([
+      ["layout/theme.liquid", bytes("{{ content_for_layout }}")],
+      ["templates/index.json", bytes(JSON.stringify({ sections: {}, order: [] }))],
+      /* mercado da loja de origem: em outra loja esse id não existe e a
+         Shopify recusa o arquivo na importação */
+      ["templates/index.context.04d13b88-4025-4eda-aa29-07fdfbea8470.json", bytes(JSON.stringify({ parent: "index.json", sections: {} }))],
+      ["templates/product.context.international.json", bytes(JSON.stringify({ parent: "product.json", sections: {} }))],
+    ]);
+    const tema = {
+      format: "shopify-os-2.0", themeName: "T", version: "1", author: "", sourceFile: "t.zip",
+      sourceFingerprint: "0000000000000000", importedAt: "", summary: {}, sourceFiles: [], compatibility: {},
+      globalGroups: [], globalValues: {}, sectionSchemas: [], pages: [],
+    };
+    const { zip, warnings } = exportThemeZip(tema, arquivos);
+    const saida = Object.keys(unzipSync(zip));
+    assert.ok(saida.includes("templates/index.json"), "o template normal continua");
+    assert.equal(saida.filter((n) => /\.context\./.test(n)).length, 0, "nenhum template contextual no ZIP");
+    assert.ok(warnings.some((aviso) => /mercado da loja de origem/.test(aviso)), "a remoção precisa aparecer como aviso");
+  } finally {
+    await server.close();
+  }
+});
+
 test("SVG de terceiro não passa pelo sanitizador", () => {
   const malicioso = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')}`;
   assert.equal(sanitizeBrand({ name: "X", logoDataUri: malicioso }).logoDataUri, "");
