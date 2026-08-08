@@ -75,6 +75,60 @@ const MEDIR = `() => {
     const d = pincel.getImageData(0, 0, 1, 1).data;
     return { r: d[0], g: d[1], b: d[2], a: d[3] / 255 };
   };
+  /**
+   * Um seletor que a folha de ajustes consiga mirar.
+   *
+   * Escopo pela SECAO (o id dela e estavel entre geracoes) mais a lista de
+   * classes do elemento. Mirar por classe, e nao por caminho, e proposital: o
+   * defeito quase nunca e de um elemento, e do COMPONENTE — os tres cartoes da
+   * mesma faixa erram junto, e a correcao tem de valer para os tres.
+   */
+  const seletorDe = (el) => {
+    const sec = el.closest('[data-secao-id]');
+    const escopo = sec ? '[data-secao-id="' + sec.getAttribute('data-secao-id') + '"] ' : '';
+    // A barra invertida vai DOBRADA: isto vive dentro de um template literal, e
+    // uma barra sozinha some antes de chegar ao navegador — o split passava a
+    // quebrar na letra "s", e text-base virava text-ba.e: um seletor que nao
+    // casa com nada.
+    const cls = (el.getAttribute('class') || '')
+      .trim()
+      .split(/\\s+/)
+      .filter(Boolean)
+      .map((c) => '.' + CSS.escape(c));
+    if (cls.length > 0) return escopo + cls.join('');
+    /**
+     * Elemento sem classe nenhuma ainda precisa de alvo.
+     *
+     * Cai no PAI: as classes dele mais o filho direto pela tag. E o mais
+     * proximo de "este pedaco do componente" que da para escrever sem depender
+     * de posicao, que muda quando o conteudo muda.
+     */
+    const pai = el.parentElement;
+    if (!pai) return null;
+    const clsPai = (pai.getAttribute('class') || '')
+      .trim()
+      .split(/\\s+/)
+      .filter(Boolean)
+      .map((c) => '.' + CSS.escape(c));
+    if (clsPai.length === 0) return null;
+    return escopo + clsPai.join('') + ' > ' + el.tagName.toLowerCase();
+  };
+
+  // As tintas da marca, na ordem em que um designer as tentaria.
+  const raizEstilo = getComputedStyle(document.documentElement);
+  const TINTAS = ['--marca-heading', '--marca-body', '--marca-primary', '--marca-accent'];
+  const tintaQueLe = (fundo) => {
+    const lb = luminancia(fundo.r, fundo.g, fundo.b);
+    for (const t of TINTAS) {
+      const c = rgb(raizEstilo.getPropertyValue(t).trim());
+      if (!c) continue;
+      const lt = luminancia(c.r, c.g, c.b);
+      const razao = (Math.max(lt, lb) + 0.05) / (Math.min(lt, lb) + 0.05);
+      if (razao >= ${PISO_DE_CONTRASTE}) return t;
+    }
+    return null;
+  };
+
   const onde = (el) => {
     const sec = el.closest('[data-secao]');
     const papel = sec ? sec.getAttribute('data-secao') : 'página';
@@ -131,7 +185,7 @@ const MEDIR = `() => {
       const chaveA = texto.slice(0, 20) + '|' + onde(el);
       if (!vistos.has(chaveA)) {
         vistos.add(chaveA);
-        apagados.push({ texto, opacidade: oef, onde: onde(el) });
+        apagados.push({ texto, opacidade: oef, onde: onde(el), seletor: seletorDe(el) });
       }
       continue;
     }
@@ -144,7 +198,13 @@ const MEDIR = `() => {
     const chave = texto.slice(0, 20) + '|' + onde(el);
     if (vistos.has(chave)) continue;
     vistos.add(chave);
-    contrastes.push({ texto, contraste: razao, onde: onde(el) });
+    contrastes.push({
+      texto,
+      contraste: razao,
+      onde: onde(el),
+      seletor: seletorDe(el),
+      tinta: tintaQueLe(atras.cor),
+    });
   }
 
   // Imagem que não carregou: o slot vira bloco vazio e ninguém reclama.
@@ -180,6 +240,107 @@ const MEDIR = `() => {
   return { contrastes, apagados, vazios, fora };
 }`;
 
+/** As marcas do bloco: reescrever entre elas em vez de acumular retoque sobre retoque. */
+const QUEBRA = String.fromCharCode(10);
+const ABRE = '/* ORBIS: correções MEDIDAS no navegador — não edite à mão */';
+const FECHA = '/* ORBIS: fim das correções medidas */';
+
+/**
+ * Escreve na folha de ajustes o que só o navegador consegue decidir.
+ *
+ * A composição sabe o papel de cada cor, mas não sabe em que chão o texto vai
+ * pousar: isso só existe com o layout resolvido. Um texto pode passar contra o
+ * fundo da PÁGINA e falhar contra o CARTÃO em que ele sentou — foi o
+ * "Guardião del Rei" a 1,3:1 dentro do card do plano.
+ *
+ * Isto beira o "consertar a saída em vez do motor", que este projeto evita por
+ * princípio. A diferença é a mesma do grid medido: não é palpite sobre o que
+ * deveria ser, é MEDIDA do que é. E a folha de ajustes já existia exatamente
+ * para retoque posterior — é a última da cascata, então vence sem `!important`.
+ *
+ * A correção mira por CLASSE dentro da seção, não por caminho de elemento: o
+ * defeito quase nunca é de um elemento, é do componente, e os três cartões da
+ * mesma faixa erram juntos.
+ */
+/**
+ * Tira o bloco de correções da folha, devolvendo o que havia antes dele.
+ *
+ * Serve a dois momentos, e o segundo é o que me mordeu: antes de MEDIR para
+ * corrigir. Sem isso a medição enxerga a página já corrigida, acha só o que
+ * sobrou, e reescreve o bloco com essas poucas regras — jogando fora as que
+ * estavam segurando o resto. O defeito volta inteiro, e o comando parece ter
+ * piorado o site que ele mesmo consertou.
+ */
+const semOBloco = (css: string): string =>
+  css.includes(ABRE)
+    ? `${css.slice(0, css.indexOf(ABRE))}${css.slice(css.indexOf(FECHA) + FECHA.length)}`
+    : css;
+
+const escreverCorrecoes = (
+  pasta: string,
+  medidas: SiteNoNavegador[],
+): { regras: number; semAlvo: number } => {
+  const porSeletor = new Map<string, string>();
+  let semAlvo = 0;
+
+  for (const m of medidas) {
+    for (const c of m.contrastesAbaixoDoPiso) {
+      if (c.seletor === null || c.tinta === null) {
+        semAlvo += 1;
+        continue;
+      }
+      porSeletor.set(c.seletor, `  color: var(${c.tinta});`);
+    }
+    for (const t of m.textoApagado) {
+      if (t.seletor === null) {
+        semAlvo += 1;
+        continue;
+      }
+      // A revelação não disparou: o conteúdo precisa aparecer. A animação da
+      // origem continua declarada — o que muda é o estado em que ela repousa.
+      const jaTem = porSeletor.get(t.seletor) ?? '';
+      // Sem dedupe, o mesmo seletor acumulava `opacity: 1;` uma vez por trecho
+      // de texto que ele cobria — quatro vezes a mesma declaração.
+      if (!jaTem.includes('opacity: 1;')) {
+        porSeletor.set(t.seletor, `${jaTem}${jaTem === '' ? '' : QUEBRA}  opacity: 1;`);
+      }
+    }
+  }
+
+  const arquivo = join(pasta, 'assets', 'ajustes.css');
+  const atual = existsSync(arquivo) ? readFileSync(arquivo, 'utf8') : '';
+  const semBloco = semOBloco(atual);
+
+  if (porSeletor.size === 0) {
+    writeFileSync(
+      arquivo,
+      `${semBloco.trimEnd()}
+`,
+      'utf8',
+    );
+    return { regras: 0, semAlvo };
+  }
+
+  const corpo = [...porSeletor.entries()]
+    .map(
+      ([sel, decls]) => `${sel} {
+${decls}
+}`,
+    )
+    .join(QUEBRA + QUEBRA);
+  writeFileSync(
+    arquivo,
+    `${semBloco.trimEnd()}
+
+${ABRE}
+${corpo}
+${FECHA}
+`,
+    'utf8',
+  );
+  return { regras: porSeletor.size, semAlvo };
+};
+
 export const conferirNoNavegador = async (
   pasta: string,
 ): Promise<{ largura: number; aceite: ResultadoDeAceite; medida: SiteNoNavegador }[]> => {
@@ -200,8 +361,14 @@ export const conferirNoNavegador = async (
       // parênteses de chamada, o que volta é a própria função, e o resultado
       // chega `undefined`.
       const bruto = (await pagina.evaluate(`(${MEDIR})()`)) as {
-        contrastes: { texto: string; contraste: number; onde: string }[];
-        apagados: { texto: string; opacidade: number; onde: string }[];
+        contrastes: {
+          texto: string;
+          contraste: number;
+          onde: string;
+          seletor: string | null;
+          tinta: string | null;
+        }[];
+        apagados: { texto: string; opacidade: number; onde: string; seletor: string | null }[];
         vazios: string[];
         fora: string[];
       };
@@ -222,12 +389,21 @@ export const conferirNoNavegador = async (
 };
 
 const principal = async (): Promise<void> => {
-  const alvo = process.argv[2];
+  const corrigir = process.argv.includes('--corrigir');
+  const alvo = process.argv.slice(2).find((a) => !a.startsWith('--'));
   if (alvo === undefined) {
     console.log('\n  Uso: pnpm conferir <pasta do site gerado>\n');
     process.exit(1);
   }
   const pasta = resolve(alvo);
+  // Corrigir exige medir o site CRU: com o bloco anterior no lugar, a medição
+  // só enxerga o resíduo e o bloco novo nasce menor que o problema.
+  if (corrigir) {
+    const folha = join(pasta, 'assets', 'ajustes.css');
+    if (existsSync(folha)) {
+      writeFileSync(folha, `${semOBloco(readFileSync(folha, 'utf8')).trimEnd()}${QUEBRA}`, 'utf8');
+    }
+  }
   const resultados = await conferirNoNavegador(pasta);
 
   let reprovou = false;
@@ -238,6 +414,18 @@ const principal = async (): Promise<void> => {
       console.log(`  ${marca} ${v.codigo} ${v.titulo}${v.motivo === '' ? '' : `: ${v.motivo}`}`);
     }
     if (!aceite.aprovado) reprovou = true;
+  }
+
+  if (corrigir) {
+    const { regras, semAlvo } = escreverCorrecoes(
+      pasta,
+      resultados.map((r) => r.medida),
+    );
+    console.log(
+      `
+  ${regras} regra(s) escritas em assets/ajustes.css${semAlvo > 0 ? `; ${semAlvo} achado(s) sem alvo mirável (elemento sem classe ou marca sem tinta que sirva)` : ''}.`,
+    );
+    console.log('  Rode de novo sem --corrigir para conferir o resultado.');
   }
 
   const arquivo = join(pasta, 'aceite-navegador.json');
