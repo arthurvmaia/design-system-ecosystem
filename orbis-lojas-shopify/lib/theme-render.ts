@@ -7,6 +7,7 @@ import { Liquid, type TagToken, type TopLevelToken, type Context, type Emitter }
 import { strFromU8 } from "fflate";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
 import { CATALOGO_LOJA, type CatalogoProduto } from "./catalogo-loja";
+import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
 
 /** Item do carrinho simulado: o preview guarda só o essencial. */
 export type PreviewCartItem = { variantId: number; quantity: number };
@@ -25,6 +26,8 @@ export type RenderOptions = {
   handle?: string;
   /** Variante pedida na rota (?variant=), como o seletor de opções faz. */
   variantId?: number;
+  /** Nicho da loja gerada: define quais produtos abastecem a vitrine. */
+  nicheId?: string;
 };
 
 const PLACEHOLDER_SVG = (label: string, tone = "#e5e7eb") =>
@@ -103,7 +106,10 @@ function produtoDoCatalogo(fonte: CatalogoProduto) {
       name: opcao.name, position: opcao.position, values: opcao.values,
       selected_value: opcao.position === 1 ? primeira.option1 : opcao.position === 2 ? primeira.option2 : primeira.option3,
     })),
-    variants: variantes, selected_or_first_available_variant: primeira, selected_variant: null,
+    /* `selected_variant` só existe quando a rota pede ?variant=; o tipo aceita
+       a variante para `comVarianteSelecionada` poder preenchê-lo */
+    variants: variantes, selected_or_first_available_variant: primeira,
+    selected_variant: null as (typeof variantes)[number] | null,
     first_available_variant: variantes.find((v) => v.available) ?? primeira,
     has_only_default_variant: variantes.length === 1 && fonte.options.length <= 1,
     vendor: fonte.vendor, type: fonte.type,
@@ -119,10 +125,62 @@ const DEMO_PRODUCTS = CATALOGO_LOJA.map(produtoDoCatalogo);
 
 type ProdutoDaLoja = (typeof DEMO_PRODUCTS)[number];
 
-/** Todas as variantes do catálogo, para o carrinho casar item com produto. */
-const VARIANTE_PARA_PRODUTO = new Map<number, ProdutoDaLoja>();
-for (const produto of DEMO_PRODUCTS) {
-  for (const variante of produto.variants) VARIANTE_PARA_PRODUTO.set(variante.id, produto);
+/**
+ * A vitrine de uma renderização: os produtos e o índice de variantes.
+ *
+ * A loja gerada por nicho mostra os produtos daquele nicho; sem nicho (ou com
+ * nicho ainda sem catálogo), continua o catálogo padrão. Vem como parâmetro e
+ * não como estado do módulo porque duas renderizações podem se cruzar no mesmo
+ * isolate — a de uma loja de pet não pode pegar os óculos da outra.
+ */
+type Loja = { produtos: ProdutoDaLoja[]; porVariante: Map<number, ProdutoDaLoja> };
+
+function indexarLoja(produtos: ProdutoDaLoja[]): Loja {
+  const porVariante = new Map<number, ProdutoDaLoja>();
+  for (const produto of produtos) {
+    for (const variante of produto.variants) porVariante.set(variante.id, produto);
+  }
+  return { produtos, porVariante };
+}
+
+const LOJA_PADRAO = indexarLoja(DEMO_PRODUCTS);
+/* o catálogo de um nicho é montado uma vez e reaproveitado entre renderizações */
+const LOJAS_POR_NICHO = new Map<string, Loja>();
+
+export function lojaDoNicho(nicheId: string | undefined): Loja {
+  const chave = String(nicheId ?? "").trim();
+  if (!chave) return LOJA_PADRAO;
+  const pronta = LOJAS_POR_NICHO.get(chave);
+  if (pronta) return pronta;
+  const fonte = PRODUTOS_POR_NICHO[chave];
+  if (!fonte?.length) return LOJA_PADRAO;
+  const loja = indexarLoja(fonte.map(produtoDoNicho));
+  LOJAS_POR_NICHO.set(chave, loja);
+  return loja;
+}
+
+/** Converte um produto do nicho (AliExpress) para o formato que os temas leem. */
+function produtoDoNicho(fonte: ProdutoDoNicho): ProdutoDaLoja {
+  const descricao = [
+    `<p>${fonte.title}</p>`,
+    fonte.rating ? `<p>Nota ${fonte.rating} na origem${fonte.sold ? `, ${fonte.sold}` : ""}.</p>` : "",
+  ].filter(Boolean).join("");
+  return produtoDoCatalogo({
+    id: fonte.id,
+    handle: fonte.handle,
+    title: fonte.title,
+    vendor: "Curadoria da loja",
+    type: "",
+    tags: [],
+    publishedAt: new Date().toISOString(),
+    descriptionHtml: descricao,
+    options: [{ name: "Título", position: 1, values: ["Padrão"] }],
+    images: fonte.images.map((src) => ({ src, width: 350, height: 350, alt: fonte.title, variantIds: [] })),
+    variants: [{
+      id: fonte.id, title: "Padrão", option1: "Padrão", option2: null, option3: null, sku: "",
+      price: fonte.price, compareAtPrice: fonte.compareAtPrice, available: true, imageSrc: fonte.images[0] ?? null,
+    }],
+  });
 }
 
 /**
@@ -151,9 +209,9 @@ function comVarianteSelecionada(produto: ProdutoDaLoja, variantId: number | unde
 }
 
 /** Índice variante → dados de linha, para a ponte do carrinho dentro do preview. */
-function catalogoPorVariante() {
+function catalogoPorVariante(loja: Loja) {
   const mapa: Record<string, unknown> = {};
-  for (const produto of DEMO_PRODUCTS) {
+  for (const produto of loja.produtos) {
     for (const variante of produto.variants) {
       const imagem = variante.featured_image ?? produto.featured_image;
       mapa[String(variante.id)] = {
@@ -169,13 +227,13 @@ function catalogoPorVariante() {
   return mapa;
 }
 
-function demoProduct(handle: string, index = 0): ProdutoDaLoja {
+function demoProduct(loja: Loja, handle: string, index = 0): ProdutoDaLoja {
   const alvo = handle.trim().toLowerCase();
   if (alvo) {
-    const exato = DEMO_PRODUCTS.find((produto) => produto.handle === alvo);
+    const exato = loja.produtos.find((produto) => produto.handle === alvo);
     if (exato) return exato;
   }
-  return DEMO_PRODUCTS[index % DEMO_PRODUCTS.length];
+  return loja.produtos[index % loja.produtos.length];
 }
 
 /**
@@ -183,10 +241,10 @@ function demoProduct(handle: string, index = 0): ProdutoDaLoja {
  * itens com produto, variante, preços e a linha final. É o que faz a gaveta
  * mostrar item, quantidade e total de verdade.
  */
-function buildCart(items: PreviewCartItem[] | undefined) {
+function buildCart(loja: Loja, items: PreviewCartItem[] | undefined) {
   const linhas = (items ?? [])
     .map((item, index) => {
-      const produto = VARIANTE_PARA_PRODUTO.get(item.variantId) ?? DEMO_PRODUCTS[index % DEMO_PRODUCTS.length];
+      const produto = loja.porVariante.get(item.variantId) ?? loja.produtos[index % loja.produtos.length];
       const quantidade = Math.max(1, Math.min(99, Math.floor(item.quantity) || 1));
       const variante = produto.variants.find((candidate) => candidate.id === item.variantId) ?? produto.variants[0];
       const preco = variante.price;
@@ -219,15 +277,15 @@ function buildCart(items: PreviewCartItem[] | undefined) {
   };
 }
 
-function demoCollection(handle: string) {
+function demoCollection(loja: Loja, handle: string) {
   const title = handle ? handle.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Coleção em destaque";
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
-    products: DEMO_PRODUCTS, products_count: DEMO_PRODUCTS.length, all_products_count: DEMO_PRODUCTS.length,
-    image: DEMO_PRODUCTS[0].featured_image, featured_image: DEMO_PRODUCTS[0].featured_image,
-    all_tags: [...new Set(DEMO_PRODUCTS.flatMap((produto) => produto.tags))],
-    all_types: [...new Set(DEMO_PRODUCTS.map((produto) => produto.type).filter(Boolean))],
-    all_vendors: [...new Set(DEMO_PRODUCTS.map((produto) => produto.vendor))],
+    products: loja.produtos, products_count: loja.produtos.length, all_products_count: loja.produtos.length,
+    image: loja.produtos[0].featured_image, featured_image: loja.produtos[0].featured_image,
+    all_tags: [...new Set(loja.produtos.flatMap((produto) => produto.tags))],
+    all_types: [...new Set(loja.produtos.map((produto) => produto.type).filter(Boolean))],
+    all_vendors: [...new Set(loja.produtos.map((produto) => produto.vendor))],
     sort_by: "", default_sort_by: "best-selling", filters: [], template_suffix: null,
   };
 }
@@ -262,7 +320,7 @@ function flattenTranslations(source: Record<string, unknown>, prefix = "", out: 
 function resolveSettingValues(
   values: Record<string, ShopifyValue>,
   definitions: ShopifySettingDefinition[],
-  helpers: { imageFor: (value: ShopifyValue) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
+  helpers: { loja: Loja; imageFor: (value: ShopifyValue) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
 ) {
   const byId = new Map(definitions.map((definition) => [definition.id, definition]));
   const resolved: Record<string, unknown> = {};
@@ -281,10 +339,10 @@ function resolveSettingValues(
     }
     if (type === "image_picker") { resolved[id] = helpers.imageFor(value); continue; }
     if (type === "color_scheme") { resolved[id] = helpers.schemeFor(value); continue; }
-    if (type === "collection") { resolved[id] = demoCollection(typeof value === "string" ? value : ""); continue; }
-    if (type === "product") { resolved[id] = demoProduct(typeof value === "string" ? value : "", 2); continue; }
-    if (type === "collection_list") { resolved[id] = ["colecao-1", "colecao-2", "colecao-3", "colecao-4"].map((handle) => demoCollection(handle)); continue; }
-    if (type === "product_list") { resolved[id] = DEMO_PRODUCTS; continue; }
+    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : ""); continue; }
+    if (type === "product") { resolved[id] = demoProduct(helpers.loja, typeof value === "string" ? value : "", 2); continue; }
+    if (type === "collection_list") { resolved[id] = ["colecao-1", "colecao-2", "colecao-3", "colecao-4"].map((handle) => demoCollection(helpers.loja, handle)); continue; }
+    if (type === "product_list") { resolved[id] = helpers.loja.produtos; continue; }
     if (type === "link_list" || type === "menu") { resolved[id] = { title: "Menu", handle: String(value ?? "main-menu"), links: DEMO_LINKS, levels: 1 }; continue; }
     if (type === "blog") { const blogHandle = String(value ?? "blog"); resolved[id] = { title: "Blog", handle: blogHandle, url: `/blogs/${blogHandle}`, articles: [], articles_count: 0, all_tags: [] }; continue; }
     if (type === "article") { resolved[id] = null; continue; }
@@ -435,7 +493,9 @@ function argPairs(args: unknown[]): Record<string, unknown> {
   return named;
 }
 
-export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId }: RenderOptions): Promise<string> {
+export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId, nicheId }: RenderOptions): Promise<string> {
+  /* a vitrine desta renderização: os produtos do nicho, ou o catálogo padrão */
+  const loja = lojaDoNicho(nicheId);
   const assetPathByName = new Map<string, string>();
   for (const path of files.keys()) {
     if (path.startsWith("assets/")) assetPathByName.set(path.slice("assets/".length).toLowerCase(), path);
@@ -488,7 +548,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   };
 
   const allGlobalDefinitions = theme.globalGroups.flatMap((group) => group.settings);
-  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { imageFor, schemeFor, registerFont });
+  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, imageFor, schemeFor, registerFont });
   if (schemeList.length) settings.color_schemes = schemeCollection;
 
   const localeFile =
@@ -519,12 +579,12 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   }
   const resolveSection = (section: ShopifySectionInstance) => {
     const schema = schemaByType.get(section.type);
-    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { imageFor, schemeFor, registerFont });
+    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, imageFor, schemeFor, registerFont });
     const blocks = section.blocks.map((block, index) => {
       const blockSchema = schema?.blocks.find((item) => item.type === block.type);
       return {
         id: block.id, type: block.type,
-        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { imageFor, schemeFor, registerFont }),
+        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, imageFor, schemeFor, registerFont }),
         shopify_attributes: `data-block-id="${block.id}"`,
         index: index + 1, index0: index,
       };
@@ -532,8 +592,8 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     return { id: section.id, settings: resolvedSettings, blocks, index: 1, index0: 0, location: "template", type: section.type, disabled: section.disabled === true };
   };
 
-  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(handle));
-  const productsProxy = proxyWithFallback<unknown>({}, (handle) => demoProduct(handle, 2));
+  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle));
+  const productsProxy = proxyWithFallback<unknown>({}, (handle) => demoProduct(loja, handle, 2));
   const linklistsProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: "Menu", handle, links: DEMO_LINKS, levels: 1 }));
   const pagesProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: handle, handle, content: "", url: `/pages/${handle}` }));
   const imagesProxy = proxyWithFallback<unknown>({}, (name) => imageFor(name) ?? demoImage("Imagem"));
@@ -545,7 +605,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
       name: theme.themeName.replace(/\s*\(.*\)$/, ""), locale: "pt-BR", currency: "BRL",
       money_format: "R$ {{amount_with_comma_separator}}", money_with_currency_format: "R$ {{amount_with_comma_separator}} BRL",
       url: "", secure_url: "", domain: "minha-loja.exemplo", permanent_domain: "minha-loja.exemplo",
-      email: "contato@exemplo.com", description: "", products_count: DEMO_PRODUCTS.length, collections_count: 3,
+      email: "contato@exemplo.com", description: "", products_count: loja.produtos.length, collections_count: 3,
       customer_accounts_enabled: true, customer_accounts_optional: true,
       enabled_payment_types: ["visa", "master", "pix"], published_locales: [{ iso_code: "pt-BR", primary: true }],
       metafields: {}, brand: { logo: null, colors: {} },
@@ -568,7 +628,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
       market: { handle: "br", metafields: {} },
       available_countries: [], available_languages: [],
     },
-    cart: buildCart(cartItems),
+    cart: buildCart(loja, cartItems),
     customer: null,
     template: { name: pageBase, suffix: pageId.includes(".") ? pageId.split(".").slice(1).join(".") : null, directory: null, toString: () => pageBase },
     /* getter: quando o layout imprime {{ content_for_header }} (sempre por
@@ -595,13 +655,13 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     articles: proxyWithFallback<unknown>({}, () => null),
     /* o handle da rota escolhe o produto/coleção: é o que faz cada cartão
        clicado abrir o SEU produto, e o quick-add mostrar o certo */
-    product: comVarianteSelecionada(demoProduct(pageId.startsWith("product") ? handle ?? "" : ""), variantId),
-    collection: demoCollection(pageId.startsWith("collection") ? handle ?? "" : "colecao-demo"),
+    product: comVarianteSelecionada(demoProduct(loja, pageId.startsWith("product") ? handle ?? "" : ""), variantId),
+    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo"),
     article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "/blogs/news/artigo-demo", tags: [], comments: [], comments_count: 0, comments_enabled: false },
     blog: { title: "Blog", url: "/blogs/news", articles: [], articles_count: 0, all_tags: [] },
     page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "/pages/pagina" },
     search: { performed: false, terms: "", results: [], results_count: 0, types: ["product"], filters: [], sort_by: "relevance", default_sort_by: "relevance" },
-    recommendations: { performed: true, products_count: 4, products: DEMO_PRODUCTS.slice(1, 5), intent: "related" },
+    recommendations: { performed: true, products_count: 4, products: loja.produtos.slice(1, 5), intent: "related" },
     predictive_search: { performed: false, resources: { products: [], collections: [], pages: [], articles: [] } },
     paginate: null,
     current_page: 1, current_tags: null, handle: pageBase,
@@ -865,7 +925,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
       (stream as unknown as { start: () => void }).start();
     },
     * render(this: { templates: unknown[]; liquid: Liquid }, ctx: Context, emitter: Emitter) {
-      ctx.push({ paginate: { pages: 1, current_page: 1, current_offset: 0, items: DEMO_PRODUCTS.length, parts: [], previous: null, next: null, page_size: 24 } });
+      ctx.push({ paginate: { pages: 1, current_page: 1, current_offset: 0, items: loja.produtos.length, parts: [], previous: null, next: null, page_size: 24 } });
       yield (this.liquid as unknown as { renderer: { renderTemplates: (tpls: unknown[], ctx: Context, emitter: Emitter) => unknown } }).renderer.renderTemplates(this.templates as never, ctx, emitter);
       ctx.pop();
     },
@@ -989,7 +1049,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   const carrinhoPonte = `<script>window.__ORBIS_CART_INICIAL__=${JSON.stringify(cartItems ?? [])};(function(){
 /* catálogo real indexado por id de variante: o item do carrinho nasce com
    título, preço e imagem do produto, sem depender de raspar o DOM do tema */
-var catalogo=${JSON.stringify(catalogoPorVariante())};
+var catalogo=${JSON.stringify(catalogoPorVariante(loja))};
 var itens=[];var pedidos={};var seq=0;
 function moeda(c){return "R$ "+(c/100).toFixed(2).replace(".",",");}
 function estado(){var total=0,contagem=0;for(var i=0;i<itens.length;i++){total+=itens[i].price*itens[i].quantity;contagem+=itens[i].quantity;}

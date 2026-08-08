@@ -99,7 +99,9 @@ export async function POST(request: Request) {
       try { shopify = (JSON.parse(escolhido.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { shopify = null; }
       if (shopify) {
         const resultado = aplicarMarcaNoTema(shopify, marca);
-        customizacao.shopify = resultado.theme;
+        /* o nicho fica gravado no tema do projeto: é o que faz a vitrine da
+           loja mostrar os produtos daquele nicho em toda rota de render */
+        customizacao.shopify = { ...resultado.theme, orbisNicheId: parsed.data.nicheId };
         alterados = resultado.alterados;
       }
     }

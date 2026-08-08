@@ -100,6 +100,8 @@ export type ShopifyThemeImport = {
   assetUrls?: Record<string, string>;
   /** Melhor imagem para representar o tema em cards e prévias. */
   assetPreview?: string;
+  /** Nicho da loja gerada pela área do cliente; decide a vitrine de produtos. */
+  orbisNicheId?: string;
 };
 
 export type ShopifyThemeImageAsset = {

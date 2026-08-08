@@ -6,7 +6,7 @@ import { renderThemePage, type PreviewCartItem } from "@/lib/theme-render";
 
 const FINGERPRINT = /^[0-9a-f]{16}$/;
 
-type RenderExtras = { cartItems?: PreviewCartItem[]; onlySections?: string[]; handle?: string; variantId?: number };
+type RenderExtras = { cartItems?: PreviewCartItem[]; onlySections?: string[]; handle?: string; variantId?: number; nicheId?: string };
 
 async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pageId: string, extras: RenderExtras = {}) {
   const fingerprint = shopify.sourceFingerprint;
@@ -24,6 +24,9 @@ async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pag
     onlySections: extras.onlySections,
     handle: extras.handle,
     variantId: extras.variantId,
+    /* o nicho viaja dentro do tema salvo no projeto: a vitrine da loja gerada
+       precisa dos produtos daquele nicho em qualquer rota de render */
+    nicheId: extras.nicheId ?? shopify.orbisNicheId,
   });
   /* pedido de seções soltas volta como JSON (Section Rendering API) */
   if (extras.onlySections?.length) {
