@@ -53,6 +53,7 @@ import {
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { lerBundleInfo } from '../apps/server/src/lib/bundle-v2.js';
+import { montarComponente } from '../apps/server/src/routes/library.js';
 
 type Nota = {
   segId: string;
@@ -302,13 +303,35 @@ const principal = (): void => {
     return;
   }
 
+  /**
+   * A promoção é a MESMA do botão de curtir — `montarComponente`.
+   *
+   * A primeira versão deste script só marcava `inLibrary: true` no banco e
+   * mandava "rodar a rota do app para materializar". Não materializava nada: a
+   * Biblioteca ficava com a flag ligada e sem bundle em disco, e os kits
+   * montados depois não achariam peça nenhuma. Meia promoção é pior que
+   * nenhuma, porque parece feita.
+   */
   let entraram = 0;
+  let falharam = 0;
   for (const n of entrar) {
-    db.update(tables.segments)
-      .set({ inLibrary: true })
-      .where(eq(tables.segments.id, n.segId))
-      .run();
-    entraram++;
+    const seg = segs.find((x) => x.id === n.segId);
+    if (seg === undefined) continue;
+    try {
+      const record = montarComponente(seg);
+      db.transaction((tx) => {
+        tx.insert(tables.libraryComponents).values(record).run();
+        tx.update(tables.segments)
+          .set({ inLibrary: true })
+          .where(eq(tables.segments.id, n.segId))
+          .run();
+      });
+      entraram++;
+      if (entraram % 25 === 0) console.log(`    ${entraram}/${entrar.length}…`);
+    } catch (e) {
+      falharam++;
+      console.log(`    falhou ${n.nome.slice(0, 40)}: ${(e as Error).message.slice(0, 80)}`);
+    }
   }
   let sairam = 0;
   if (limpar) {
@@ -320,10 +343,9 @@ const principal = (): void => {
       sairam++;
     }
   }
-  console.log(
-    `  ${entraram} marcada(s) para a Biblioteca${limpar ? `, ${sairam} retirada(s)` : ''}.`,
-  );
-  console.log('  Rode a rota de curtir do app para materializar os bundles.');
+  const retiradas = limpar ? `, ${sairam} retirada(s)` : '';
+  const naoDeram = falharam > 0 ? ` ${falharam} não deu(ram) certo.` : '';
+  console.log(`  ${entraram} peça(s) na Biblioteca, com bundle em disco${retiradas}.${naoDeram}`);
   console.log('');
 };
 
