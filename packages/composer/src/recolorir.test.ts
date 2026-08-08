@@ -257,3 +257,51 @@ test('variável usada como tinta é tratada como texto, mesmo com nome neutro', 
   // A que só serve de fundo NÃO é tocada: mesma cor, papel diferente.
   assert.ok(r.css.includes('--areia:#2c1810'), `fundo intacto: ${r.css}`);
 });
+
+test('texto NÃO sai com a cor do fundo, mesmo quando o cluster manda', () => {
+  // O pior defeito que o dono viu: um hero inteiro com o texto em `#0b1530`
+  // sobre o fundo `#0b1530` — contraste 1,0:1. O cluster daquela cor da origem
+  // tinha papel de SUPERFÍCIE (lá ela era bloco escuro), e o caminho do cluster
+  // vence o do retema sem conferir se o destino ainda dá para ler.
+  const mapa = new Map([['#0d0c22', { papel: 'background' as const, ajuste: null }]]);
+  const r = recolorirCss('.t{color:#0D0C22}', mapa, {
+    retema: {
+      alvo: 'escuro',
+      fundoDaPagina: '#0b1530',
+      tokens: { background: '#0b1530', heading: '#e6ecf7', body: '#bcd4ff', primary: '#1f7bff' },
+    },
+  });
+  assert.doesNotMatch(r.css, /--marca-background/, 'texto não vira a cor de fundo');
+  assert.match(r.css, /--marca-heading|--marca-body/, 'cede para uma tinta que se lê');
+  assert.ok(
+    r.avisos.some((a) => a.includes('não se lê')),
+    'e a correção é declarada, não calada',
+  );
+});
+
+test('o mesmo cluster continua valendo onde ele PINTA FUNDO', () => {
+  // A regra é sobre texto. Fundo com papel de fundo está certo, e mexer nele
+  // seria trocar um defeito por outro.
+  const mapa = new Map([['#0d0c22', { papel: 'background' as const, ajuste: null }]]);
+  const r = recolorirCss('.t{background-color:#0D0C22}', mapa, {
+    retema: {
+      alvo: 'escuro',
+      fundoDaPagina: '#0b1530',
+      tokens: { background: '#0b1530', heading: '#e6ecf7' },
+    },
+  });
+  assert.match(r.css, /--marca-background/);
+});
+
+test('texto que já se lê não é mexido', () => {
+  const mapa = new Map([['#ffffff', { papel: 'heading' as const, ajuste: null }]]);
+  const r = recolorirCss('.t{color:#ffffff}', mapa, {
+    retema: {
+      alvo: 'escuro',
+      fundoDaPagina: '#0b1530',
+      tokens: { background: '#0b1530', heading: '#e6ecf7', body: '#bcd4ff' },
+    },
+  });
+  assert.match(r.css, /--marca-heading/);
+  assert.ok(!r.avisos.some((a) => a.includes('não se lê')));
+});

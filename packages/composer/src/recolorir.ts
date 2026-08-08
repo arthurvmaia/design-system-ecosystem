@@ -459,6 +459,8 @@ export const recolorirCss = (
   let reescritas = 0;
   let mantidas = 0;
   let retemadas = 0;
+  /** Textos que iam sair sem contraste e foram levados para uma tinta legível. */
+  let ilegiveisCorrigidas = 0;
 
   raiz.walkDecls((decl) => {
     // Idempotência: um valor que já consome --marca-* não é tocado de novo.
@@ -503,6 +505,28 @@ export const recolorirCss = (
         mantidas++;
         continue;
       }
+      /**
+       * NENHUM texto sai pintado com uma cor que não se lê no fundo da página.
+       *
+       * `textoQueSeLe` já existia, e era aplicado só no caminho do RETEMA — o
+       * que preenche as lacunas. O caminho do CLUSTER vence primeiro e passava
+       * sem conferência nenhuma, e é por ele que veio o pior defeito que o dono
+       * viu: um hero inteiro com o texto na cor `#0b1530` sobre o fundo
+       * `#0b1530`. Contraste 1,0:1 — o texto tinha exatamente a cor do fundo,
+       * porque o cluster daquela cor da origem tinha papel de superfície e
+       * ninguém perguntou se o destino ainda dava para ler.
+       *
+       * A origem não estava errada: lá, `#0D0C22` era tinta escura sobre bloco
+       * claro. Errado é herdar o PAPEL sem herdar o chão — e o chão, aqui, é o
+       * da marca.
+       */
+      if (retema !== undefined && PROPS_DE_TEXTO.has(propriedade)) {
+        const legivel = textoQueSeLe(destino.papel, retema);
+        if (legivel !== destino.papel) {
+          destino = { ...destino, papel: legivel };
+          ilegiveisCorrigidas++;
+        }
+      }
       const nova = reescrever(cor.hexOpaco, cor.alfa, destino);
       // Replace de UMA ocorrência do literal exato. O literal veio do próprio
       // valor, então ele existe; se o mesmo literal aparece duas vezes no
@@ -518,11 +542,17 @@ export const recolorirCss = (
     decl.value = valor;
   });
 
-  const avisos =
-    retemadas > 0
+  const avisos = [
+    ...(retemadas > 0
       ? [
           `tema invertido em relação à marca: ${retemadas} cor(es) da origem que nenhum cluster cobria foram migradas para a paleta (superfícies para a superfície da marca, acentos para os acentos, texto para a tinta).`,
         ]
-      : [];
+      : []),
+    ...(ilegiveisCorrigidas > 0
+      ? [
+          `${ilegiveisCorrigidas} texto(s) sairiam com uma cor que não se lê no fundo desta página e foram levados para uma tinta legível: o cluster da origem dava a eles papel de superfície, e o chão aqui é outro.`,
+        ]
+      : []),
+  ];
   return { css: raiz.toString(), reescritas, mantidas, avisos: [...avisosDoReparo, ...avisos] };
 };
