@@ -1,11 +1,13 @@
-import { strToU8, zipSync } from "fflate";
+import { env } from "cloudflare:workers";
+import { strToU8, zipSync, unzipSync } from "fflate";
 import { z } from "zod";
 import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1, saveProject, unlockTheme } from "@/lib/data";
 import { brandCustomization, generateClientSite, sanitizeBrand } from "@/lib/site-generator.mjs";
 import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
 import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
-import type { ShopifyThemeImport } from "@/lib/shopify-theme";
+import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
+import { exportThemeZip } from "@/lib/theme-export";
 
 /**
  * Solicitação de loja do Fluxo Cliente.
@@ -54,6 +56,24 @@ const requestSchema = z.object({
   }),
 });
 
+/**
+ * O tema Shopify completo, com a marca já gravada nos settings.
+ *
+ * Reaproveita o ZIP original preservado no R2 e o mesmo exportador da área do
+ * estúdio, então o pacote sai com layout, templates, seções, snippets, assets e
+ * locales — tudo que a Shopify exige para aceitar o upload. Sem o ZIP de origem
+ * (tema antigo, importado antes da preservação) devolve nulo, e a entrega segue
+ * só com a prévia local em vez de quebrar.
+ */
+async function montarTemaShopify(viewerId: string, tema: ShopifyThemeImport): Promise<Record<string, Uint8Array> | null> {
+  if (!env.MEDIA || !/^[0-9a-f]{16}$/.test(tema.sourceFingerprint)) return null;
+  const objeto = await env.MEDIA.get(`themes/${viewerId}/${tema.sourceFingerprint}.zip`);
+  if (!objeto) return null;
+  const originais = themeFilesFromZip(new Uint8Array(await objeto.arrayBuffer()));
+  const { zip } = exportThemeZip(tema, originais);
+  return unzipSync(zip) as Record<string, Uint8Array>;
+}
+
 /** O tema escolhido só entra se estiver publicado — a lista da tela é a mesma. */
 async function temaPublicado(themeId: string) {
   const linha = await getD1()
@@ -94,6 +114,7 @@ export async function POST(request: Request) {
        importado, ela leva junto o tema com a marca já aplicada */
     const customizacao = brandCustomization(marca) as unknown as Record<string, unknown>;
     let alterados: string[] = [];
+    let temaComMarca: ShopifyThemeImport | null = null;
     if (escolhido) {
       let shopify: ShopifyThemeImport | null = null;
       try { shopify = (JSON.parse(escolhido.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { shopify = null; }
@@ -101,7 +122,8 @@ export async function POST(request: Request) {
         const resultado = aplicarMarcaNoTema(shopify, marca);
         /* o nicho fica gravado no tema do projeto: é o que faz a vitrine da
            loja mostrar os produtos daquele nicho em toda rota de render */
-        customizacao.shopify = { ...resultado.theme, orbisNicheId: parsed.data.nicheId };
+        temaComMarca = { ...resultado.theme, orbisNicheId: parsed.data.nicheId };
+        customizacao.shopify = temaComMarca;
         alterados = resultado.alterados;
       }
     }
@@ -114,20 +136,28 @@ export async function POST(request: Request) {
       .run();
 
     const site = generateClientSite({ brand: marca, templateId: parsed.data.templateId });
-    const zip = zipSync(
-      Object.fromEntries(Object.entries(site.files as Record<string, string | Uint8Array>)
-        .map(([path, content]) => [path, typeof content === "string" ? strToU8(content) : content])),
-      { level: 6 },
-    );
+    /* a prévia local vai numa subpasta: o topo do ZIP tem de ser o tema, senão
+       a Shopify recusa com "missing template layout/theme.liquid" */
+    const arquivos: Record<string, Uint8Array> = {};
+    for (const [caminho, conteudo] of Object.entries(site.files as Record<string, string | Uint8Array>)) {
+      arquivos[`previa-local/${caminho}`] = typeof conteudo === "string" ? strToU8(conteudo) : conteudo;
+    }
 
+    /* O tema Shopify de verdade: o ZIP tem de subir em Temas → Adicionar tema.
+       Sem isto a entrega era um site estático, e a importação falhava. */
+    const tema = temaComMarca ? await montarTemaShopify(viewer.id, temaComMarca) : null;
+    if (tema) for (const [caminho, dados] of Object.entries(tema)) arquivos[caminho] = dados;
+
+    const zip = zipSync(arquivos, { level: 6 });
     return new Response(zip.slice().buffer, {
       headers: {
         "content-type": "application/zip",
-        "content-disposition": `attachment; filename="site-${site.brand.slug}.zip"`,
+        "content-disposition": `attachment; filename="loja-${site.brand.slug}.zip"`,
         "x-site-name": site.brand.slug,
         "x-project-id": projectId,
         "x-theme-id": themeId,
         "x-brand-settings": String(alterados.length),
+        "x-theme-files": String(tema ? Object.keys(tema).length : 0),
         "cache-control": "no-store",
       },
     });

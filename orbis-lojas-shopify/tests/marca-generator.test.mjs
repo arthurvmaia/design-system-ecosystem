@@ -114,6 +114,19 @@ test("toda loja sai com logo, inclusive a preenchida à mão", () => {
   assert.ok(!Object.keys(semLogo.files).includes("assets/logo.svg"));
 });
 
+test("a entrega do cliente é um tema Shopify, não um site solto", async () => {
+  const rota = await readFile(new URL("../app/api/client-request/route.ts", import.meta.url), "utf8");
+  /* o ZIP tem que subir em Temas → Adicionar tema: o topo é o tema, e a
+     Shopify recusa sem layout/theme.liquid */
+  assert.match(rota, /exportThemeZip/);
+  assert.match(rota, /montarTemaShopify/);
+  /* a prévia local não pode poluir a raiz do tema */
+  assert.match(rota, /previa-local\//);
+  assert.match(rota, /loja-\$\{site\.brand\.slug\}\.zip/);
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+  assert.match(flow, /Enviar arquivo ZIP/, "a tela precisa dizer o que fazer com o pacote");
+});
+
 test("SVG de terceiro não passa pelo sanitizador", () => {
   const malicioso = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')}`;
   assert.equal(sanitizeBrand({ name: "X", logoDataUri: malicioso }).logoDataUri, "");

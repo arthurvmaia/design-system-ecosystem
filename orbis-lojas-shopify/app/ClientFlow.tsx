@@ -202,14 +202,18 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           <h2>Loja pronta, senhor.</h2>
           {delivery ? (
             <>
-              <p>Deixei tudo na sua Área de Trabalho. Para ver a loja, abra a pasta e clique duas vezes no <b>index.html</b>. O projeto também nasceu no estúdio, já com a marca aplicada ao tema.</p>
+              <p>
+                Deixei tudo na sua Área de Trabalho. O <b>ZIP é o tema Shopify completo</b>: suba em
+                {" "}<b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo ZIP</b>. Para
+                {" "}olhar sem subir nada, abra <b>previa-local/index.html</b> dentro da pasta.
+              </p>
               <div className="cf-paths">
-                <div><FolderOpen size={15} /> <span>{delivery.folderPath}</span></div>
                 <div><Download size={15} /> <span>{delivery.zipPath}</span></div>
+                <div><FolderOpen size={15} /> <span>{delivery.folderPath}</span></div>
               </div>
             </>
           ) : (
-            <p>Não consegui gravar direto na Área de Trabalho, então baixei o ZIP pelo navegador. Extraia e clique no <b>index.html</b>.</p>
+            <p>Não consegui gravar direto na Área de Trabalho, então baixei o ZIP pelo navegador. Ele é o tema Shopify completo: suba em <b>Temas → Adicionar tema → Enviar arquivo ZIP</b>.</p>
           )}
           <div className="cf-actions">
             <button className="secondary-button" onClick={() => baixarZip(zip)}><Download size={15} /> Baixar o ZIP</button>
