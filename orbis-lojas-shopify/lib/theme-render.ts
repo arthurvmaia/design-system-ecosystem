@@ -791,10 +791,19 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     const drop = resolveSection(section);
     let inner = "";
     if (source) {
+      /* `section` precisa estar entre os GLOBAIS enquanto a seção renderiza:
+         o `{% render %}` isola o escopo, e temas que delegam o corpo a um
+         snippet (`{% render 'cart-drawer' %}` usando `section.blocks`)
+         perdiam os blocos e renderizavam vazio. Por isso o render de seções é
+         sequencial: um `section` global de cada vez. */
+      const anterior = globals.section;
+      globals.section = drop;
       try {
         inner = await engine.parseAndRender(stripSchema(source), { ...globals, section: drop });
       } catch (error) {
         inner = `<!-- seção ${section.type}: ${error instanceof Error ? error.message.slice(0, 200) : "erro"} -->`;
+      } finally {
+        if (anterior === undefined) delete globals.section; else globals.section = anterior;
       }
     } else {
       inner = `<!-- seção ${section.type} sem arquivo .liquid -->`;
@@ -805,7 +814,8 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   const renderGroup = async (groupId: string): Promise<string> => {
     const group = theme.pages.find((item) => item.id === groupId || item.id.startsWith(groupId));
     if (!group) return "";
-    const parts = await Promise.all(group.sections.map((section) => renderSectionInstance(section)));
+    const parts: string[] = [];
+    for (const section of group.sections) parts.push(await renderSectionInstance(section));
     return parts.join("\n");
   };
 
@@ -863,9 +873,10 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     }
   }
   if (!contentForLayout.trim()) {
-    const rendered = await Promise.all(
-      page.sections.filter((section) => !section.disabled).map((section) => renderSectionInstance(section)),
-    );
+    /* sequencial pelo mesmo motivo do grupo: `section` é global durante o
+       render de cada seção */
+    const rendered: string[] = [];
+    for (const section of page.sections.filter((item) => !item.disabled)) rendered.push(await renderSectionInstance(section));
     contentForLayout = rendered.join("\n");
   }
 
@@ -944,10 +955,19 @@ function aplicarSecoes(html){Object.keys(html||{}).forEach(function(tipo){if(!ht
 var alvo=document.querySelector("[id^='shopify-section-'].section-"+tipo)||document.getElementById("shopify-section-"+tipo);
 if(!alvo)return;var novo=document.createElement("div");novo.innerHTML=html[tipo];
 var conteudo=novo.querySelector("[id^='shopify-section-']")||novo;alvo.innerHTML=conteudo.innerHTML;});}
-function abrirGaveta(){var gaveta=document.querySelector("cart-drawer, #CartDrawer, .cart-drawer, [id*='cart-drawer' i]");
-if(gaveta){["active","is-open","open","drawer--active"].forEach(function(c){gaveta.classList.add(c);});gaveta.removeAttribute("hidden");if(gaveta.hasAttribute("aria-hidden"))gaveta.setAttribute("aria-hidden","false");
-var det=gaveta.closest("details");if(det)det.open=true;document.body.classList.add("overflow-hidden");return true;}
-return false;}
+/* Elementos que formam a gaveta: o custom element (cart-drawer/mini-cart) e o
+   contêiner interno. Aplicar em todos evita depender do nome que cada tema
+   escolheu — pegar só o primeiro do seletor acertava uma div interna e a
+   gaveta não abria. */
+function alvosDaGaveta(){var lista=[];
+document.querySelectorAll("cart-drawer, mini-cart, #CartDrawer, #mini-cart, .cart-drawer, .mini-cart, [id*='cart-drawer' i]").forEach(function(el){
+  if(el.closest&&el.closest("[id^='shopify-section-']")&&lista.indexOf(el)<0)lista.push(el);});
+return lista;}
+function abrirGaveta(){var alvos=alvosDaGaveta();if(!alvos.length)return false;
+alvos.forEach(function(el){["active","is-open","open","drawer--active"].forEach(function(c){el.classList.add(c);});
+el.removeAttribute("hidden");if(el.hasAttribute("aria-hidden"))el.setAttribute("aria-hidden","false");
+var det=el.closest("details");if(det)det.open=true;});
+document.body.classList.add("overflow-hidden");return true;}
 function comprar(form){var idInput=form.querySelector('[name="id"]');var qtdInput=form.querySelector('[name="quantity"]');
 adicionar({id:idInput&&idInput.value,quantity:qtdInput&&qtdInput.value?qtdInput.value:1});
 if(window.parent!==window){window.parent.postMessage({orbisCartEstado:itens.map(function(i){return {variantId:i.id,quantity:i.quantity};})},"*");}
@@ -959,7 +979,21 @@ document.addEventListener("click",function(e){var botao=e.target.closest&&e.targ
 if(botao){var form=botao.closest("form");if(form){e.preventDefault();comprar(form);}}},false);
 /* estado inicial vindo do editor, para o carrinho sobreviver à troca de página */
 try{if(window.__ORBIS_CART_INICIAL__&&window.__ORBIS_CART_INICIAL__.length){itens=window.__ORBIS_CART_INICIAL__.map(function(i){var base=dadosDoBotao(null);return {id:i.variantId,quantity:i.quantity,title:i.title||base.title,price:i.price||0,image:null,handle:"produto",product_id:i.variantId,url:"/cart"};});}}catch(e){}
-window.__orbisCarrinho={estado:estado,itens:function(){return itens;},comprar:comprar};
+/* fechar a gaveta é responsabilidade do preview também: muitos temas ligam o
+   X ao próprio JS, que aqui não tem loja atrás */
+function fecharGaveta(){var alvos=alvosDaGaveta();if(!alvos.length)return false;
+alvos.forEach(function(el){["active","is-open","open","drawer--active"].forEach(function(c){el.classList.remove(c);});
+var det=el.closest("details");if(det)det.open=false;});
+document.body.classList.remove("overflow-hidden");return true;}
+document.addEventListener("click",function(e){var alvo=e.target.closest&&e.target.closest('[class*="close" i],[class*="dismiss" i],[class*="overlay" i],[aria-label*="fech" i],[aria-label*="close" i]');
+if(!alvo)return;var dentro=alvo.closest("cart-drawer, #CartDrawer, #mini-cart, .cart-drawer, .drawer");if(dentro)setTimeout(fecharGaveta,0);},false);
+document.addEventListener("keydown",function(e){if(e.key==="Escape")fecharGaveta();});
+/* o ícone do carrinho abre a gaveta ATUALIZADA (em vez de abrir vazia) */
+document.addEventListener("click",function(e){var link=e.target.closest&&e.target.closest('a[href="/cart"], a[href^="/cart?"], a[class*="cart" i]');
+if(!link)return;var g=document.querySelector("cart-drawer, #CartDrawer, #mini-cart, .cart-drawer");if(!g)return;
+e.preventDefault();e.stopPropagation();
+pedirSecoes(secoesDaGaveta()).then(function(html){aplicarSecoes(html);abrirGaveta();});},true);
+window.__orbisCarrinho={estado:estado,itens:function(){return itens;},comprar:comprar,abrir:abrirGaveta,fechar:fecharGaveta};
 })();</script>`;
 
   const bridge = `<script>(function(){var mode="selecionar";var hoverAlvo=null;
@@ -973,7 +1007,12 @@ document.addEventListener("click",function(event){var anchor=event.target.closes
 if(anchor){var externo=anchor.getAttribute("href")||"";if(externo.indexOf("http://")===0||externo.indexOf("https://")===0||anchor.target==="_blank"){event.preventDefault();}
 if(mode==="selecionar"){var s=anchor.closest("[data-orbis-section]");var b=anchor.closest("[data-block-id]");if(s&&window.parent!==window){window.parent.postMessage({orbisSection:s.getAttribute("data-orbis-section"),orbisBlock:b?b.getAttribute("data-block-id"):null},"*");}}
 return;}
-if(mode==="selecionar"){event.preventDefault();event.stopPropagation();var block=event.target.closest("[data-block-id]");var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section"),orbisBlock:block?block.getAttribute("data-block-id"):null},"*");}return;}},true);
+if(mode==="selecionar"){
+/* fechar gaveta/modal continua funcionando mesmo no modo de seleção: sem
+   isso, abrir o carrinho no editor prendia a pessoa com a gaveta aberta */
+var saida=event.target.closest('[class*="close" i],[class*="dismiss" i],[class*="overlay" i],[aria-label*="fech" i],[aria-label*="close" i]');
+if(saida)return;
+event.preventDefault();event.stopPropagation();var block=event.target.closest("[data-block-id]");var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section"),orbisBlock:block?block.getAttribute("data-block-id"):null},"*");}return;}},true);
 /* BOLHA (depois do tema): se o proprio tema tratou o clique — carrinho que
    abre a gaveta, menu, modal — ele ja chamou preventDefault e a previa NAO
    troca de pagina. So navega o link que ninguem tratou. */

@@ -218,7 +218,7 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   const pageMap = new Map<string, ShopifyPage>();
   for (const page of [...liquidPages, ...jsonPages]) pageMap.set(page.id, page);
   const layoutSource = strFromU8(byRelativePath.get("layout/theme.liquid") ?? new Uint8Array());
-  for (const page of parseLegacyGlobalGroups(layoutSource, schemaByType)) {
+  for (const page of parseLegacyGlobalGroups(layoutSource, schemaByType, currentSections)) {
     if (!pageMap.has(page.id)) pageMap.set(page.id, page);
   }
   ensureEssentialPages(pageMap, schemaByType);
@@ -467,17 +467,34 @@ function parseLiquidPage(path: string, liquid: string, schemaByType: Map<string,
   return { id, name: pageLabel(id), template: path, sections };
 }
 
-function parseLegacyGlobalGroups(layout: string, schemaByType: Map<string, ShopifySectionSchema>) {
+function parseLegacyGlobalGroups(
+  layout: string,
+  schemaByType: Map<string, ShopifySectionSchema>,
+  currentSections: Record<string, unknown> = {},
+) {
   const types = Array.from(layout.matchAll(/{%[-\s]*section\s+['"]([^'"]+)['"][\s-]*%}/gi)).map((match) => match[1]);
   const headerTypes = types.filter((type) => /header|announcement|ticker/i.test(type));
   const footerTypes = types.filter((type) => /footer/i.test(type));
   const overlayTypes = types.filter((type) => !headerTypes.includes(type) && !footerTypes.includes(type) && schemaByType.has(type));
   if (!headerTypes.length && schemaByType.has("header")) headerTypes.push("header");
   if (!footerTypes.length && schemaByType.has("footer")) footerTypes.push("footer");
+  /**
+   * A configuração REAL destas seções vive em `settings_data.current.sections`
+   * — é lá que a Shopify guarda os blocos do cart drawer, do cabeçalho e do
+   * rodapé de temas clássicos. Sem ler isso, a gaveta do carrinho nascia sem
+   * blocos e aparecia VAZIA no preview, mesmo com produtos dentro.
+   */
+  const instancia = (type: string, fallbackId: string): ShopifySectionInstance => {
+    for (const [key, value] of Object.entries(currentSections)) {
+      const raw = record(value);
+      if (text(raw.type, "") === type) return sectionFromRecord(key, raw, schemaByType);
+    }
+    return defaultSection(type, fallbackId, schemaByType);
+  };
   return [
-    headerTypes.length ? { id: "header-group", name: pageLabel("header-group"), template: "layout/theme.liquid", sections: headerTypes.map((type, index) => defaultSection(type, `legacy-header-${index}`, schemaByType)) } : null,
-    overlayTypes.length ? { id: "overlay-group", name: pageLabel("overlay-group"), template: "layout/theme.liquid", sections: overlayTypes.map((type, index) => defaultSection(type, `legacy-overlay-${index}`, schemaByType)) } : null,
-    footerTypes.length ? { id: "footer-group", name: pageLabel("footer-group"), template: "layout/theme.liquid", sections: footerTypes.map((type, index) => defaultSection(type, `legacy-footer-${index}`, schemaByType)) } : null,
+    headerTypes.length ? { id: "header-group", name: pageLabel("header-group"), template: "layout/theme.liquid", sections: headerTypes.map((type, index) => instancia(type, `legacy-header-${index}`)) } : null,
+    overlayTypes.length ? { id: "overlay-group", name: pageLabel("overlay-group"), template: "layout/theme.liquid", sections: overlayTypes.map((type, index) => instancia(type, `legacy-overlay-${index}`)) } : null,
+    footerTypes.length ? { id: "footer-group", name: pageLabel("footer-group"), template: "layout/theme.liquid", sections: footerTypes.map((type, index) => instancia(type, `legacy-footer-${index}`)) } : null,
   ].filter((value): value is ShopifyPage => Boolean(value));
 }
 

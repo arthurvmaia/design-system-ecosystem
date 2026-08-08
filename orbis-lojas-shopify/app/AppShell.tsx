@@ -920,11 +920,24 @@ function EditorView({ project, projects, onSelectProject, onChooseProject, onDat
         </div>
         <div className="device-switch" aria-label="Largura da prévia">{([{ id: "desktop", icon: Monitor, label: "Desktop" }, { id: "tablet", icon: Tablet, label: "Tablet" }, { id: "mobile", icon: Smartphone, label: "Celular" }] as const).map(({ id, icon: Icon, label }) => <button key={id} className={device === id ? "active" : ""} onClick={() => setDevice(id)} aria-label={label} title={label}><Icon size={16} /></button>)}</div>
         {shopify && <div className="mode-switch" role="radiogroup" aria-label="Modo da prévia">{([["selecionar", "Selecionar", "Clique escolhe a seção ou o bloco; nada navega nem compra"], ["interagir", "Interagir", "Menus, abas e sliders do tema funcionam; links trocam de página"], ["previa", "Prévia", "Visualização limpa, sem contornos do editor"]] as const).map(([id, label, hint]) => <button key={id} role="radio" aria-checked={previewMode === id} className={previewMode === id ? "active" : ""} onClick={() => setPreviewMode(id)} title={hint}>{label}</button>)}</div>}
-        <div className="editor-controls"><button className="icon-button" onClick={undo} disabled={!past.length} aria-label="Desfazer"><Undo2 size={16} /></button><button className="icon-button" onClick={redo} disabled={!future.length} aria-label="Refazer"><Redo2 size={16} /></button><span className={`save-state ${saveState}`}><span />{saveState === "saving" ? "Guardando, senhor…" : saveState === "error" ? "Falhei ao guardar, senhor" : "Guardado, senhor"}</span>{shopify && <>
-          <select className="zoom-select" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label="Zoom da prévia"><option value={0.5}>50%</option><option value={0.75}>75%</option><option value={1}>100%</option></select>
-          <button className="icon-button" onClick={() => window.open(`/api/theme-render?themeId=${project.themeId}&page=${shopifyPageId}`, "_blank", "noopener")} aria-label="Abrir prévia em nova aba" title="Abrir prévia em nova aba (versão salva do tema)"><ArrowUpRight size={16} /></button>
-          <button className="secondary-button" onClick={() => void exportThemeZipFile()} disabled={exporting || !shopify.compatibility?.preservedSource} title={shopify.compatibility?.preservedSource ? "Exportar ZIP instalável com suas edições" : "Indisponível: o ZIP original não foi preservado"}><FileArchive size={15} /> {exporting ? "Exportando…" : "Exportar ZIP"}</button>
-        </>}<button className="secondary-button" onClick={createVersionSnapshot}><Save size={15} /> Criar versão</button><button className="primary-button" onClick={publish}><Globe2 size={15} /> Publicar</button></div>
+        {/* Três grupos separados por divisória, em vez de uma fileira solta:
+            histórico + estado do salvamento · ferramentas da prévia · ações. */}
+        <div className="editor-controls">
+          <div className="editor-group">
+            <button className="icon-button" onClick={undo} disabled={!past.length} aria-label="Desfazer" title="Desfazer"><Undo2 size={16} /></button>
+            <button className="icon-button" onClick={redo} disabled={!future.length} aria-label="Refazer" title="Refazer"><Redo2 size={16} /></button>
+            <span className={`save-state ${saveState}`}><span />{saveState === "saving" ? "Guardando, senhor…" : saveState === "error" ? "Falhei ao guardar, senhor" : "Guardado, senhor"}</span>
+          </div>
+          {shopify && <div className="editor-group">
+            <select className="zoom-select" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label="Zoom da prévia"><option value={0.5}>50%</option><option value={0.75}>75%</option><option value={1}>100%</option></select>
+            <button className="icon-button" onClick={() => window.open(`/api/theme-render?themeId=${project.themeId}&page=${shopifyPageId}`, "_blank", "noopener")} aria-label="Abrir prévia em nova aba" title="Abrir prévia em nova aba (versão salva do tema)"><ArrowUpRight size={16} /></button>
+            <button className="secondary-button" onClick={() => void exportThemeZipFile()} disabled={exporting || !shopify.compatibility?.preservedSource} title={shopify.compatibility?.preservedSource ? "Exportar ZIP instalável com suas edições" : "Indisponível: o ZIP original não foi preservado"}><FileArchive size={15} /> {exporting ? "Exportando…" : "Exportar ZIP"}</button>
+          </div>}
+          <div className="editor-group">
+            <button className="secondary-button" onClick={createVersionSnapshot}><Save size={15} /> Criar versão</button>
+            <button className="primary-button" onClick={publish}><Globe2 size={15} /> Publicar</button>
+          </div>
+        </div>
       </div>
       <div className="editor-tabs" role="tablist" aria-label="Painéis do editor">
         {([["estrutura", "Seções"], ["previa", "Prévia"], ["ajustes", "Ajustes"]] as const).map(([id, label]) => (

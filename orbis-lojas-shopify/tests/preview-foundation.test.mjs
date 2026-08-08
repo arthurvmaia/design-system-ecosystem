@@ -185,3 +185,29 @@ test("carrinho do preview: formulário fiel, Ajax Cart API simulada e gaveta com
   assert.match(preview, /register: \["customers\/register"/);
   assert.match(preview, /recover: \["customers\/reset_password"/);
 });
+
+test("gaveta do carrinho: blocos reais, abre e fecha, e o selo sai do caminho", async () => {
+  const importer = await readFile(new URL("../lib/shopify-theme.ts", import.meta.url), "utf8");
+  /* seções globais de tema clássico guardam a configuração (e os blocos) em
+     settings_data.current.sections: sem ler isso, a gaveta nascia SEM blocos
+     e aparecia vazia mesmo com produto dentro */
+  assert.match(importer, /function parseLegacyGlobalGroups\(\s*layout: string,\s*schemaByType[^)]*currentSections/s);
+  assert.match(importer, /if \(text\(raw\.type, ""\) === type\) return sectionFromRecord\(key, raw, schemaByType\);/);
+
+  const render = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
+  /* {% render %} isola escopo: sem section nos globais, o corpo da gaveta
+     (montado por blocos dentro de um snippet) saía vazio */
+  assert.match(render, /globals\.section = drop;/);
+  assert.match(render, /for \(const section of group\.sections\) parts\.push\(await renderSectionInstance\(section\)\);/);
+  /* abrir/fechar cobre o custom element E o contêiner interno */
+  assert.match(render, /function alvosDaGaveta/);
+  assert.match(render, /function fecharGaveta/);
+  assert.match(render, /keydown[\s\S]{0,60}Escape[\s\S]{0,40}fecharGaveta/);
+  /* no modo de seleção, fechar continua clicável */
+  assert.match(render, /var saida=event\.target\.closest/);
+
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  /* o selo vira faixa no topo: no canto direito ele cobria o X da gaveta */
+  assert.match(css, /\.live-render-badge \{[^}]*top: 0;[^}]*left: 0;[^}]*right: 0/);
+  assert.match(css, /\.editor-group \+ \.editor-group \{[^}]*border-left/);
+});

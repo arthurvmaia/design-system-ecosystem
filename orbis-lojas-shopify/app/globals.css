@@ -166,7 +166,10 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .editor-project { min-width: 0; display: flex; align-items: center; gap: 10px; }.editor-project > strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
 .device-switch { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #020808; }
 .device-switch button { width: 31px; height: 27px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted-2); cursor: pointer; }.device-switch button.active { background: #102122; color: var(--green-bright); }
-.editor-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }.editor-controls .icon-button { width: 30px; height: 30px; }.editor-controls .secondary-button, .editor-controls .primary-button { min-height: 32px; }
+.editor-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }.editor-controls .icon-button { width: 30px; height: 30px; }.editor-controls .secondary-button, .editor-controls .primary-button { min-height: 32px; }
+/* grupos com divisória: histórico · prévia · ações */
+.editor-group { display: flex; align-items: center; gap: 6px; }
+.editor-group + .editor-group { padding-left: 12px; border-left: 1px solid var(--line); }
 .save-state { display: flex; align-items: center; gap: 6px; margin: 0 6px; color: var(--muted); font-size: 10px; }.save-state > span { width: 6px; height: 6px; border-radius: 50%; background: #729793; }.save-state.saving > span { animation: pulse 1s infinite; background: #e6c27b; }.save-state.error { color: var(--danger); }.save-state.error > span { background: var(--danger); }
 .editor-body { min-height: 0; display: grid; grid-template-columns: 220px minmax(320px, 1fr) 292px; }
 /* As abas só existem no celular; aqui os três painéis convivem lado a lado. */
@@ -480,6 +483,9 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
      alcança — a rolagem só anda para o lado oposto. */
   .editor-controls { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
   .editor-controls > * { flex: 0 0 auto; }
+  /* no celular a divisória some: os grupos já quebram em linhas */
+  .editor-group { flex-wrap: wrap; gap: 8px; }
+  .editor-group + .editor-group { padding-left: 0; border-left: 0; }
   .editor-controls .save-state, .editor-controls .zoom-select { display: none; }
   .editor-controls .primary-button { margin-left: auto; }
   /* As abas do editor. Só existem aqui: acima de 860px os três painéis convivem. */
@@ -666,7 +672,10 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 /* --- prévia ao vivo (Liquid real em iframe) --- */
 .live-render-wrap { position: relative; width: 100%; min-height: 640px; height: 100%; display: flex; flex-direction: column; background: #fff; }
 .live-render-frame { flex: 1; width: 100%; min-height: 640px; border: 0; display: block; background: #fff; }
-.live-render-badge { position: absolute; top: 8px; right: 8px; z-index: 3; padding: 4px 7px; border: 1px solid rgba(34,211,238,.5); background: rgba(1,8,10,.85); color: var(--green-bright); font: 700 7px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .18em; pointer-events: none; }
+/* O selo fica ACIMA da loja, numa faixa própria: no canto direito ele cobria
+   o X da gaveta do carrinho e atrapalhava mexer no tema. */
+.live-render-wrap { padding-top: 18px; }
+.live-render-badge { position: absolute; top: 0; left: 0; right: 0; z-index: 3; height: 18px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-bottom: 1px solid rgba(34,211,238,.25); background: #041014; color: var(--green-bright); font: 700 7px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .18em; pointer-events: none; }
 .live-render-loading { min-height: 640px; display: grid; place-content: center; background: #050c10; color: var(--green-bright); font: 700 9px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .25em; animation: pulse 1.4s infinite; }
 .modal-preview .live-render-wrap, .modal-preview .live-render-frame { min-height: min(58vh, 640px); }
 
