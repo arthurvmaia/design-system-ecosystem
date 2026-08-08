@@ -274,3 +274,80 @@ meusProjetosRoute.post('/:id/ajustes', zValidator('json', PedidoDeAjuste), (c) =
   });
   return c.json({ ajuste: novo, job }, 202);
 });
+
+// ── Pendências ──────────────────────────────────────────────────────────────
+//
+// O que a regra de aceite reprovou ou marcou, reunido num lugar só.
+//
+// O dono pediu a tela: "o que não passar você vai estudar e tentar passar, mas
+// se não tiver como pode seguir e deixar ela na tela de pendências". Ela é o
+// oposto de esconder — o site sobe, e o que ele deve fica visível até alguém
+// resolver ou aceitar.
+//
+// Lê o `aceite.json` que a montagem grava ao lado de cada versão. Versão antiga,
+// gerada antes de a regra existir, simplesmente não aparece: dizer que ela tem
+// zero pendências seria mentira, e inventar veredito para o passado seria pior.
+
+meusProjetosRoute.get('/pendencias', (c) => {
+  const db = getDb();
+  const projetos = db.select().from(tables.projects).all();
+  const itens: unknown[] = [];
+
+  for (const p of projetos) {
+    for (const versao of listarVersoes(p.id as ProjectId)) {
+      const caminho = join(projectGeneratedDir(p.id as ProjectId), versao.timestamp, 'aceite.json');
+      if (!existsSync(caminho)) continue;
+      try {
+        const lido = JSON.parse(readFileSync(caminho, 'utf8')) as {
+          vereditos?: { codigo: string; titulo: string; estado: string; motivo: string }[];
+        };
+        const abertos = (lido.vereditos ?? []).filter((v) => v.estado !== 'passou');
+        if (abertos.length === 0) continue;
+        itens.push({
+          projectId: p.id,
+          projectName: p.name,
+          versao: versao.timestamp,
+          vereditos: abertos,
+        });
+      } catch {
+        // aceite.json ilegível não pode derrubar a tela inteira
+      }
+    }
+  }
+  return c.json({ itens });
+});
+
+/**
+ * "Faça-me aprender": mais uma tentativa sobre o que não passou.
+ *
+ * Não é retoque — é investigação. A regra reprovou ou marcou algo, e o que se
+ * pede aqui é que alguém estude AQUELE caso e tente outra abordagem: outra forma
+ * de interpretar o componente, outra maneira de reproduzir a tecnologia que ele
+ * usa. Por isso o job carrega o código da regra e o motivo dela: quem for tentar
+ * precisa saber o que falhou, não só que falhou.
+ */
+const PedidoDeAprendizado = z.object({
+  versao: z.string().min(1),
+  codigo: z.string().min(1).max(8),
+  motivo: z.string().max(600).default(''),
+});
+
+meusProjetosRoute.post('/:id/aprender', zValidator('json', PedidoDeAprendizado), (c) => {
+  const id = c.req.param('id');
+  if (!ehProjectId(id)) return c.json({ error: 'invalid_id' }, 400);
+  const { versao, codigo, motivo } = c.req.valid('json');
+  if (!ehNomeDeVersao(versao)) return c.json({ error: 'versao_nao_encontrada' }, 404);
+  if (!existsSync(join(projectGeneratedDir(id), versao))) {
+    return c.json({ error: 'versao_nao_encontrada' }, 404);
+  }
+
+  const projeto = getDb().select().from(tables.projects).where(eq(tables.projects.id, id)).get();
+  const job = enqueueJob('aprender', `Aprender ${codigo} — ${projeto?.name ?? id}`, {
+    projectId: id,
+    versao,
+    codigo,
+    motivo,
+    alvo: 'site',
+  });
+  return c.json({ job }, 202);
+});

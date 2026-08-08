@@ -941,6 +941,22 @@ export const api = {
     jsonFetch<{ versao: string; formato: number; ajustes: AjusteDoSite[] }>(
       `/api/meus-projetos/${id}/ajustes${versao ? `?versao=${encodeURIComponent(versao)}` : ''}`,
     ),
+  /** O que a regra de aceite nao deixou passar, em todos os sites. */
+  pendencias: () =>
+    jsonFetch<{
+      itens: {
+        projectId: string;
+        projectName: string;
+        versao: string;
+        vereditos: { codigo: string; titulo: string; estado: string; motivo: string }[];
+      }[];
+    }>('/api/meus-projetos/pendencias'),
+  /** "Faca-me aprender": mais uma tentativa sobre o que nao passou. */
+  pedirAprendizado: (id: string, versao: string, codigo: string, motivo: string) =>
+    jsonFetch<{ job: { id: string } }>(`/api/meus-projetos/${id}/aprender`, {
+      method: 'POST',
+      body: JSON.stringify({ versao, codigo, motivo }),
+    }),
   pedirAjuste: (id: string, pedido: string, versao?: string) =>
     jsonFetch<{ ajuste: AjusteDoSite; job: { id: string } }>(
       `/api/meus-projetos/${id}/ajustes${versao ? `?versao=${encodeURIComponent(versao)}` : ''}`,

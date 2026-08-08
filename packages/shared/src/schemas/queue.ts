@@ -26,7 +26,20 @@ import { z } from 'zod';
  * estilo que entra por último na cascata — a composição original fica intacta e
  * o ajuste se desfaz apagando uma linha.
  */
-export const QueueJobType = z.enum(['extract', 'classify', 'generate', 'ajustar']);
+/**
+ * `aprender` e o pedido de NOVA TENTATIVA sobre algo que a regra de aceite
+ * reprovou ou deixou pendente.
+ *
+ * E diferente de `ajustar` porque nao ha nada para ajustar: a peca nao saiu boa,
+ * e o que se pede e que alguem ESTUDE aquele caso e tente outra abordagem —
+ * outra forma de interpretar o componente, outra maneira de reproduzir a
+ * tecnologia que ele usa. E investigacao, nao retoque.
+ *
+ * O dono pediu por nome: "era bom nessa tela de pendencias ter um botao em cada
+ * um de 'faca-me aprender', que seria onde vc iria tentar outras abordagens para
+ * tentar interpretar esse componente".
+ */
+export const QueueJobType = z.enum(['extract', 'classify', 'generate', 'ajustar', 'aprender']);
 export type QueueJobType = z.infer<typeof QueueJobType>;
 
 /**
