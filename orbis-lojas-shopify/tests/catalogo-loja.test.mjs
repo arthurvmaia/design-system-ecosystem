@@ -20,6 +20,28 @@ async function comServidor(trabalho) {
   try { return await trabalho(server); } finally { await server.close(); }
 }
 
+test("todo nicho tem exatamente 10 produtos reais e completos", async () => {
+  const { PRODUTOS_POR_NICHO } = await comServidor((server) => server.ssrLoadModule("/lib/catalogo-nichos.ts"));
+  const esperados = ["roupas", "oculos", "relogios", "beleza", "casa", "pet", "fitness", "gadgets", "infantil", "joias"];
+  const ids = new Set();
+  for (const nicho of esperados) {
+    const lista = PRODUTOS_POR_NICHO[nicho];
+    assert.ok(Array.isArray(lista), `nicho ${nicho} sem catálogo`);
+    assert.equal(lista.length, 10, `${nicho} tem ${lista?.length} produtos; o pedido é 10`);
+    for (const produto of lista) {
+      assert.ok(produto.title.trim().length >= 12, `título curto em ${nicho}`);
+      assert.ok(Number.isInteger(produto.price) && produto.price > 0, `preço inválido em ${nicho}`);
+      assert.ok(produto.images.length > 0, `sem imagem em ${nicho}`);
+      for (const imagem of produto.images) assert.match(imagem, /^https:\/\//);
+      assert.match(produto.handle, /^[a-z0-9-]+$/, `handle inválido em ${nicho}`);
+      /* id único no catálogo inteiro: é por ele que o carrinho casa a linha */
+      assert.ok(!ids.has(produto.id), `produto repetido entre nichos: ${produto.id}`);
+      ids.add(produto.id);
+    }
+  }
+  assert.equal(ids.size, 100, "dez nichos vezes dez produtos");
+});
+
 test("o catálogo tem exatamente 10 produtos reais e completos", async () => {
   const { CATALOGO_LOJA } = await comServidor((server) => server.ssrLoadModule("/lib/catalogo-loja.ts"));
   assert.equal(CATALOGO_LOJA.length, 10);
