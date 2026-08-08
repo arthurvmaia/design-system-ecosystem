@@ -6,7 +6,7 @@ import { renderThemePage, type PreviewCartItem } from "@/lib/theme-render";
 
 const FINGERPRINT = /^[0-9a-f]{16}$/;
 
-type RenderExtras = { cartItems?: PreviewCartItem[]; onlySections?: string[] };
+type RenderExtras = { cartItems?: PreviewCartItem[]; onlySections?: string[]; handle?: string; variantId?: number };
 
 async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pageId: string, extras: RenderExtras = {}) {
   const fingerprint = shopify.sourceFingerprint;
@@ -22,6 +22,8 @@ async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pag
     assetBase: (path) => `/api/theme-assets?fp=${fingerprint}&path=${encodeURIComponent(path)}`,
     cartItems: extras.cartItems,
     onlySections: extras.onlySections,
+    handle: extras.handle,
+    variantId: extras.variantId,
   });
   /* pedido de seções soltas volta como JSON (Section Rendering API) */
   if (extras.onlySections?.length) {
@@ -34,6 +36,13 @@ async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pag
       "x-content-type-options": "nosniff",
     },
   });
+}
+
+/** Handle vem do iframe: só letras, números e hífen, para não virar caminho. */
+function sanitizeHandle(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const limpo = value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 120);
+  return limpo || undefined;
 }
 
 /** Aceita só o essencial do carrinho, com limites — nada vindo do cliente entra cru. */
@@ -84,10 +93,10 @@ export async function POST(request: Request) {
     const identity = await getIdentity();
     if (!identity) return new Response("Authentication required", { status: 401 });
     const viewer = await ensureUser(identity);
-    const body = await request.json() as { shopify?: ShopifyThemeImport; page?: string; sections?: unknown; cartItems?: unknown };
+    const body = await request.json() as { shopify?: ShopifyThemeImport; page?: string; sections?: unknown; cartItems?: unknown; handle?: unknown; variantId?: unknown };
     if (!body.shopify?.sourceFingerprint) return Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 400 });
     const onlySections = Array.isArray(body.sections) ? body.sections.map(String).slice(0, 8) : undefined;
-    const response = await renderResponse(viewer.id, body.shopify, body.page ?? "index", { cartItems: sanitizeCartItems(body.cartItems), onlySections });
+    const response = await renderResponse(viewer.id, body.shopify, body.page ?? "index", { cartItems: sanitizeCartItems(body.cartItems), onlySections, handle: sanitizeHandle(body.handle), variantId: Number(body.variantId) || undefined });
     return response ?? Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 404 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message.slice(0, 300) : "RENDER_FAILED" }, { status: 500 });

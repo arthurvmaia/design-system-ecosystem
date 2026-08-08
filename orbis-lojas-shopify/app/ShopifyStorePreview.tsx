@@ -15,6 +15,21 @@ import { CATALOGO_LOJA } from "../lib/catalogo-loja";
  * /products/…) para a página correspondente do preview — o mesmo gesto do
  * editor da Shopify, onde clicar num link navega a prévia.
  */
+/** Handle do recurso na rota: /products/<handle>, /collections/<handle>. */
+export function handleFromHref(href: string): string {
+  const caminho = href.split("?")[0].split("#")[0];
+  const partes = caminho.split("/").filter(Boolean);
+  const indice = partes.findIndex((parte) => parte === "products" || parte === "collections");
+  return indice >= 0 ? partes[indice + 1] ?? "" : "";
+}
+
+/** Variante pedida na rota (?variant=), como o seletor de opções do tema faz. */
+export function variantFromHref(href: string): number {
+  const consulta = href.split("?")[1] ?? "";
+  const bruto = new URLSearchParams(consulta).get("variant") ?? "";
+  return Number.parseInt(bruto, 10) || 0;
+}
+
 export function resolvePreviewPageId(theme: ShopifyThemeImport, href: string): string | null {
   let path: string;
   try { path = new URL(href, "https://preview.local").pathname; } catch { return null; }
@@ -67,6 +82,8 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
   /* o carrinho do preview mora aqui: assim ele sobrevive à troca de página
      (o iframe é recriado) sem provocar re-render a cada item adicionado */
   const cartRef = useRef<Array<{ variantId: number; quantity: number }>>([]);
+  /* handle da última rota navegada: /products/<handle> abre esse produto */
+  const handleRef = useRef("");
   const canRender = Boolean(shopify.compatibility?.preservedSource);
 
   /* árvore → preview: seleção rola o iframe até a seção e a destaca */
@@ -103,7 +120,7 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
         const response = await fetch("/api/theme-render", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ shopify, page: pageId, cartItems: cartRef.current }),
+          body: JSON.stringify({ shopify, page: pageId, handle: handleRef.current, cartItems: cartRef.current }),
         });
         if (requestId !== requestRef.current) return;
         if (!response.ok) { setStatus("fallback"); return; }
@@ -118,9 +135,29 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
 
   useEffect(() => {
     function onMessage(event: MessageEvent) {
-      const data = event.data as { orbisSection?: string; orbisBlock?: string | null; orbisNavigate?: string; orbisCartSections?: string[]; orbisCartItems?: unknown; orbisPedido?: number; orbisCartEstado?: Array<{ variantId: number; quantity: number }> } | null;
+      const data = event.data as { orbisSection?: string; orbisBlock?: string | null; orbisNavigate?: string; orbisCartSections?: string[]; orbisCartItems?: unknown; orbisPedido?: number; orbisPaginaHref?: string; orbisCartEstado?: Array<{ variantId: number; quantity: number }> } | null;
       /* o carrinho mudou dentro do preview: guardamos para a próxima página */
       if (Array.isArray(data?.orbisCartEstado)) { cartRef.current = data.orbisCartEstado; return; }
+      /* o tema buscou uma página por fetch (quick-add "Escolher opções",
+         filtros de coleção): devolvemos o HTML do MESMO renderizador */
+      if (data?.orbisPedido && typeof data.orbisPaginaHref === "string") {
+        const pedido = data.orbisPedido;
+        const href = data.orbisPaginaHref;
+        const alvo = (event.source as Window | null) ?? frameRef.current?.contentWindow ?? null;
+        void (async () => {
+          let htmlPagina = "";
+          try {
+            const response = await fetch("/api/theme-render", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ shopify, page: resolvePreviewPageId(shopify, href) ?? pageId, handle: handleFromHref(href), variantId: variantFromHref(href), cartItems: data.orbisCartItems }),
+            });
+            if (response.ok) htmlPagina = await response.text();
+          } catch { /* sem HTML o tema segue com o próprio fallback */ }
+          alvo?.postMessage({ orbisPedido: pedido, orbisHtml: htmlPagina }, "*");
+        })();
+        return;
+      }
       /* o carrinho do preview pede o HTML novo das seções (gaveta, contador):
          renderizamos pelo MESMO motor, com o carrinho que o iframe mantém */
       if (data?.orbisPedido && Array.isArray(data.orbisCartSections)) {
@@ -146,7 +183,8 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
       }
       if (data?.orbisNavigate) {
         const nextPageId = resolvePreviewPageId(shopify, data.orbisNavigate);
-        if (nextPageId) onNavigatePage?.(nextPageId);
+        /* guardamos o handle da rota para a página abrir o produto clicado */
+        if (nextPageId) { handleRef.current = handleFromHref(data.orbisNavigate); onNavigatePage?.(nextPageId); }
       }
     }
     window.addEventListener("message", onMessage);

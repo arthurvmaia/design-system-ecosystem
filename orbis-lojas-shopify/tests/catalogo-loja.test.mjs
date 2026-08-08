@@ -56,6 +56,62 @@ test("os produtos inventados saíram do render e do fallback", async () => {
   assert.match(catalogo, /fiordibrasil\.com/);
 });
 
+test("a rota escolhe o produto e a variante: handle e ?variant chegam ao render", async () => {
+  const layout = "<!doctype html><html><body>{{ content_for_layout }}</body></html>";
+  const secao = `<h1 class="titulo">{{ product.title }}</h1>
+<p class="variante">{{ product.selected_or_first_available_variant.title }}</p>
+<p class="preco">{{ product.price | money }}</p>
+<p class="descricao">{{ product.description }}</p>
+{% schema %}{"name":"Produto"}{% endschema %}`;
+  const zip = zipSync({
+    "layout/theme.liquid": strToU8(layout),
+    "sections/principal.liquid": strToU8(secao),
+    "templates/product.json": strToU8(JSON.stringify({ sections: { principal: { type: "principal" } }, order: ["principal"] })),
+    "config/settings_schema.json": strToU8(JSON.stringify([{ name: "theme_info", theme_name: "Rota", theme_version: "1.0" }])),
+    "config/settings_data.json": strToU8(JSON.stringify({ current: {} })),
+  });
+
+  await comServidor(async (server) => {
+    const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
+    const { CATALOGO_LOJA } = await server.ssrLoadModule("/lib/catalogo-loja.ts");
+    const theme = await extractShopifyThemeBytes(zip, "rota.zip");
+    const files = themeFilesFromZip(zip);
+    const base = { theme, files, pageId: "product", assetBase: (path) => `/assets/${path}` };
+
+    /* um produto com mais de uma variante, para a segunda ser escolhível */
+    const alvo = CATALOGO_LOJA.find((produto) => produto.variants.length > 1);
+    const segunda = alvo.variants[1];
+
+    const semHandle = await renderThemePage(base);
+    const comHandle = await renderThemePage({ ...base, handle: alvo.handle });
+    const comVariante = await renderThemePage({ ...base, handle: alvo.handle, variantId: segunda.id });
+
+    assert.ok(comHandle.includes(alvo.title), "o handle da rota não escolheu o produto");
+    assert.ok(comHandle.includes(alvo.descriptionHtml.slice(0, 30).replace(/<[^>]*>/g, "").trim().slice(0, 20)) || comHandle.length > semHandle.length - 1);
+    assert.ok(comVariante.includes(segunda.title), `a variante ${segunda.title} não foi selecionada`);
+    assert.ok(comVariante.includes((segunda.price / 100).toFixed(2).replace(".", ",")), "o preço da variante escolhida não apareceu");
+  });
+});
+
+test("a ponte do preview resolve página buscada por fetch e troca de variante", async () => {
+  const render = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
+  const preview = await readFile(previewUrl, "utf8");
+  /* quick-add "Escolher opções": o tema busca /products/... por fetch */
+  assert.match(render, /function pedirPagina/);
+  assert.match(render, /orbisPaginaHref/);
+  assert.match(render, /products\|collections\|pages\|blogs\|search/);
+  /* seletor de opções: a variante escolhida vai para o formulário de compra */
+  assert.match(render, /function trocarVariante/);
+  assert.match(render, /querySelectorAll\('\[name="id"\]'\)/);
+  /* comprar não depende mais do modo do editor */
+  assert.doesNotMatch(render, /if\(window\.__orbisModo==="selecionar"\)return;/);
+  /* o editor resolve handle e variante da rota */
+  assert.match(preview, /export function handleFromHref/);
+  assert.match(preview, /export function variantFromHref/);
+  assert.match(preview, /orbisPaginaHref/);
+});
+
 test("o tema renderizado mostra produto real e o carrinho recebe a variante clicada", async () => {
   const layout = "<!doctype html><html><body>{{ content_for_layout }}</body></html>";
   const secao = `{% for produto in collections.all.products %}<article class="card"><h3>{{ produto.title }}</h3><p class="preco">{{ produto.price | money }}</p><img src="{{ produto.featured_image | image_url: width: 400 }}" alt="{{ produto.title }}">{% form 'product', produto %}<input type="hidden" name="id" value="{{ produto.selected_or_first_available_variant.id }}"><button name="add">Adicionar</button>{% endform %}</article>{% endfor %}

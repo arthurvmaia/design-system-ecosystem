@@ -21,6 +21,10 @@ export type RenderOptions = {
   cartItems?: PreviewCartItem[];
   /** Quando presente, devolve só o HTML destas seções (Section Rendering API). */
   onlySections?: string[];
+  /** Handle do recurso da rota: /products/<handle> ou /collections/<handle>. */
+  handle?: string;
+  /** Variante pedida na rota (?variant=), como o seletor de opções faz. */
+  variantId?: number;
 };
 
 const PLACEHOLDER_SVG = (label: string, tone = "#e5e7eb") =>
@@ -126,6 +130,26 @@ for (const produto of DEMO_PRODUCTS) {
  * devolve o produto real; handle desconhecido gira pelo catálogo (índice) para
  * cada slot da página mostrar um produto diferente.
  */
+/**
+ * Produto com a variante pedida em `?variant=` marcada como selecionada — é
+ * assim que o seletor de opções do tema troca preço, imagem e id de compra.
+ */
+function comVarianteSelecionada(produto: ProdutoDaLoja, variantId: number | undefined): ProdutoDaLoja {
+  const escolhida = variantId ? produto.variants.find((variante) => variante.id === variantId) : undefined;
+  if (!escolhida) return produto;
+  for (const variante of produto.variants) variante.selected = variante.id === escolhida.id;
+  return {
+    ...produto,
+    price: escolhida.price, compare_at_price: escolhida.compare_at_price,
+    selected_variant: escolhida, selected_or_first_available_variant: escolhida,
+    featured_image: escolhida.featured_image ?? produto.featured_image,
+    options_with_values: produto.options_with_values.map((opcao) => ({
+      ...opcao,
+      selected_value: opcao.position === 1 ? escolhida.option1 : opcao.position === 2 ? escolhida.option2 : escolhida.option3,
+    })),
+  };
+}
+
 /** Índice variante → dados de linha, para a ponte do carrinho dentro do preview. */
 function catalogoPorVariante() {
   const mapa: Record<string, unknown> = {};
@@ -138,6 +162,7 @@ function catalogoPorVariante() {
         variant_title: produto.has_only_default_variant ? null : variante.title,
         price: variante.price, image: imagem?.src ?? null,
         handle: produto.handle, product_id: produto.id, url: variante.url,
+        options: [variante.option1, variante.option2, variante.option3],
       };
     }
   }
@@ -410,7 +435,7 @@ function argPairs(args: unknown[]): Record<string, unknown> {
   return named;
 }
 
-export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections }: RenderOptions): Promise<string> {
+export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId }: RenderOptions): Promise<string> {
   const assetPathByName = new Map<string, string>();
   for (const path of files.keys()) {
     if (path.startsWith("assets/")) assetPathByName.set(path.slice("assets/".length).toLowerCase(), path);
@@ -568,8 +593,10 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     images: imagesProxy,
     blogs: proxyWithFallback<unknown>({}, (handle) => ({ title: "Blog", handle, url: `/blogs/${handle}`, articles: [], articles_count: 0, all_tags: [] })),
     articles: proxyWithFallback<unknown>({}, () => null),
-    product: DEMO_PRODUCTS[0],
-    collection: demoCollection("colecao-demo"),
+    /* o handle da rota escolhe o produto/coleção: é o que faz cada cartão
+       clicado abrir o SEU produto, e o quick-add mostrar o certo */
+    product: comVarianteSelecionada(demoProduct(pageId.startsWith("product") ? handle ?? "" : ""), variantId),
+    collection: demoCollection(pageId.startsWith("collection") ? handle ?? "" : "colecao-demo"),
     article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "/blogs/news/artigo-demo", tags: [], comments: [], comments_count: 0, comments_enabled: false },
     blog: { title: "Blog", url: "/blogs/news", articles: [], articles_count: 0, all_tags: [] },
     page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "/pages/pagina" },
@@ -986,7 +1013,13 @@ return estado();}
 function pedirSecoes(lista){return new Promise(function(resolve){if(!lista||!lista.length||window.parent===window){resolve({});return;}
 var id=++seq;pedidos[id]=resolve;window.parent.postMessage({orbisCartSections:lista,orbisCartItems:itens.map(function(i){return {variantId:i.id,quantity:i.quantity};}),orbisPedido:id},"*");
 setTimeout(function(){if(pedidos[id]){pedidos[id]({});delete pedidos[id];}},4000);});}
-window.addEventListener("message",function(e){var d=e&&e.data;if(d&&d.orbisPedido&&pedidos[d.orbisPedido]){pedidos[d.orbisPedido](d.orbisSecoes||{});delete pedidos[d.orbisPedido];}});
+/* Páginas que o tema busca por fetch (quick-add "Escolher opções", filtros,
+   busca preditiva) vêm do MESMO renderizador, via editor — sem isso o tema
+   pedia a URL para o servidor do app e recebia HTML que não é da loja. */
+function pedirPagina(href){return new Promise(function(resolve){if(window.parent===window){resolve("");return;}
+var id=++seq;pedidos[id]=resolve;window.parent.postMessage({orbisPaginaHref:href,orbisCartItems:itens.map(function(i){return {variantId:i.id,quantity:i.quantity};}),orbisPedido:id},"*");
+setTimeout(function(){if(pedidos[id]){pedidos[id]("");delete pedidos[id];}},8000);});}
+window.addEventListener("message",function(e){var d=e&&e.data;if(d&&d.orbisPedido&&pedidos[d.orbisPedido]){pedidos[d.orbisPedido](typeof d.orbisHtml==="string"?d.orbisHtml:(d.orbisSecoes||{}));delete pedidos[d.orbisPedido];}});
 function listaDeSecoes(url,corpo){var s=null;try{var u=new URL(url,location.origin);s=u.searchParams.get("sections");}catch(err){}
 if(!s&&corpo&&corpo.sections)s=Array.isArray(corpo.sections)?corpo.sections.join(","):corpo.sections;
 return s?String(s).split(",").map(function(x){return x.trim();}).filter(Boolean):[];}
@@ -1008,6 +1041,9 @@ if(/add/.test(url)){saida=Object.assign({},saida,{items:[resultado],sections:sec
 /* avisa o tema que o carrinho mudou, como a Shopify faz */
 document.dispatchEvent(new CustomEvent("cart:refresh",{bubbles:true}));
 return resposta(saida);});}
+var caminho="";try{caminho=new URL(url,location.origin).pathname;}catch(err){caminho=String(url).split("?")[0];}
+if(/^\\/(products|collections|pages|blogs|search)(\\/|\\?|$)/.test(caminho)||/[?&]section_id=/.test(String(url))){
+return pedirPagina(String(url)).then(function(h){return new Response(h||"",{status:h?200:404,headers:{"Content-Type":"text/html"}});});}
 return fetchOriginal(entrada,init);};
 /* Compra tratada AQUI, não pelo JS do tema: cada tema liga o botão de um
    jeito (e muitos vêm ofuscados). Interceptar o envio do formulário de
@@ -1047,8 +1083,6 @@ var cartao=botao.closest('[class*="card" i],[class*="product-item" i],[class*="p
 for(var passo=0;cartao&&passo<3;passo++){var f=cartao.querySelector('form[data-type="add-to-cart-form"]');if(f)return f;cartao=cartao.parentElement&&cartao.parentElement.closest('[class*="card" i],[class*="product-item" i],[class*="grid__item" i],article,li');}
 return null;}
 document.addEventListener("click",function(e){
-/* no modo de seleção o clique serve para escolher a seção, não para comprar */
-if(window.__orbisModo==="selecionar")return;
 var botao=e.target.closest&&e.target.closest('button, a[role="button"], [data-add-to-cart]');
 if(!botao)return;
 var texto=((botao.textContent||"")+" "+(botao.getAttribute("aria-label")||"")).toLowerCase();
@@ -1057,6 +1091,32 @@ if(!ehCompra)return;
 var form=formDoBotao(botao);
 if(!form)return;
 e.preventDefault();e.stopPropagation();comprar(form);},true);
+/* Troca de variante ("Escolher opções"): cada tema liga o seletor ao próprio
+   JS, que aqui não tem loja atrás. Ao mudar uma opção, procuramos no catálogo
+   a variante com aquelas opções e gravamos o id no formulário de compra —
+   assim a cor/tamanho escolhida é a que vai para o carrinho. */
+function escopoDaVariante(el){var p=el;while(p&&p.parentElement){p=p.parentElement;if(p.querySelector&&p.querySelector('[name="id"]'))return p;}return document;}
+function trocarVariante(escopo){var input=escopo.querySelector('[name="id"]');if(!input)return;
+var atual=catalogo[String(input.value)];if(!atual)return;
+/* cada opção é um grupo de rádios com o mesmo name (nem sempre em fieldset)
+   ou um select; a ordem dos grupos no DOM é a ordem das opções do produto */
+var escolhidas=[];var marcado={};var ordem=[];
+escopo.querySelectorAll('input[type="radio"]').forEach(function(r){var n=r.name||"";if(ordem.indexOf(n)<0)ordem.push(n);if(r.checked)marcado[n]=r.value;});
+ordem.forEach(function(n){if(marcado[n]!==undefined)escolhidas.push(marcado[n]);});
+escopo.querySelectorAll("select").forEach(function(s){if(!/quantidade|quantity/i.test(s.name||""))escolhidas.push(s.value);});
+var quantasOpcoes=0;for(var o=0;o<3;o++){if(atual.options[o])quantasOpcoes++;}
+escolhidas=escolhidas.slice(0,quantasOpcoes);
+if(escolhidas.length!==quantasOpcoes)return;
+var alvo=null;
+Object.keys(catalogo).forEach(function(chave){var c=catalogo[chave];if(alvo||c.product_id!==atual.product_id)return;
+var combina=true;for(var i=0;i<escolhidas.length;i++){if(String(c.options[i]||"")!==String(escolhidas[i]))combina=false;}
+if(combina)alvo=chave;});
+/* o tema costuma manter mais de um campo id (form do preço, form do botão):
+   todos precisam apontar para a variante escolhida */
+if(alvo)escopo.querySelectorAll('[name="id"]').forEach(function(campo){if(String(campo.value)!==alvo){campo.value=alvo;campo.dispatchEvent(new Event("change",{bubbles:true}));}});}
+document.addEventListener("change",function(e){var t=e.target;if(!t||!t.closest)return;
+if(t.type!=="radio"&&t.tagName!=="SELECT")return;
+setTimeout(function(){trocarVariante(escopoDaVariante(t));},0);},false);
 /* estado inicial vindo do editor, para o carrinho sobreviver à troca de página */
 try{if(window.__ORBIS_CART_INICIAL__&&window.__ORBIS_CART_INICIAL__.length){itens=window.__ORBIS_CART_INICIAL__.map(function(i){var base=catalogo[String(i.variantId)]||dadosDoBotao(null);return {id:i.variantId,quantity:i.quantity,title:base.title,product_title:base.product_title||base.title,variant_title:base.variant_title||null,price:base.price||0,image:base.image||null,handle:base.handle||"produto",product_id:base.product_id||i.variantId,url:base.url||"/cart"};});}}catch(e){}
 /* fechar a gaveta é responsabilidade do preview também: muitos temas ligam o
@@ -1092,6 +1152,10 @@ if(mode==="selecionar"){
    isso, abrir o carrinho no editor prendia a pessoa com a gaveta aberta */
 var saida=event.target.closest('[class*="close" i],[class*="dismiss" i],[class*="overlay" i],[aria-label*="fech" i],[aria-label*="close" i]');
 if(saida)return;
+/* comprar e "Escolher opções" também passam: no editor da Shopify o carrinho
+   responde, e travar isso fazia o botão parecer quebrado */
+var loja=event.target.closest('button[name="add"],[data-add-to-cart],[class*="quick-add" i],[class*="quick-buy" i],modal-opener,[data-product-url]');
+if(loja)return;
 event.preventDefault();event.stopPropagation();var block=event.target.closest("[data-block-id]");var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section"),orbisBlock:block?block.getAttribute("data-block-id"):null},"*");}return;}},true);
 /* BOLHA (depois do tema): se o proprio tema tratou o clique — carrinho que
    abre a gaveta, menu, modal — ele ja chamou preventDefault e a previa NAO
