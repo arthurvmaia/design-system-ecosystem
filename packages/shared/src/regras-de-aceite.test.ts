@@ -199,3 +199,23 @@ test('todo veredito reprovado ou pendente explica o motivo em uma frase', () => 
     assert.ok(v.motivo.length > 20, `${v.codigo} sem motivo legível: "${v.motivo}"`);
   }
 });
+
+test('G7: card que contém a navegação da página reprova', () => {
+  // Achado no acervo: um segmento de `card` de 8,6 KB continha o cabeçalho e a
+  // navegação do site inteiro. O corte pegou a seção errada, e ninguém notaria
+  // até o site gerado sair com uma segunda barra de menu no meio dos cartões.
+  const r = conferirPecaDaGaleria(
+    peca({ categoria: 'card', htmlSnippet: `<div><nav><a>Home</a></nav>${'x'.repeat(400)}</div>` }),
+  );
+  assert.equal(cod(r, 'G7')?.estado, 'reprovou');
+  assert.ok(!r.aprovado);
+});
+
+test('G7: nav, header, footer e hero podem ter navegação — é o papel deles', () => {
+  for (const categoria of ['nav', 'header', 'footer', 'hero']) {
+    const r = conferirPecaDaGaleria(
+      peca({ categoria, htmlSnippet: `<div><nav><a>Home</a></nav>${'x'.repeat(400)}</div>` }),
+    );
+    assert.equal(cod(r, 'G7')?.estado, 'passou', `${categoria} carrega navegação por natureza`);
+  }
+});

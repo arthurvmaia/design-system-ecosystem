@@ -66,7 +66,13 @@ export const lerStackDoManifesto = (dsId: `ds_${string}`): string | null => {
   if (!existsSync(path)) return null;
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as { stack?: unknown };
-    if (!Array.isArray(raw.stack) || raw.stack.length === 0) return null;
+    // Stack VAZIA não é ausência de stack: é a captura tendo olhado e não achado
+    // tecnologia nenhuma, que é o resultado legítimo de um site de HTML e CSS
+    // puros. Devolver `null` aqui misturava isso com "não consegui ler o
+    // manifesto", e três design systems do acervo ficavam para sempre com
+    // `stack_json` NULL — o backfill os via como pendência e não tinha o que
+    // preencher, rodada após rodada.
+    if (!Array.isArray(raw.stack)) return null;
     return JSON.stringify(raw.stack);
   } catch {
     return null;

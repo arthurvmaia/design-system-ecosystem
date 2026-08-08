@@ -42,13 +42,14 @@
  * O teto é o que garante variedade — que é exatamente o que o dono cobrou
  * ("vc sempre escolhe os mesmos componentes").
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { getDb, tables } from '@ds/indexer';
 import {
   type PecaParaAceite,
   SegmentsManifest,
   type SegmentsManifest as SegmentsManifestType,
   conferirPecaDaGaleria,
+  libraryComponentDir,
   vaultSegmentsManifest,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
@@ -204,6 +205,22 @@ const principal = (): void => {
 
   const db = getDb();
   const segs = db.select().from(tables.segments).all();
+  /**
+   * Quem está na Biblioteca é quem tem LINHA em `library_components` — não quem
+   * tem a flag `inLibrary` ligada no segmento.
+   *
+   * Os dois saíram de sincronia na primeira rodada deste script: ele desligava a
+   * flag e deixava a linha, então na rodada seguinte a peça não aparecia como
+   * "na Biblioteca", não entrava na lista de retirada, e ficava lá para sempre.
+   * A flag é espelho; a linha é o fato.
+   */
+  const naBiblioteca = new Set(
+    db
+      .select({ segmentId: tables.libraryComponents.segmentId })
+      .from(tables.libraryComponents)
+      .all()
+      .map((r) => r.segmentId),
+  );
   const notas = segs.map((s) =>
     avaliar({
       id: s.id,
@@ -213,7 +230,7 @@ const principal = (): void => {
       kind: s.kind,
       htmlSnippet: s.htmlSnippet,
       position: s.position,
-      inLibrary: s.inLibrary === true,
+      inLibrary: naBiblioteca.has(s.id),
     }),
   );
 
@@ -334,12 +351,37 @@ const principal = (): void => {
     }
   }
   let sairam = 0;
+  /**
+   * Retirar é retirar de VERDADE: a linha sai e o bundle sai do disco.
+   *
+   * A primeira versão só desligava `inLibrary` no segmento e deixava a
+   * `library_components` intacta — a peça continuava na Biblioteca, continuava
+   * entrando em kit, e o contador dizia "4 retiradas". O mesmo engano da
+   * promoção pela metade, do outro lado.
+   */
   if (limpar) {
     for (const n of sair) {
-      db.update(tables.segments)
-        .set({ inLibrary: false })
-        .where(eq(tables.segments.id, n.segId))
-        .run();
+      const comp = db
+        .select()
+        .from(tables.libraryComponents)
+        .where(eq(tables.libraryComponents.segmentId, n.segId))
+        .get();
+      db.transaction((tx) => {
+        if (comp !== undefined) {
+          tx.delete(tables.kitComponents)
+            .where(eq(tables.kitComponents.componentId, comp.id))
+            .run();
+          tx.delete(tables.libraryComponents).where(eq(tables.libraryComponents.id, comp.id)).run();
+        }
+        tx.update(tables.segments)
+          .set({ inLibrary: false })
+          .where(eq(tables.segments.id, n.segId))
+          .run();
+      });
+      if (comp !== undefined) {
+        const dir = libraryComponentDir(comp.id as `cmp_${string}`);
+        if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+      }
       sairam++;
     }
   }

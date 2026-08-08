@@ -184,6 +184,35 @@ export const conferirPecaDaGaleria = (p: PecaParaAceite): ResultadoDeAceite => {
       : { codigo: 'G6', titulo: 'O que a peça diz que é, ela é', estado: 'passou', motivo: '' },
   );
 
+  /**
+   * G7 — a peça não engole as vizinhas.
+   *
+   * Achado no acervo: um segmento de `card` do open-design.ai tinha 8,6 KB e
+   * continha DENTRO dele o cabeçalho e a navegação do site. O corte pegou a
+   * seção errada, e ninguém notaria até o site gerado sair com uma segunda
+   * barra de navegação no meio de uma faixa de cartões.
+   *
+   * `<nav>` é o sinal mais limpo: ele é marco de PÁGINA. Um cartão, uma faixa de
+   * recursos ou uma tabela de preços não têm navegação própria — se têm uma
+   * dentro, ela é da página e veio junto por engano.
+   *
+   * As categorias que legitimamente carregam navegação (`nav`, `header`,
+   * `footer`) ficam de fora, e `hero` também: hero com a barra em cima é desenho
+   * comum, e naquele caso os dois são a mesma dobra.
+   */
+  const CARREGAM_NAVEGACAO = new Set(['nav', 'header', 'footer', 'hero', 'other']);
+  const engoliuNavegacao = !CARREGAM_NAVEGACAO.has(p.categoria) && /<nav[\s>]/i.test(p.htmlSnippet);
+  v.push(
+    engoliuNavegacao
+      ? {
+          codigo: 'G7',
+          titulo: 'A peça não engole as vizinhas',
+          estado: 'reprovou',
+          motivo: `uma peça de ${p.categoria} contém a navegação da página inteira: o corte pegou a seção errada, e o site gerado sairia com uma segunda barra de menu no meio do conteúdo.`,
+        }
+      : { codigo: 'G7', titulo: 'A peça não engole as vizinhas', estado: 'passou', motivo: '' },
+  );
+
   return juntar(v);
 };
 
