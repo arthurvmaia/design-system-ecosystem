@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Sparkles, RefreshCw, X } from "lucide-react";
+import { Check, ChevronRight, Sparkles, RefreshCw, X } from "lucide-react";
 import { useState } from "react";
 import { NICHOS } from "@/lib/marca-generator.mjs";
 
@@ -32,13 +32,19 @@ export type MarcaCliente = {
   email: string;
   logoDataUri: string;
   collections: string[];
+  /** Imagem de cada peça (`logo`, `banner-desktop`, `colecao-1`…) que a pessoa enviou. */
+  imagens: Record<string, string>;
 };
 
-type SubId = "marca" | "voz" | "paleta" | "tipografia" | "contato" | "redes";
+/** Uma peça de imagem da loja, como a bancada precisa vê-la. */
+export type PecaNaBancada = { chave: string; titulo: string; aspecto: string; previaLocal: string };
+
+type SubId = "marca" | "imagens" | "voz" | "paleta" | "tipografia" | "contato" | "redes";
 type Estado = "configurado" | "padrao" | "vazio" | "opcional";
 
 const INSTRUMENTOS: ReadonlyArray<{ id: SubId; nome: string; oQueFaz: string }> = [
   { id: "marca", nome: "Marca", oQueFaz: "O nome que vai na loja e a logo" },
+  { id: "imagens", nome: "Imagens da loja", oQueFaz: "Logo, banners e as capas das coleções" },
   { id: "voz", nome: "Voz da marca", oQueFaz: "Como os textos falam com quem lê" },
   { id: "paleta", nome: "Paleta", oQueFaz: "As cores que a loja inteira usa" },
   { id: "tipografia", nome: "Tipografia", oQueFaz: "As fontes de título e de corpo" },
@@ -47,10 +53,16 @@ const INSTRUMENTOS: ReadonlyArray<{ id: SubId; nome: string; oQueFaz: string }> 
 ];
 
 /** O resumo de cada linha: o que responde a pergunta sem precisar abrir. */
-function situacao(marca: MarcaCliente, gerada: boolean, id: SubId): { estado: Estado; resumo: string } {
+function situacao(marca: MarcaCliente, gerada: boolean, id: SubId, pecas: PecaNaBancada[]): { estado: Estado; resumo: string } {
   if (id === "marca") {
     if (!marca.name.trim()) return { estado: "vazio", resumo: "Escreva o nome da loja" };
     return { estado: "configurado", resumo: `${marca.name}${marca.logoDataUri ? " · com logo" : " · sem logo"}` };
+  }
+  if (id === "imagens") {
+    const enviadas = pecas.filter((peca) => marca.imagens[peca.chave]).length;
+    return enviadas
+      ? { estado: "configurado", resumo: `${enviadas} de ${pecas.length} enviadas` }
+      : { estado: "padrao", resumo: `${pecas.length} artes da Orbis` };
   }
   if (id === "voz") {
     return marca.voice
@@ -77,14 +89,18 @@ export function ClientMarcaBancada({
   marca,
   nicheId,
   gerada,
+  pecas,
   onChange,
   onGerar,
+  onEnviarImagem,
 }: {
   marca: MarcaCliente;
   nicheId: string;
   gerada: boolean;
+  pecas: PecaNaBancada[];
   onChange: (parcial: Partial<MarcaCliente>) => void;
   onGerar: () => void;
+  onEnviarImagem: (chave: string, arquivo: File) => Promise<void>;
 }) {
   const [aberto, setAberto] = useState<SubId | null>(null);
   const nicho = NICHOS.find((item: { id: string }) => item.id === nicheId);
@@ -100,7 +116,9 @@ export function ClientMarcaBancada({
           </div>
           <button className="secondary-button" onClick={() => setAberto(null)}><X size={13} /> Voltar para a lista</button>
         </div>
-        <Painel id={aberto} marca={marca} onChange={onChange} />
+        {aberto === "imagens"
+          ? <PainelImagens marca={marca} pecas={pecas} onEnviarImagem={onEnviarImagem} />
+          : <Painel id={aberto} marca={marca} onChange={onChange} onEnviarImagem={onEnviarImagem} />}
       </div>
     );
   }
@@ -127,7 +145,7 @@ export function ClientMarcaBancada({
 
       <div className="cf-bancada-lista">
         {INSTRUMENTOS.map((instrumento) => {
-          const info = situacao(marca, gerada, instrumento.id);
+          const info = situacao(marca, gerada, instrumento.id, pecas);
           return (
             <button key={instrumento.id} className="cf-bancada-linha" onClick={() => setAberto(instrumento.id)}>
               <i className={`cf-ponto cf-ponto-${info.estado}`} title={info.resumo} aria-label={info.resumo} />
@@ -145,7 +163,80 @@ export function ClientMarcaBancada({
   );
 }
 
-function Painel({ id, marca, onChange }: { id: SubId; marca: MarcaCliente; onChange: (parcial: Partial<MarcaCliente>) => void }) {
+/**
+ * As imagens da loja, uma a uma, com a prévia do que vai entrar.
+ *
+ * Quem já tem marca chega com logo, banner e fotos de coleção prontos, e não
+ * quer nada gerado — só um lugar para pôr o que tem. Cada peça mostra o
+ * enquadramento esperado e o que está valendo agora: a arte da Orbis enquanto
+ * nada foi enviado, o arquivo da pessoa depois.
+ */
+function PainelImagens({
+  marca,
+  pecas,
+  onEnviarImagem,
+}: {
+  marca: MarcaCliente;
+  pecas: PecaNaBancada[];
+  onEnviarImagem: (chave: string, arquivo: File) => Promise<void>;
+}) {
+  const [enviando, setEnviando] = useState("");
+  const [falha, setFalha] = useState("");
+
+  async function escolher(chave: string, arquivo: File | undefined) {
+    if (!arquivo) return;
+    setFalha("");
+    setEnviando(chave);
+    try { await onEnviarImagem(chave, arquivo); }
+    catch (erro) { setFalha(erro instanceof Error ? erro.message : "Não consegui enviar essa imagem."); }
+    finally { setEnviando(""); }
+  }
+
+  return (
+    <div className="cf-painel">
+      <p className="cf-painel-nota">
+        PNG, JPG ou WebP de até 5 MB. O que ficar sem envio entra com a arte da Orbis, na paleta da marca.
+      </p>
+      {falha && <p className="cf-painel-erro">{falha}</p>}
+      <div className="cf-galeria">
+        {pecas.map((peca) => {
+          const enviada = marca.imagens[peca.chave];
+          return (
+            <label key={peca.chave} className={`cf-galeria-item ${enviada ? "enviada" : ""}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- prévia local ou mídia do próprio usuário. */}
+              <img src={enviada || peca.previaLocal} alt={`Prévia de ${peca.titulo}`} />
+              <b>{peca.titulo}</b>
+              <span>
+                <code>{peca.aspecto.replace(/^[a-z_]*?_(\d+)_(\d+)$/, "$1:$2")}</code>
+                {enviada ? <i className="cf-peca-ok"><Check size={11} /> sua imagem</i> : <i>arte da Orbis</i>}
+              </span>
+              <span className="secondary-button">
+                {enviando === peca.chave ? "Enviando…" : enviada ? "Trocar" : "Enviar"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(evento) => void escolher(peca.chave, evento.target.files?.[0])}
+                />
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Painel({
+  id,
+  marca,
+  onChange,
+  onEnviarImagem,
+}: {
+  id: SubId;
+  marca: MarcaCliente;
+  onChange: (parcial: Partial<MarcaCliente>) => void;
+  onEnviarImagem: (chave: string, arquivo: File) => Promise<void>;
+}) {
   if (id === "marca") {
     return (
       <div className="cf-painel">
@@ -161,13 +252,23 @@ function Painel({ id, marca, onChange }: { id: SubId; marca: MarcaCliente; onCha
           <span>Descrição</span>
           <textarea value={marca.description} maxLength={240} rows={3} placeholder="O que você vende e para quem" onChange={(evento) => onChange({ description: evento.target.value })} />
         </label>
-        {marca.logoDataUri && (
-          <div className="cf-painel-logo">
-            {/* eslint-disable-next-line @next/next/no-img-element -- data URI local gerado aqui; não passa pelo otimizador. */}
-            <img src={marca.logoDataUri} alt="Logo gerada para a marca" />
-            <span>Logo gerada a partir do nome e da paleta. Gerar outra marca desenha uma nova.</span>
-          </div>
-        )}
+        <div className="cf-painel-logo">
+          {/* eslint-disable-next-line @next/next/no-img-element -- data URI local ou mídia do próprio usuário. */}
+          {(marca.imagens.logo || marca.logoDataUri) && <img src={marca.imagens.logo || marca.logoDataUri} alt="Logo da marca" />}
+          <span>
+            {marca.imagens.logo
+              ? "Sua logo. Trocar envia outro arquivo no lugar."
+              : "Logo desenhada a partir do nome e da paleta. Se você já tem a sua, envie aqui."}
+          </span>
+          <span className="secondary-button">
+            {marca.imagens.logo ? "Trocar logo" : "Enviar minha logo"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(evento) => { const arquivo = evento.target.files?.[0]; if (arquivo) void onEnviarImagem("logo", arquivo); }}
+            />
+          </span>
+        </div>
       </div>
     );
   }

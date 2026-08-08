@@ -812,9 +812,22 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-painel { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line-soft); background: var(--panel-2); }
 .cf-painel.cf-row { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .cf-painel-nota { color: var(--muted); font-size: 12px; line-height: 1.55; }
-.cf-painel-logo { display: flex; align-items: center; gap: 12px; }
+.cf-painel-logo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .cf-painel-logo img { width: 60px; height: 60px; object-fit: contain; border: 1px solid var(--line); background: #fff; }
-.cf-painel-logo span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.cf-painel-logo > span:not(.secondary-button) { color: var(--muted); font-size: 12px; line-height: 1.5; flex: 1; min-width: 180px; }
+.cf-painel-logo input[type="file"], .cf-galeria input[type="file"] { display: none; }
+.cf-painel-erro { color: #fca5a5; font-size: 12px; }
+
+/* Galeria de peças: enviar a imagem própria, com a prévia do que vai entrar. */
+.cf-galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.cf-galeria-item { display: grid; gap: 7px; justify-items: start; padding: 10px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+.cf-galeria-item.enviada { border-color: rgba(34,211,238,.55); }
+.cf-galeria-item img { width: 100%; height: 108px; object-fit: cover; background: #fff; border: 1px solid var(--line-soft); }
+.cf-galeria-item b { font-size: 12px; font-weight: 500; }
+.cf-galeria-item > span { display: flex; align-items: center; gap: 8px; }
+.cf-galeria-item code { color: var(--muted-2); font-size: 10.5px; }
+.cf-galeria-item i { color: var(--muted-2); font-size: 10.5px; font-style: normal; }
+.cf-galeria-item .secondary-button { width: 100%; justify-content: center; }
 
 /* Passo 03: os temas do estúdio, com a home real de cada um. */
 .cf-temas { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }

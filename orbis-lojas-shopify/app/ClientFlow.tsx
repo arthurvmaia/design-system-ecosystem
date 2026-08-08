@@ -8,7 +8,7 @@ import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada"
 import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 import { NICHOS, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
-import { pecasDaMarca } from "@/lib/marca-imagens";
+import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
 
 /**
  * O balcão do cliente: quatro passos e uma loja na mão.
@@ -36,7 +36,7 @@ const MARCA_VAZIA: MarcaCliente = {
   name: "", slogan: "", description: "",
   primaryColor: "#0e7490", backgroundColor: "#f6f8f7", accentColor: "#0e7490",
   headingFont: "", bodyFont: "", voice: "",
-  whatsapp: "", instagram: "", email: "", logoDataUri: "", collections: [],
+  whatsapp: "", instagram: "", email: "", logoDataUri: "", collections: [], imagens: {},
 };
 
 /** A marca gerada volta como `MarcaCliente`, com o que a pessoa digitou vencendo. */
@@ -48,6 +48,8 @@ function marcaGerada(nicheId: string, semente: string, sobrescritas: Partial<Mar
     headingFont: gerada.headingFont, bodyFont: gerada.bodyFont, voice: gerada.voice,
     whatsapp: gerada.whatsapp, instagram: gerada.instagram, email: gerada.email,
     logoDataUri: gerada.logoDataUri, collections: gerada.collections,
+    /* o que a pessoa enviou continua valendo depois de gerar outra marca */
+    imagens: sobrescritas.imagens ?? {},
   };
 }
 
@@ -149,6 +151,34 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   }, [passo, modo, nicheId, marca.name, themeId]);
 
   /**
+   * Guarda a imagem que a pessoa enviou e devolve o endereço dela.
+   *
+   * Vai para a mídia do usuário porque é de lá que o exportador tira o arquivo
+   * para dentro de `assets/` no tema. A logo também vira data URI, porque a
+   * prévia local e o site estático precisam dela embutida.
+   */
+  async function enviarImagem(chave: string, arquivo: File) {
+    if (arquivo.size > 5 * 1024 * 1024) throw new Error("A imagem precisa ter até 5 MB.");
+    const formulario = new FormData();
+    formulario.append("file", arquivo);
+    const resposta = await fetch("/api/media", { method: "POST", body: formulario });
+    if (!resposta.ok) throw new Error("Não consegui guardar essa imagem. Tente PNG, JPG ou WebP de até 5 MB.");
+    const { url } = await resposta.json() as { url: string };
+    setMarca((atual) => ({ ...atual, imagens: { ...atual.imagens, [chave]: url } }));
+    setEditadoAMao((atual) => ({ ...atual, imagens: { ...(atual.imagens ?? {}), [chave]: url } }));
+    if (chave === "logo") {
+      const dataUri = await new Promise<string>((resolve, reject) => {
+        const leitor = new FileReader();
+        leitor.onload = () => resolve(String(leitor.result ?? ""));
+        leitor.onerror = () => reject(new Error("Não consegui ler o arquivo."));
+        leitor.readAsDataURL(arquivo);
+      });
+      setMarca((atual) => ({ ...atual, logoDataUri: dataUri }));
+      setEditadoAMao((atual) => ({ ...atual, logoDataUri: dataUri }));
+    }
+  }
+
+  /**
    * Gera as imagens da loja no provedor e guarda cada uma como mídia.
    *
    * O modelo trabalha em fila: a chamada abre a tarefa e o resultado vem
@@ -230,7 +260,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             whatsapp: marca.whatsapp, instagram: marca.instagram, email: marca.email,
           },
           /* só vai o que a IA realmente gerou; o resto o servidor desenha */
-          imagens: comIa && Object.keys(imagensGeradas).length ? imagensGeradas : undefined,
+          imagens: { ...marca.imagens, ...(comIa ? imagensGeradas : {}) },
         }),
       });
       if (!resposta.ok) {
@@ -367,6 +397,8 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
               marca={marca}
               nicheId={nicheId}
               gerada={gerada}
+              pecas={pecas.map((peca: { chave: string; titulo: string; aspecto: string; fallbackSvg: string }) => ({ chave: peca.chave, titulo: peca.titulo, aspecto: peca.aspecto, previaLocal: fallbackDataUri(peca) }))}
+              onEnviarImagem={enviarImagem}
               onChange={ajustarMarca}
               onGerar={() => gerarMarcaAgora(novaSemente())}
             />

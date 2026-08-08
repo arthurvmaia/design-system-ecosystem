@@ -53,6 +53,9 @@ const ASPECTO: Record<PapelDaPeca, string> = {
   colecao: "square_1_1",
 };
 
+/** Coleções que servem a qualquer loja, para quem trouxe a própria marca. */
+const COLECOES_NEUTRAS = ["Novidades", "Mais vendidos", "Ofertas", "Todos os produtos"];
+
 function paleta(marca: MarcaDeImagem) {
   const destaque = marca.accentColor || marca.primaryColor;
   return { primaria: marca.primaryColor, fundo: marca.backgroundColor, destaque };
@@ -130,7 +133,12 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
   const nicho = nichoPorId(marca.nicheId);
   const cores = coresDaMarca(marca).join(", ");
   const tema = assunto(marca.nicheId);
-  const colecoes = (marca.collections?.length ? marca.collections : nicho.colecoes).slice(0, 6);
+  /* sem nicho escolhido (marca própria), as coleções são as de qualquer loja:
+     herdar as de "roupas" faria uma loja de ferramentas pedir "Alfaiataria" */
+  const colecoes = (marca.collections?.length
+    ? marca.collections
+    : marca.nicheId ? nicho.colecoes : COLECOES_NEUTRAS
+  ).slice(0, 6);
 
   const pecas: PecaDeImagem[] = [
     {

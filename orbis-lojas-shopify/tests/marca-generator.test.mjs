@@ -165,6 +165,25 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
   }
 });
 
+test("quem já tem marca envia as próprias imagens, com prévia", async () => {
+  const bancada = await readFile(new URL("../app/ClientMarcaBancada.tsx", import.meta.url), "utf8");
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+  const rota = await readFile(new URL("../app/api/client-request/route.ts", import.meta.url), "utf8");
+
+  /* a bancada ganhou o instrumento das imagens, com envio e prévia por peça */
+  assert.match(bancada, /Imagens da loja/);
+  assert.match(bancada, /function PainelImagens/);
+  assert.match(bancada, /type="file"/);
+  assert.match(bancada, /previaLocal/, "cada peça mostra o que vai entrar");
+  assert.match(bancada, /Enviar minha logo/, "a logo própria entra no painel da marca");
+
+  /* o arquivo vai para a mídia do usuário, que é de onde o exportador tira */
+  assert.match(flow, /fetch\("\/api\/media", \{ method: "POST", body: formulario \}\)/);
+  /* e o ZIP precisa levar essas mídias, senão sobe apontando para o nada */
+  assert.match(rota, /carregarMidias/);
+  assert.match(rota, /exportThemeZip\(tema, originais, midias\)/);
+});
+
 test("SVG de terceiro não passa pelo sanitizador", () => {
   const malicioso = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')}`;
   assert.equal(sanitizeBrand({ name: "X", logoDataUri: malicioso }).logoDataUri, "");
