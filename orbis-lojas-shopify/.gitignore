@@ -32,6 +32,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# segredos do Worker em desenvolvimento (MAGNIFIC_API_KEY e afins).
+# O wrangler lê este arquivo, e ele não pode entrar em commit nenhum.
+.dev.vars
+.dev.vars.*
+
 # vercel
 .vercel
 
