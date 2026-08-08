@@ -1,3 +1,4 @@
+export { type ResultadoAncestral, soltarAncestraisAusentes } from './ancestral-ausente.js';
 export {
   type OpcoesEscopo,
   type ResultadoEscopo,

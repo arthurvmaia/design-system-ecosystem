@@ -24,6 +24,7 @@ import {
   reescalarCss,
   retemarHtmlInline,
   retipografarCss,
+  soltarAncestraisAusentes,
 } from '@ds/composer';
 import {
   type KitComponenteDeGeracao,
@@ -1880,6 +1881,32 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     writeFileSync(join(outputDir, rel), conteudo, 'utf8');
     arquivos.push(rel);
   };
+  /**
+   * O qualificador de id que o RECORTE deixou para trás é solto.
+   *
+   * A peça foi cortada de dentro de um `#platform` que não existe no site
+   * composto, e toda regra que a origem qualificou por ele parou de casar —
+   * inclusive `@media (max-width:980px){#platform .split-section{...:1fr}}`. No
+   * celular a seção saía 72px fora da tela, com o layout de duas colunas que a
+   * origem só usava no desktop. O porquê por extenso está em
+   * `composer/src/ancestral-ausente.ts`.
+   *
+   * Os ids saem do HTML JÁ MONTADO — corpo, camadas de fundo e comportamentos —,
+   * que é a única fonte que sabe o que sobrou depois do recorte.
+   */
+  const idsNaPagina = new Set(
+    [...`${bodyHtml}${camadasHtml}${comportamentoHtml}`.matchAll(/\bid="([^"]+)"/g)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    ),
+  );
+  const ancestrais = soltarAncestraisAusentes(concatCss, idsNaPagina);
+  concatCss = ancestrais.css;
+  if (ancestrais.relaxados > 0 || ancestrais.descartados > 0) {
+    avisos.push(
+      `${ancestrais.relaxados} regra(s) da origem estavam presas a um id que o recorte deixou para trás e voltaram a valer sem ele; ${ancestrais.descartados} foram descartadas por não sobrar âncora nenhuma. É o que devolve o comportamento de celular que a origem escreveu preso a uma seção.`,
+    );
+  }
+
   /**
    * `@font-face` que aponta para arquivo que não veio sai da folha.
    *
