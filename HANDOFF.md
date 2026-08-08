@@ -1,21 +1,149 @@
 # HANDOFF — onde o trabalho está
 
-*Atualizado em 2026-08-07. Suíte 1.385 testes verdes, lint e typecheck limpos.*
+*Atualizado em 2026-08-08. Suíte 1.443 testes, 1.441 verdes.*
 
-> **Rodada 2026-08-06/07 — site composto com paridade e mídia por nicho**: o
-> vão preto da prévia/hero morreu (a página herda as camadas de fundo da origem
-> dominante quando o kit não tem peça de fundo), scripts dedupe (menu mobile
-> voltou a abrir), nav sticky devolvida, parallax congelado limpo, marca
-> automática ganhou nicho de primeira classe + receitas por palavras (streetwear
-> etc.), mídias automáticas desenham a CENA do nicho e — com `PEXELS_API_KEY`
-> no `.env` do server (gratuita, pexels.com/api) — saem como FOTO real com
-> fallback declarado. Detalhes, verificação e pendências: **seção 15 do
-> `C:\Users\arthur.maia\Desktop\AUDITORIA-MOTOR-EXTRACAO.md`**. Reinicie o
-> servidor (INICIAR.bat) para valer na UI. Push segue não autorizado.
-
-Este arquivo é para quem senta amanhã: o que está pronto, o que ficou pelo
-caminho e **por que** cada coisa que falta foi deixada para depois. O registro
-histórico da reforma de julho continua em `docs/HANDOFF.md`.
+> ## Rodada 2026-08-07/08 — o motor passou a ser medido, e as regras a mandar
+>
+> **29 commits**, de `f0bf5fa` a `1f2051f`. Push segue NÃO autorizado.
+>
+> ### O que mudou de fundamental
+>
+> - **O orçamento de captura sai do custo MEDIDO.** O percurso custa 295 s de
+>   mediana e recebia 61; a soma das fases passa de 560 s e o configurado era
+>   180. **43 das 58 capturas saíam parciais** — aritmética, não sites ruins.
+>   Hoje o total vem do histórico × o tamanho do site, e o teto de fase lê
+>   `tel.totalAtual()` (ler a constante foi o que fez a primeira versão não
+>   servir para nada). Medido: um site foi de 9 para 24 segmentos.
+> - **O grid sai da geometria MEDIDA** no `structuralMap` (`pageBox` + cadeia de
+>   `parent`), nunca de suposição. Peça que era sangria na origem não recebe
+>   moldura — foi esse discernimento que faltou à tentativa que virou "PDF".
+> - **Duas REGRAS DE ACEITE** (`docs/regras-de-aceite.md`), executáveis em
+>   `packages/shared/src/regras-de-aceite.ts`, valendo na curadoria, no botão de
+>   curtir e na montagem. Veredito de três valores: `reprovou` é defeito e se
+>   conserta no motor; `pendente` é limite real e sobe declarado.
+> - **Acervo reextraído**: 57 sites, 1011 → 1389 segmentos, parciais de 74% para
+>   30%. Biblioteca curada com 290 peças de 55 origens; 10 kits, um por nicho.
+>
+> ### Comandos novos
+>
+> `pnpm acervo:lote` (importa um catálogo inteiro) · `pnpm curar` (escolhe as
+> peças boas por evidência) · `pnpm kits` (monta a leva de dez) ·
+> `pnpm projeto:de-kit` (projeto a partir de um kit escolhido) ·
+> `pnpm site:gerar` (monta pelo caminho determinístico, sem LLM).
+>
+> ### Os quatro defeitos do dono — FECHADOS em 2026-08-08, não commitados
+>
+> Todos vistos no primeiro site gerado (clínica odontológica, kit "Clínica e
+> consultório", `prj_01KZFRJGVXNE2XREDF70CWHDRT`), e **dois deles eram o mesmo
+> defeito**.
+>
+> **1. Nome da origem no texto** — "CANVAS" gigante no rodapé e "© 2024 CANVAS
+> SYSTEMS". A troca existia e não fazia nada, por três motivos somados:
+>
+> - o nome saía do HOST, e **246 das 288 peças** do acervo vieram do catálogo
+>   `ds.asimov.academy`, que guarda cada site numa pasta com o nome do domínio
+>   original — a marca está no CAMINHO, não no host. Sem isto a troca não achava
+>   nome em 85% do acervo;
+> - a troca morava DENTRO do bloco `if (existsSync(assetsDir))`, e rodapé e nav
+>   costumam não ter `assets/` — justamente as peças que a motivaram;
+> - `alt`, `title` e `placeholder` não eram tocados, e são texto que se lê.
+>
+> A regra **S2 passou a conferir TEXTO** (o documento já prometia isso): nome que
+> sobra **reprova** — não abre buraco ao sair, então é defeito, não pendência. A
+> mídia continua sendo pendência, pelo motivo de sempre.
+>
+> **2 e 3 — linhas neon estáticas e lado direito do hero vazio: UMA chave a
+> mais.** A folha de uma origem tinha uma `}` órfã no meio de 99 KB. O navegador
+> ignora; o `postcss.parse` estrito lança, e **toda** etapa do compositor
+> desistia daquela origem — escopo, recoloração, retipografia, reescala. Sem
+> escopo, os utilitários dela passaram a valer para o DOCUMENTO TODO: o
+> `.grid-cols-1` dela venceu o `lg:grid-cols-12` de outra (hero de três colunas
+> virou três blocos empilhados, lado direito vazio) e um `.hidden` alheio apagou
+> a linha vertical. Agora `packages/composer/src/analisar-css.ts` equilibra as
+> chaves como o navegador faz, num lugar só, usado pelos 9 pontos que
+> analisavam CSS. O reparo é DITO nos avisos. Medido no site: hero em 3 colunas,
+> beam vertical de volta e animando, e a origem voltou a receber a cor da marca.
+>
+> **4. O painel de ressalvas** não sobrepunha: comia a altura da coluna flex e
+> espremia a prévia contra o `min-h`. Agora vem recolhido com a contagem, e
+> aberto rola dentro do próprio teto (`Bancada.tsx`).
+>
+> ### Mais dois, que só o console do navegador mostrou
+>
+> Gerei o site da clínica pela fila e abri o console. Nenhum dos dois aparecia na
+> tela, e os dois valiam para todo site gerado:
+>
+> - **O site disparava o Google Analytics e o Google Ads da EMPRESA DE ORIGEM.**
+>   `G-2M6V79H761` e `AW-17731977471` vinham dentro dos `.js` capturados e
+>   carregavam de verdade: cada visitante do cliente virava `page_view` e
+>   `scroll` na conta de outra empresa. Agora a montagem classifica cada script
+>   (`rastreamentoDeTerceiro`): o que é só rastreamento sai do HTML **e do
+>   disco**; o que mistura rastreio com comportamento fica e a **regra S2
+>   reprova**, porque aí é decisão humana. Medido no site: 4 scripts removidos,
+>   zero requisição para host de analytics.
+> - **131 arquivos de fonte declarados no CSS não existiam** — a captura trouxe
+>   a folha do Google Fonts e baixou 2 dos 8 arquivos de cada família. O
+>   navegador pedia cada um e recebia 404, sem nada quebrar na tela. Agora o
+>   `src` que não está em disco sai da folha, e a família sem nenhum arquivo sai
+>   inteira. Medido: **zero recursos quebrados**, e as fontes continuam certas
+>   (vêm do link do Google Fonts, que já era dependência declarada).
+>
+> ### ⚠ O defeito NOVO que ficou aberto: o recorte perde o ancestral
+>
+> No celular (390px), a seção de tratamentos sai cortada — 72px fora da tela. A
+> causa não é responsivo faltando: a origem TEM
+> `@media (max-width:980px){#platform .split-section{grid-template-columns:1fr}}`.
+> O que acontece é que **a peça foi recortada de dentro do `#platform`**, e toda
+> regra que a origem qualificou por aquele ancestral parou de casar — inclusive a
+> do celular. Sobra uma regra sem qualificador (`.split-section{5fr 6fr}`), que
+> não tem versão mobile.
+>
+> É uma CLASSE de defeito, não um caso: quem escreve CSS costuma qualificar
+> justamente os overrides de breakpoint. Sintoma típico: funciona no desktop,
+> quebra no celular. O conserto provável é, dentro da folha JÁ ESCOPADA por
+> origem, deixar cair o qualificador de ancestral que não existe no recorte — o
+> `:where([data-ds-corpo])` já impede o vazamento para as outras origens.
+>
+> Suíte: **1.453 verdes, 1 vermelho** — o vermelho é o de sempre, declarado
+> abaixo. Lint e typecheck limpos.
+>
+> ### Os cinco sites
+>
+> Os cinco projetos existem, com marca e mídia, e os jobs estão na fila:
+>
+> | Site | Projeto | Kit |
+> |---|---|---|
+> | Sorriso Vivo (clínica, CTA de orçamento) | `prj_01KZFRJGVXNE2XREDF70CWHDRT` | Clínica e consultório |
+> | Sócio Torcedor SJDR (vende o APP) | `prj_01KZGQBQHW59W5Y71MPGP2NVPF` | Software e assinatura |
+> | Meridiano (relógios) | `prj_01KZGQCE3WGKYKR5DKJM0K256B` | Loja de produto físico |
+> | Voltz (eletrônicos) | `prj_01KZGQCVXR9SVRT7HKX5PXBG3M` | Imóvel e arquitetura |
+> | AVDSGN (portfólio) | `prj_01KZGQDJ4BT1AQ7JNYAE65E5WW` | Portfólio e estúdio |
+>
+> **A clínica está gerada e validada** (1440 e 390). Os outros quatro esperam o
+> conserto do ancestral, para não assar o mesmo corte de celular em todos.
+>
+> A paleta do SJDR já é a do app (marinho `#0b1530`, azul `#1f7bff`, verde
+> `#22c55e`), gravada no branding do projeto. O `projeto:de-kit` ganhou as
+> permissões ligadas (`criarSecoesFaltantes`, `criarArteDeApoio`), como na via
+> expressa: sem elas, "Prova social" e "Contato" saíam VAZIAS, contrariando o
+> comentário do próprio script.
+>
+> Fica registrado, sem conserto: a marca automática escolhe o CTA por sorteio de
+> nicho e errou nos quatro (`Marcar horário` para relojoaria, `Agendar aula` para
+> eletrônicos). Corrigi no branding de cada projeto, não no gerador.
+>
+> ### Depois disso
+>
+> Gerar 5 sites, cada um com um kit diferente: clínica odontológica (CTA de
+> orçamento), **São João del-Rei — página que VENDE O APP de sócio torcedor**
+> (paleta do PDF do app: marinho `#0b1530`, azul `#1f7bff`, verde `#22c55e`),
+> relógios masculinos (mais de um relógio), eletrônicos (TV, iPhone) e o
+> portfólio do dono a partir de https://avdsgn.com.br/.
+>
+> Fica aberto, declarado: a segmentação de um site do acervo ainda produz
+> segmento aninhado (7,1% de bytes duplicados, um teste vermelho). A regra G7
+> impede que ele chegue a um kit, mas a raiz — o escolhedor de seções pegando um
+> container que engloba irmãos — continua lá.
 
 ---
 
