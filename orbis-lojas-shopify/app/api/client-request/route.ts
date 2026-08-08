@@ -8,6 +8,7 @@ import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
 import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
 import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { exportThemeZip } from "@/lib/theme-export";
+import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
 
 /**
  * Solicitação de loja do Fluxo Cliente.
@@ -54,6 +55,12 @@ const requestSchema = z.object({
     email: z.string().max(120).optional(),
     logoDataUri: z.string().max(2_000_000).optional(),
   }),
+  /**
+   * Imagens já geradas pelo provedor de IA, por chave de peça, como id de mídia
+   * (`/api/media/<id>`). Só chegam quando o cliente pediu a geração; sem elas a
+   * loja usa os desenhos locais e nasce completa do mesmo jeito.
+   */
+  imagens: z.record(z.string().max(40), z.string().regex(/^\/api\/media\/[0-9a-fA-F-]{16,64}$/)).optional(),
 });
 
 /**
@@ -104,6 +111,16 @@ export async function POST(request: Request) {
        cabeçalho do site entregue ficava com o espaço da marca vazio */
     if (!marca.logoDataUri) marca.logoDataUri = logoDaMarca(marca).dataUri;
 
+    /* As imagens da loja: as que o cliente mandou gerar entram como estão, e o
+       resto das peças ganha o desenho local. A loja nunca sai com buraco. */
+    const pecas = pecasDaMarca({ ...marca, nicheId: parsed.data.nicheId });
+    const imagens: Record<string, string> = {};
+    for (const peca of pecas) {
+      imagens[peca.chave] = parsed.data.imagens?.[peca.chave] ?? fallbackDataUri(peca);
+    }
+    /* a logo desenhada pela Orbis vale mais que o símbolo local do nicho */
+    if (!parsed.data.imagens?.logo && marca.logoDataUri) imagens.logo = marca.logoDataUri;
+
     const escolhido = parsed.data.themeId ? await temaPublicado(parsed.data.themeId) : null;
     const themeId = escolhido?.id ?? "shrine-pro";
 
@@ -119,7 +136,7 @@ export async function POST(request: Request) {
       let shopify: ShopifyThemeImport | null = null;
       try { shopify = (JSON.parse(escolhido.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { shopify = null; }
       if (shopify) {
-        const resultado = aplicarMarcaNoTema(shopify, marca);
+        const resultado = aplicarMarcaNoTema(shopify, { ...marca, imagens });
         /* o nicho fica gravado no tema do projeto: é o que faz a vitrine da
            loja mostrar os produtos daquele nicho em toda rota de render */
         temaComMarca = { ...resultado.theme, orbisNicheId: parsed.data.nicheId };

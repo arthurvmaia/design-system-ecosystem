@@ -37,6 +37,12 @@ export type MarcaAplicavel = {
   bodyFont?: string;
   collections?: string[];
   announcement?: string;
+  /**
+   * URL de cada peça de imagem, por chave (`logo`, `banner-desktop`,
+   * `banner-mobile`, `colecao-1`…). Vem do provedor de IA quando o cliente
+   * pediu, ou do desenho local quando não.
+   */
+  imagens?: Record<string, string>;
 };
 
 export type ResultadoDaMarca = {
@@ -54,6 +60,8 @@ const PAPEL_BORDA = /(border|divider|stroke|linha)/i;
 const PAPEL_ROTULO = /label/i;
 const BOTAO_VAZADO = /(outline|secondary|ghost|vazado)/i;
 const PAPEL_TITULO = /(head(ing|er)|title|display|logo|titulo)/i;
+const IMAGEM_DE_LOGO = /(logo|favicon|brand.?image|marca)/i;
+const IMAGEM_DE_CELULAR = /(mobile|celular|small|portrait|phone)/i;
 const CAMPO_DE_MARCA = /(shop.?name|store.?name|brand|logo.?text|site.?title|nome.?da.?loja|marca)/i;
 const CAMPO_DE_AVISO = /(announce|aviso|bar.?text|topbar)/i;
 const CAMPO_DE_LISTA = /(collection_list|link_list|menu)/i;
@@ -141,6 +149,14 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
 
   const definicoes = achatar(theme.globalGroups.flatMap((grupo) => grupo.settings));
   const valores = theme.globalValues;
+  const imagens = marca.imagens ?? {};
+  /* as capas de coleção entram na ordem em que as seções as pedem */
+  const capas = Object.keys(imagens)
+    .filter((chave) => chave.startsWith("colecao-"))
+    .sort()
+    .map((chave) => imagens[chave]);
+  let proximaCapa = 0;
+  let proximaColecao = 0;
 
   /* 1. esquemas de cor: a loja inteira se pinta por aqui */
   const esquemas = valores.color_schemes;
@@ -173,6 +189,11 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
       const familia = titulo ? marca.headingFont : marca.bodyFont;
       if (!familia) continue;
       valores[definicao.id] = handleDeFonte(familia, titulo ? 7 : 4);
+      marcou(definicao.id);
+      continue;
+    }
+    if (definicao.type === "image_picker" && imagens.logo && IMAGEM_DE_LOGO.test(`${definicao.id} ${definicao.label ?? ""}`)) {
+      valores[definicao.id] = imagens.logo;
       marcou(definicao.id);
       continue;
     }
@@ -209,13 +230,28 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
             if (familia) { alvo.settings[definicao.id] = handleDeFonte(familia, titulo ? 7 : 4); marcou(`${secao.type}.${definicao.id}`); }
             continue;
           }
+          if (definicao.type === "image_picker") {
+            /* banner do topo, capa de coleção e logo, cada um no seu lugar:
+               o campo de celular recebe o corte vertical, e não o de desktop */
+            const pista2 = `${secao.type} ${pista}`;
+            const escolhida = IMAGEM_DE_LOGO.test(pista) ? imagens.logo
+              : IMAGEM_DE_CELULAR.test(pista2) ? imagens["banner-mobile"]
+              : /slide|banner|hero|image.?banner|rich.?text/i.test(pista2) ? imagens["banner-desktop"]
+              : capas.length ? capas[proximaCapa++ % capas.length]
+              : undefined;
+            if (escolhida) { alvo.settings[definicao.id] = escolhida; marcou(`${secao.type}.${definicao.id}`); }
+            continue;
+          }
           if (CAMPO_DE_LISTA.test(definicao.type) && colecoes.length) {
             alvo.settings[definicao.id] = definicao.type === "collection_list" ? colecoes : colecoes[0];
             marcou(`${secao.type}.${definicao.id}`);
             continue;
           }
-          if (definicao.type === "collection" && colecoes.length && !atual) {
-            alvo.settings[definicao.id] = colecoes[0];
+          if (definicao.type === "collection" && colecoes.length) {
+            /* o handle que o tema trouxe é da loja de demonstração dele
+               ("moda-feminina" numa loja de pet); as seções recebem as coleções
+               do nicho, girando para não repetir a mesma em todas */
+            alvo.settings[definicao.id] = colecoes[proximaColecao++ % colecoes.length];
             marcou(`${secao.type}.${definicao.id}`);
             continue;
           }

@@ -75,15 +75,37 @@ async function chamar(chave: string, caminho: string, init: RequestInit): Promis
   return resposta.json();
 }
 
+/**
+ * Enquadramentos aceitos pela API. Lista fechada porque o valor vem da tela e
+ * um enquadramento inválido derruba a geração inteira com erro de validação.
+ */
+export const ASPECTOS = Object.freeze([
+  "square_1_1", "classic_4_3", "traditional_3_4", "widescreen_16_9", "social_story_9_16",
+  "smartphone_horizontal_20_9", "smartphone_vertical_9_20", "standard_3_2", "portrait_2_3",
+  "horizontal_2_1", "vertical_1_2", "social_5_4", "social_post_4_5",
+]);
+
+export function aspectoValido(valor: string): boolean {
+  return ASPECTOS.includes(valor);
+}
+
 /** Abre a tarefa de geração. O resultado vem depois, por `consultarTarefa`. */
 export async function pedirGeracao(
   chave: string,
-  { papel, modelo, prompt, aspecto = "square_1_1", imagemBase64 }: { papel: PapelMagnific; modelo: string; prompt: string; aspecto?: string; imagemBase64?: string },
+  { papel, modelo, prompt, aspecto = "square_1_1", cores = [], imagemBase64 }:
+    { papel: PapelMagnific; modelo: string; prompt: string; aspecto?: string; cores?: string[]; imagemBase64?: string },
 ): Promise<TarefaMagnific> {
   if (!modeloValido(papel, modelo)) throw new Error("MODELO_NAO_PERMITIDO");
+  if (papel !== "upscale" && !aspectoValido(aspecto)) throw new Error("ASPECTO_NAO_PERMITIDO");
   const corpo: Record<string, unknown> = papel === "upscale"
     ? { image: imagemBase64, prompt, scale_factor: "2x" }
-    : { prompt, aspect_ratio: aspecto, num_images: 1 };
+    : { prompt, aspect_ratio: aspecto, resolution: "2k" };
+  /* `styling.colors` é o que faz a imagem sair na paleta da marca em vez de
+     depender de o modelo obedecer as cores citadas no texto */
+  const paleta = cores.filter((cor) => /^#[0-9a-f]{6}$/i.test(cor)).slice(0, 5);
+  if (papel === "imagem" && paleta.length) {
+    corpo.styling = { colors: paleta.map((cor) => ({ color: cor, weight: 1 })) };
+  }
   if (papel === "video" && imagemBase64) corpo.image = imagemBase64;
   const bruto = await chamar(chave, `/v1/ai/${modelo}`, { method: "POST", body: JSON.stringify(corpo) });
   const tarefa = extrair(bruto);

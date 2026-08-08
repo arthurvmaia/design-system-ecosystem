@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { getIdentity } from "@/lib/auth";
-import { ensureUser } from "@/lib/data";
+import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
 import { consultarTarefa, magnificDisponivel, modeloPadrao, modeloValido, pedirGeracao, promptDaVitrine, type PapelMagnific } from "@/lib/magnific";
 
 /**
@@ -49,17 +49,65 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * Guarda a imagem gerada como mídia do usuário.
+ *
+ * A URL que a Magnific devolve expira, e o tema exportado precisa do arquivo
+ * dentro de `assets/`. Gravando em R2 + `media_files`, a imagem vira
+ * `/api/media/<id>` — o mesmo endereço que o exportador já sabe transformar em
+ * asset do ZIP.
+ */
+async function guardarComoMidia(viewerId: string, url: string, nome: string) {
+  if (!env.MEDIA) throw new Error("MEDIA_STORAGE_UNAVAILABLE");
+  if (!/^https:\/\//i.test(url)) throw new Error("URL_INVALIDA");
+  const resposta = await fetch(url);
+  if (!resposta.ok) throw new Error(`DOWNLOAD_${resposta.status}`);
+  const dados = new Uint8Array(await resposta.arrayBuffer());
+  if (!dados.byteLength || dados.byteLength > 12 * 1024 * 1024) throw new Error("TAMANHO_INVALIDO");
+  const tipo = resposta.headers.get("content-type") ?? "image/png";
+  if (!/^image\//.test(tipo)) throw new Error("TIPO_INVALIDO");
+
+  await ensureDatabase();
+  const id = crypto.randomUUID();
+  const extensao = tipo.includes("jpeg") ? "jpg" : tipo.includes("webp") ? "webp" : "png";
+  const arquivo = `${nome.replace(/[^a-z0-9-]/gi, "-").slice(0, 40) || "imagem"}.${extensao}`;
+  const storageKey = `media/${viewerId}/${id}-${arquivo}`;
+  await env.MEDIA.put(storageKey, dados, { httpMetadata: { contentType: tipo }, customMetadata: { ownerId: viewerId } });
+  await getD1().prepare(`INSERT INTO media_files(id, user_id, storage_key, filename, content_type, size)
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(id, viewerId, storageKey, arquivo, tipo, dados.byteLength)
+    .run();
+  return { id, url: `/api/media/${id}` };
+}
+
 export async function POST(request: Request) {
   const identity = await getIdentity();
   if (!identity) return Response.json({ error: "AUTHENTICATION_REQUIRED" }, { status: 401 });
-  await ensureUser(identity);
+  const viewer = await ensureUser(identity);
 
   const apiKey = chave();
   if (!magnificDisponivel(apiKey)) return Response.json({ disponivel: false, error: "PROVEDOR_NAO_CONFIGURADO" }, { status: 503 });
 
   const corpo = await request.json().catch(() => ({})) as {
+    acao?: string; taskId?: string; chave?: string;
     papel?: string; modelo?: string; nicho?: string; marca?: string; paleta?: unknown; prompt?: string; aspecto?: string;
   };
+
+  /* segunda etapa: a tarefa terminou, a imagem vira mídia do usuário */
+  if (corpo.acao === "salvar") {
+    const papel = papelDe(corpo.papel ?? null);
+    const modelo = typeof corpo.modelo === "string" && modeloValido(papel, corpo.modelo) ? corpo.modelo : modeloPadrao(papel);
+    try {
+      const tarefa = await consultarTarefa(apiKey as string, papel, modelo, String(corpo.taskId ?? ""));
+      if (tarefa.status !== "COMPLETED" || !tarefa.imagens.length) {
+        return Response.json({ disponivel: true, status: tarefa.status, pronta: false });
+      }
+      const midia = await guardarComoMidia(viewer.id, tarefa.imagens[0], String(corpo.chave ?? "peca"));
+      return Response.json({ disponivel: true, status: tarefa.status, pronta: true, ...midia });
+    } catch (erro) {
+      return Response.json({ error: erro instanceof Error ? erro.message : "SALVAR_FALHOU" }, { status: 502 });
+    }
+  }
   const papel = papelDe(corpo.papel ?? null);
   const modelo = typeof corpo.modelo === "string" && modeloValido(papel, corpo.modelo) ? corpo.modelo : modeloPadrao(papel);
   const paleta = Array.isArray(corpo.paleta) ? corpo.paleta.filter((cor): cor is string => typeof cor === "string").slice(0, 4) : [];
@@ -69,7 +117,11 @@ export async function POST(request: Request) {
     : promptDaVitrine({ nicho: String(corpo.nicho ?? "produtos"), marca: String(corpo.marca ?? "a loja"), paleta });
 
   try {
-    const tarefa = await pedirGeracao(apiKey as string, { papel, modelo, prompt, aspecto: typeof corpo.aspecto === "string" ? corpo.aspecto : undefined });
+    const tarefa = await pedirGeracao(apiKey as string, {
+      papel, modelo, prompt,
+      aspecto: typeof corpo.aspecto === "string" ? corpo.aspecto : undefined,
+      cores: paleta,
+    });
     return Response.json({ disponivel: true, papel, ...tarefa });
   } catch (erro) {
     return Response.json({ error: erro instanceof Error ? erro.message : "MAGNIFIC_FALHOU" }, { status: 502 });

@@ -51,16 +51,6 @@ function escolher(sorteio, lista) {
   return lista[Math.floor(sorteio() * lista.length) % lista.length];
 }
 
-/** Escolhe `quantos` itens distintos, preservando a ordem da lista. */
-function escolherVarios(sorteio, lista, quantos) {
-  const copia = lista.slice();
-  const saida = [];
-  while (copia.length && saida.length < quantos) {
-    saida.push(copia.splice(Math.floor(sorteio() * copia.length) % copia.length, 1)[0]);
-  }
-  return saida;
-}
-
 /* ------------------------------------------------------------------ nichos */
 
 /**
@@ -490,7 +480,9 @@ export function gerarMarca({ nicheId, semente = "orbis", sobrescritas = {} } = {
   const voz = escolher(sorteio, nicho.vozes);
   const manchete = escolher(sorteio, nicho.manchetes);
   const forma = escolher(sorteio, FORMAS);
-  const colecoes = escolherVarios(sorteio, nicho.colecoes, 4);
+  /* as coleções são as DO NICHO, na ordem dele: quem escolheu óculos quer
+     "Óculos de sol" e "Armações de grau", não um sorteio a cada geração */
+  const colecoes = nicho.colecoes.slice(0, 6);
 
   const nome = texto(sobrescritas.name) || nomeGerado;
   const primaria = cor(sobrescritas.primaryColor) || paleta.primaria;

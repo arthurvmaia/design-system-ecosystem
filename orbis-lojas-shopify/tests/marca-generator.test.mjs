@@ -39,7 +39,8 @@ test("gerarMarca devolve identidade completa para todo nicho", () => {
     assert.match(marca.backgroundColor, /^#[0-9a-f]{6}$/);
     assert.ok(marca.headingFont && marca.bodyFont, `tipografia faltando em ${nicho.id}`);
     assert.ok(marca.voice, `voz faltando em ${nicho.id}`);
-    assert.equal(marca.collections.length, 4);
+    assert.equal(marca.collections.length, 6, `colecoes do nicho em ${nicho.id}`);
+    assert.deepEqual(marca.collections, nicho.colecoes.slice(0, 6), `as colecoes tem que ser as do nicho ${nicho.id}`);
     assert.equal(marca.faq.length, nicho.perguntas.length);
     assert.ok(marca.logoSvg.startsWith("<svg"), `logo inválida em ${nicho.id}`);
     assert.ok(marca.logoDataUri.startsWith("data:image/svg+xml;charset=utf-8,"));
@@ -125,6 +126,43 @@ test("a entrega do cliente é um tema Shopify, não um site solto", async () => 
   assert.match(rota, /loja-\$\{site\.brand\.slug\}\.zip/);
   const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
   assert.match(flow, /Enviar arquivo ZIP/, "a tela precisa dizer o que fazer com o pacote");
+});
+
+test("as imagens da loja saem no enquadramento certo, e as coleções são do nicho", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { pecasDaMarca, fallbackDataUri, coresDaMarca } = await server.ssrLoadModule("/lib/marca-imagens.ts");
+    const { aspectoValido } = await server.ssrLoadModule("/lib/magnific.ts");
+
+    for (const nicho of NICHOS) {
+      const marca = gerarMarca({ nicheId: nicho.id, semente: "img" });
+      const pecas = pecasDaMarca({ ...marca, nicheId: nicho.id });
+      const porPapel = new Map(pecas.map((peca) => [peca.papel, peca]));
+      /* logo, banner de desktop e banner de celular, cada um no seu corte */
+      assert.equal(porPapel.get("logo").aspecto, "square_1_1");
+      assert.equal(porPapel.get("banner-desktop").aspecto, "widescreen_16_9");
+      assert.equal(porPapel.get("banner-mobile").aspecto, "social_post_4_5");
+      assert.notEqual(porPapel.get("banner-desktop").aspecto, porPapel.get("banner-mobile").aspecto,
+        "o banner do celular não pode sair no corte do desktop");
+      for (const peca of pecas) {
+        assert.ok(aspectoValido(peca.aspecto), `${peca.chave} usa enquadramento que a API não aceita`);
+        assert.ok(peca.fallbackSvg.startsWith("<svg"), `${peca.chave} sem desenho local`);
+        assert.ok(fallbackDataUri(peca).startsWith("data:image/svg+xml"));
+      }
+      /* uma capa por coleção DO NICHO */
+      const capas = pecas.filter((peca) => peca.papel === "colecao");
+      assert.equal(capas.length, nicho.colecoes.slice(0, 6).length);
+      for (const [indice, nome] of nicho.colecoes.slice(0, 6).entries()) {
+        assert.ok(capas[indice].prompt.includes(nome), `a capa ${indice + 1} de ${nicho.id} não fala da coleção "${nome}"`);
+      }
+      /* o modelo desenha só o símbolo: letra em imagem gerada sai errada */
+      assert.match(porPapel.get("logo").prompt, /[Ss]em letras/);
+      assert.deepEqual(coresDaMarca(marca).slice(0, 1), [marca.primaryColor]);
+    }
+  } finally {
+    await server.close();
+  }
 });
 
 test("SVG de terceiro não passa pelo sanitizador", () => {

@@ -8,6 +8,7 @@ import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada"
 import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 import { NICHOS, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
+import { pecasDaMarca } from "@/lib/marca-imagens";
 
 /**
  * O balcão do cliente: quatro passos e uma loja na mão.
@@ -62,6 +63,12 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   const [temasCarregando, setTemasCarregando] = useState(true);
   const [themeId, setThemeId] = useState("");
   const [templateId, setTemplateId] = useState<string>(SITE_TEMPLATES[0].id);
+  /* geração por IA é escolha do cliente, e só aparece se houver provedor */
+  const [comIa, setComIa] = useState(false);
+  const [iaDisponivel, setIaDisponivel] = useState(false);
+  const [imagensGeradas, setImagensGeradas] = useState<Record<string, string>>({});
+  const [gerandoImagens, setGerandoImagens] = useState(false);
+  const [progressoIa, setProgressoIa] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [erro, setErro] = useState<string | null>(null);
   const [delivery, setDelivery] = useState<Delivery>(null);
@@ -90,6 +97,22 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     })();
     return () => { ativo = false; };
   }, []);
+
+  /* o provedor de imagem é opcional: a tela só oferece o que existe */
+  useEffect(() => {
+    let ativo = true;
+    void (async () => {
+      try {
+        const resposta = await fetch("/api/marca-imagens");
+        const dados = await resposta.json() as { disponivel?: boolean };
+        if (ativo) setIaDisponivel(Boolean(dados.disponivel));
+      } catch { if (ativo) setIaDisponivel(false); }
+    })();
+    return () => { ativo = false; };
+  }, []);
+
+  /* as peças que a loja precisa, no enquadramento certo de cada uma */
+  const pecas = useMemo(() => pecasDaMarca({ ...marca, nicheId }), [marca, nicheId]);
 
   const gerarMarcaAgora = useCallback((sementeNova: string) => {
     if (!nicheId) return;
@@ -125,6 +148,59 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     return true;
   }, [passo, modo, nicheId, marca.name, themeId]);
 
+  /**
+   * Gera as imagens da loja no provedor e guarda cada uma como mídia.
+   *
+   * O modelo trabalha em fila: a chamada abre a tarefa e o resultado vem
+   * depois. Por isso abrimos todas de uma vez e depois voltamos perguntando
+   * quais terminaram, em vez de esperar uma por uma.
+   */
+  async function gerarImagens() {
+    setGerandoImagens(true);
+    setErro(null);
+    setProgressoIa("abrindo as tarefas…");
+    try {
+      const cores = [marca.primaryColor, marca.accentColor, marca.backgroundColor];
+      const tarefas: Array<{ chave: string; taskId: string; modelo: string }> = [];
+      for (const peca of pecas as Array<{ chave: string; prompt: string; aspecto: string }>) {
+        const resposta = await fetch("/api/marca-imagens", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ papel: "imagem", prompt: peca.prompt, aspecto: peca.aspecto, paleta: cores }),
+        });
+        if (!resposta.ok) throw new Error("O provedor recusou o pedido de imagem.");
+        const dados = await resposta.json() as { taskId?: string; modelo?: string };
+        if (dados.taskId && dados.modelo) tarefas.push({ chave: peca.chave, taskId: dados.taskId, modelo: dados.modelo });
+      }
+
+      const prontas: Record<string, string> = {};
+      const pendentes = new Map(tarefas.map((tarefa) => [tarefa.chave, tarefa]));
+      for (let volta = 0; volta < 40 && pendentes.size; volta += 1) {
+        setProgressoIa(`${prontas ? Object.keys(prontas).length : 0} de ${tarefas.length} prontas…`);
+        await new Promise((resolve) => window.setTimeout(resolve, 5000));
+        for (const [chave, tarefa] of [...pendentes]) {
+          const resposta = await fetch("/api/marca-imagens", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ acao: "salvar", papel: "imagem", taskId: tarefa.taskId, modelo: tarefa.modelo, chave }),
+          });
+          if (!resposta.ok) continue;
+          const dados = await resposta.json() as { pronta?: boolean; url?: string };
+          if (dados.pronta && dados.url) { prontas[chave] = dados.url; pendentes.delete(chave); }
+        }
+        setImagensGeradas({ ...prontas });
+      }
+      setProgressoIa(pendentes.size
+        ? `${Object.keys(prontas).length} de ${tarefas.length} prontas; o resto entra com a arte da Orbis.`
+        : `${tarefas.length} imagens prontas.`);
+    } catch (falha) {
+      setErro(falha instanceof Error ? falha.message : "Não consegui gerar as imagens agora.");
+      setProgressoIa("");
+    } finally {
+      setGerandoImagens(false);
+    }
+  }
+
   function baixarZip(atual: { blob: Blob; name: string } | null) {
     if (!atual) return;
     const url = URL.createObjectURL(atual.blob);
@@ -153,6 +229,8 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
             whatsapp: marca.whatsapp, instagram: marca.instagram, email: marca.email,
           },
+          /* só vai o que a IA realmente gerou; o resto o servidor desenha */
+          imagens: comIa && Object.keys(imagensGeradas).length ? imagensGeradas : undefined,
         }),
       });
       if (!resposta.ok) {
@@ -315,6 +393,47 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                   ))}
                 </div>
               )}
+              <span className="cf-secao-titulo">Imagens da loja</span>
+              <div className="cf-modos">
+                <button className={`cf-modo ${!comIa ? "selecionado" : ""}`} onClick={() => setComIa(false)}>
+                  <span className="cf-modo-icone"><PenLine size={20} strokeWidth={1.6} /></span>
+                  <strong>Artes da Orbis</strong>
+                  <p>Logo, banners e capas de coleção desenhados na paleta da marca. Sai na hora e sem custo.</p>
+                </button>
+                <button
+                  className={`cf-modo ${comIa ? "selecionado" : ""} ${iaDisponivel ? "" : "indisponivel"}`}
+                  disabled={!iaDisponivel}
+                  onClick={() => setComIa(true)}
+                >
+                  <span className="cf-modo-icone"><Sparkles size={20} strokeWidth={1.6} /></span>
+                  <strong>Gerar por IA</strong>
+                  <p>
+                    {iaDisponivel
+                      ? `Fotografia de banner (desktop e celular), capas das ${marca.collections.length || 4} coleções e o símbolo da marca, na sua paleta.`
+                      : "Precisa de um provedor de imagem configurado. Sem ele, a loja sai com as artes da Orbis."}
+                  </p>
+                </button>
+              </div>
+              {comIa && (
+                <>
+                  <div className="cf-pecas">
+                    {pecas.map((peca: { chave: string; titulo: string; aspecto: string }) => (
+                      <span key={peca.chave} className="cf-peca">
+                        <b>{peca.titulo}</b>
+                        <code>{peca.aspecto.replace(/^[a-z_]*?_(\d+)_(\d+)$/, "$1:$2")}</code>
+                        {imagensGeradas[peca.chave] ? <i className="cf-peca-ok"><Check size={11} /> pronta</i> : null}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="cf-actions">
+                    <button className="secondary-button" disabled={gerandoImagens} onClick={() => void gerarImagens()}>
+                      <Sparkles size={15} /> {gerandoImagens ? "Gerando as imagens…" : `Gerar as ${pecas.length} imagens`}
+                    </button>
+                    {progressoIa && <span className="cf-foot-dica">{progressoIa}</span>}
+                  </div>
+                </>
+              )}
+
               <span className="cf-secao-titulo">Composição das páginas</span>
               <div className="cf-templates">
                 {SITE_TEMPLATES.map((entrada) => (
