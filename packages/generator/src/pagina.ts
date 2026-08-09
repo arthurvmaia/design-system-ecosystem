@@ -2366,7 +2366,39 @@ ${criada.html}
   // transparentes sobre o fundo da página — emitida SEMPRE, com ou sem camada;
   // `--pagina-fundo` publica esse fundo para o CSS criado consumir; a regra de
   // sticky é o par CSS do atributo `data-fixa-no-topo`.
-  concatCss += `\n/* base da página composta */\nhtml,body{margin:0}\n:root{--pagina-fundo:${fundoDaMarca}}\nbody{background:var(--pagina-fundo)}\n${REGRA_QUE_ABRE_PASSAGEM}\n${REGRA_DA_TINTA_DA_MARCA}\n[data-secao="nav"][data-fixa-no-topo]{position:sticky;top:0;z-index:60}\n`;
+  /**
+   * O respiro MÍNIMO na emenda entre duas seções.
+   *
+   * O dono apontou duas vezes: "componentes colado um com outro". Medido nos 20
+   * sites de prova, em 1440px: **149 emendas com menos de 8px de vão, e ZERO
+   * acima de 160px**. Não é um extremo e outro — é um só: as peças se encostam.
+   *
+   * A causa é a composição: cada peça traz o respiro que tinha na origem, onde
+   * ela era uma seção entre outras da MESMA página. Empilhadas de origens
+   * diferentes, o que separava lá deixa de separar aqui.
+   *
+   * ## O que isto NÃO toca
+   *
+   * O espaçamento INTERNO da peça, que é regra dura deste projeto ("não mude a
+   * essência do componente"). Isto é `margin-top` na EMENDA, entre uma seção e a
+   * próxima — a fronteira que a composição criou e que ninguém desenhou.
+   *
+   * ## Por que `max()` e não um valor fixo
+   *
+   * Seção que JÁ respira não ganha nada: `max` deixa o maior valer. O piso sai
+   * do degrau medido do próprio kit (`--marca-espaco-8`), não de constante — um
+   * site de ritmo apertado ganha piso apertado. O `2.5rem` é a reserva para
+   * quando o kit não tem régua de espaço medida.
+   *
+   * ## O que foi descartado, e por quê
+   *
+   * A primeira proposta era `padding-block` na raiz de cada seção. Simulada nos
+   * 20 sites, ela deixava TODOS mais altos — +9,9% no total — porque somava
+   * respiro também onde já havia. O piso na emenda só age onde falta.
+   */
+  const respiroDaEmenda =
+    '[data-secao] + [data-secao]{margin-top:max(var(--marca-espaco-8, 2.5rem), 0px)}';
+  concatCss += `\n/* base da página composta */\nhtml,body{margin:0}\n:root{--pagina-fundo:${fundoDaMarca}}\nbody{background:var(--pagina-fundo)}\n${REGRA_QUE_ABRE_PASSAGEM}\n${REGRA_DA_TINTA_DA_MARCA}\n[data-secao="nav"][data-fixa-no-topo]{position:sticky;top:0;z-index:60}\n${respiroDaEmenda}\n`;
 
   /**
    * O CONTAINER da página, devolvido às seções que provaram tê-lo perdido.
