@@ -66,6 +66,7 @@ import {
   REGRA_DA_TINTA_DA_MARCA,
   REGRA_QUE_ABRE_PASSAGEM,
   alvosDoComportamento,
+  ancorarNavNasSecoes,
   atributosDoDocumentoDaPeca,
   comportamentoAlcancaAPagina,
   destravarOpacidadeSemRevelador,
@@ -2708,6 +2709,22 @@ ${criada.html}
    * classe de nome revelador (`gsap-fade-up`, `pc-hidden-content`,
    * `stack-card`). A regra S13 reprovava em 31 das 40 larguras.
    */
+  /**
+   * A NAV passa a apontar para as seções desta página.
+   *
+   * O dono clicou nos itens do menu três vezes e nada acontecia: os `href` vêm
+   * do site de origem e apontam para âncoras e rotas que não existem aqui.
+   */
+  const nav = ancorarNavNasSecoes(bodyHtml, [
+    ...separado.secoes.map((s) => ({ id: s.id, papel: s.slug, nome: s.nome || s.slug })),
+  ]);
+  if (nav.ligados > 0) {
+    bodyHtml = nav.html;
+    avisos.push(
+      `${nav.ligados} link(s) do menu passaram a apontar para as seções desta página. Eles vinham do site de origem, apontando para âncoras e rotas que não existem aqui — clicar não fazia nada.`,
+    );
+  }
+
   const destravadas = destravarOpacidadeSemRevelador(
     concatCss,
     corpoDosScriptsLocais,

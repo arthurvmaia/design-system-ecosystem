@@ -1,3 +1,4 @@
+import { ROTULO_DE_PAPEL } from '@ds/shared/schemas';
 /**
  * Montagem PURA de uma seção do site a partir do bundle de um componente.
  *
@@ -841,4 +842,91 @@ export const destravarOpacidadeSemRevelador = (
     css: `\n/* Sem revelador que alcance esta página, a opacidade inicial fica para sempre. */\n${seletores}{opacity:1 !important}\n`,
     destravadas: alvo,
   };
+};
+
+/**
+ * Os links da NAV passam a apontar para as seções DESTA página.
+ *
+ * ## O defeito
+ *
+ * O dono clicou nos itens do menu e nada aconteceu. É esperado e ninguém tinha
+ * consertado: a nav veio de outro site, e os `href` dela apontam para as
+ * âncoras e as páginas DAQUELE site — `#features` de uma seção que não existe
+ * aqui, `/precos` de uma rota que não existe em lugar nenhum. Num site de uma
+ * página só, tudo isso é link morto.
+ *
+ * ## O que decide o destino
+ *
+ * O compositor sabe exatamente quais seções montou, com o papel e o nome de
+ * cada uma. Um item de menu escrito "Preços" tem um destino óbvio nesta página:
+ * a seção de papel `pricing`. A ligação é feita pelo TEXTO do link contra duas
+ * fontes — o rótulo em português do papel (`ROTULO_DE_PAPEL`) e o nome que o
+ * usuário deu à seção.
+ *
+ * ## O que fica de fora, de propósito
+ *
+ * Link externo (`http`, `mailto`, `tel`) não é navegação de página: é o contato
+ * do cliente e o motor já o preserva em outros pontos. Link cujo texto não casa
+ * com seção nenhuma também fica — inventar um destino seria pior que um link
+ * que não leva a lugar nenhum, porque levaria ao lugar ERRADO.
+ *
+ * ## Quando isto NÃO tem o que ligar, e por que está certo assim
+ *
+ * Medido num site do banco de prova: a nav trazia "Produto", "Segurança",
+ * "Documentação", "Suporte" — o vocabulário do site de ORIGEM — enquanto as
+ * seções da página eram `features`, `showcase`, `logos`, `stats`, `faq`. Zero
+ * casamentos, e corretamente: são dois sites diferentes falando.
+ *
+ * A ligação acontece no fluxo real, onde o criativo escreve a copy da nav com
+ * as palavras do cliente e os rótulos passam a descrever as seções que existem.
+ * O banco de prova não escreve copy, então ali ela fica quieta — e ficar quieta
+ * é a resposta certa, não uma falha.
+ */
+export const ancorarNavNasSecoes = (
+  html: string,
+  secoes: readonly { id: string; papel: string | null; nome: string }[],
+): { html: string; ligados: number } => {
+  if (secoes.length === 0) return { html, ligados: 0 };
+
+  const semAcento = (s: string): string =>
+    s
+      .normalize('NFD')
+      // `\p{M}` s\u00e3o as MARCAS combinantes \u2014 os acentos que o `NFD` acabou de
+      // separar da letra. A faixa `\u0300-\u036f` dizia a mesma coisa e o
+      // linter a recusa, com raz\u00e3o: uma classe de caracteres n\u00e3o deveria
+      // misturar caractere e combinante. A propriedade nomeia o que se quer.
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .trim();
+
+  const destino = new Map<string, string>();
+  for (const s of secoes) {
+    const chaves = [s.nome];
+    if (s.papel !== null) {
+      const rotulo = ROTULO_DE_PAPEL[s.papel as keyof typeof ROTULO_DE_PAPEL];
+      if (rotulo !== undefined) chaves.push(rotulo);
+      chaves.push(s.papel);
+    }
+    for (const k of chaves) {
+      const chave = semAcento(k);
+      if (chave !== '' && !destino.has(chave)) destino.set(chave, s.id);
+    }
+  }
+
+  let ligados = 0;
+  const saida = html.replace(
+    /<a\b([^>]*)>([^<]{1,40})<\/a>/gi,
+    (inteiro, attrs: string, texto: string) => {
+      const href = /\bhref\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] ?? '';
+      // Externo, contato e âncora que já aponta para uma seção desta página.
+      if (/^(https?:|mailto:|tel:|sms:)/i.test(href)) return inteiro;
+      if (/^#sec_/i.test(href)) return inteiro;
+      const alvo = destino.get(semAcento(texto));
+      if (alvo === undefined) return inteiro;
+      ligados += 1;
+      const semHref = attrs.replace(/\s*\bhref\s*=\s*"[^"]*"/i, '');
+      return `<a${semHref} href="#${alvo}">${texto}</a>`;
+    },
+  );
+  return { html: saida, ligados };
 };

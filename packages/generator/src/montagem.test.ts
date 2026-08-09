@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   REGRA_QUE_ABRE_PASSAGEM,
   alvosDoComportamento,
+  ancorarNavNasSecoes,
   comportamentoAlcancaAPagina,
   destravarOpacidadeSemRevelador,
   envolverCamadaDePagina,
@@ -548,4 +549,47 @@ test('conteudo de HOVER nao e destravado: quebraria o desenho do cartao', () => 
     '.pricing-card:hover .pc-hidden-content{opacity:1}';
   const r = destravarOpacidadeSemRevelador(css, ["document.querySelector('.nada')"], html);
   assert.deepEqual(r.destravadas, [], 'o hover fica como esta');
+});
+
+test('a nav passa a apontar para as secoes DESTA pagina', () => {
+  // O dono clicou nos itens do menu e nada acontecia: os href vieram do site de
+  // origem e apontam para ancoras e rotas que nao existem aqui.
+  const html =
+    '<nav><a href="#features">Funcionalidades</a><a href="/precos">Planos</a>' +
+    '<a href="https://x.com/marca">Twitter</a><a href="mailto:a@b.c">Email</a>' +
+    '<a href="/blog">Blog</a></nav>';
+  const secoes = [
+    { id: 'sec_1', papel: 'features', nome: 'Funcionalidades' },
+    { id: 'sec_2', papel: 'pricing', nome: 'Planos' },
+  ];
+  const r = ancorarNavNasSecoes(html, secoes);
+  assert.equal(r.ligados, 2);
+  assert.ok(r.html.includes('href="#sec_1">Funcionalidades'));
+  assert.ok(r.html.includes('href="#sec_2">Planos'));
+  assert.ok(r.html.includes('https://x.com/marca'), 'link externo fica');
+  assert.ok(r.html.includes('mailto:a@b.c'), 'contato fica');
+  assert.ok(r.html.includes('href="/blog">Blog'), 'sem secao que case, nao inventa destino');
+});
+
+test('a nav casa pelo ROTULO do papel, nao so pelo nome da secao', () => {
+  const html = '<nav><a href="/x">Perguntas frequentes</a></nav>';
+  const r = ancorarNavNasSecoes(html, [{ id: 'sec_9', papel: 'faq', nome: 'Duvidas' }]);
+  assert.equal(r.ligados, 1);
+  assert.ok(r.html.includes('href="#sec_9"'));
+});
+
+test('acento e caixa nao atrapalham a ligacao', () => {
+  const html = '<nav><a href="/x">PLANOS</a><a href="/y">contato</a></nav>';
+  const r = ancorarNavNasSecoes(html, [
+    { id: 'sec_1', papel: 'pricing', nome: 'Planos' },
+    { id: 'sec_2', papel: 'contact', nome: 'Contato' },
+  ]);
+  assert.equal(r.ligados, 2);
+});
+
+test('ancora que ja aponta para uma secao desta pagina nao e mexida', () => {
+  const html = '<nav><a href="#sec_7">Planos</a></nav>';
+  const r = ancorarNavNasSecoes(html, [{ id: 'sec_1', papel: 'pricing', nome: 'Planos' }]);
+  assert.equal(r.ligados, 0);
+  assert.ok(r.html.includes('href="#sec_7"'));
 });
