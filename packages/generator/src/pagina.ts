@@ -87,6 +87,7 @@ import {
 } from './movimento-da-pagina.js';
 import { removerScriptsQueCompilamCss } from './pecas.js';
 import { cssResponsivoBase } from './responsivo.js';
+import { criarSecaoNoEstilo, cssDasSecoesCriadas } from './secoes-no-estilo.js';
 
 /**
  * `montarPaginaDoKit`: TODO o determinístico da geração num lugar só.
@@ -146,6 +147,16 @@ export type EntradaDaPagina = {
   designSystem?: unknown;
   layout: ProjectLayout;
   branding: ProjectBranding;
+  /**
+   * `prototipo` libera placeholder MARCADO nas seções construídas de depoimento,
+   * números e logos; `entrega` (o padrão) recusa e declara o motivo.
+   *
+   * A distinção é do dono: *"pode colocar dados de placeholder, esses sites são
+   * só protótipos, não é para cliente final"*. O padrão é `entrega` porque é o
+   * modo em que o erro custa caro — site no ar com depoimento inventado é
+   * problema do cliente, não do motor.
+   */
+  modoDeConteudo?: 'prototipo' | 'entrega';
   secoes?: readonly SecaoCriativa[];
   /** CSS das seções criadas. Vai em `assets/criadas.css`, entre styles e responsivo. */
   cssCriado?: string;
@@ -2009,6 +2020,11 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
 
   // ── As seções, na ordem do usuário ────────────────────────────────────────
   let bodyHtml = '';
+  /** Alguma etapa sem peça virou seção construída? Decide a folha extra. */
+  let usouSecaoCriada = false;
+  // O ritmo do kit é medido UMA vez: as seções criadas e as abas andam no mesmo
+  // compasso do resto da página, e não em dois tempos diferentes.
+  const ritmoDaPagina = tokensDeMovimento(concatCss);
   for (const secao of separado.secoes) {
     const criativo = criativoPorSecao.get(secao.id);
     const temCriado = criativo?.htmlCriado !== undefined && criativo.htmlCriado.trim().length > 0;
@@ -2033,6 +2049,47 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       // às peças: a REGRA_QUE_ABRE_PASSAGEM o torna transparente e o fundo é
       // da página. O conteúdo interno segue mandando nos próprios cartões.
       partes.push(`<div data-ds-criado>\n${criativo.htmlCriado}\n</div>`);
+    }
+    /**
+     * Etapa sem peça: o compositor CONSTRÓI a seção na linguagem do kit.
+     *
+     * As sequências passaram de 7-9 para 11-12 etapas e a Biblioteca não cobre
+     * todas em todo nicho — `testimonial` tem 3 peças para 20 kits. Até aqui a
+     * etapa saía vazia, com aviso. O dono pediu que ela fosse criada, e a régua
+     * de conteúdo mora em `secoes-no-estilo.ts`: texto dele, tokens do kit, e
+     * placeholder MARCADO só em modo protótipo.
+     *
+     * Só com a permissão que ele deu (`criarSecoesFaltantes`): sem ela, seção
+     * que ele não pediu não nasce, e o vazio sobe declarado como sempre.
+     */
+    if (partes.length === 0 && entrada.layout.permissoes?.criarSecoesFaltantes === true) {
+      const doLayout = entrada.layout.secoes.find((x) => x.id === secao.id);
+      const criada = criarSecaoNoEstilo({
+        papel: secao.slug,
+        nome: secao.nome || secao.slug,
+        instrucao: doLayout?.instrucao ?? null,
+        marca: {
+          nome: entrada.branding.brandName,
+          chamada: entrada.branding.mainCta?.label,
+          email: entrada.branding.contact?.email,
+          telefone: entrada.branding.contact?.phone,
+          endereco: entrada.branding.contact?.address,
+        },
+        duracaoMs: ritmoDaPagina.mediaMs,
+        easing: ritmoDaPagina.easing,
+        modo: entrada.modoDeConteudo ?? 'entrega',
+      });
+      if (criada.html !== undefined) {
+        partes.push(`<div data-ds-criado>
+${criada.html}
+</div>`);
+        usouSecaoCriada = true;
+        avisos.push(
+          `A seção "${secao.nome || secao.slug}" não tinha peça no kit e foi CONSTRUÍDA na paleta e no ritmo do kit.`,
+        );
+      } else {
+        avisos.push(criada.recusa);
+      }
     }
     if (partes.length === 0) {
       paraOAceite.secoesVazias.push(secao.nome || secao.slug);
@@ -2589,10 +2646,18 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    * interação de uma captura vazia, o compositor a CONSTRÓI a partir da
    * marcação padrão, uma vez por página, no ritmo medido do próprio kit.
    */
+  let linkDasSecoesCriadas = '';
+  if (usouSecaoCriada) {
+    escrever(
+      'assets/secoes-criadas.css',
+      cssDasSecoesCriadas(ritmoDaPagina.mediaMs, ritmoDaPagina.easing),
+    );
+    linkDasSecoesCriadas = '<link rel="stylesheet" href="assets/secoes-criadas.css"/>\n';
+  }
   let linkDasAbas = '';
   let scriptDasAbas = '';
   if (temAbasCriadas(corpoDaPagina)) {
-    const tokens = tokensDeMovimento(concatCss);
+    const tokens = ritmoDaPagina;
     escrever('assets/abas.css', cssDasAbas(tokens.mediaMs, tokens.easing));
     linkDasAbas = '<link rel="stylesheet" href="assets/abas.css"/>\n';
     scriptDasAbas = `\n${SCRIPT_DAS_ABAS}`;
@@ -2609,7 +2674,7 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
 <title>${tituloDaAba}</title>
 ${faviconLink}${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
 <link rel="stylesheet" href="assets/criadas.css"/>
-${linkDoMovimento}${linkDosEstados}${linkDasAbas}${linkDoDestrave}<link rel="stylesheet" href="assets/responsivo.css"/>
+${linkDoMovimento}${linkDosEstados}${linkDasSecoesCriadas}${linkDasAbas}${linkDoDestrave}<link rel="stylesheet" href="assets/responsivo.css"/>
 <link rel="stylesheet" href="assets/marca.css"/>
 <link rel="stylesheet" href="assets/ajustes.css"/>
 </head>
