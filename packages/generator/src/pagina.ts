@@ -1009,13 +1009,60 @@ const nomesDaOrigem = (bundlePath: string): string[] => {
      */
     const doCaminho = u.pathname.split('/').find(pareceDominio);
     const dominio = doCaminho ?? u.hostname;
-    // O rótulo mais específico do domínio é o primeiro: em
-    // `canvas-visual.aura.build`, `canvas-visual`. Os outros são o serviço que
-    // hospeda, não a marca.
-    const rotulo = dominio.split('.')[0] ?? '';
-    return [...new Set(rotulo.split(/[-_]/).filter((t) => t.length >= 4))].filter(
-      (t) => !NAO_E_NOME_DE_MARCA.has(t.toLowerCase()),
-    );
+    /**
+     * O rótulo mais específico do domínio é o primeiro — depois de pular o
+     * SUBDOMÍNIO de serviço.
+     *
+     * `dominio.split('.')[0]` cru devolve "www" em `www.marca.com` e "app" em
+     * `app.sanok.design`: o nome da marca é o rótulo SEGUINTE. Trocar "www"
+     * pelo nome do cliente não faz nada, e é por essa fresta que nomes de
+     * origem sobreviveram no site gerado.
+     */
+    const SUBDOMINIO_DE_SERVICO = new Set([
+      'www',
+      'app',
+      'web',
+      'site',
+      'demo',
+      'preview',
+      'staging',
+      'dev',
+      'test',
+      'cdn',
+      'static',
+      'assets',
+    ]);
+    const partes = dominio.split('.').filter(Boolean);
+    const rotulo =
+      partes.find((p) => !SUBDOMINIO_DE_SERVICO.has(p.toLowerCase())) ?? partes[0] ?? '';
+
+    const pedacos = rotulo.split(/[-_]/).filter((t) => t.length >= 4);
+    const nomes = new Set(pedacos.filter((t) => !NAO_E_NOME_DE_MARCA.has(t.toLowerCase())));
+
+    /**
+     * O rótulo COLADO precisa casar com o nome ESPAÇADO da tela.
+     *
+     * `humanacademy.com` vira um token só, e a página escreve "Human Academy".
+     * `\bhumanacademy\b` não casa com isso, e o nome da outra empresa fica no
+     * site do cliente — foi um dos que o dono achou.
+     *
+     * Quando o rótulo TERMINA numa palavra que já sabemos não ser marca
+     * (`academy`, `studio`, `design`…), a fronteira está achada: o resto é o
+     * nome, e o par vira um padrão que tolera separador no meio.
+     */
+    if (pedacos.length === 1) {
+      const colado = (pedacos[0] ?? '').toLowerCase();
+      for (const sufixo of NAO_E_NOME_DE_MARCA) {
+        if (sufixo.length < 4 || !colado.endsWith(sufixo)) continue;
+        const cabeca = colado.slice(0, -sufixo.length);
+        if (cabeca.length < 3) continue;
+        // `[\s._-]*` entre as duas metades: casa "humanacademy", "Human Academy"
+        // e "human-academy" com o mesmo padrão.
+        nomes.add(`${cabeca}[\\s._-]*${sufixo}`);
+        break;
+      }
+    }
+    return [...nomes];
   } catch {
     return [];
   }

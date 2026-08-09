@@ -2269,3 +2269,62 @@ test('a tag vence a folha: quem escreveu a classe ali decidiu', () => {
 test('cor de pagina com ALFA nao conta: fundo semitransparente nao e o chao', () => {
   assert.equal(corDePaginaDaOrigem(undefined, 'body{background:rgba(0,0,0,0.5)}'), null);
 });
+
+test('nome da origem: pula o subdominio de servico e casa o rotulo colado', () => {
+  // Dois furos medidos pelo cetico do diagnostico. (1) `dominio.split('.')[0]`
+  // devolvia "www" em www.marca.com — trocar "www" nao faz nada, e o nome da
+  // outra empresa ficava no site. (2) `humanacademy.com` vira um token colado e
+  // a pagina escreve "Human Academy": `\bhumanacademy\b` nao casa com isso.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-nomes-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({ source: { url: 'https://www.humanacademy.com/design-system' } }),
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<footer><h2>Human Academy</h2><p>© 2024 humanacademy</p></footer>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_f',
+            name: 'Rodapé',
+            category: 'footer',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Rodapé', componentIds: ['cmp_f'] }],
+      }),
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Vitalis' },
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.ok(!/Human\s*Academy/i.test(index), 'o nome ESPACADO tambem sai');
+    assert.ok(!/humanacademy/i.test(index), 'e o colado tambem');
+    assert.ok(index.includes('Vitalis'), 'a marca entrou no lugar');
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});

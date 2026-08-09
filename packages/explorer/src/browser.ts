@@ -282,6 +282,22 @@ export const capturarRede = (
       (async () => {
         try {
           if (!res.ok()) return; // 3xx/4xx/5xx: não é corpo de asset
+          /**
+           * `206 Partial Content` é um PEDAÇO, não o arquivo.
+           *
+           * `res.ok()` aceita 200–299, então o 206 passava e o fragmento era
+           * gravado como se fosse o asset inteiro. É assim que o navegador pede
+           * vídeo: por faixas. O que ia para o disco era o começo de um `.mp4`,
+           * com `status: 'local'` no manifesto, e o `<video>` do site gerado
+           * mostrava o botão de play e nada dentro — o "cadê o vídeo" que o
+           * dono fotografou.
+           *
+           * Recusar é o certo aqui e não perde nada: o motor tem um fetcher
+           * próprio que baixa o arquivo inteiro quando ele importa. Guardar
+           * meio arquivo é pior que não guardar, porque some declarado como
+           * sucesso.
+           */
+          if (res.status() === 206) return;
           const reqUrl = res.request().url();
           // Mesmo guarda de SSRF do fetcher seguro: não retém resposta de rede
           // interna, ainda que a página a tenha referenciado.
