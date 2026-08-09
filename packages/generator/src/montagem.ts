@@ -767,10 +767,38 @@ export const destravarOpacidadeSemRevelador = (
   scripts: readonly string[],
   html: string,
 ): { css: string; destravadas: string[] } => {
-  // Com alcance, alguém revela: a opacidade zero é estado inicial legítimo.
-  if (comportamentoAlcancaAPagina(html, alvosDoComportamento(scripts))) {
-    return { css: '', destravadas: [] };
-  }
+  /**
+   * A pergunta é por CLASSE, não pela página.
+   *
+   * A primeira versão usava `comportamentoAlcancaAPagina`, que responde "algum
+   * script alcança alguém aqui?". Numa página composta de seis origens isso é
+   * quase sempre SIM — basta um script de outra origem encontrar um elemento —
+   * e o destravamento nunca disparava. Medido: zero regras emitidas nos 20
+   * sites, com 362 textos ainda invisíveis.
+   *
+   * A pergunta certa é a que decide o destino daquele elemento: **alguém
+   * menciona ESTA classe?** É o mesmo teste que `limparEstadoRevelado` já faz —
+   * o nome tem de aparecer como string no script, porque é assim que
+   * `classList.add` e `querySelectorAll` o recebem.
+   */
+  const todoScript = scripts.join('\n');
+  /**
+   * As DUAS formas contam: `classList.add('x')` cita o nome nu, e
+   * `querySelectorAll('.x')` cita com o ponto. Procurar só uma delas deixa
+   * passar metade — o próprio teste da suíte pegou isso.
+   */
+  const alguemRevela = (classe: string): boolean => {
+    for (const forma of [classe, `.${classe}`]) {
+      if (
+        todoScript.includes(`'${forma}'`) ||
+        todoScript.includes(`"${forma}"`) ||
+        todoScript.includes(`\`${forma}\``)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   const classes = new Set<string>();
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
@@ -792,7 +820,7 @@ export const destravarOpacidadeSemRevelador = (
   for (const m of html.matchAll(/\bclass\s*=\s*"([^"]*)"/gi)) {
     for (const c of (m[1] ?? '').split(/\s+/)) if (c !== '') noHtml.add(c);
   }
-  const alvo = [...classes].filter((c) => noHtml.has(c));
+  const alvo = [...classes].filter((c) => noHtml.has(c) && !alguemRevela(c));
   if (alvo.length === 0) return { css: '', destravadas: [] };
 
   const seletores = alvo.map((c) => `.${c.replace(/([^\w-])/g, '\\$1')}`).join(',');
