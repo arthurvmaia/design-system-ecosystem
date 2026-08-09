@@ -1,5 +1,66 @@
 # HANDOFF — onde o trabalho está
 
+> ## 🔎 O QUE O DONO VIU NOS 20 SITES DE PROVA — 2026-08-09
+>
+> Ele abriu os 20 sites e apontou defeito por defeito. **Nenhum era do site**:
+> todos eram do motor ou de régua que não existia. É a lista mais valiosa desta
+> rodada, porque saiu de olho humano sobre saída real.
+>
+> ### Já viraram regra (S17–S20, commitadas)
+>
+> | Apontamento | Regra |
+> |---|---|
+> | Imagem minúscula no meio do hero | **S17** — mídia de conteúdo pequena demais; ícone/logo/avatar de fora |
+> | Duas barras de rolagem na mesma tela | **S18** — `overflow-y:auto` que veio da origem; está em 1 de cada 3 sites |
+> | "Muito espaço entre componentes" / "componentes colados" | **S19** — DOIS limites; o respiro de cada origem ora soma ora se anula |
+> | "O scroll desce muito lento" | **S20** — fração da altura que é texto ou mídia; abaixo de 20% rola-se por vazio |
+>
+> ### Ainda abertos, classificados
+>
+> **Defeito de motor**
+>
+> 1. **Nome da marca DUPLICADO** — "PROVA LOJA DE PRODUTO FÍSICO.PROVA LOJA DE
+>    PRODUTO FÍSICO", "The Prova Fintech e finanças Prova Fintech e finanças".
+>    A troca de nome aplica sobre texto JÁ trocado. Ponto: `trocarNomeDaOrigem`
+>    em `generator/pagina.ts:983`.
+> 2. **Título com as linhas SOBREPOSTAS** — "O papel da experiência do usuário…"
+>    com as linhas uma em cima da outra, ilegível. `line-height` colapsado, quase
+>    certamente pela reescala tipográfica.
+> 3. **Foto de produto de TERCEIRO sobrevivendo** — telas de Alipay e Cash App no
+>    site gerado. A S2 troca texto e não troca foto de produto de outra empresa.
+> 4. **Ícone/aba que não troca de tela** — o dono clicou e nada. É o defeito
+>    conhecido da captura de estados (75 dos 100 estados são idênticos ao HTML
+>    base). Conserto no `explorePage`, e é grande.
+>
+> **Regra que falta**
+>
+> 5. **`<video>` sem fonte** — slot com botão de play e nada dentro ("cadê o
+>    vídeo"). A S11 vê `<img>` vazia e não vê vídeo sem fonte.
+> 6. **Grid desproporcional** — itens do mesmo grid com alturas e proporções
+>    diferentes, e slots que ficaram com o ícone genérico de pessoa. A S11 vê
+>    slot VAZIO, não slot com placeholder.
+> 7. **Raio inconsistente na emenda** — nav de canto reto no meio de peças
+>    arredondadas. A marca tem régua de raio medida e ela não é imposta.
+> 8. **Elemento decorativo atravessando a tela** — linha verde de ponta a ponta.
+>    A S12 (transbordo) não pega decoração.
+>
+> **Curadoria**
+>
+> 9. **Peça que é vitrine de MARCAS DE TERCEIROS** — cartões com "Epic Games",
+>    "Supercell", "Riot Mobile" e os slots de mídia vazios. O dono: *"nem precisa
+>    tá na biblioteca"*. Ela não serve a cliente nenhum: ou fica com o nome dos
+>    outros, ou vira retângulo vazio. É parente do que a G8 já faz com
+>    rastreamento e do que `secoes-no-estilo.ts` recusa em `logo-cloud`.
+>
+> ### O que o método provou
+>
+> O dono resumiu: *"tem defeitos que vão ser comum entre os sites"*. É por isso
+> que cada apontamento vira régua e não remendo — e por que este ciclo (ele
+> olha, eu meço) achou em uma hora mais defeito real que quatro rodadas de
+> varredura automática.
+
+---
+
 > ## ⚡ ONDE PARAMOS — 2026-08-08, noite
 >
 > A sessão inteira foi **conserto de motor guiado pelo que o dono VÊ na tela**, e
