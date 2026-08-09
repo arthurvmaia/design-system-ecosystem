@@ -1,5 +1,147 @@
 # HANDOFF — onde o trabalho está
 
+> ## ⚡ ONDE PARAMOS — 2026-08-08, noite
+>
+> A sessão inteira foi **conserto de motor guiado pelo que o dono VÊ na tela**, e
+> ela produziu uma ferramenta que muda como se trabalha aqui.
+>
+> ### O comando novo: `pnpm kits:provar`
+>
+> Cada kit inventa uma marca do próprio nicho, gera um site e é conferido em 1440
+> e 390 **sem `--corrigir`** — corrigir mascararia justamente o defeito do kit.
+> Sai `!= 0` quando algum reprova; os projetos de teste são apagados no fim.
+>
+> **De 12 de 12 kits reprovando para 11 de 12 passando.**
+>
+> ### O achado de MÉTODO, e é o mais importante daqui
+>
+> **Duas das causas eram da RÉGUA, não dos sites.** A varredura media a altura da
+> página uma vez só (em 390 a página cresce enquanto as imagens carregam, as
+> últimas seções nunca entravam na tela, a revelação não disparava, e a regra
+> acusava texto apagado num site correto), e a regra reprovava **marca d'água**
+> (`text-[20vw]` a 5% de opacidade) como se fosse defeito.
+>
+> Antes de consertar o motor por causa de um número, **pergunte se o número está
+> certo**. Eu "consertei" três vezes contra uma causa que não existia.
+>
+> E por isso a conferência passou a dizer **QUEM apagou** o texto: o elemento e a
+> regra CSS culpada, medidos no navegador. Deduzir a causa a partir do sintoma foi
+> o que me fez errar — e o mecanismo real não era `opacity`, era
+> `animation-play-state: paused` com um ancestral que dá play.
+>
+> ### O que fazer ao sentar
+>
+> 1. **Rode `pnpm resegmentar --todos`.** A Fase 3 fechou (ver o bloco no fim
+>    deste aviso) e mudou a CLASSIFICAÇÃO dos segmentos; até resegmentar, os kits
+>    continuam sem ter o que escolher. Depois: `pnpm curar` → `pnpm kits` →
+>    `pnpm kits:provar`.
+> 2. **Recriar o projeto do SJDR a partir do kit novo.** Ele ainda usa o kit e o
+>    layout ANTIGOS (9 seções), e é por isso que o dono o vê "compacto e sem
+>    vida". A sequência nova só nasce quando o projeto é montado do kit.
+> 3. **A seção de benefícios mostra 3 e o guia do clube lista 11**: carteirinha
+>    com QR de 60s, portão do sócio, ingresso incluído, 50% no seguinte, Área VIP
+>    (5/150), Memorial Rei (2/100), camisa oficial, nome na base, Sócio Mirim,
+>    agenda, rede de vantagens. O guia é
+>    `Desktop/trivium/clube_socio/Guia_de_Apresentacao_Socio_Torcedor_SJDR.pdf` —
+>    o texto dele só sai decodificando o `ToUnicode` (fonte subconjuntada).
+> 4. **Gerar Meridiano, Voltz e AVDSGN.** A mídia das três já está gerada e
+>    instalada, cada uma na paleta da própria IDV.
+>
+> ### Os onze consertos, todos com teste
+>
+> | Onde | O defeito |
+> |---|---|
+> | `generator/pagina.ts` | tema da origem só era lido de `bg-[#hex]` na tag `<body>`; site claro passava por compatível com marca escura |
+> | `composer/recolorir.ts` | papel de TINTA pintando FUNDO — cartão branco com texto branco, 1,0:1 |
+> | `composer/recolorir.ts` | a mesma guarda faltava no regime "temas combinam" |
+> | `shared/schemas/brand.ts` | `link` nascia igual à primária: **19 dos 27 trechos reprovados eram `<a>`** |
+> | `generator/montagem.ts` | logotipo de terceiro (`simple-icons`) no site do cliente; redes sociais ficam, que são o link dele |
+> | `generator/montagem.ts` | monograma de letra da origem vira o logotipo da marca, em todas as peças |
+> | `generator/movimento-da-pagina.ts` | conteúdo preso a um ancestral de revelação que não chega ficava **invisível para sempre** (8 de 12 kits) |
+> | `generator/pagina.ts` | `<script>` cujo arquivo não existe não é emitido; dedupe passou a usar o arquivo do bundle |
+> | `scripts/conferir-site.ts` | a conferência de celular não emulava celular (`isMobile`, `hasTouch`, densidade 3, altura 844) |
+> | `shared/regras-de-aceite.ts` | **S15** (alvo de toque < 44px) e **S16** (letra < 12px) — as duas acharam defeito no primeiro site |
+> | `generator/pagina.ts` | vaga de foto recebe VÍDEO, com régua de tamanho; e **logotipo da marca nunca preenche vaga de foto** |
+>
+> ### Regras do dono, gravadas na memória
+>
+> Ler a IDV antes de qualquer prompt e usar o logotipo como referência no
+> Magnific · toda imagem e vídeo saem do Magnific, marca inclusive · conferir
+> contraste sempre · as animações têm de chegar ao site · o celular tem de ficar
+> perfeito · vaga que comporta vídeo ganha vídeo (veo3 720p) · peça interativa
+> traz TODOS os estados · kits bonitos, modernos e do contexto da marca · páginas
+> mais longas percorrendo AIDA.
+>
+> ### Duas coisas que NÃO deram certo, e por quê
+>
+> - **Estados interativos:** o consumidor foi construído (36 testes) e liga
+>   **zero** estados. **75 dos 100 estados do acervo são idênticos ao HTML base**
+>   e 8 são duplicata byte a byte. A captura grava que houve clique e um HTML que
+>   não mudou — o conserto é no `explorePage`, não na geração. O contorno em pé:
+>   o compositor CONSTRÓI abas a partir de marcação padrão (`abas-da-pagina.ts`).
+> - **Magnific ilimitado:** a conta tem, a sessão não. `account_balance` devolve
+>   `unlimitedAppliesHere: false` e não há ferramenta no MCP para alternar. Cada
+>   imagem custa 75 créditos; o vídeo veo3 de 8s custou 1.600.
+>
+> ### Armadilhas que cobraram tempo NESTA sessão
+>
+> - **Crase e barra invertida dentro de template literal.** O topo do
+>   `conferir-site.ts` avisa e eu caí duas vezes: `\b` virou backspace, `\s` virou
+>   a letra "s", e a regex saiu `.in-view[s>~+]` sem casar com nada, em silêncio.
+>   Regex montada por template é para evitar: prefira busca por texto.
+> - **`String.replace` CONSOME a região casada.** Uma expressão que casa qualquer
+>   `<div>` engole os internos e eles nunca são visitados. Casar só o mais interno
+>   (veto de aninhamento) é o que resolve — e isso me pegou duas vezes, na poda de
+>   container e no monograma.
+> - **`shell: true` no Windows parte argumento com espaço.** "Portfólio e estúdio"
+>   chegava em três pedaços e o processo filho morria com erro de módulo.
+>
+> Suíte: **1 vermelho, o pré-existente** (7,1% de bytes duplicados na segmentação).
+> Lint e typecheck limpos. `main` intocado, push NÃO autorizado.
+>
+> **Migração:** `docs/MIGRACAO.md` ganhou a seção 7 com as três versões (local /
+> mostruário do sócio / cliente), com Vercel e Supabase pagos do sócio. As versões
+> 2 e 3 são **um app com duas portas**. A captura não sai da máquina do dono em
+> nenhuma delas — nem no plano Pro caberia: ela leva de 180 s a 900 s e o limite
+> de função é 300 s.
+
+> ### ⚡ A Fase 3 fechou no fim da sessão — e achou a raiz de tudo
+>
+> **32 de 32 etapas vazias são falta de MATÉRIA-PRIMA, não disputa por peça.**
+> As categorias `testimonial`, `stats`, `logo-cloud` e `timeline` tinham **zero**
+> candidatas nos 1389 segmentos do acervo.
+>
+> A causa: em `engine-v2/src/segment/segment-v2.ts`, `inferirCategoria` termina
+> num pega-tudo (`itensRepetidos >= 2 → card`) que dispara **antes** das `PISTAS`
+> de id/classe. Depoimento, faixa de números, nuvem de logos e linha do tempo
+> **são, por definição, itens repetidos** — os quatro caíam no pega-tudo e saíam
+> como `card`/`gallery`/`feature`, que somavam 683 de 1389 (49%). O regex que
+> reconhecia `testimonials` estava certo e nunca era executado.
+>
+> **Isso mata três das quatro saídas que pareciam óbvias:** afrouxar a cota, o
+> teto por origem ou o pareamento ganharia **zero seções** — cota não escolhe o
+> que não existe.
+>
+> Foi implementado: quatro sinais novos (`citacoes`, `numerosDestacados`,
+> `imagensSemTexto`, `marcosDeEtapa`), quatro ramos antes do pega-tudo, e as
+> pistas de vocabulário consultadas antes dele. Medido sobre a evidência já
+> gravada dos 57 sites: **21 seções** que saíam como `card`/`gallery`/`feature`
+> passam a ter a categoria certa. Também entrou a regra **G8** (curadoria recusa
+> peça cujo script mistura rastreio com comportamento) e uma passada de reuso na
+> montagem.
+>
+> **O PRÓXIMO PASSO É UM COMANDO:** `pnpm resegmentar --todos` — ele reexecuta a
+> classificação sobre a evidência gravada, em segundos, sem abrir navegador. Só
+> depois disso os kits novos têm o que escolher. Então: `pnpm curar` →
+> `pnpm kits` → `pnpm kits:provar` → recriar o projeto do SJDR do kit novo.
+>
+> ⚠️ O workflow reportou `pnpm test` em **1590/1592**, dizendo que a única falha é
+> a pré-existente. São duas falhas para uma alegação de uma — **confira antes de
+> confiar**.
+
+---
+# HANDOFF — onde o trabalho está
+
 > ## ⚡ ONDE PARAMOS — 2026-08-08, fim da sessão
 >
 > **11 commits na branch `conserto/defeitos-do-dono-e-rastreamento`.** O `main`

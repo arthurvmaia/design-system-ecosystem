@@ -185,3 +185,153 @@ Vale escrever, porque a tentação existe:
   de segurança: quando o custo assustar, é para onde se volta.
 - **O Orbis** não deve virar "assistente". A voz em primeira pessoa e a regra de
   nunca prometer o que não entrega são identidade do produto, não enfeite.
+
+---
+
+
+---
+
+## 7. O plano das TRÊS VERSÕES
+
+*Escrito em 2026-08-08, com o dono, e com números medidos no acervo daquele dia.
+Esta seção é a rota decidida; as seções 1 a 6 continuam valendo como o
+levantamento técnico que a sustenta.*
+
+**Para quem chega agora e vai avaliar este plano:** o app captura o design de
+sites existentes, cura as peças numa biblioteca, monta kits e gera sites novos a
+partir deles. Hoje ele roda inteiro na máquina do dono. As três versões abaixo
+são a rota para tirá-lo de lá — sem tentar tirar tudo de uma vez.
+
+### 7.1 As três versões
+
+| Versão | Para quem | O que faz | Onde roda |
+|---|---|---|---|
+| **1 — local** | o dono | tudo: extrair, curar, montar kit, gerar site | a máquina dele, com o agente do Claude Code |
+| **2 — mostruário** | o sócio | só OLHAR o que já existe: galeria, biblioteca, kits, sites gerados | estático, publicado |
+| **3 — cliente** | quem compra | biblioteca, montar kit, gerar site, e "Meus sites" com o site DELE | servidor de verdade, geração por API |
+
+**A EXTRAÇÃO nunca sai da versão 1.** Ela continua sendo trabalho do dono, na
+máquina dele, alimentando a biblioteca que as outras versões consomem. Não é
+limitação técnica: é o desenho. A captura é o ativo do produto, e quem decide o
+que vale capturar é quem entende o acervo. Isso também é o que permite a versão 3
+existir **sem resolver o problema mais caro deste documento** (seção 2.3).
+
+### 7.2 Infraestrutura decidida
+
+**Vercel e Supabase, ambos em planos PAGOS do sócio.** Isso resolve as dúvidas de
+custo e de licença que apareceriam num plano gratuito — não há restrição de uso
+comercial a contornar.
+
+O que cada um cobre está na seção 3. O resumo: o Supabase resolve banco,
+arquivos, contas e papéis (RLS). **Nenhum dos dois resolve a captura**, e o
+motivo é o da seção 2.3 e não muda com plano pago: uma captura trabalha de 180 s
+a 900 s, e o limite de função da Vercel no plano Pro é de 300 s. A captura
+precisa de um processo longo com Chromium — e, pelo desenho acima, ela nem
+precisa sair da máquina do dono.
+
+### 7.3 Versão 2 e 3 são UM app com DUAS PORTAS
+
+A ideia do dono, e ela barateia o trabalho: **a tela de entrada pergunta se quem
+chega é SÓCIO ou CLIENTE** e manda para a experiência correspondente.
+
+A consequência é que **não são dois apps**. A versão 3, nesta etapa, é o mesmo
+conteúdo: o cliente percorre Biblioteca, Kits e Gerar site com os dados reais, e
+só não consegue ESCREVER. A do sócio é a mesma coisa com a Galeria a mais. Mesmo
+build, mesma publicação, navegação diferente.
+
+**A porta já quase existe**: `apps/portal` é uma tela de entrada com cartões
+(hoje Design System, Lojas Shopify, Criativos). Virar duas portas é editar
+aquilo, não criar do zero.
+
+**O detalhe de arquitetura que torna o modo estático barato:** o cliente web tem
+**um único ponto de `fetch`** (`apps/web/src/lib/api.ts`, por volta da linha
+540). Um modo estático é, por isso, mudança contida:
+
+1. um script varre as rotas de LEITURA e grava cada resposta como arquivo
+   (`dist/api/**.json`) — são 116 rotas `.get(` no servidor, mas o mostruário
+   precisa só das que alimentam as quatro telas;
+2. o embrulho de `fetch`, em modo estático, mapeia `/api/x` para `/api/x.json` e
+   **recusa qualquer verbo que não seja GET na origem** — esconder o botão não
+   basta se a chamada ainda sai;
+3. as ações de escrita saem da tela.
+
+**Cuidado obrigatório nesta etapa:** botão inerte que PARECE vivo é pior que
+botão ausente. Se o cliente clica em "Gerar site" e nada acontece, ele conclui
+que o app quebrou, e a conclusão é razoável. A ação precisa DIZER que ainda não
+está disponível — é a regra de nunca prometer o que não se entrega, que vale para
+o produto inteiro.
+
+### 7.4 O tamanho, medido
+
+| Parte | Tamanho | Arquivos |
+|---|---|---|
+| `vault/` (capturas cruas) | **2,2 GB** | — |
+| `library/` (peças curadas) | **522 MB** | 7.614 |
+| `projects/` (todas as versões de site) | **917 MB** | — |
+| **só a ÚLTIMA versão de cada site** | **98 MB** | 13 projetos |
+
+Dentro da biblioteca o peso é `.js` da origem (225 MB) e `.png` (153 MB).
+
+**O acervo inteiro não vai para um host estático, e não precisa ir.** A galeria e
+a biblioteca aparecem por **imagem** — os `frames/` que cada bundle já traz são
+prints da peça —, e não pela prévia viva, que é o que custa os 522 MB. Os sites
+gerados vão inteiros: são o que o sócio mais quer ver, e para mostruário bastam
+4 ou 5 escolhidos, uns 30 MB.
+
+Orçamento: app compilado (~2 MB) + JSON das rotas (~10-20 MB) + frames em WebP
+(~15 MB) + sites escolhidos (~30 MB) ≈ **70 MB, uns 2.000 arquivos**.
+
+### 7.5 A porta de acesso — isto não é opcional
+
+O acervo é feito de **capturas completas de sites de outras empresas**. Numa
+máquina local é uma coisa; num endereço aberto na internet é outra, e a diferença
+não depende de o app ser mostruário ou produto.
+
+O app já tem um portão por credencial (`ORBIS_SENHA`). Publicado, ele precisa de
+controle de acesso de verdade — na Vercel, proteção por senha do plano; com
+Supabase Auth, login por sócio (é a Fase 1 da seção 4, e ela vale a pena antes de
+publicar, não depois).
+
+### 7.6 Versão 3 — o que ela OBRIGA a decidir
+
+Registrado agora para não ser reinventado depois. A versão 3 não está sendo
+construída nesta etapa.
+
+- **Dono nos dados.** "Meus sites" mostrando só o site daquele cliente exige algo
+  que hoje não existe: o acervo é *"um acervo só, sem dono"* (seção 5, pergunta
+  2). A versão 3 é quem obriga a responder, e a resposta é RLS no Postgres
+  (seção 3).
+- **A geração deixa a fila e vira chamada de API.** O dono avaliou que por fila
+  não daria, e está certo pelo motivo da seção 2.4: a fila depende de uma pessoa
+  abrir o Claude Code. Com cliente do outro lado, o pedido não pode esperar
+  alguém sentar. O `EXECUTION_MODE=api` já existe no código.
+- **É a versão que LIGA O CUSTO.** Enquanto for fila, o custo é zero por
+  construção. No modo `api` cada geração custa, e **sem teto configurado o custo é
+  ilimitado por construção**. Um teto por projeto e um teto por mês entram JUNTO
+  com a chave, nunca depois.
+- **A extração continua fora.** O cliente não captura; escolhe do que já foi
+  capturado.
+
+### 7.7 A ordem, e o que cada versão exige
+
+1. **Versão 2 primeiro.** Não exige banco, nem conta, nem servidor: é build mais
+   arquivos. E nada do que ela pede é jogado fora — o instantâneo estático segue
+   servindo de demonstração depois de a versão 3 existir.
+2. **Versão 3 exige, nesta ordem**: contas (Fase 1), Postgres com dono nos dados
+   (Fase 2 + RLS), arquivos no Storage (Fase 3), e o modo `api` com teto de gasto.
+   A captura (Fase 4) **continua fora do escopo**.
+
+### 7.8 O que pedir a quem for avaliar este plano
+
+Três perguntas onde uma segunda opinião vale mais que uma revisão geral:
+
+1. **O instantâneo estático se sustenta?** Congelar 116 rotas de leitura em
+   arquivos JSON é simples, mas envelhece: cada mudança de acervo pede uma
+   republicação. É aceitável para mostruário, e deixa de ser quando alguém
+   esperar dado fresco. Há um limite prático de quantas vezes se republica 70 MB?
+2. **A versão 3 deve mesmo nascer inerte?** A alternativa é ela só aparecer
+   quando funcionar. Mostrar o caminho antes de ele existir tem valor comercial e
+   tem risco de leitura — e a resposta pode depender de quem vai ver.
+3. **O teto de gasto do modo `api`.** É o único item deste documento que pode
+   gerar prejuízo silencioso. Vale desenhar o mecanismo (teto por projeto, por
+   mês, e o que acontece quando estoura) antes de a chave existir.
