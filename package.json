@@ -47,7 +47,8 @@
     "publicar": "tsx scripts/publicar.ts",
     "resegmentar": "tsx scripts/resegmentar.ts",
     "biblioteca:deduplicar": "tsx scripts/deduplicar-biblioteca.ts",
-    "biblioteca:religar": "tsx scripts/religar-biblioteca.ts"
+    "biblioteca:religar": "tsx scripts/religar-biblioteca.ts",
+    "biblioteca:conferir": "tsx scripts/conferir-peca.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
