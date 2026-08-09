@@ -992,6 +992,22 @@ const trocarNomeDaOrigem = (
     if (original[0] === original[0]?.toUpperCase()) return marca;
     return marca.toLowerCase();
   };
+  /**
+   * A marca REPETIDA lado a lado vira uma só.
+   *
+   * `nomesDaOrigem` quebra o rótulo do domínio em tokens: `sanok-design` vira
+   * `['sanok', 'design']`. O logotipo da origem escreve os dois juntos —
+   * "sanok.design", "canvas visual" — e cada token vira a marca, então sai
+   * `MARCA.MARCA` ou `MARCA MARCA`. O dono fotografou isso em quatro sites, e
+   * num deles TRIPLICADO ("PROVA ADVOCACIA E CONSULTORIA" três vezes).
+   *
+   * A colagem é o sinal: dois nomes de marca encostados, com nada entre eles
+   * além de pontuação de junção, não foram escritos assim por ninguém. Texto
+   * legítimo que repete a marca traz palavra no meio, e aí a expressão não casa.
+   */
+  const escapado = marca.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const repetida = new RegExp(`(${escapado})(?:[\\s.·|/–—-]*\\1)+`, 'gi');
+
   const saida = percorrerTextoVisivel(html, (trecho) => {
     let t = trecho;
     for (const nome of nomes) {
@@ -1000,7 +1016,7 @@ const trocarNomeDaOrigem = (
         return naCaixaDe(m);
       });
     }
-    return t;
+    return t.replace(repetida, '$1');
   });
   return { html: saida, trocas };
 };

@@ -2156,3 +2156,64 @@ test('o vídeo pula a vaga pequena e pousa na grande', () => {
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+test('nome da marca repetido lado a lado vira UM so', () => {
+  // O dono fotografou "PROVA LOJA DE PRODUTO FISICO.PROVA LOJA DE PRODUTO
+  // FISICO" e, num site, o nome TRIPLICADO. A causa: `nomesDaOrigem` quebra o
+  // rotulo do dominio em tokens (`sanok-design` -> ['sanok','design']) e o
+  // logotipo da origem escreve os dois juntos.
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-nome-rep-'));
+  const rootAnterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = join(raiz, 'root');
+    const dir = join(raiz, 'peca');
+    mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({ source: { url: 'https://sanok-design.aura.build/design-system' } }),
+      'utf8',
+    );
+    writeFileSync(
+      join(dir, 'index.html'),
+      `<!doctype html><html><head></head><body>
+<nav><span>sanok.design</span><a href="#">Sanok Design</a><p>The sanok design sanok</p></nav>
+</body></html>`,
+      'utf8',
+    );
+    writeFileSync(join(dir, 'assets', 'css', 'tokens.css'), '.x{color:#111}', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_n',
+            name: 'Navegação',
+            category: 'nav',
+            kind: 'component',
+            bundlePath: dir,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Navegação', componentIds: ['cmp_n'] }],
+      }),
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Vitalis' },
+      outputDir: join(raiz, 'saida'),
+    });
+
+    const index = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.ok(index.includes('Vitalis'), 'a marca entrou');
+    // Nenhuma colagem: nem com ponto, nem com espaco, nem tripla.
+    assert.ok(!/Vitalis\s*\.\s*Vitalis/i.test(index), 'sem MARCA.MARCA');
+    assert.ok(!/Vitalis\s+Vitalis/i.test(index), 'sem MARCA MARCA');
+    assert.ok(!/(Vitalis[\s.·|/–—-]*){3}/i.test(index), 'sem MARCA MARCA MARCA');
+  } finally {
+    if (rootAnterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
