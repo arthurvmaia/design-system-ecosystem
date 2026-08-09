@@ -51,6 +51,20 @@
 >    tá na biblioteca"*. Ela não serve a cliente nenhum: ou fica com o nome dos
 >    outros, ou vira retângulo vazio. É parente do que a G8 já faz com
 >    rastreamento e do que `secoes-no-estilo.ts` recusa em `logo-cloud`.
+> 10. **Rodapé que é assinatura de OUTRO produto** — "Construa. Lance. Itere."
+>     com GitHub/Twitter/Discord e uma marca-d'água gigante ocupando meia tela.
+>     O dono: *"esse rodapé também pode tirar da biblioteca"*. Mesma família da
+>     anterior: a peça É a identidade de quem a fez.
+>
+> ### O que FUNCIONOU, e é o contraponto que valida o resto
+>
+> Sobre o site de drones (AERO_SYS), o dono disse: *"pegou bem esse, mas só as
+> cores que não tá contrastando"*. Estrutura, grade, ritmo, hierarquia e
+> composição de três origens saíram certos — o que falha ali é só o S4.
+>
+> Isso vale registrar porque contradiz a leitura pessimista do placar: **20 de 20
+> reprovando não quer dizer 20 sites ruins**. Quer dizer que uma régua pega todos
+> eles, e num deles ela é a única coisa entre o resultado e "está bom".
 >
 > ### O que o método provou
 >
