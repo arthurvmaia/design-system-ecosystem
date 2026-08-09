@@ -41,6 +41,7 @@ import {
   type ObjetivoDoSite,
   ROLE_CATEGORIES,
   SEQUENCIAS,
+  alvosPerdidosDoBundle,
   libraryComponentBundleDir,
   newKitId,
 } from '@ds/shared';
@@ -129,6 +130,8 @@ const principal = (): void => {
   const apagarAntes = args.includes('--apagar-antes');
 
   const db = getDb();
+  /** Peças barradas por G9 — ditas na tela, porque corte calado lê como ausência. */
+  const recusadasPorG9: string[] = [];
   const pecas = db
     .select()
     .from(tables.libraryComponents)
@@ -144,7 +147,22 @@ const principal = (): void => {
       // Sem esta chave, o kit A leva uma cópia, o kit B leva a outra, e quem
       // olha a tela vê a mesma peça nos dois.
       conteudoId: p.bundleHash ?? undefined,
-    }));
+    }))
+    /**
+     * Peça que reprova em G9 não entra em kit nenhum.
+     *
+     * A G9 guarda o portão Galeria→Biblioteca, e isso não alcança o que já está
+     * DENTRO: depois de consertar o compilador e recompilar, a Biblioteca ficou
+     * com as duas cópias da linha do tempo — a antiga, cujo script procura um id
+     * que foi renomeado, e a nova. O montador escolheu a antiga, e o site saiu
+     * quebrado com o motor certo. Aqui é o último ponto antes do kit.
+     */
+    .filter((p) => {
+      const perdidos = alvosPerdidosDoBundle(libraryComponentBundleDir(p.id as `cmp_${string}`));
+      if (perdidos.length === 0) return true;
+      recusadasPorG9.push(`${p.name} (#${perdidos[0]?.id})`);
+      return false;
+    });
 
   if (pecas.length === 0) {
     console.log('\n  A Biblioteca está vazia. Rode `pnpm curar` e materialize as peças antes.\n');
@@ -158,6 +176,12 @@ const principal = (): void => {
   console.log(
     `  Biblioteca: ${pecas.length} peça(s), ${new Set(pecas.map((p) => p.designSystemId)).size} origem(ns)`,
   );
+  if (recusadasPorG9.length > 0) {
+    console.log(
+      `  ${recusadasPorG9.length} recusada(s) por G9 (o script procura elemento renomeado): ` +
+        `${recusadasPorG9.slice(0, 3).join(', ')}${recusadasPorG9.length > 3 ? '…' : ''}`,
+    );
+  }
 
   // Uma origem por kit, da mais completa para a menos: é a alavanca que faz os
   // dez kits terem caras diferentes. Origem já usada não se repete enquanto
