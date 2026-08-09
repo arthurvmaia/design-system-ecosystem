@@ -140,6 +140,7 @@ const entrada = (over: Partial<EntradaDeAvaliacao> = {}): EntradaDeAvaliacao => 
   comparacaoVisualOk: true,
   comparacaoVisualDelta: null,
   rastreamento: null,
+  alvosPerdidos: [],
   ...over,
 });
 

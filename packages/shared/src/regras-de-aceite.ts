@@ -69,6 +69,11 @@ export type PecaParaAceite = {
    * (`rastreamentoDoBundle`). `null` também é resposta: não há rastreio ali.
    */
   rastreamento: 'puro' | 'misturado' | null;
+  /**
+   * Ids que o script da peça procura por literal e que o HTML dela não tem
+   * (`alvosPerdidosDoBundle`). Lista vazia = o script acha o que procura.
+   */
+  alvosPerdidos: readonly { id: string; onde: string }[];
 };
 
 /**
@@ -262,6 +267,49 @@ export const conferirPecaDaGaleria = (p: PecaParaAceite): ResultadoDeAceite => {
       : {
           codigo: 'G8',
           titulo: 'O rastreamento da origem não viaja',
+          estado: 'passou',
+          motivo: '',
+        },
+  );
+
+  /**
+   * G9 — o script da peça encontra o que procura.
+   *
+   * O dono reprovou uma linha do tempo que, na origem, se preenche conforme a
+   * página rola: `drawCurve()` mede os cards e monta o traçado, `updateScroll()`
+   * anda o `stroke-dashoffset`. No site gerado ela saía parada e ligando nada.
+   *
+   * A causa era o compilador prefixar TODOS os ids internos de um SVG sem
+   * reescrever o JavaScript que os procura. `getElementById` volta `null`, o
+   * script bate no próprio guarda e desiste na primeira linha — sem erro no
+   * console, sem nada na tela além de um desenho congelado.
+   *
+   * O compilador já foi corrigido, e a regra continua valendo por um motivo
+   * medido: **conserto de motor não alcança o que já está em disco.** Depois de
+   * corrigir e recompilar, a Biblioteca tinha as DUAS cópias da peça — a antiga
+   * quebrada e a nova boa — e o montador escolheu a antiga. O motor certo, o
+   * site quebrado do mesmo jeito.
+   *
+   * Reprova, não fica pendente: a peça não faz o que o nome dela promete, e
+   * existe cópia boa da mesma peça no acervo.
+   */
+  const perdidos = p.alvosPerdidos;
+  v.push(
+    perdidos.length > 0
+      ? {
+          codigo: 'G9',
+          titulo: 'O script da peça encontra o que procura',
+          estado: 'reprovou',
+          motivo: `o script procura ${perdidos.length} elemento(s) que não existem no HTML desta peça (${perdidos
+            .slice(0, 3)
+            .map((a) => `#${a.id} em ${a.onde}`)
+            .join(
+              '; ',
+            )}). Ele desiste na primeira linha e o que ele desenharia fica congelado — sem erro no console.`,
+        }
+      : {
+          codigo: 'G9',
+          titulo: 'O script da peça encontra o que procura',
           estado: 'passou',
           motivo: '',
         },

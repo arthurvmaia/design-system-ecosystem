@@ -57,6 +57,7 @@ export type EntradaDeAvaliacao = {
   comparacaoVisualDelta: number | null;
   /** O rastreamento de terceiro que o bundle carrega (G8). */
   rastreamento: PecaParaAceite['rastreamento'];
+  alvosPerdidos: PecaParaAceite['alvosPerdidos'];
 };
 
 export const avaliarPeca = (e: EntradaDeAvaliacao): Nota => {
@@ -87,6 +88,7 @@ export const avaliarPeca = (e: EntradaDeAvaliacao): Nota => {
     // G8 é a exceção, e por um motivo simples: o bundle ESTÁ em disco na hora
     // da curadoria. Era o primeiro campo a sair do limbo do comentário acima.
     rastreamento: e.rastreamento,
+    alvosPerdidos: e.alvosPerdidos,
     movimentoProprio: e.movimentoProprio,
     classesDeRevelacao: [],
     temObservadorDeRolagem: false,

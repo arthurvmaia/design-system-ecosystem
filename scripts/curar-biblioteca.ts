@@ -57,6 +57,7 @@ import {
   type PecaParaAceite,
   SegmentsManifest,
   type SegmentsManifest as SegmentsManifestType,
+  alvosPerdidosDoBundle,
   libraryComponentDir,
   rastreamentoDoBundle,
   vaultSegmentsManifest,
@@ -128,6 +129,7 @@ const avaliar = (seg: {
     // consegue conferir por inteiro, e é a que evita levar para o kit uma peça
     // cujo script mistura o analytics da origem com o comportamento dela.
     rastreamento: bundle === null ? null : rastreamentoDoBundle(bundle.dir).estado,
+    alvosPerdidos: bundle === null ? [] : alvosPerdidosDoBundle(bundle.dir),
   });
 };
 

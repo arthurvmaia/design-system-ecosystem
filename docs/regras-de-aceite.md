@@ -299,3 +299,27 @@ Na ordem, sempre:
 3. **Nunca contornar em silêncio.** Um site que sobe com pendência escondida
    custa mais caro do que um que não sobe: o erro chega ao cliente sem ninguém ter
    escolhido isso.
+
+### G9. O script da peça encontra o que procura
+
+Peça cujo script busca um elemento por id literal (`getElementById('x')`,
+`querySelector('#x')`) que **não existe no HTML dela** não entra na Galeria.
+
+*Por que:* o script não quebra — ele desiste. Bate no próprio guarda
+(`if (!svg) return`) e volta na primeira linha, sem erro no console. O que ele
+desenharia fica congelado no estado em que a captura o pegou, e na tela isso
+parece um componente estático que "veio meio errado".
+
+*Como apareceu:* o dono reprovou uma linha do tempo que, na origem, se preenche
+conforme a página rola. O compilador prefixava todos os ids internos do SVG
+(para `url(#gradiente)` de dois segmentos não colidirem) sem reescrever o
+JavaScript que os procura. Dos cinco ids da peça, só dois participavam da
+colisão; os outros três eram os que o script buscava.
+
+*Por que a regra continua depois do conserto:* porque conserto de motor não
+alcança o que já está em disco. Depois de corrigir o compilador e recompilar, a
+Biblioteca tinha as duas cópias — a antiga quebrada e a nova boa — e o montador
+escolheu a antiga.
+
+*Conservadora de propósito:* só acusa id LITERAL. Busca montada em tempo de
+execução (`'#' + nome`) não é acusada, porque o alvo não se conhece sem executar.

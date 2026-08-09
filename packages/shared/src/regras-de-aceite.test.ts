@@ -21,6 +21,7 @@ const peca = (over: Partial<PecaParaAceite> = {}): PecaParaAceite => ({
   refsQuebradas: [],
   assetsNaOrigem: [],
   rastreamento: null,
+  alvosPerdidos: [],
   ...over,
 });
 
@@ -391,4 +392,19 @@ test('S11 e S12: slot vazio e transbordo reprovam', () => {
   const s12 = r.vereditos.find((v) => v.codigo === 'S12');
   assert.equal(s12?.estado, 'reprovou');
   assert.ok(s12?.motivo.includes('390px'), 'transbordo é sempre uma conversa sobre largura');
+});
+
+test('G9 reprova peca cujo script procura elemento que o HTML dela nao tem', () => {
+  const r = conferirPecaDaGaleria(
+    peca({ alvosPerdidos: [{ id: 'pipeline-svg', onde: 'assets/js/pipeline.js' }] }),
+  );
+  const g9 = r.vereditos.find((v) => v.codigo === 'G9');
+  assert.equal(g9?.estado, 'reprovou');
+  assert.ok(g9?.motivo.includes('#pipeline-svg'), 'o motivo diz QUAL elemento e onde');
+  assert.equal(r.aprovado, false);
+});
+
+test('G9 passa quando o script acha tudo que procura', () => {
+  const r = conferirPecaDaGaleria(peca({ alvosPerdidos: [] }));
+  assert.equal(r.vereditos.find((v) => v.codigo === 'G9')?.estado, 'passou');
 });

@@ -20,6 +20,7 @@ import {
   SegmentStatesFile,
   SegmentsManifest,
   type StoredState,
+  alvosPerdidosDoBundle,
   ancorarContratoDoBundle,
   coletarAssetRefs,
   conferirPecaDaGaleria,
@@ -683,6 +684,8 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
     // de curtir e o script de curadoria têm de aplicar a mesma régua, senão o
     // mais frouxo vence sempre que alguém clicar em vez de rodar o script.
     rastreamento: bundle === null ? null : rastreamentoDoBundle(bundle.dir).estado,
+    // A mesma regua do script de curadoria: senao o mais frouxo vence.
+    alvosPerdidos: bundle === null ? [] : alvosPerdidosDoBundle(bundle.dir),
     runtimes: [],
     movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
     classesDeRevelacao: [],
