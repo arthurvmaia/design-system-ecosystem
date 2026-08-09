@@ -555,8 +555,8 @@ const MEDIR = `() => {
 
       A pagina e PERCORRIDA antes de medir (o IntersectionObserver so dispara
       para quem entra na tela), entao no instante da medida ela esta rolada. A
-      secao da nav e `position: sticky` de proposito — ela fica grudada no topo
-      da VIEWPORT enquanto o resto sobe. Lendo o rect cru, a emenda `nav -> hero`
+      secao da nav e position:sticky de proposito — ela fica grudada no topo
+      da VIEWPORT enquanto o resto sobe. Lendo o rect cru, a emenda nav para hero
       dava -1687px: a regra acusava "colados" um par que esta certo, e o numero
       absurdo era a propria denuncia de que a conta estava no sistema errado.
 

@@ -165,7 +165,7 @@ export const envolverEmProxies = (peca: PecaComposta): string => {
     attrs
       .replace(/\bclass\s*=\s*("[^"]*"|'[^']*')/i, '')
       .replace(/\blang\s*=\s*("[^"]*"|'[^']*')/i, '')
-      .replace(/\bstyle\s*=\s*"([^"]*)"/i, (inteiro, estilo: string) => {
+      .replace(/\bstyle\s*=\s*"([^"]*)"/i, (_inteiro, estilo: string) => {
         const limpo = semRolagemDeDocumento(estilo);
         return limpo.length > 0 ? `style="${limpo}"` : '';
       })
