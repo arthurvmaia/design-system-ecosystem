@@ -63,8 +63,10 @@ import {
 } from './estados.js';
 import { buildBrandingCss } from './index.js';
 import {
+  PISO_DE_LETRA_MOVEL,
   REGRA_DA_TINTA_DA_MARCA,
   REGRA_QUE_ABRE_PASSAGEM,
+  acenderLetraMiuda,
   acenderOpacidadeCongelada,
   alvosDoComportamento,
   ancorarNavNasSecoes,
@@ -2757,6 +2759,17 @@ ${criada.html}
   if (congeladasAcesas > 0) {
     avisos.push(
       `${congeladasAcesas} elemento(s) chegaram com a opacidade CONGELADA no meio de uma animação (o quadro em que a captura pegou o GSAP e afins) e foram acesos. Sem o driver na página composta, aquele valor ficaria para sempre e o texto não se leria.`,
+    );
+  }
+
+  // Letra abaixo de 12px não se lê no celular, por melhor que seja o contraste.
+  // A lista sai do CSS composto, não de uma lista fixa: ela precisa alcançar
+  // tanto `text-[10px]` quanto o `.eyebrow` que aquele site inventou.
+  const miudas = acenderLetraMiuda(concatCss);
+  if (miudas.classes.length > 0) {
+    concatCss += miudas.css;
+    avisos.push(
+      `${miudas.classes.length} classe(s) escreviam texto abaixo de ${PISO_DE_LETRA_MOVEL}px e ganharam piso no celular (${miudas.classes.slice(0, 3).join(', ')}). Na origem aquilo era um selo discreto numa tela larga; em 390px vira letra que não se lê.`,
     );
   }
 

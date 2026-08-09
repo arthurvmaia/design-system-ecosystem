@@ -550,10 +550,26 @@ const MEDIR = `() => {
   const respiroMorto = [];
   {
     const secs = [...document.querySelectorAll('[data-secao]')];
+    /*
+      A emenda se mede em coordenada de DOCUMENTO, nao de viewport.
+
+      A pagina e PERCORRIDA antes de medir (o IntersectionObserver so dispara
+      para quem entra na tela), entao no instante da medida ela esta rolada. A
+      secao da nav e `position: sticky` de proposito — ela fica grudada no topo
+      da VIEWPORT enquanto o resto sobe. Lendo o rect cru, a emenda `nav -> hero`
+      dava -1687px: a regra acusava "colados" um par que esta certo, e o numero
+      absurdo era a propria denuncia de que a conta estava no sistema errado.
+
+      Somar a rolagem devolve a posicao no documento, que e onde a emenda existe.
+    */
+    const noDocumento = (el) => {
+      const r = el.getBoundingClientRect();
+      return { topo: r.top + window.scrollY, base: r.bottom + window.scrollY, altura: r.height };
+    };
     for (let i = 0; i + 1 < secs.length; i++) {
-      const a = secs[i].getBoundingClientRect();
-      const b = secs[i + 1].getBoundingClientRect();
-      const vao = Math.round(b.top - a.bottom);
+      const a = noDocumento(secs[i]);
+      const b = noDocumento(secs[i + 1]);
+      const vao = Math.round(b.topo - a.base);
       /*
         Dois limites, nao um. O dono apontou os DOIS extremos em sites
         diferentes: "muito espaco em branco de um componente para o outro" e,
@@ -568,7 +584,7 @@ const MEDIR = `() => {
         continue;
       }
       // Colado: sem respiro nenhum, duas pecas viram uma mancha so.
-      if (vao < 8 && a.height > 80 && b.height > 80) {
+      if (vao < 8 && a.altura > 80 && b.altura > 80) {
         respiroMorto.push(
           (secs[i].getAttribute('data-secao') || '?') + ' -> ' +
           (secs[i + 1].getAttribute('data-secao') || '?') + ': colados (' + vao + 'px)'

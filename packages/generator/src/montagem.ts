@@ -1086,3 +1086,67 @@ export const acenderOpacidadeCongelada = (html: string): { html: string; acesas:
   });
   return { html: saida, acesas };
 };
+
+/**
+ * A letra miúda demais para o celular — e só para ele.
+ *
+ * ## O defeito, medido
+ *
+ * Em 390px o banco de prova achou texto a **9,6px**: "Depoimentos", "Reserve Seu
+ * Lugar", os rótulos "Sobrenome" e "E-mail" de um formulário. Não é falta de
+ * contraste — contraste perfeito não salva letra que não dá para ler.
+ *
+ * Na origem aquilo era um selo discreto numa tela de 1440px, e ali funcionava.
+ * O mesmo `0.6rem` numa tela de 390px é outra coisa.
+ *
+ * ## Por que a regra é derivada do CSS, e não uma lista
+ *
+ * A tentação é escrever `.text-\[10px\]{font-size:12px}` e afins. Isso erra
+ * dos dois lados: não alcança a classe que aquele site inventou
+ * (`.eyebrow{font-size:0.6rem}`) e sobra para classes que nem existem na página.
+ *
+ * Aqui a lista sai do CSS COMPOSTO: toda classe simples cujo `font-size`
+ * resolvido é menor que 12px entra, seja utilitário ou nome próprio da origem.
+ * Só classe simples — seletor com estado ou descendente descreve uma situação, e
+ * mexer nele mudaria mais do que o tamanho.
+ *
+ * O `!important` fica confinado ao breakpoint móvel, como o resto do responsivo:
+ * no desktop o desenho da origem manda.
+ */
+export const PISO_DE_LETRA_MOVEL = 12;
+
+export const acenderLetraMiuda = (css: string): { css: string; classes: string[] } => {
+  const alvo = new Set<string>();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const seletor = m[1] ?? '';
+    const corpo = m[2] ?? '';
+    const decl = /(?:^|[;\s])font-size\s*:\s*([^;!]+)/i.exec(corpo);
+    if (decl === null) continue;
+    const v = (decl[1] ?? '').trim();
+    const px = /^([\d.]+)px$/i.exec(v);
+    const rem = /^([\d.]+)r?em$/i.exec(v);
+    const tamanho =
+      px !== null
+        ? Number.parseFloat(px[1] ?? '0')
+        : rem !== null
+          ? Number.parseFloat(rem[1] ?? '0') * 16
+          : Number.NaN;
+    if (!Number.isFinite(tamanho) || tamanho <= 0 || tamanho >= PISO_DE_LETRA_MOVEL) continue;
+    for (const c of seletor.matchAll(/[\s>+~,(]\.((?:\\.|[\w-])+)\s*(?=[,){]|$)/g)) {
+      const nome = (c[1] ?? '').replace(/\\/g, '');
+      if (nome !== '') alvo.add(nome);
+    }
+    for (const c of seletor.matchAll(/:is\(\.((?:\\.|[\w-])+)\)/g)) {
+      const nome = (c[1] ?? '').replace(/\\/g, '');
+      if (nome !== '') alvo.add(nome);
+    }
+  }
+  if (alvo.size === 0) return { css: '', classes: [] };
+
+  const lista = [...alvo].sort();
+  const seletores = lista.map((c) => `.${c.replace(/([^\w-])/g, '\\$1')}`).join(',');
+  return {
+    css: `\n@media (max-width: 768px){\n  /* Letra abaixo de ${PISO_DE_LETRA_MOVEL}px não se lê no celular, por melhor que seja o contraste. */\n  ${seletores}{font-size:${PISO_DE_LETRA_MOVEL}px !important}\n}\n`,
+    classes: lista,
+  };
+};

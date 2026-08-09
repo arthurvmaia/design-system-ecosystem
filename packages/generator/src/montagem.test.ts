@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   REGRA_QUE_ABRE_PASSAGEM,
+  acenderLetraMiuda,
   acenderOpacidadeCongelada,
   alvosDoComportamento,
   ancorarNavNasSecoes,
@@ -650,4 +651,25 @@ test('acenderOpacidadeCongelada: opacidade ja cheia nao vira mudanca', () => {
     '<div style="translate: none; opacity: 1; transform: translate(0px, 0px);">x</div>',
   );
   assert.equal(r.acesas, 0);
+});
+
+test('acenderLetraMiuda: a lista sai do CSS, nao de uma lista fixa', () => {
+  // Em 390px o banco de prova achou texto a 9,6px: "Depoimentos", "Reserve Seu
+  // Lugar", rotulos de formulario. Contraste perfeito nao salva letra que nao
+  // da para ler.
+  const r = acenderLetraMiuda(
+    ':where([data-ds-corpo="d"]):is(.text-\\[10px\\]){font-size:10px}' +
+      ':where([data-ds-corpo="d"]) .eyebrow{font-size:0.6rem}' +
+      ':where([data-ds-corpo="d"]):is(.text-base){font-size:16px}',
+  );
+  assert.deepEqual(r.classes, ['eyebrow', 'text-[10px]'], 'utilitario E nome proprio da origem');
+  assert.match(r.css, /@media \(max-width: 768px\)/, 'so no celular');
+  assert.match(r.css, /font-size:12px !important/);
+  assert.ok(!r.css.includes('text-base'), 'letra que ja se le nao entra');
+});
+
+test('acenderLetraMiuda: sem letra miuda, nao emite regra', () => {
+  const r = acenderLetraMiuda('.a{font-size:16px}.b{color:red}');
+  assert.equal(r.css, '');
+  assert.deepEqual(r.classes, []);
 });
