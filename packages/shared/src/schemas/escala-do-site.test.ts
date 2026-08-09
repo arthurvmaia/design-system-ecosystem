@@ -365,3 +365,28 @@ test('origem com canto vivo e referência arredondada: a régua sai, e é essa a
   assert.equal(raio.porValor.size, 1);
   assert.equal(raio.porValor.get(2), '--marca-raio-1');
 });
+
+test('o rabo absurdo da regua e cortado: 2520px nao e degrau de respiro', () => {
+  // A regua real do acervo que motivou isto. O salto de 470 para 2520 e 5,4x —
+  // aquilo e a altura de um embrulho de pagina que entrou na amostragem.
+  const daOrigem = escala({ espacos: [8, 16, 24] });
+  const daReferencia = escala({ espacos: [6, 10, 16, 20, 24, 32, 40, 100, 160, 470, 2520] });
+  const { espaco } = reguasParaOrigem(daOrigem, daReferencia);
+  // Com 2520 fora, a regua de referencia tem 10 degraus e a ponta de cima do
+  // espaco da origem mira o degrau 10, nao o 11.
+  assert.equal(espaco.porValor.get(24), '--marca-espaco-10');
+});
+
+test('salto de 4x e degrau legitimo: regua grossa nao e decapitada', () => {
+  const daOrigem = escala({ espacos: [4, 12, 48] });
+  const daReferencia = escala({ espacos: [8, 16, 32, 64, 96] });
+  const { espaco } = reguasParaOrigem(daOrigem, daReferencia);
+  assert.equal(espaco.porValor.get(48), '--marca-espaco-5', 'a ponta continua sendo a ponta');
+});
+
+test('a regua nunca fica vazia: torta e melhor que ausente', () => {
+  const daOrigem = escala({ espacos: [4, 5000] });
+  const daReferencia = escala({ espacos: [8, 16] });
+  const { espaco } = reguasParaOrigem(daOrigem, daReferencia);
+  assert.ok(espaco.porValor.size > 0);
+});

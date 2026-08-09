@@ -153,12 +153,55 @@ export type ReguaAlinhada = {
  * fica como está — a mesma regra de "na dúvida, não mexe" que a recoloração
  * segue com cluster sem papel.
  */
+/**
+ * Corta o RABO da régua: degrau que saltou longe demais do anterior.
+ *
+ * Uma régua de espaço cresce por degraus vizinhos — `4, 8, 12, 16, 24, 32, 48`.
+ * Quando o último salta muito além do anterior, aquilo não é degrau: é a medida
+ * de um embrulho de página que entrou na amostragem como se fosse respiro.
+ *
+ * O limiar é 4×, e ele foi CALIBRADO nos dois lados. A régua real que motivou
+ * isto é `[6, 10, 16, 20, 24, 32, 40, 100, 160, 470, 2520]`: o salto de 470 para
+ * 2520 é 5,4× e cai; o de 160 para 470 é 2,9× e fica. Do outro lado, uma régua
+ * grossa e legítima como `[4, 12, 48]` tem um salto de 4,0× — e um limiar de 3
+ * a decapitava.
+ *
+ * Medido no acervo: uma régua termina em **2520px** e outra em 470px, contra
+ * uma mediana de 96px para o maior degrau. A causa foi corrigida na FONTE
+ * (`engine-v2/mapper/rampas.ts` passou a recusar respiro maior que meia página),
+ * mas a evidência gravada não guarda os nós — então as réguas do acervo de hoje
+ * só se limpam recapturando os 57 sites, o que custa horas. Este corte é o que
+ * as limpa agora, e continua valendo como rede depois.
+ *
+ * Por que o rabo e não o meio: o salto absurdo aparece sempre no fim, porque a
+ * régua vem ordenada. Cortar no meio removeria degrau legítimo e deslocaria
+ * todos os vizinhos — e é o deslocamento que faz o que era destaque continuar
+ * destaque.
+ */
+const SALTO_MAXIMO = 4;
+const semRaboAbsurdo = (degraus: readonly number[]): number[] => {
+  const fora: number[] = [];
+  for (let i = degraus.length - 1; i > 0; i--) {
+    const atual = degraus[i];
+    const anterior = degraus[i - 1];
+    if (atual === undefined || anterior === undefined || anterior <= 0) break;
+    if (atual / anterior <= SALTO_MAXIMO) break;
+    fora.push(i);
+  }
+  // Nunca esvazia a régua: sem degrau não há reescala, e ficar com a régua
+  // torta é melhor que ficar sem régua nenhuma.
+  if (fora.length >= degraus.length - 1) return [...degraus];
+  return degraus.filter((_, i) => !fora.includes(i));
+};
+
 export const reguaDaOrigem = (
-  origem: readonly number[],
-  referencia: readonly number[],
+  origemBruta: readonly number[],
+  referenciaBruta: readonly number[],
   nome: (i: number) => string,
   ancoras?: { origem: number | null; referencia: number | null },
 ): ReguaAlinhada => {
+  const origem = semRaboAbsurdo(origemBruta);
+  const referencia = semRaboAbsurdo(referenciaBruta);
   const destinos = alinharDegraus(origem, referencia, ancoras);
   const porValor = new Map<number, string>();
   origem.forEach((valor, i) => {

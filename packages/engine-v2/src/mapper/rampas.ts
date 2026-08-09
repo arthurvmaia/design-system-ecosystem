@@ -189,6 +189,11 @@ export const derivarRampas = (nos: readonly RawNode[]): RampasDaPagina => {
   const espaco: Amostra[] = [];
   const raio: Amostra[] = [];
 
+  /** Metade da maior largura vista — a escala da página, medida. Ver abaixo. */
+  let maiorLargura = 0;
+  for (const n of nos) if (n.visivel && n.box.w > maiorLargura) maiorLargura = n.box.w;
+  const tetoDoEspaco = maiorLargura > 0 ? maiorLargura / 2 : Number.POSITIVE_INFINITY;
+
   for (const n of nos) {
     const v = n.visual;
     if (v === undefined || !n.visivel) continue;
@@ -212,13 +217,21 @@ export const derivarRampas = (nos: readonly RawNode[]): RampasDaPagina => {
      * fora do eixo da página. Foi a causa medida por trás dos elementos
      * ceifados na borda — 198 deles nos 20 sites de prova.
      *
-     * O teto sai do PRÓPRIO nó, não de constante: um respiro maior que a metade
-     * da caixa que o contém não está separando duas coisas, está sendo a coisa.
+     * O teto sai da ESCALA DA PÁGINA, medida nos próprios nós: metade da maior
+     * largura vista. Não é constante — um site estreito ganha teto estreito.
+     *
+     * Duas tentativas anteriores erraram e vale registrar por quê. Contra a
+     * caixa do próprio nó: um embrulho de página tem 6000px de altura e metade
+     * disso ainda deixa passar o degrau de 2520. Contra a MENOR dimensão do
+     * próprio nó: some com respiro legítimo de caixa pequena — um cartão de
+     * 100×20 não pode ter o padding dele descartado por ser maior que 10.
+     *
+     * A largura da página é a régua certa porque é ela que aperta o respiro: o
+     * que não cabe em meia página não está separando duas coisas, está sendo a
+     * coisa.
      */
-    const meia = Math.max(n.box.w, n.box.h) / 2;
     for (const valor of [v.padY, v.padX, v.gap]) {
-      if (valor <= 0) continue;
-      if (meia > 0 && valor > meia) continue;
+      if (valor <= 0 || valor > tetoDoEspaco) continue;
       espaco.push({ valor, ref: n.ref, caracteres: 0 });
     }
     if (v.radius > 0) raio.push({ valor: v.radius, ref: n.ref, caracteres: 0 });
