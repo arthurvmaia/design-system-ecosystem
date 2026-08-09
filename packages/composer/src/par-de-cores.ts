@@ -125,9 +125,15 @@ const classesDoSeletor = (seletor: string): string[] => {
  */
 export const mapearClassesPorPapel = (
   css: string,
-): { tinta: Map<string, string>; fundo: Map<string, string> } => {
+): {
+  tinta: Map<string, string>;
+  fundo: Map<string, string>;
+  /** `classe → hex` da tinta que NÃO virou papel (ver `literalDe`). */
+  tintaLiteral: Map<string, string>;
+} => {
   const tinta = new Map<string, string>();
   const fundo = new Map<string, string>();
+  const tintaLiteral = new Map<string, string>();
 
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const seletor = m[1] ?? '';
@@ -142,14 +148,45 @@ export const mapearClassesPorPapel = (
       return /var\(--marca-([a-z-]+)/i.exec(v)?.[1] ?? null;
     };
 
+    /**
+     * A tinta LITERAL, para o par meio recolorido.
+     *
+     * Metade das colisões medidas tinha esta forma: `.bg-[#0D0C22].text-white`.
+     * O fundo virou papel da marca — e num tema claro `--marca-background` é
+     * quase branco —, enquanto `text-white` continuou literal, porque branco
+     * não pertence a papel nenhum. O par colapsou para 1,49:1 e a correção não
+     * enxergava: ela só falava em papéis, e um dos lados não tinha papel.
+     *
+     * Guardar o hex literal é o que permite comparar os dois lados quando só um
+     * deles foi recolorido.
+     */
+    const literalDe = (prop: RegExp): string | null => {
+      const decl = new RegExp(`${prop.source}\\s*:([^;]*)`, 'i').exec(corpo);
+      const v = (decl?.[1] ?? '').trim();
+      if (v === '' || /var\(/i.test(v)) return null;
+      const hex = /#([0-9a-f]{3,8})\b/i.exec(v);
+      if (hex !== null) return `#${hex[1]}`;
+      const nome = /^(white|black)\b/i.exec(v);
+      if (nome !== null) return nome[1]?.toLowerCase() === 'white' ? '#ffffff' : '#000000';
+      const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i.exec(v);
+      if (rgb === null) return null;
+      const n = (i: number): string =>
+        Math.min(255, Number.parseInt(rgb[i] ?? '0', 10))
+          .toString(16)
+          .padStart(2, '0');
+      return `#${n(1)}${n(2)}${n(3)}`;
+    };
+
     const pTinta = papelDe(/(?:^|[;\s])color/);
     const pFundo = papelDe(/background(?:-color)?/);
+    const lTinta = pTinta === null ? literalDe(/(?:^|[;\s])color/) : null;
     for (const c of classes) {
       if (pTinta !== null && !tinta.has(c)) tinta.set(c, pTinta);
       if (pFundo !== null && !fundo.has(c)) fundo.set(c, pFundo);
+      if (lTinta !== null && !tintaLiteral.has(c)) tintaLiteral.set(c, lTinta);
     }
   }
-  return { tinta, fundo };
+  return { tinta, fundo, tintaLiteral };
 };
 
 /**
@@ -245,7 +282,11 @@ export const corrigirParesDeCor = (
   piso = PISO_DO_PAR,
 ): { html: string; corrigidos: ParCorrigido[] } => {
   const mapa = mapearClassesPorPapel(css);
-  if (mapa.tinta.size === 0 || mapa.fundo.size === 0) return { html, corrigidos: [] };
+  // Fundo sem papel nenhum quer dizer que a recoloração não tocou nesta página.
+  // A tinta pode vir de qualquer um dos dois mapas (ver `tintaLiteral`).
+  if ((mapa.tinta.size === 0 && mapa.tintaLiteral.size === 0) || mapa.fundo.size === 0) {
+    return { html, corrigidos: [] };
+  }
 
   const corrigidos: ParCorrigido[] = [];
 
@@ -356,14 +397,33 @@ export const corrigirParesDeCor = (
         break;
       }
     }
+    /**
+     * A tinta LITERAL entra quando ela não virou papel — o par MEIO recolorido.
+     *
+     * `.bg-[#0D0C22].text-white`: o fundo virou papel da marca, o branco
+     * continuou branco (não pertence a papel nenhum), e num tema claro o par
+     * colapsou para 1,49:1. Sem este ramo a correção via um lado só e desistia.
+     */
+    let hexDaTintaLiteral: string | null = null;
+    if (papelDaTinta === null) {
+      for (const c of lista) {
+        const t = mapa.tintaLiteral.get(c);
+        if (t !== undefined) {
+          hexDaTintaLiteral = t;
+          break;
+        }
+      }
+    }
     // O fundo é o próprio, quando ele declara um; senão, o do ancestral mais
     // próximo que declara. É onde o texto realmente senta.
     const papelDoFundo = fundoProprio ?? fundoVigente();
-    if (papelDoFundo === null || papelDaTinta === null) return tudo;
+    if (papelDoFundo === null || (papelDaTinta === null && hexDaTintaLiteral === null)) {
+      return tudo;
+    }
 
     const hexFundo = tokens[papelDoFundo];
-    const hexTinta = tokens[papelDaTinta];
-    if (hexFundo === undefined || hexTinta === undefined) return tudo;
+    const hexTinta = papelDaTinta === null ? hexDaTintaLiteral : tokens[papelDaTinta];
+    if (hexFundo === undefined || hexTinta === undefined || hexTinta === null) return tudo;
     const razao = contrasteEntre(hexTinta, hexFundo);
     if (razao === null || razao >= piso) return tudo;
 
@@ -373,7 +433,7 @@ export const corrigirParesDeCor = (
     corrigidos.push({
       classes,
       papelDoFundo,
-      papelAntes: papelDaTinta,
+      papelAntes: papelDaTinta ?? `literal ${hexDaTintaLiteral ?? ''}`,
       papelDepois: nova,
       razaoAntes: razao,
     });

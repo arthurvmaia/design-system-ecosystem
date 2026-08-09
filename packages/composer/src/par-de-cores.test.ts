@@ -209,3 +209,37 @@ test('sobre fundo claro de VERDADE, a tinta escura da pagina e a escolha certa',
   const hex = (TOKENS as Record<string, string>)[escolhido ?? ''] ?? '';
   assert.ok((contrasteEntre(hex, TOKENS.accent) ?? 0) >= 3);
 });
+
+test('o par MEIO recolorido: fundo virou papel, a tinta continuou literal', () => {
+  // Metade das colisoes medidas tinha esta forma. `text-white` nao pertence a
+  // papel nenhum, entao ele nao entra no mapa de papeis — e a correcao, que so
+  // falava em papeis, via um lado so e desistia. O par colapsava para 1,49:1.
+  const css =
+    ':where([data-ds-corpo="d"]):is(.bg-claro){background-color:var(--marca-background, #0d0c22)}' +
+    ':where([data-ds-corpo="d"]):is(.text-white){color:#fff}';
+  const mapa = mapearClassesPorPapel(css);
+  assert.equal(mapa.fundo.get('bg-claro'), 'background');
+  assert.equal(mapa.tinta.get('text-white'), undefined, 'branco nao tem papel');
+  assert.equal(mapa.tintaLiteral.get('text-white'), '#fff', 'mas tem hex');
+
+  const claro = { ...TOKENS, background: '#f7f7f7', heading: '#141414', body: '#333333' };
+  const r = corrigirParesDeCor(
+    '<div class="bg-claro"><span class="text-white">DEV+</span></div>',
+    css,
+    claro,
+  );
+  assert.equal(r.corrigidos.length, 1, `nao corrigiu: ${r.html}`);
+  assert.match(r.html, /color:var\(--marca-/, 'a tinta passa a se ler sobre o fundo claro');
+});
+
+test('tinta literal que JA se le sobre o fundo nao e tocada', () => {
+  const css =
+    ':where([data-ds-corpo="d"]):is(.bg-escuro){background-color:var(--marca-background, #000)}' +
+    ':where([data-ds-corpo="d"]):is(.text-white){color:#ffffff}';
+  const r = corrigirParesDeCor(
+    '<div class="bg-escuro"><span class="text-white">DEV+</span></div>',
+    css,
+    TOKENS,
+  );
+  assert.equal(r.corrigidos.length, 0, 'branco sobre #1a1210 se le, e nada muda');
+});
