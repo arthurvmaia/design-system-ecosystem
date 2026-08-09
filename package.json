@@ -45,7 +45,9 @@
     "pagina": "tsx scripts/pagina-montar.ts",
     "conferir": "tsx scripts/conferir-site.ts",
     "publicar": "tsx scripts/publicar.ts",
-    "resegmentar": "tsx scripts/resegmentar.ts"
+    "resegmentar": "tsx scripts/resegmentar.ts",
+    "biblioteca:deduplicar": "tsx scripts/deduplicar-biblioteca.ts",
+    "biblioteca:religar": "tsx scripts/religar-biblioteca.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

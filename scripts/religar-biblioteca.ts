@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { getDb, tables } from '@ds/indexer';
-import { eq, isNull } from 'drizzle-orm';
+import { eq, getDb, isNull, tables } from '@ds/indexer';
+import { executadoDireto } from './executado-direto.js';
 
 /**
  * Religa as linhas ÓRFÃS da Biblioteca aos segmentos recriados.
@@ -136,3 +136,20 @@ export const reconciliarFlagDaBiblioteca = (dsId?: string): number => {
   }
   return mudadas;
 };
+
+if (executadoDireto(import.meta.url)) {
+  const dsId = process.argv.find((a) => a.startsWith('ds_'));
+  console.log(
+    `\n  Religando a Biblioteca aos segmentos${dsId !== undefined ? ` de ${dsId}` : ''}…\n`,
+  );
+  const r = religarBibliotecaAosSegmentos(dsId);
+  console.log(`  ${r.religadas} linha(s) religada(s) pelo conteúdo.`);
+  if (r.aindaOrfas > 0) {
+    console.log(
+      `  ${r.aindaOrfas} continuam sem vínculo: são empates de conteúdo, e escolher no chute ligaria a peça ao segmento errado.`,
+    );
+  }
+  console.log(
+    `  ${r.flagsReacesas} flag(s) in_library reconciliada(s) — é o portão de idempotência do app.\n`,
+  );
+}

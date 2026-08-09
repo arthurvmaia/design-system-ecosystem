@@ -280,13 +280,25 @@ const principal = (): void => {
    */
   if (limpar) {
     for (const n of sair) {
-      const comp = db
+      /**
+       * TODAS as linhas daquele segmento, não a primeira.
+       *
+       * `.get()` devolvia uma só, e o acervo tem 302 segmentos carregando de 2
+       * a 3 linhas cada — 861 linhas para 403 conteúdos distintos, metade
+       * duplicata, resultado de a resegmentação ter desligado o vínculo e o
+       * `curar` ter readicionado tudo por não reconhecer o que já estava lá.
+       *
+       * Com uma linha por vez, retirar a peça que o dono mandou tirar deixava
+       * as outras cópias dela na Biblioteca E nos kits: ele via a peça sair da
+       * tela e voltar no kit seguinte.
+       */
+      const comps = db
         .select()
         .from(tables.libraryComponents)
         .where(eq(tables.libraryComponents.segmentId, n.segId))
-        .get();
+        .all();
       db.transaction((tx) => {
-        if (comp !== undefined) {
+        for (const comp of comps) {
           tx.delete(tables.kitComponents)
             .where(eq(tables.kitComponents.componentId, comp.id))
             .run();
@@ -297,11 +309,11 @@ const principal = (): void => {
           .where(eq(tables.segments.id, n.segId))
           .run();
       });
-      if (comp !== undefined) {
+      for (const comp of comps) {
         const dir = libraryComponentDir(comp.id as `cmp_${string}`);
         if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
       }
-      sairam++;
+      sairam += comps.length;
     }
   }
   const retiradas = limpar ? `, ${sairam} retirada(s)` : '';
