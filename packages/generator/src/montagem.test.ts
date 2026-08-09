@@ -4,6 +4,7 @@ import {
   REGRA_QUE_ABRE_PASSAGEM,
   alvosDoComportamento,
   comportamentoAlcancaAPagina,
+  destravarOpacidadeSemRevelador,
   envolverCamadaDePagina,
   envolverSecao,
   extrairCamadasDeFundo,
@@ -498,4 +499,40 @@ test('altura e largura DIFERENTES não são selo de marca', () => {
   const corpo = '<div class="w-10 h-16 rounded-full">M</div>';
   const r = trocarMonogramaDaOrigem(corpo, { src: 'x.png', alt: 'y' });
   assert.equal(r.trocados, 0, 'retângulo não é selo');
+});
+
+test('opacidade zero SEM revelador que alcance a pagina volta a aparecer', () => {
+  // Medido nos 20 sites de prova: 362 trechos invisiveis, com classe de nome
+  // revelador (gsap-fade-up, pc-hidden-content, stack-card). O script da origem
+  // nao viajou ou nao alcanca ninguem, e o texto some para sempre.
+  const html = '<div class="gsap-fade-up"><p>Texto que some</p></div>';
+  const css = '.gsap-fade-up{opacity:0;transform:translateY(20px)}';
+  // O script procura algo que NAO existe nesta pagina.
+  const scripts = ["document.querySelectorAll('.nao-existe-aqui')"];
+  const r = destravarOpacidadeSemRevelador(css, scripts, html);
+  assert.deepEqual(r.destravadas, ['gsap-fade-up']);
+  assert.ok(r.css.includes('opacity:1 !important'));
+});
+
+test('com revelador que ALCANCA, a opacidade zero fica: e estado inicial legitimo', () => {
+  const html = '<div class="gsap-fade-up"><p>x</p></div>';
+  const css = '.gsap-fade-up{opacity:0}';
+  const scripts = ["document.querySelectorAll('.gsap-fade-up')"];
+  const r = destravarOpacidadeSemRevelador(css, scripts, html);
+  assert.deepEqual(r.destravadas, []);
+  assert.equal(r.css, '');
+});
+
+test('classe que nao esta no HTML da peca nao vira regra: peso morto', () => {
+  const html = '<div class="outra"><p>x</p></div>';
+  const css = '.gsap-fade-up{opacity:0}';
+  const r = destravarOpacidadeSemRevelador(css, ["document.querySelector('.nada')"], html);
+  assert.deepEqual(r.destravadas, []);
+});
+
+test('seletor de ESTADO nao e destravado: hover descreve situacao, nao repouso', () => {
+  const html = '<div class="cartao"><p>x</p></div>';
+  const css = '.cartao:hover .selo{opacity:0}';
+  const r = destravarOpacidadeSemRevelador(css, ["document.querySelector('.nada')"], html);
+  assert.deepEqual(r.destravadas, []);
 });

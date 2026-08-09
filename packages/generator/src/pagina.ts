@@ -68,6 +68,7 @@ import {
   alvosDoComportamento,
   atributosDoDocumentoDaPeca,
   comportamentoAlcancaAPagina,
+  destravarOpacidadeSemRevelador,
   envolverCamadaDePagina,
   envolverSecao,
   extrairCamadasDeFundo,
@@ -2696,6 +2697,26 @@ ${criada.html}
   if (revelacao.limpas > 0) {
     avisos.push(
       `Movimento devolvido: ${revelacao.limpas} elemento(s) tinham a classe de revelação (${revelacao.classes.join(', ')}) já aplicada pela captura — o observador de rolagem viajou junto e não tinha o que revelar. Eles voltam ao estado inicial e a página se anima ao rolar.`,
+    );
+  }
+
+  /**
+   * E o outro lado da mesma moeda: o que chegou no estado INICIAL, invisível,
+   * esperando um revelador que não alcança ninguém aqui.
+   *
+   * Medido nos 20 sites de prova: 362 trechos de texto em opacidade ZERO, com
+   * classe de nome revelador (`gsap-fade-up`, `pc-hidden-content`,
+   * `stack-card`). A regra S13 reprovava em 31 das 40 larguras.
+   */
+  const destravadas = destravarOpacidadeSemRevelador(
+    concatCss,
+    corpoDosScriptsLocais,
+    `${camadasHtml}${bodyHtml}`,
+  );
+  if (destravadas.destravadas.length > 0) {
+    concatCss += destravadas.css;
+    avisos.push(
+      `${destravadas.destravadas.length} classe(s) que a origem deixa invisíveis à espera de revelação (${destravadas.destravadas.slice(0, 3).join(', ')}) voltaram a aparecer: nenhum script que viajou alcança elemento nesta página, então ninguém levantaria aquela opacidade. Perde-se a animação de entrada; o texto fica.`,
     );
   }
 

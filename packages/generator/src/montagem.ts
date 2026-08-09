@@ -727,3 +727,77 @@ export const comportamentoAlcancaAPagina = (
   }
   return false;
 };
+
+/**
+ * Devolve a VISIBILIDADE ao que ficou esperando um revelador que não veio.
+ *
+ * ## O defeito, medido
+ *
+ * Nos 20 sites de prova: **362 trechos de texto invisíveis**, e a regra S13
+ * reprovando em 31 das 40 larguras. Os elementos têm nome de revelação —
+ * `gsap-fade-up`, `pc-hidden-content`, `stack-card`, `testimonial` — e estão
+ * todos em opacidade ZERO.
+ *
+ * É primo do que `limparEstadoRevelado` já conserta, e a diferença importa. Lá o
+ * elemento chegou com a classe FINAL aplicada e bastava tirá-la para a animação
+ * poder acontecer. Aqui ele chegou no estado INICIAL — invisível de propósito —
+ * esperando o script da origem levantar a opacidade. O script não viajou, ou
+ * viajou e não alcança ninguém nesta página, e o texto fica invisível para
+ * sempre.
+ *
+ * ## A prova é a mesma
+ *
+ * Não basta o elemento estar em `opacity: 0`: isso é legítimo enquanto houver
+ * quem o revele. A pergunta é a que `comportamentoAlcancaAPagina` já responde —
+ * *algum script que viajou alcança alguém aqui?* Sem alcance, ninguém vai
+ * levantar aquela opacidade, e mantê-la é escolher a seção em branco.
+ *
+ * ## Por que uma regra no fim da folha, e não uma edição no HTML
+ *
+ * A regra da origem continua lá, intacta e legível, e o override é declarado. Um
+ * `!important` seria necessário se a origem tivesse usado um — e ela usa. O
+ * escopo é a origem, então nada vaza para as outras peças da página.
+ *
+ * Degrada para o que a peça já tinha: perde-se a animação de ENTRADA, que é uma
+ * perda pequena e visível. A alternativa é texto invisível, que é uma perda
+ * grande e silenciosa.
+ */
+export const destravarOpacidadeSemRevelador = (
+  css: string,
+  scripts: readonly string[],
+  html: string,
+): { css: string; destravadas: string[] } => {
+  // Com alcance, alguém revela: a opacidade zero é estado inicial legítimo.
+  if (comportamentoAlcancaAPagina(html, alvosDoComportamento(scripts))) {
+    return { css: '', destravadas: [] };
+  }
+
+  const classes = new Set<string>();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const seletor = m[1] ?? '';
+    const corpo = m[2] ?? '';
+    const op = /(?:^|[;\s])opacity\s*:\s*(0|0?\.0*[0-9])(?:\s|;|!|$)/i.exec(corpo);
+    if (op === null) continue;
+    // Só classe simples: seletor com estado (`:hover`) ou descendente descreve
+    // uma situação, não o repouso — e mexer nele mudaria o comportamento.
+    for (const c of seletor.matchAll(/(?:^|[,\s])\.((?:\\.|[\w-])+)\s*(?=,|\{|$)/g)) {
+      const nome = (c[1] ?? '').replace(/\\/g, '');
+      if (nome !== '') classes.add(nome);
+    }
+  }
+  if (classes.size === 0) return { css: '', destravadas: [] };
+
+  // Só o que EXISTE no HTML desta peça: regra para classe ausente é peso morto.
+  const noHtml = new Set<string>();
+  for (const m of html.matchAll(/\bclass\s*=\s*"([^"]*)"/gi)) {
+    for (const c of (m[1] ?? '').split(/\s+/)) if (c !== '') noHtml.add(c);
+  }
+  const alvo = [...classes].filter((c) => noHtml.has(c));
+  if (alvo.length === 0) return { css: '', destravadas: [] };
+
+  const seletores = alvo.map((c) => `.${c.replace(/([^\w-])/g, '\\$1')}`).join(',');
+  return {
+    css: `\n/* Sem revelador que alcance esta página, a opacidade inicial fica para sempre. */\n${seletores}{opacity:1 !important}\n`,
+    destravadas: alvo,
+  };
+};
