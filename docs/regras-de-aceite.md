@@ -321,5 +321,15 @@ alcança o que já está em disco. Depois de corrigir o compilador e recompilar,
 Biblioteca tinha as duas cópias — a antiga quebrada e a nova boa — e o montador
 escolheu a antiga.
 
-*Conservadora de propósito:* só acusa id LITERAL. Busca montada em tempo de
-execução (`'#' + nome`) não é acusada, porque o alvo não se conhece sem executar.
+*Só o RENOMEIO, e o número que ensinou isso:* a primeira versão acusava todo id
+literal ausente e reprovou **316 de 1396 peças**. O número estava errado, não o
+acervo — os `assets/js` de uma captura são os scripts do site INTEIRO,
+compartilhados entre segmentos. Um `interactions.js` que procura `#mobile-menu`
+legitimamente não acha esse id numa peça de hero, e corretamente não faz nada.
+
+A assinatura do defeito é outra: **o elemento está ali sob outro nome.** O HTML
+tem `seg6-svg1-pipeline-svg`, o script procura `pipeline-svg`. Aí não há leitura
+benigna. A regra acusa só quando existe no HTML um id terminando em
+`-<procurado>` — o que pega os 4 bundles medidos no acervo e nenhum a mais.
+Busca montada em tempo de execução (`'#' + nome`) fica fora: sem executar não se
+sabe o alvo, e acusar no escuro reprova peça boa.

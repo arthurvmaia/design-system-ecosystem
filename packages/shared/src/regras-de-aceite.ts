@@ -70,10 +70,11 @@ export type PecaParaAceite = {
    */
   rastreamento: 'puro' | 'misturado' | null;
   /**
-   * Ids que o script da peça procura por literal e que o HTML dela não tem
-   * (`alvosPerdidosDoBundle`). Lista vazia = o script acha o que procura.
+   * Ids que o script da peça procura por literal e que existem no HTML dela sob
+   * OUTRO nome (`alvosPerdidosDoBundle`). Lista vazia = o script acha o que
+   * procura, ou o que falta não é renomeio.
    */
-  alvosPerdidos: readonly { id: string; onde: string }[];
+  alvosPerdidos: readonly { id: string; onde: string; viraram: string }[];
 };
 
 /**

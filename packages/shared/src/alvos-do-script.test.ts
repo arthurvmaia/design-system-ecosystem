@@ -24,6 +24,11 @@ test('o caso que o dono reprovou: o id foi renomeado e o script procura o antigo
   assert.equal(perdidos.length, 1);
   assert.equal(perdidos[0]?.id, 'pipeline-svg');
   assert.equal(perdidos[0]?.onde, 'assets/js/pipeline.js');
+  assert.equal(
+    perdidos[0]?.viraram,
+    'seg6-svg1-pipeline-svg',
+    'a prova de que o elemento esta ali',
+  );
 });
 
 test('script que acha tudo nao acusa nada', () => {
@@ -35,11 +40,19 @@ test('script que acha tudo nao acusa nada', () => {
 });
 
 test('querySelector de id puro conta; seletor composto NAO', () => {
-  const dir = bundle('<div id="existe"></div>', {
+  const dir = bundle('<div id="seg1-svg1-sumiu"></div><div id="outro"></div>', {
     'a.js': "document.querySelector('#sumiu');document.querySelector('#outro .interno');",
   });
   const ids = alvosPerdidosDoBundle(dir).map((a) => a.id);
   assert.deepEqual(ids, ['sumiu'], 'seletor composto depende do documento e nao e acusado');
+});
+
+test('id AUSENTE de vez nao acusa: e o script do site inteiro procurando outra secao', () => {
+  // Foi este o falso positivo que reprovou 316 de 1396 pecas na primeira versao.
+  const dir = bundle('<section id="hero"></section>', {
+    'interactions.js': "document.getElementById('mobile-menu');document.getElementById('rodape');",
+  });
+  assert.deepEqual(alvosPerdidosDoBundle(dir), []);
 });
 
 test('id montado em tempo de execucao nao e acusado: nao da para saber o alvo', () => {
@@ -50,7 +63,9 @@ test('id montado em tempo de execucao nao e acusado: nao da para saber o alvo', 
 });
 
 test('script inline tambem e lido, e diz de onde veio', () => {
-  const dir = bundle('<div id="a"></div><script>document.getElementById("grafico")</script>');
+  const dir = bundle(
+    '<div id="s2-grafico"></div><script>document.getElementById("grafico")</script>',
+  );
   const perdidos = alvosPerdidosDoBundle(dir);
   assert.equal(perdidos[0]?.id, 'grafico');
   assert.equal(perdidos[0]?.onde, 'index.html #1');
@@ -62,7 +77,7 @@ test('bundle sem index.html nao vira acusacao', () => {
 });
 
 test('o mesmo alvo em dois arquivos aparece uma vez por arquivo', () => {
-  const dir = bundle('<div id="a"></div>', {
+  const dir = bundle('<div id="pre-x"></div>', {
     'a.js': "document.getElementById('x')",
     'b.js': "document.getElementById('x')",
   });
@@ -70,7 +85,7 @@ test('o mesmo alvo em dois arquivos aparece uma vez por arquivo', () => {
 });
 
 test('ids de framework sao ignorados: root e app nao sao alvo de desenho', () => {
-  const dir = bundle('<div id="a"></div>', {
+  const dir = bundle('<div id="p-root"></div><div id="p-app"></div>', {
     'a.js': "document.getElementById('root');document.getElementById('app');",
   });
   assert.deepEqual(alvosPerdidosDoBundle(dir), []);

@@ -29,18 +29,34 @@ import { join } from 'node:path';
  * para qualquer causa — id renomeado, marcação podada no recorte, script de
  * outra seção que veio junto.
  *
- * A régua é conservadora de propósito: só acusa quando o script busca um id
- * LITERAL e aquele id não está no HTML. Busca montada em tempo de execução
- * (`'#'+nome`) não é acusada, porque não dá para saber o alvo sem executar — e
- * acusar no escuro reprovaria peça boa.
+ * ## Só o RENOMEIO, e a medição que ensinou isso
+ *
+ * A primeira versão acusava todo id literal ausente do HTML. Reprovou **316 de
+ * 1396 peças** — e o número estava errado, não o acervo. Os `assets/js` de uma
+ * captura são os scripts do SITE INTEIRO, compartilhados entre os segmentos: um
+ * `interactions.js` que procura `#mobile-menu` legitimamente não acha esse id
+ * numa peça de hero, e corretamente não faz nada. Isso é script bem escrito, não
+ * peça quebrada.
+ *
+ * A assinatura do defeito é outra e é inequívoca: **o elemento ESTÁ ali, sob
+ * outro nome.** O HTML tem `seg6-svg1-pipeline-svg` e o script procura
+ * `pipeline-svg`. Aí não há leitura benigna — alguém renomeou debaixo do script.
+ *
+ * Então a régua acusa só quando existe, no HTML, um id que termina em
+ * `-<procurado>`. Com isso ela pega os 4 bundles que a medição do acervo tinha
+ * apontado, e nenhum a mais. Busca montada em tempo de execução (`'#'+nome`)
+ * continua fora: sem executar não se sabe o alvo, e acusar no escuro reprova
+ * peça boa.
  */
 
-/** Um alvo que o script procura e o HTML não tem. */
+/** Um alvo que o script procura e que existe no HTML sob outro nome. */
 export type AlvoPerdido = {
   /** O id, como está escrito no script. */
   id: string;
   /** O arquivo do script (ou `index.html #n` para script inline). */
   onde: string;
+  /** O id que o HTML tem no lugar — a prova de que o elemento está ali. */
+  viraram: string;
 };
 
 const IGNORAR = new Set(['', 'root', 'app', '__next']);
@@ -111,6 +127,18 @@ export const alvosPerdidosDoBundle = (dir: string): AlvoPerdido[] => {
   }
 
   const presentes = idsDoHtml(html);
+  /**
+   * O mesmo elemento sob outro nome: um id do HTML que termina em `-<procurado>`.
+   *
+   * É a única leitura que não tem explicação benigna. Id simplesmente ausente
+   * costuma ser script do site inteiro procurando outra seção — ver o cabeçalho.
+   */
+  const renomeado = (id: string): string | null => {
+    const sufixo = `-${id}`;
+    for (const p of presentes) if (p.length > sufixo.length && p.endsWith(sufixo)) return p;
+    return null;
+  };
+
   const perdidos: AlvoPerdido[] = [];
   const vistos = new Set<string>();
 
@@ -122,10 +150,12 @@ export const alvosPerdidosDoBundle = (dir: string): AlvoPerdido[] => {
   for (const { nome, js } of pedacos) {
     for (const id of alvosLiterais(js)) {
       if (presentes.has(id)) continue;
+      const viraram = renomeado(id);
+      if (viraram === null) continue;
       const chave = `${id}@${nome}`;
       if (vistos.has(chave)) continue;
       vistos.add(chave);
-      perdidos.push({ id, onde: nome });
+      perdidos.push({ id, onde: nome, viraram });
     }
   }
   return perdidos;

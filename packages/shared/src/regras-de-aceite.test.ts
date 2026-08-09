@@ -396,7 +396,11 @@ test('S11 e S12: slot vazio e transbordo reprovam', () => {
 
 test('G9 reprova peca cujo script procura elemento que o HTML dela nao tem', () => {
   const r = conferirPecaDaGaleria(
-    peca({ alvosPerdidos: [{ id: 'pipeline-svg', onde: 'assets/js/pipeline.js' }] }),
+    peca({
+      alvosPerdidos: [
+        { id: 'pipeline-svg', onde: 'assets/js/pipeline.js', viraram: 'seg6-svg1-pipeline-svg' },
+      ],
+    }),
   );
   const g9 = r.vereditos.find((v) => v.codigo === 'G9');
   assert.equal(g9?.estado, 'reprovou');
