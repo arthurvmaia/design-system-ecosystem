@@ -65,8 +65,8 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   const [temasCarregando, setTemasCarregando] = useState(true);
   const [themeId, setThemeId] = useState("");
   const [templateId, setTemplateId] = useState<string>(SITE_TEMPLATES[0].id);
-  /* geração por IA é escolha do cliente, e só aparece se houver provedor */
-  const [comIa, setComIa] = useState(false);
+  /* as artes da Orbis saem do provedor de imagem; sem ele, o tema fica com
+     as imagens que já traz. Marca própria não passa por aqui. */
   const [iaDisponivel, setIaDisponivel] = useState(false);
   const [imagensGeradas, setImagensGeradas] = useState<Record<string, string>>({});
   const [gerandoImagens, setGerandoImagens] = useState(false);
@@ -112,6 +112,12 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     })();
     return () => { ativo = false; };
   }, []);
+
+  /* quantas peças o cliente já enviou, para o passo do tema dizer sem rodeio */
+  const enviadasPeloCliente = useMemo(
+    () => Object.keys(marca.imagens).length,
+    [marca.imagens],
+  );
 
   /* as peças que a loja precisa, no enquadramento certo de cada uma */
   const pecas = useMemo(() => pecasDaMarca({ ...marca, nicheId }), [marca, nicheId]);
@@ -260,7 +266,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             whatsapp: marca.whatsapp, instagram: marca.instagram, email: marca.email,
           },
           /* só vai o que a IA realmente gerou; o resto o servidor desenha */
-          imagens: { ...marca.imagens, ...(comIa ? imagensGeradas : {}) },
+          imagens: { ...marca.imagens, ...(modo === "gerada" ? imagensGeradas : {}) },
         }),
       });
       if (!resposta.ok) {
@@ -286,6 +292,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     setPasso(0); setModo(null); setNicheId(""); setGerada(false);
     setMarca(MARCA_VAZIA); setEditadoAMao({});
     setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null);
+    setImagensGeradas({}); setProgressoIa("");
   }
 
   if (status === "working") {
@@ -425,29 +432,30 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                   ))}
                 </div>
               )}
+              {/* Marca própria não passa por geração nenhuma: quem já tem logo e
+                  banner quer usar os dele, e um botão de gerar ali só confunde. */}
               <span className="cf-secao-titulo">Imagens da loja</span>
-              <div className="cf-modos">
-                <button className={`cf-modo ${!comIa ? "selecionado" : ""}`} onClick={() => setComIa(false)}>
-                  <span className="cf-modo-icone"><PenLine size={20} strokeWidth={1.6} /></span>
-                  <strong>Artes da Orbis</strong>
-                  <p>Logo, banners e capas de coleção desenhados na paleta da marca. Sai na hora e sem custo.</p>
-                </button>
-                <button
-                  className={`cf-modo ${comIa ? "selecionado" : ""} ${iaDisponivel ? "" : "indisponivel"}`}
-                  disabled={!iaDisponivel}
-                  onClick={() => setComIa(true)}
-                >
-                  <span className="cf-modo-icone"><Sparkles size={20} strokeWidth={1.6} /></span>
-                  <strong>Gerar por IA</strong>
-                  <p>
-                    {iaDisponivel
-                      ? `Fotografia de banner (desktop e celular), capas das ${marca.collections.length || 4} coleções e o símbolo da marca, na sua paleta.`
-                      : "Precisa de um provedor de imagem configurado. Sem ele, a loja sai com as artes da Orbis."}
-                  </p>
-                </button>
-              </div>
-              {comIa && (
+              {modo === "manual" ? (
+                <p className="cf-painel-nota">
+                  A loja usa as imagens que você enviou no passo <b>Marca</b> ({enviadasPeloCliente} de {pecas.length}).
+                  {enviadasPeloCliente < pecas.length && " O que faltar fica com a imagem que o tema já traz."}
+                </p>
+              ) : (
                 <>
+                  <div className="cf-artes">
+                    <span className="cf-modo-icone"><Sparkles size={20} strokeWidth={1.6} /></span>
+                    <div>
+                      <strong>Artes da Orbis</strong>
+                      <p>
+                        Símbolo da marca, banner de desktop e de celular e as capas das {marca.collections.length || 4} coleções,
+                        {" "}em fotografia profissional, no enquadramento certo e na paleta da marca.
+                        {!iaDisponivel && " Provedor de imagem não configurado: a loja sai com a imagem que o tema já traz."}
+                      </p>
+                    </div>
+                    <button className="primary-button" disabled={gerandoImagens || !iaDisponivel} onClick={() => void gerarImagens()}>
+                      {gerandoImagens ? "Gerando…" : `Gerar as ${pecas.length} imagens`}
+                    </button>
+                  </div>
                   <div className="cf-pecas">
                     {pecas.map((peca: { chave: string; titulo: string; aspecto: string }) => (
                       <span key={peca.chave} className="cf-peca">
@@ -457,12 +465,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                       </span>
                     ))}
                   </div>
-                  <div className="cf-actions">
-                    <button className="secondary-button" disabled={gerandoImagens} onClick={() => void gerarImagens()}>
-                      <Sparkles size={15} /> {gerandoImagens ? "Gerando as imagens…" : `Gerar as ${pecas.length} imagens`}
-                    </button>
-                    {progressoIa && <span className="cf-foot-dica">{progressoIa}</span>}
-                  </div>
+                  {progressoIa && <p className="cf-painel-nota">{progressoIa}</p>}
                 </>
               )}
 

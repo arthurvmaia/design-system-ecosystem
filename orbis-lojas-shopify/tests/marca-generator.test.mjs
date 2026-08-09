@@ -356,6 +356,29 @@ test("templates de mercado da loja de origem não entram no ZIP", async () => {
   }
 });
 
+test("marca própria é 100% manual; as artes da Orbis só existem no caminho gerado", async () => {
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+
+  /* um caminho de imagem só, e ele se chama Artes da Orbis */
+  assert.match(flow, /Artes da Orbis/);
+  assert.doesNotMatch(flow, /Gerar por IA/, "o segundo cartão saiu da tela");
+  assert.doesNotMatch(flow, /\bcomIa\b/, "o estado do cartão antigo saiu junto");
+
+  /* quem já tem marca não vê botão de gerar, e nada gerado é enviado */
+  assert.match(flow, /modo === "manual" \? \(/, "o passo do tema separa os dois caminhos");
+  assert.match(flow, /imagens: \{ \.\.\.marca\.imagens, \.\.\.\(modo === "gerada" \? imagensGeradas : \{\}\) \}/);
+
+  /* as fotos são pedidas como fotografia profissional, não como desenho */
+  const imagens = await readFile(new URL("../lib/marca-imagens.ts", import.meta.url), "utf8");
+  assert.match(imagens, /const QUALIDADE = /);
+  const pedacos = imagens.split("prompt: [").slice(1);
+  const fotos = pedacos.filter((trecho) => /Fotografia|Foto de catálogo/.test(trecho.slice(0, 200)));
+  assert.equal(fotos.length, 3, "banner de desktop, de celular e capa de coleção são fotografia");
+  for (const foto of fotos) assert.ok(foto.slice(0, 600).includes("QUALIDADE"), "toda foto pede qualidade comercial");
+  /* a logo continua sendo símbolo sem letra: modelo de imagem erra texto */
+  assert.match(imagens, /Símbolo de marca minimalista[\s\S]{0,400}Sem letras/);
+});
+
 test("SVG de terceiro não passa pelo sanitizador", () => {
   const malicioso = `data:image/svg+xml;charset=utf-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')}`;
   assert.equal(sanitizeBrand({ name: "X", logoDataUri: malicioso }).logoDataUri, "");

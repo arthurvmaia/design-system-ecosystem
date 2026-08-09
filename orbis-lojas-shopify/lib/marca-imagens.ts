@@ -46,6 +46,14 @@ export type MarcaDeImagem = {
  * que os temas Shopify usam no banner móvel, e pedir 9:16 devolveria uma faixa
  * alta demais, que o tema corta no meio do assunto.
  */
+/**
+ * O que separa uma foto de catálogo de uma foto de banco de imagem ruim.
+ *
+ * Vai em toda peça fotográfica: sem isso o modelo devolve imagem correta e sem
+ * graça, e a loja gerada parece template.
+ */
+const QUALIDADE = "Fotografia comercial de alta qualidade, iluminação de estúdio suave com luz de preenchimento, foco nítido, profundidade de campo rasa, cores fiéis, sem ruído, sem distorção, sem texto na imagem.";
+
 const ASPECTO: Record<PapelDaPeca, string> = {
   logo: "square_1_1",
   "banner-desktop": "widescreen_16_9",
@@ -161,10 +169,11 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       titulo: "Banner do desktop",
       aspecto: ASPECTO["banner-desktop"],
       prompt: [
-        `Fotografia publicitária de vitrine de ${tema}, para o topo de uma loja.`,
+        `Fotografia publicitária profissional de ${tema}, para o topo de uma loja.`,
         `Paleta dominante: ${cores}.`,
         "Assunto à direita do quadro, metade esquerda limpa e desocupada para o texto entrar por cima.",
-        "Luz natural suave, sem letras, sem logotipos, sem marca d'água.",
+        QUALIDADE,
+        "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
       fallbackSvg: bannerSvg(marca, false),
     },
@@ -174,10 +183,11 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       titulo: "Banner do celular",
       aspecto: ASPECTO["banner-mobile"],
       prompt: [
-        `Fotografia publicitária de vitrine de ${tema}, em enquadramento vertical para celular.`,
+        `Fotografia publicitária profissional de ${tema}, em enquadramento vertical para celular.`,
         `Paleta dominante: ${cores}.`,
         "Assunto na metade de cima do quadro, metade de baixo limpa para o texto entrar por cima.",
-        "Luz natural suave, sem letras, sem logotipos, sem marca d'água.",
+        QUALIDADE,
+        "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
       fallbackSvg: bannerSvg(marca, true),
     },
@@ -190,9 +200,11 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       titulo: `Capa da coleção ${nome}`,
       aspecto: ASPECTO.colecao,
       prompt: [
-        `Foto de capa para a coleção "${nome}" de uma loja de ${tema}.`,
+        `Foto de catálogo para a coleção "${nome}" de uma loja de ${tema}.`,
         `Paleta dominante: ${cores}.`,
-        "Produto único centralizado sobre fundo liso, luz de estúdio, sem letras e sem marca d'água.",
+        "Produto único centralizado sobre fundo liso na cor da marca, com sombra suave sob o produto.",
+        QUALIDADE,
+        "Sem letras e sem marca d'água.",
       ].join(" "),
       fallbackSvg: colecaoSvg(marca, nome, indice),
     });
