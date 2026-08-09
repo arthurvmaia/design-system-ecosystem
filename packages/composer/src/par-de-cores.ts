@@ -75,6 +75,48 @@ export const contrasteEntre = (a: string, b: string): number | null => {
 };
 
 /**
+ * As classes de um seletor — só as que valem por si, sem depender de ancestral.
+ *
+ * ## As duas formas, e por que a segunda me pegou
+ *
+ * A primeira versão só reconhecia a classe SOLTA (`.text-stone-900{…}`) e
+ * achou ZERO pares num site com 144 `var(--marca-)` na folha. O motivo é o
+ * escopo por origem: `escoparCss` reescreve a regra como
+ *
+ * ```css
+ * :where([data-ds-raiz="ds_…"], [data-ds-corpo="ds_…"]):is(.from-black){…}
+ * ```
+ *
+ * e nesse site NÃO sobrou nenhuma cópia solta da classe. Procurar a forma
+ * errada é como a correção rodou, não achou nada e não avisou nada — o par
+ * seguiu quebrado com o conserto instalado.
+ *
+ * ## O que continua de fora, de propósito
+ *
+ * Seletor com descendente (`:where(…) ::before`, `.pai .filho`) não entra: ele
+ * depende de um ancestral que o recorte pode ter deixado para trás, e o par
+ * dele não se conhece sem o documento. Depois de tirar o prefixo de escopo, o
+ * que sobra tem de ser EXATAMENTE uma classe.
+ */
+const classesDoSeletor = (seletor: string): string[] => {
+  const out = new Set<string>();
+  const limpar = (c: string): string => c.replace(/\\/g, '');
+
+  // A forma escopada: `…:is(.classe)` no fim, sem nada depois.
+  for (const parte of seletor.split(/,(?![^()]*\))/)) {
+    const p = parte.trim();
+    const escopada = /:is\(\.((?:\\.|[\w-])+)\)$/.exec(p);
+    if (escopada?.[1] !== undefined) {
+      out.add(limpar(escopada[1]));
+      continue;
+    }
+    const solta = /^\.((?:\\.|[\w-])+)$/.exec(p);
+    if (solta?.[1] !== undefined) out.add(limpar(solta[1]));
+  }
+  return [...out];
+};
+
+/**
  * O mapa `classe → papel`, lido do CSS JÁ RECOLORIDO.
  *
  * Duas leituras separadas, porque a mesma classe não pode servir aos dois lados:
@@ -91,11 +133,7 @@ export const mapearClassesPorPapel = (
     const seletor = m[1] ?? '';
     const corpo = m[2] ?? '';
 
-    // Só o seletor que é UMA classe simples: `.a .b` depende do documento e
-    // `#id .x` de um ancestral que o recorte pode ter perdido.
-    const classes = [...seletor.matchAll(/(?:^|,)\s*\.((?:\\.|[\w-])+)\s*(?=,|$)/g)]
-      .map((c) => (c[1] ?? '').replace(/\\/g, ''))
-      .filter(Boolean);
+    const classes = classesDoSeletor(seletor);
     if (classes.length === 0) continue;
 
     const papelDe = (prop: RegExp): string | null => {

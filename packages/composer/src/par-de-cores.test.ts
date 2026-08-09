@@ -110,3 +110,31 @@ test('sem CSS mapeado o HTML volta inteiro, sem varredura a toa', () => {
   const html = '<div class="bg-[#FBFCD4] text-stone-900">x</div>';
   assert.equal(corrigirParesDeCor(html, '', TOKENS).html, html);
 });
+
+test('a forma ESCOPADA e reconhecida: e a unica que existe em site real', () => {
+  // Exatamente como `escoparCss` escreve, e como saiu no site do banco de prova.
+  // `String.raw` porque a classe carrega escapes de CSS (`\[`, `\#`): escritos
+  // como string comum, o formatador os come e o teste passa a provar outra coisa.
+  const css = String.raw`
+:where([data-ds-raiz="ds_1"], [data-ds-corpo="ds_1"]):is(.text-stone-900){color:var(--marca-heading, #1c1917)}
+:where([data-ds-raiz="ds_1"], [data-ds-corpo="ds_1"]):is(.bg-\[\#FBFCD4\]){background-color:var(--marca-accent, #fbfcd4)}`;
+  const m = mapearClassesPorPapel(css);
+  assert.equal(m.tinta.get('text-stone-900'), 'heading');
+  assert.equal(m.fundo.get('bg-[#FBFCD4]'), 'accent');
+});
+
+test('seletor escopado com DESCENDENTE continua de fora', () => {
+  const css = ':where([data-ds-corpo="ds_1"]) ::before{color:var(--marca-heading)}';
+  assert.equal(mapearClassesPorPapel(css).tinta.size, 0);
+});
+
+test('a virgula DENTRO do :where nao parte o seletor', () => {
+  const css =
+    ':where([data-ds-raiz="ds_1"], [data-ds-corpo="ds_1"]):is(.a){color:var(--marca-heading)}';
+  assert.equal(mapearClassesPorPapel(css).tinta.get('a'), 'heading');
+});
+
+test('as duas formas convivem: solta e escopada da mesma classe', () => {
+  const css = '.x, :where([data-ds-raiz="ds_1"]):is(.x){color:var(--marca-body)}';
+  assert.equal(mapearClassesPorPapel(css).tinta.get('x'), 'body');
+});
