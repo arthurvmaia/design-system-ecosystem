@@ -110,7 +110,19 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
   });
 
   const maisRecente = projeto.versoes[0];
-  const anteriores = projeto.versoes.slice(1);
+  /**
+   * A lista mostra as DUAS últimas anteriores, e não todas.
+   *
+   * Um projeto em ajuste acumula versão a cada geração — o do clube chegou a
+   * nove, e a lista virava uma coluna de datas que empurrava o resto da tela
+   * para baixo sem informar nada: ninguém volta para a sétima versão.
+   *
+   * As mais antigas continuam EM DISCO e continuam abríveis pela pasta; o que
+   * some é o ruído na tela, não o arquivo. A contagem total segue no cabeçalho,
+   * então quem tem nove versões continua sabendo que tem nove.
+   */
+  const anteriores = projeto.versoes.slice(1, 3);
+  const anterioresOcultas = Math.max(0, projeto.versoes.length - 1 - anteriores.length);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['meus-projetos'] });
@@ -147,22 +159,27 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
 
   return (
     <div className="ds-reveal ds-glass-static overflow-hidden rounded-xl">
-      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,340px)_1fr]">
-        {/* Prévia da versão mais recente. */}
+      {/*
+        A prévia ocupa a LARGURA INTEIRA, e os detalhes vêm embaixo.
+        Espremida numa coluna de 340px ela mostrava um site em miniatura, onde
+        nada do que se quer conferir — o hero, o jogo de cores, a foto — dá para
+        ver. Esta tela existe para OLHAR o site pronto; a largura é dela.
+      */}
+      <div className="grid grid-cols-1">
         {maisRecente && (
           <button
             type="button"
             onClick={() =>
               window.open(siteUrl(projeto.id, maisRecente.timestamp), '_blank', 'noopener')
             }
-            className="group block border-b md:border-r md:border-b-0"
+            className="group block border-b"
             style={{ borderColor: 'var(--color-border)' }}
             aria-label={`Abrir ${projeto.name} em nova aba`}
           >
             <PreviewFrame
               src={siteUrl(projeto.id, maisRecente.timestamp)}
               title={projeto.name}
-              aspect={16 / 10}
+              aspect={16 / 9}
             />
           </button>
         )}
@@ -309,6 +326,15 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                   </div>
                 </div>
               ))}
+              {anterioresOcultas > 0 && (
+                <div
+                  className="px-2 pt-0.5 text-[11px]"
+                  style={{ color: 'var(--color-fg-subtle)' }}
+                >
+                  {conta(anterioresOcultas, 'versão mais antiga', 'versões mais antigas')} em disco,
+                  fora desta lista. Abra a pasta para chegar nelas.
+                </div>
+              )}
             </div>
           )}
 
