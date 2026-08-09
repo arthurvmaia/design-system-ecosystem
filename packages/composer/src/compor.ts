@@ -102,12 +102,46 @@ export const envolverEmProxies = (peca: PecaComposta): string => {
   const attrsHtml = peca.documentoAttrs?.html ?? '';
   const attrsBody = peca.documentoAttrs?.body ?? '';
 
+  /**
+   * A ROLAGEM do documento não vira rolagem de um `div`.
+   *
+   * O estilo inline do `<html>`/`<body>` da origem viaja para o proxy, e é certo
+   * que viaje: é dele que vêm o tema e a tipografia em volta. Mas `overflow`,
+   * `height` e `min-height` ali descrevem o DOCUMENTO — no `<body>` da origem
+   * `overflow-y:auto` é a rolagem da página, e ninguém a vê como barra separada.
+   *
+   * Copiadas para um `div` no meio de uma página composta, viram uma SEGUNDA
+   * barra de rolagem: um bloco que rola dentro do que já rola, escondendo
+   * conteúdo e sequestrando a roda do mouse quando o ponteiro entra nele. O dono
+   * fotografou as duas barras na mesma tela.
+   *
+   * Medido nos 20 sites de prova: `overflow-y: auto !important` no proxy em 5
+   * deles, e 23 blocos com rolagem aninhada. Um caso: 467px de conteúdo dentro
+   * de uma caixa de 20px.
+   *
+   * É a mesma família de `TAMANHO_DA_PAGINA` logo acima, que já tira
+   * `min-h-screen` das CLASSES pelo mesmo motivo — só que aquilo estava no
+   * `class` e isto está no `style`.
+   */
+  const semRolagemDeDocumento = (estilo: string): string =>
+    estilo
+      .split(';')
+      .map((d) => d.trim())
+      .filter(
+        (d) => d.length > 0 && !/^(overflow(-[xy])?|height|min-height|max-height)\s*:/i.test(d),
+      )
+      .join(';');
+
   // `class` entra como class; os demais atributos entram como estão. `lang` sai
   // fora: repeti-lo num <div> interno confunde leitor de tela sem ganho nenhum.
   const semClasseNemLang = (attrs: string): string =>
     attrs
       .replace(/\bclass\s*=\s*("[^"]*"|'[^']*')/i, '')
       .replace(/\blang\s*=\s*("[^"]*"|'[^']*')/i, '')
+      .replace(/\bstyle\s*=\s*"([^"]*)"/i, (inteiro, estilo: string) => {
+        const limpo = semRolagemDeDocumento(estilo);
+        return limpo.length > 0 ? `style="${limpo}"` : '';
+      })
       .trim();
 
   const classesDaRaiz = semTamanhoDePagina(valorDe(attrsHtml, 'class'));

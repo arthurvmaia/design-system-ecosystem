@@ -165,3 +165,21 @@ test('o tamanho da PÁGINA não viaja para dentro da peça', () => {
   assert.ok(html.includes('text-slate-100'), 'a tinta fica');
   assert.ok(html.includes('dark'), 'o tema fica');
 });
+
+test('a rolagem do DOCUMENTO nao vira rolagem de um div no proxy', () => {
+  // O dono fotografou duas barras de rolagem na mesma tela. No <body> da origem
+  // `overflow-y:auto` e a rolagem da pagina; copiada para um div no meio de uma
+  // pagina composta, vira uma segunda barra que sequestra a roda do mouse.
+  // Medido: em 5 dos 20 sites de prova, e 23 blocos com rolagem aninhada.
+  const html = envolverEmProxies({
+    origem: 'ds_1',
+    html: '<p>x</p>',
+    documentoAttrs: {
+      body: 'class="dark antialiased" style="overflow-y: auto !important; height: auto !important; color: red"',
+    },
+  });
+  assert.ok(!/overflow/i.test(html), 'sem overflow no proxy');
+  assert.ok(!/height/i.test(html), 'sem altura de documento no proxy');
+  assert.ok(/color: red/.test(html), 'o resto do estilo continua viajando');
+  assert.ok(/class="dark antialiased"/.test(html), 'o tema continua viajando');
+});
