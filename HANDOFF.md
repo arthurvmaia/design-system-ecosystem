@@ -55,6 +55,26 @@
 >     com GitHub/Twitter/Discord e uma marca-d'água gigante ocupando meia tela.
 >     O dono: *"esse rodapé também pode tirar da biblioteca"*. Mesma família da
 >     anterior: a peça É a identidade de quem a fez.
+> 11. **Peça que é a DOCUMENTAÇÃO do design system de origem** — "05 / MOTION",
+>     "Clip Reveal Animation", "Hover Interaction", "Used for text and images
+>     entering viewport". É a ficha técnica que o site de origem escreveu sobre
+>     si mesmo, capturada como se fosse seção. O dono: *"entendi nada desse
+>     componente… é componente?"* — e não é.
+>
+>     **Esta é a mais fácil de reconhecer por regra**, e provavelmente a mais
+>     comum no acervo: metade dele veio de catálogos de design system, que são
+>     exatamente sites-vitrine. Sinais: título numerado de capítulo
+>     (`05 / MOTION`), rótulo em inglês descrevendo comportamento
+>     (`Hover Interaction`, `Clip Reveal`), legenda que explica USO
+>     ("Used for…"), e área enorme em branco porque a demonstração só existe no
+>     hover. Vale investigar quantas peças da Biblioteca casam com isso.
+>     **Medido:** 2 peças da Biblioteca casam com os rótulos de documentação.
+> 12. **Um cartão do grid CORTADO e deformado** — três cartões de produto, e o
+>     primeiro sai inclinado, com a borda direita ceifada e o preço cortado ao
+>     meio. Os outros dois estão perfeitos. Cheira a `transform` de uma animação
+>     congelada no meio, aplicada só ao primeiro item — parente do estado de
+>     revelação que a montagem já destrava, mas em outro eixo.
+>     Nos três cartões há também ícone de imagem quebrada: S11 deveria pegar.
 >
 > ### O que FUNCIONOU, e é o contraponto que valida o resto
 >
