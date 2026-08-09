@@ -97,7 +97,16 @@
 >   chegava em três pedaços e o processo filho morria com erro de módulo.
 >
 > Suíte: **1 vermelho, o pré-existente** (7,1% de bytes duplicados na segmentação).
-> Lint e typecheck limpos. `main` intocado, push NÃO autorizado.
+> Lint e typecheck limpos, e o portão de fidelidade passa (65 bundles comparáveis,
+> nenhuma regra absoluta violada).
+>
+> **A branch foi ao `main` e o `main` foi publicado**, com autorização do dono em
+> 2026-08-08: `git merge --ff-only` de
+> `conserto/defeitos-do-dono-e-rastreamento`, e 61 commits saíram para o
+> `origin` — os 31 desta frente mais 30 de sessões anteriores que nunca tinham
+> sido enviados. O aviso de "push NÃO autorizado" que morava aqui **não vale
+> mais**; a partir de agora `main` e `origin/main` andam juntos, e divergir
+> outra vez é decisão consciente, não inércia.
 >
 > **Migração:** `docs/MIGRACAO.md` ganhou a seção 7 com as três versões (local /
 > mostruário do sócio / cliente), com Vercel e Supabase pagos do sócio. As versões
@@ -135,9 +144,12 @@
 > depois disso os kits novos têm o que escolher. Então: `pnpm curar` →
 > `pnpm kits` → `pnpm kits:provar` → recriar o projeto do SJDR do kit novo.
 >
-> ⚠️ O workflow reportou `pnpm test` em **1590/1592**, dizendo que a única falha é
-> a pré-existente. São duas falhas para uma alegação de uma — **confira antes de
-> confiar**.
+> ✅ **Conferido, e o alerta que estava aqui era leitura errada.** `pnpm test` dá
+> 1592 testes: **1590 passam, 1 falha, 1 é pulado** — a conta fecha, e a falha é
+> mesmo só a pré-existente (7,1% de bytes duplicados na segmentação). O teste
+> pulado é do acervo real: `acervo-regressao.test.ts` roda com
+> `skip: !temAcervo`, e num runner limpo ele pula declarando o motivo. Por isso o
+> CI passa mesmo com este vermelho na máquina do dono.
 
 ---
 # HANDOFF — onde o trabalho está
