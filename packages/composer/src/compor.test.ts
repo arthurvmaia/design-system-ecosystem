@@ -174,6 +174,7 @@ test('a rolagem do DOCUMENTO nao vira rolagem de um div no proxy', () => {
   const html = envolverEmProxies({
     origem: 'ds_1',
     html: '<p>x</p>',
+    css: '',
     documentoAttrs: {
       body: 'class="dark antialiased" style="overflow-y: auto !important; height: auto !important; color: red"',
     },
