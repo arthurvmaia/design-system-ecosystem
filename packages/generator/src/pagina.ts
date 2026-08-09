@@ -65,6 +65,7 @@ import { buildBrandingCss } from './index.js';
 import {
   REGRA_DA_TINTA_DA_MARCA,
   REGRA_QUE_ABRE_PASSAGEM,
+  acenderOpacidadeCongelada,
   alvosDoComportamento,
   ancorarNavNasSecoes,
   atributosDoDocumentoDaPeca,
@@ -1406,6 +1407,8 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     layer: new Set<string>(),
   };
   let concatCss = '';
+  // Quantos quadros congelados de animação foram acesos (ver acenderOpacidadeCongelada).
+  let congeladasAcesas = 0;
   const scriptsRemotos: string[] = [];
   /**
    * Scripts LOCAIS das peças, um por conteúdo, na ordem da primeira aparição.
@@ -1745,6 +1748,12 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     // O transform congelado da captura sai: o script de parallax da origem
     // viaja junto e reaplica o valor certo a cada rolagem.
     let corpo = limparTransformCongelado(semCompilador.corpo);
+    // E o quadro em que o print pegou a animação da biblioteca (GSAP e afins
+    // escrevem no `style`): sem o driver, aquele `opacity: 0.42` fica para
+    // sempre e o texto não se lê.
+    const acesas = acenderOpacidadeCongelada(corpo);
+    corpo = acesas.html;
+    if (acesas.acesas > 0) congeladasAcesas += acesas.acesas;
 
     /**
      * O LOGOTIPO DE OUTRA EMPRESA sai — mesma decisão dos scripts de
@@ -2742,6 +2751,12 @@ ${criada.html}
     bodyHtml = nav.html;
     avisos.push(
       `${nav.ligados} link(s) do menu passaram a apontar para as seções desta página. Eles vinham do site de origem, apontando para âncoras e rotas que não existem aqui — clicar não fazia nada.`,
+    );
+  }
+
+  if (congeladasAcesas > 0) {
+    avisos.push(
+      `${congeladasAcesas} elemento(s) chegaram com a opacidade CONGELADA no meio de uma animação (o quadro em que a captura pegou o GSAP e afins) e foram acesos. Sem o driver na página composta, aquele valor ficaria para sempre e o texto não se leria.`,
     );
   }
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   REGRA_QUE_ABRE_PASSAGEM,
+  acenderOpacidadeCongelada,
   alvosDoComportamento,
   ancorarNavNasSecoes,
   comportamentoAlcancaAPagina,
@@ -618,4 +619,35 @@ test('soltarRaizDaSecaoNoFluxo: sem peca fora do fluxo, nao emite regra', () => 
   const r = soltarRaizDaSecaoNoFluxo('.a{color:red}.b{position:relative}');
   assert.equal(r.css, '');
   assert.deepEqual(r.classes, []);
+});
+
+test('acenderOpacidadeCongelada: o quadro em que o print pegou a animacao', () => {
+  // GSAP e afins escrevem no style, quadro a quadro. Congelado no meio, o
+  // elemento fica assim para sempre na pagina composta: o texto esta no DOM,
+  // ocupa espaco e nao se le.
+  const r = acenderOpacidadeCongelada(
+    '<div style="translate: none; rotate: none; scale: none; opacity: 0.4256; transform: translate3d(0px, 28.7187px, 0px);">oi</div>',
+  );
+  assert.equal(r.acesas, 1);
+  assert.match(r.html, /opacity: 1/);
+  assert.match(r.html, /transform: none/, 'o deslocamento congelado volta ao lugar');
+});
+
+test('acenderOpacidadeCongelada: o que o designer escreveu a mao fica', () => {
+  // Nenhuma traz translate/rotate/scale/transform ao lado — e essa companhia
+  // que separa o motor de animacao da decisao de quem desenhou.
+  for (const estilo of [
+    'filter: brightness(0) invert(1); opacity: 0.75; height: 56px',
+    'opacity: 0.85; transition: opacity 0.6s',
+  ]) {
+    const r = acenderOpacidadeCongelada(`<img style="${estilo}">`);
+    assert.equal(r.acesas, 0, `mexeu em: ${estilo}`);
+  }
+});
+
+test('acenderOpacidadeCongelada: opacidade ja cheia nao vira mudanca', () => {
+  const r = acenderOpacidadeCongelada(
+    '<div style="translate: none; opacity: 1; transform: translate(0px, 0px);">x</div>',
+  );
+  assert.equal(r.acesas, 0);
 });

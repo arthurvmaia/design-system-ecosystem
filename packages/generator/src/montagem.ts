@@ -1019,3 +1019,70 @@ export const ancorarNavNasSecoes = (
   );
   return { html: saida, ligados };
 };
+
+/**
+ * O `style` que a biblioteca de animação escreveu e a captura congelou.
+ *
+ * ## O defeito, medido
+ *
+ * O coletor grava o DOM no instante do print. GSAP, framer-motion e afins não
+ * animam por classe: eles ESCREVEM no `style` do elemento, quadro a quadro.
+ * Congelado no meio do percurso, o elemento chega assim:
+ *
+ * ```
+ * style="translate: none; rotate: none; scale: none;
+ *        opacity: 0.4256; transform: translate3d(0px, 28.7187px, 0px);"
+ * ```
+ *
+ * Aquele `0.4256` não é decisão de ninguém — é o quadro em que o print pegou a
+ * animação. Na página composta, sem o driver, ele fica ali para sempre: o texto
+ * está no DOM, ocupa espaço e não se lê. Medido no banco de prova: 72 trechos
+ * apagados, e este é o mecanismo de boa parte deles.
+ *
+ * `limparTransformCongelado` já fazia isto para `[data-parallax]` — e só para
+ * ele, e só o `transform`. Esta é a mesma ideia sem a coleira do atributo.
+ *
+ * ## Como se distingue do que o designer escreveu à mão
+ *
+ * Pela COMPANHIA. Uma opacidade escrita por pessoa vem sozinha ou com
+ * aparência ao lado, e é isso que o acervo mostra:
+ *
+ * ```
+ * style="filter: brightness(0) invert(1); opacity: 0.75; height: 56px"   ← mão
+ * style="opacity: 0.85; transition: opacity 0.6s"                        ← mão
+ * ```
+ *
+ * Nenhuma delas traz `translate`, `rotate`, `scale` ou `transform`. As quatro
+ * juntas são a assinatura do motor de animação zerando o estado antes de
+ * interpolar, e nenhum designer as escreve inline com a opacidade do lado.
+ *
+ * Sem a assinatura, não se toca: a opacidade de 0.75 do logotipo é desenho, e
+ * acendê-la seria estragar o que estava certo.
+ */
+export const acenderOpacidadeCongelada = (html: string): { html: string; acesas: number } => {
+  const ASSINATURA_DO_MOTOR = /(?:^|;)\s*(?:translate|rotate|scale|transform|will-change)\s*:/i;
+  let acesas = 0;
+  const saida = html.replace(/\bstyle\s*=\s*"([^"]*)"/gi, (inteiro, estilo: string) => {
+    if (!ASSINATURA_DO_MOTOR.test(estilo)) return inteiro;
+    const declaracoes = estilo.split(';').map((d) => d.trim());
+    let mexeu = false;
+    const novas = declaracoes.map((d) => {
+      const m = /^opacity\s*:\s*([\d.]+)\s*$/i.exec(d);
+      if (m === null) return d;
+      const valor = Number.parseFloat(m[1] ?? '1');
+      if (!Number.isFinite(valor) || valor >= 1) return d;
+      mexeu = true;
+      return 'opacity: 1';
+    });
+    if (!mexeu) return inteiro;
+    acesas += 1;
+    // O deslocamento congelado sai junto: um bloco parado 28px abaixo do lugar
+    // é o mesmo quadro da mesma animação, e devolvê-lo ao lugar é metade do
+    // conserto. `transform: none` em vez de apagar, para vencer regra de folha.
+    const semDeslocamento = novas.map((d) =>
+      /^transform\s*:/i.test(d) && /translate|matrix/i.test(d) ? 'transform: none' : d,
+    );
+    return `style="${semDeslocamento.filter((d) => d.length > 0).join(';')}"`;
+  });
+  return { html: saida, acesas };
+};
