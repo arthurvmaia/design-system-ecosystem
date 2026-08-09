@@ -305,3 +305,86 @@ test('texto que já se lê não é mexido', () => {
   assert.match(r.css, /--marca-heading/);
   assert.ok(!r.avisos.some((a) => a.includes('não se lê')));
 });
+
+/**
+ * O espelho: NENHUM fundo sai pintado com a cor da LETRA.
+ *
+ * O papel do cluster diz o que a cor É na paleta da ORIGEM, não o que ela FAZ
+ * nesta declaração. Num site de tema CLARO a cor mais escura da paleta é a
+ * tinta de título — e quando essa mesma cor aparece pintando o cartão do plano
+ * em destaque (`bg-stone-900`), herdar o papel de tinta pinta o cartão com a
+ * cor da letra.
+ *
+ * Medido no site do clube: o cartão escuro da origem saiu BRANCO
+ * (`--marca-heading`) com o texto branco por cima — 1,0:1, a mesma cor
+ * exatamente. O cartão vizinho, que era branco, tinha virado marinho: os dois
+ * trocaram de lado.
+ */
+test('fundo NÃO sai pintado com a cor da letra, mesmo quando o cluster manda', () => {
+  // `#1c1917` é a tinta de título da origem clara — e aqui ela pinta um cartão.
+  const mapa = new Map([['#1c1917', { papel: 'heading' as const, ajuste: null }]]);
+  const r = recolorirCss('.plano{background-color:#1C1917}', mapa, {
+    retema: {
+      alvo: 'escuro',
+      corDePagina: '#E6E3D6',
+      fundoDaPagina: '#0b1530',
+      tokens: { background: '#0b1530', surface: '#16244a', heading: '#ffffff', body: '#bcd4ff' },
+    },
+  });
+  assert.doesNotMatch(r.css, /--marca-heading/, 'a tinta de título não pinta bloco');
+  assert.match(r.css, /--marca-(surface|background)/, 'vira superfície, que é o que ela faz aqui');
+  assert.ok(
+    r.avisos.some((a) => a.includes('cor da LETRA')),
+    'a correção é DITA, não silenciosa',
+  );
+});
+
+test('papel de fundo pintando TEXTO e papel de tinta pintando FUNDO na mesma folha', () => {
+  // As duas guardas juntas, que é como o site real chega: uma peça tem as duas
+  // trocas ao mesmo tempo, e consertar só um lado deixa o par incoerente.
+  const mapa = new Map([
+    ['#1c1917', { papel: 'heading' as const, ajuste: null }],
+    ['#e6e3d6', { papel: 'background' as const, ajuste: null }],
+  ]);
+  const r = recolorirCss('.p{background-color:#1C1917}.t{color:#E6E3D6}', mapa, {
+    retema: {
+      alvo: 'escuro',
+      corDePagina: '#E6E3D6',
+      fundoDaPagina: '#0b1530',
+      tokens: { background: '#0b1530', surface: '#16244a', heading: '#ffffff', body: '#bcd4ff' },
+    },
+  });
+  // O fundo virou superfície e o texto virou tinta: o par anda junto.
+  assert.match(r.css, /\.p\{background-color:[^}]*--marca-(surface|background)/);
+  assert.match(r.css, /\.t\{color:[^}]*--marca-(heading|body|accent|primary)/);
+  assert.doesNotMatch(
+    r.css,
+    /\.t\{color:[^}]*--marca-background/,
+    'texto não recebe cor de página',
+  );
+});
+
+/**
+ * Quando os TEMAS COMBINAM, fundo com papel de tinta não é recolorido — fica
+ * com a cor da origem.
+ *
+ * O regime `apenasAcentos` existe porque ali a superfície da origem está certa.
+ * O retema, coerente com isso, não devolve superfície nenhuma para fundo. Sem
+ * uma saída explícita, a guarda ficava sem alternativa e o papel de tinta
+ * passava: o cartão `bg-gray-900` saía pintado de `--marca-body` — um bloco
+ * azul-claro no meio de uma página marinho, com o texto branco sumindo dentro.
+ * Foi o que sobrou do "Desde 1926" e do "Na cidade", a 1,5:1.
+ */
+test('temas compatíveis: fundo com papel de tinta fica com a cor da ORIGEM', () => {
+  const mapa = new Map([['#111827', { papel: 'body' as const, ajuste: null }]]);
+  const r = recolorirCss('.cartao{background-color:#111827}', mapa, {
+    retema: {
+      alvo: 'escuro',
+      apenasAcentos: true,
+      fundoDaPagina: '#0b1530',
+      tokens: { background: '#0b1530', surface: '#16244a', heading: '#ffffff', body: '#bcd4ff' },
+    },
+  });
+  assert.doesNotMatch(r.css, /--marca-/, 'nada de tinta pintando bloco');
+  assert.match(r.css, /#111827/i, 'o bloco fica com a cor que tinha na origem');
+});

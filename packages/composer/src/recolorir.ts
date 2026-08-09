@@ -175,6 +175,27 @@ const croma = (hexOpaco: string): { croma: number; matiz: number } | null => {
 /** Matizes já vistas, para acento distinto na origem continuar distinto aqui. */
 const ACENTOS: PapelDeCor[] = ['primary', 'accent'];
 
+/**
+ * Os papéis que são TINTA: cor para escrever, não para pintar superfície.
+ *
+ * Serve à guarda espelho da que protege o texto. O papel de um cluster diz o
+ * que a cor É na paleta da ORIGEM, não o que ela FAZ nesta declaração — e num
+ * site de tema claro a cor mais escura da paleta é a tinta de título. Quando
+ * essa mesma cor aparece pintando um CARTÃO (`bg-stone-900`, o plano em
+ * destaque), herdar o papel de tinta pinta o cartão com a cor da LETRA.
+ *
+ * Medido no site do clube: o cartão escuro da origem saiu BRANCO
+ * (`--marca-heading`) e o texto branco por cima dele ficou em 1,0:1 — a mesma
+ * cor, exatamente. Do outro lado, o `bg-white` vizinho tinha virado marinho.
+ * Os dois cartões trocaram de lado.
+ */
+const PAPEIS_DE_TINTA: ReadonlySet<PapelDeCor> = new Set<PapelDeCor>([
+  'heading',
+  'body',
+  'muted',
+  'primary-foreground',
+]);
+
 /** Distância euclidiana simples entre dois hexOpacos, em 0–1. */
 const distancia = (a: string, b: string): number | null => {
   const ler = (h: string): [number, number, number] | null => {
@@ -461,6 +482,8 @@ export const recolorirCss = (
   let retemadas = 0;
   /** Textos que iam sair sem contraste e foram levados para uma tinta legível. */
   let ilegiveisCorrigidas = 0;
+  /** Fundos que iam ser pintados com a cor da letra e viraram superfície. */
+  let fundosComTintaCorrigidos = 0;
 
   raiz.walkDecls((decl) => {
     // Idempotência: um valor que já consome --marca-* não é tocado de novo.
@@ -527,6 +550,46 @@ export const recolorirCss = (
           ilegiveisCorrigidas++;
         }
       }
+      /**
+       * E NENHUM fundo sai pintado com a cor da LETRA — a guarda espelho.
+       *
+       * O papel do cluster descreve a cor na paleta da origem; a declaração
+       * descreve o que ela faz aqui. Quando os dois discordam, quem manda é a
+       * declaração: um `heading` pintando `background-color` não é tinta de
+       * título, é uma superfície que por acaso tem a cor da tinta lá.
+       *
+       * O retema sabe decidir superfície (é o que ele faz o dia inteiro: mede
+       * croma, luminância e a distância até a página da origem), então o papel
+       * incompatível cede o lugar para ele em vez de virar um palpite novo. Sem
+       * isto, o cartão escuro da origem saía branco com texto branco por cima.
+       */
+      if (
+        retema !== undefined &&
+        PROPS_DE_FUNDO.has(propriedade) &&
+        PAPEIS_DE_TINTA.has(destino.papel)
+      ) {
+        const comoSuperficie = papelDoRetema(cor.hexOpaco, propriedade, retema);
+        if (comoSuperficie === null) {
+          /**
+           * O retema não tem superfície para oferecer — é o regime de quando os
+           * TEMAS COMBINAM, onde a superfície da origem já está certa e por isso
+           * não migra. Aqui a resposta certa não é pintar com a tinta: é NÃO
+           * RECOLORIR, deixando o bloco com a cor que ele tinha na origem.
+           *
+           * Sem esta saída, o cartão escuro de uma origem compatível saía
+           * pintado de `--marca-body` — um bloco azul-claro no meio de uma
+           * página marinho, com o texto branco sumindo dentro dele. Era o que
+           * sobrava do "Desde 1926" e do "Na cidade" a 1,5:1.
+           */
+          mantidas++;
+          fundosComTintaCorrigidos++;
+          continue;
+        }
+        if (comoSuperficie !== destino.papel) {
+          destino = { papel: comoSuperficie, ajuste: destino.ajuste };
+          fundosComTintaCorrigidos++;
+        }
+      }
       const nova = reescrever(cor.hexOpaco, cor.alfa, destino);
       // Replace de UMA ocorrência do literal exato. O literal veio do próprio
       // valor, então ele existe; se o mesmo literal aparece duas vezes no
@@ -551,6 +614,11 @@ export const recolorirCss = (
     ...(ilegiveisCorrigidas > 0
       ? [
           `${ilegiveisCorrigidas} texto(s) sairiam com uma cor que não se lê no fundo desta página e foram levados para uma tinta legível: o cluster da origem dava a eles papel de superfície, e o chão aqui é outro.`,
+        ]
+      : []),
+    ...(fundosComTintaCorrigidos > 0
+      ? [
+          `${fundosComTintaCorrigidos} fundo(s) sairiam pintados com a cor da LETRA e viraram superfície: na paleta da origem aquela cor é tinta de título ou de texto, mas aqui ela pinta um bloco — e bloco com cor de tinta some sob o próprio texto.`,
         ]
       : []),
   ];
