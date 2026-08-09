@@ -423,11 +423,24 @@ const MEDIR = `() => {
       if (r.width === 0 || r.height === 0) continue;
       const e = getComputedStyle(el);
       if (e.visibility === 'hidden' || e.display === 'none') continue;
-      // Link DENTRO de um paragrafo e texto, nao botao: cobrar 44px dele
-      // obrigaria a espacar a leitura inteira.
+      /**
+       * Link DENTRO de uma frase e texto, nao botao — e a excecao que a propria
+       * WCAG 2.5.8 escreve. Cobrar 44px dele obrigaria a espacar a leitura.
+       *
+       * A primeira versao isentava pelo NOME do pai (P, LI, SPAN, H1..H4), e o
+       * LI derrubou a regra: item de menu e <li><a>Vagas</a></li>, que E um
+       * alvo de toque, e saia isento junto com o link no meio de um paragrafo.
+       *
+       * A pergunta certa nao e "quem e o pai" e sim "tem frase em volta?".
+       * Quando o texto do pai e praticamente so o do link, o link E o item — e
+       * o dedo precisa acerta-lo.
+       */
       const pai = el.parentElement;
+      const textoDoLink = (el.textContent || '').trim();
+      const textoDoPai = pai ? (pai.textContent || '').trim() : '';
       const dentroDeTexto = el.tagName === 'A' && pai
-        && ['P', 'LI', 'SPAN', 'H1', 'H2', 'H3', 'H4'].indexOf(pai.tagName) >= 0;
+        && ['P', 'LI', 'SPAN', 'H1', 'H2', 'H3', 'H4'].indexOf(pai.tagName) >= 0
+        && textoDoPai.length > textoDoLink.length + 10;
       if (dentroDeTexto) continue;
       if (r.height >= 44 && r.width >= 44) continue;
       const chave = onde(el) + '|' + (el.textContent || '').trim().slice(0, 14);

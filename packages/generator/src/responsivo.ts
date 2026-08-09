@@ -83,6 +83,25 @@ img, video, iframe, canvas, svg, picture {
     align-items: center;
     justify-content: center;
   }
+  /*
+    O LINK DE MENU precisa das duas coisas que ele nao tem sozinho.
+
+    Medido no banco de prova, em 390px: onze links saiam \`display: inline\` com
+    17px de altura — e \`min-height\` NAO SE APLICA a elemento inline nao
+    substituido, entao a regra acima existia e nao valia para eles. Outros dez
+    saiam com 20 a 43px de largura, porque \`min-width\` so alcancava botao e
+    campo.
+
+    O alcance sao os contextos de NAVEGACAO — nav, rodape e item de lista. Link
+    no meio de um paragrafo continua inline de proposito: engorda-lo esburacaria
+    a leitura, e a propria WCAG 2.5.8 o isenta.
+  */
+  nav a, [data-secao="nav"] a, footer a, [data-secao="footer"] a, li > a {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px !important;
+    justify-content: center;
+  }
   /* Navegação horizontal densa vira lista rolável suave, sem estourar. */
   [data-secao="nav"] nav,
   [data-secao="nav"] ul {
