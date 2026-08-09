@@ -139,6 +139,11 @@ const principal = (): void => {
       category: p.category,
       kind: p.kind,
       designSystemId: p.designSystemId ?? 'sem-origem',
+      // `pnpm curar` acrescenta sem conferir o que já está na Biblioteca: hoje
+      // são 607 linhas para 330 conteúdos distintos, 277 duplicatas exatas.
+      // Sem esta chave, o kit A leva uma cópia, o kit B leva a outra, e quem
+      // olha a tela vê a mesma peça nos dois.
+      conteudoId: p.bundleHash ?? undefined,
     }));
 
   if (pecas.length === 0) {
@@ -158,8 +163,10 @@ const principal = (): void => {
   // dez kits terem caras diferentes. Origem já usada não se repete enquanto
   // houver origem nova que cubra o objetivo.
   const usadas = new Set<string>();
-  /** Quantos kits desta leva já usam cada peça. Ver `usosPorPeca` na montagem. */
+  /** Quantos kits desta leva já usam cada CONTEÚDO. Ver `usosPorPeca` na montagem. */
   const usosPorPeca = new Map<string, number>();
+  /** id da peça → a chave de conteúdo dela, para a contagem acima. */
+  const porId = new Map(pecas.map((p) => [p.id, p.conteudoId ?? p.id]));
   const planejados: {
     nicho: (typeof NICHOS)[number];
     origem: string | null;
@@ -185,7 +192,10 @@ const principal = (): void => {
     // já paga por tudo que o primeiro usou. Sem ela, a origem preferida troca
     // só o visual principal e as etapas que ela não cobre repetem o mesmo
     // vencedor global em todos os dez.
-    for (const id of r.componentIds) usosPorPeca.set(id, (usosPorPeca.get(id) ?? 0) + 1);
+    for (const id of r.componentIds) {
+      const chave = porId.get(id) ?? id;
+      usosPorPeca.set(chave, (usosPorPeca.get(chave) ?? 0) + 1);
+    }
     planejados.push({
       nicho,
       origem: escolhida?.ds ?? null,

@@ -148,13 +148,27 @@ const principal = (): void => {
    * "na Biblioteca", não entrava na lista de retirada, e ficava lá para sempre.
    * A flag é espelho; a linha é o fato.
    */
-  const naBiblioteca = new Set(
-    db
-      .select({ segmentId: tables.libraryComponents.segmentId })
-      .from(tables.libraryComponents)
-      .all()
-      .map((r) => r.segmentId),
-  );
+  const linhasDaBiblioteca = db
+    .select({ segmentId: tables.libraryComponents.segmentId })
+    .from(tables.libraryComponents)
+    .all();
+  const naBiblioteca = new Set(linhasDaBiblioteca.map((r) => r.segmentId));
+
+  /**
+   * Linha ÓRFÃ: está na Biblioteca e não aponta mais para segmento nenhum.
+   *
+   * `pnpm resegmentar` apaga e recria os segmentos, e a chave estrangeira é
+   * `on delete set null` — então toda linha da Biblioteca perde o vínculo. Como
+   * é por `segmentId` que este script reconhece "já está lá", depois de uma
+   * resegmentação ele não reconhece NADA e readiciona a peça inteira: foi assim
+   * que a Biblioteca foi de 298 para 607 linhas com 330 conteúdos distintos,
+   * 277 duplicatas exatas.
+   *
+   * Ainda não é consertado aqui, porque apagar linha órfã derruba kit que
+   * aponta para ela. Mas passa a ser DITO: crescimento calado leria como acervo
+   * novo, e não é — é a mesma peça de novo.
+   */
+  const orfas = linhasDaBiblioteca.filter((r) => r.segmentId === null).length;
   const notas = segs.map((s) =>
     avaliar({
       id: s.id,
@@ -177,6 +191,15 @@ const principal = (): void => {
   );
 
   console.log('');
+  if (orfas > 0) {
+    console.log(`  ⚠ ${orfas} linha(s) da Biblioteca perderam o vínculo com o segmento.`);
+    console.log('    A resegmentação recria os segmentos e a FK é `on delete set null`, então');
+    console.log('    elas NÃO são reconhecidas como "já na Biblioteca" e o que entrar agora entra');
+    console.log('    como CÓPIA. A montagem de kit conta repetição por CONTEÚDO, então isso não');
+    console.log('    vira peça repetida no kit — mas o total da Biblioteca deixou de ser o');
+    console.log('    número de peças distintas.');
+    console.log('');
+  }
   console.log(`  Galeria: ${notas.length} peça(s)`);
   console.log(`  Reprovadas: ${notas.length - aprovadas.length}`);
   const porMotivo = new Map<string, number>();

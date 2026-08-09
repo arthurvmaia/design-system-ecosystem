@@ -46,7 +46,24 @@ export type PecaParaMontagem = {
   category: string;
   kind: string;
   designSystemId: string;
+  /**
+   * A identidade do CONTEÚDO (o hash do bundle), quando ela é conhecida.
+   *
+   * Duas linhas da Biblioteca podem ser a mesma peça: `pnpm curar` acrescenta
+   * sem conferir o que já está lá, e duas curadorias deixam duas cópias com
+   * ids diferentes. Medido em 2026-08-09: **607 peças para 330 conteúdos
+   * distintos — 277 duplicatas exatas**, quase metade do acervo.
+   *
+   * Contar repetição por `id` não enxerga isso: o kit A leva uma cópia, o kit
+   * B leva a outra, a régua vê duas peças e quem olha a tela vê a mesma. Por
+   * isso tudo que decide REPETIÇÃO — dentro de um kit e entre os kits da leva
+   * — usa esta chave quando ela existe.
+   */
+  conteudoId?: string;
 };
+
+/** A identidade que vale para repetição: o conteúdo, e o id só como reserva. */
+const chaveDoConteudo = (p: PecaParaMontagem): string => p.conteudoId ?? p.id;
 
 export type PassoDaMontagem = {
   papel: SectionRole;
@@ -161,14 +178,17 @@ export const montarKitAutomatico = (
    */
   const PESO_DA_REPETICAO = 1.5;
   const usos = opcoes?.usosPorPeca ?? new Map<string, number>();
-  const repeticao = (id: string): number => -PESO_DA_REPETICAO * (usos.get(id) ?? 0);
+  // Pelo CONTEÚDO: duas cópias da mesma peça na Biblioteca não podem passar por
+  // duas peças. Ver `conteudoId`.
+  const repeticao = (p: PecaParaMontagem): number =>
+    -PESO_DA_REPETICAO * (usos.get(chaveDoConteudo(p)) ?? 0);
 
   const nota = (c: {
     p: PecaParaMontagem;
     daOrigem: boolean;
     marca: number | null;
     kind: string;
-  }): number => (c.daOrigem ? 2 : 0) + (c.marca ?? 0) + vitalidade(c.kind) + repeticao(c.p.id);
+  }): number => (c.daOrigem ? 2 : 0) + (c.marca ?? 0) + vitalidade(c.kind) + repeticao(c.p);
 
   const candidatasPorEtapa = etapas.map((etapa) =>
     candidatasDe(etapa.papel, pecas)
@@ -193,11 +213,14 @@ export const montarKitAutomatico = (
   >();
   const tentarCobrir = (i: number, visitadas: Set<string>): boolean => {
     for (const candidata of candidatasPorEtapa[i] ?? []) {
-      if (visitadas.has(candidata.p.id)) continue;
-      visitadas.add(candidata.p.id);
-      const dona = etapaDaPeca.get(candidata.p.id);
+      // Pelo CONTEÚDO: duas cópias da mesma peça não podem ocupar duas etapas
+      // do mesmo kit como se fossem peças diferentes. Ver `conteudoId`.
+      const chave = chaveDoConteudo(candidata.p);
+      if (visitadas.has(chave)) continue;
+      visitadas.add(chave);
+      const dona = etapaDaPeca.get(chave);
       if (dona === undefined || tentarCobrir(dona, visitadas)) {
-        etapaDaPeca.set(candidata.p.id, i);
+        etapaDaPeca.set(chave, i);
         escolhaDaEtapa.set(i, candidata);
         return true;
       }
@@ -228,11 +251,12 @@ export const montarKitAutomatico = (
   etapas.forEach((etapa, i) => {
     if (escolhaDaEtapa.has(i)) return;
     for (const candidata of candidatasPorEtapa[i] ?? []) {
-      const dona = etapaDaPeca.get(candidata.p.id);
+      const chave = chaveDoConteudo(candidata.p);
+      const dona = etapaDaPeca.get(chave);
       if (dona === undefined) continue;
-      if ((reusosDaPeca.get(candidata.p.id) ?? 0) >= REUSO_MAXIMO) continue;
+      if ((reusosDaPeca.get(chave) ?? 0) >= REUSO_MAXIMO) continue;
       if (etapas[dona]?.papel === etapa.papel) continue;
-      reusosDaPeca.set(candidata.p.id, (reusosDaPeca.get(candidata.p.id) ?? 0) + 1);
+      reusosDaPeca.set(chave, (reusosDaPeca.get(chave) ?? 0) + 1);
       reusadaDe.set(i, dona);
       escolhaDaEtapa.set(i, candidata);
       return;
@@ -339,7 +363,7 @@ export const montarKitAutomatico = (
       // O mesmo peso de repetição das seções: sem ele, "Aparecer conforme
       // rola" entrava em 9 dos 12 kits e "Fixar ao rolar" em 8, porque a
       // ordem só olhava origem e nome.
-      const repetido = (p: PecaParaMontagem): number => usos.get(p.id) ?? 0;
+      const repetido = (p: PecaParaMontagem): number => usos.get(chaveDoConteudo(p)) ?? 0;
       return daOrigem(a) - daOrigem(b) || repetido(a) - repetido(b) || a.name.localeCompare(b.name);
     });
   const porMecanismo = new Map<string, PecaParaMontagem>();

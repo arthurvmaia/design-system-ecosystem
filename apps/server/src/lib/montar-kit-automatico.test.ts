@@ -323,3 +323,50 @@ test('sem usosPorPeca nada muda: quem nao passa a conta continua com o mesmo kit
   const b = montarKitAutomatico('captar-contato', pecas, semMarca, { usosPorPeca: new Map() });
   assert.deepEqual(a.componentIds, b.componentIds);
 });
+
+test('duas COPIAS da mesma peca contam como uma so entre kits', () => {
+  // O caso real: 607 linhas na Biblioteca para 330 conteudos. Sem a chave de
+  // conteudo, o kit A leva uma copia e o kit B leva a outra.
+  const copiaA = { ...peca('cmp_faq_a', 'faq', 'ds_b'), conteudoId: 'hash_faq' };
+  const copiaB = { ...peca('cmp_faq_b', 'faq', 'ds_c'), conteudoId: 'hash_faq' };
+  const outra = { ...peca('cmp_faq_z', 'faq', 'ds_d'), conteudoId: 'hash_outro' };
+  const pecas = [peca('cmp_hero_a', 'hero', 'ds_a'), copiaA, copiaB, outra];
+
+  const r = montarKitAutomatico('captar-contato', pecas, semMarca, {
+    usosPorPeca: new Map([['hash_faq', 2]]),
+  });
+  assert.equal(
+    r.passos.find((p) => p.papel === 'faq')?.componentId,
+    'cmp_faq_z',
+    'a copia da peca ja carimbada nao pode passar por peca nova',
+  );
+});
+
+test('duas copias nao ocupam duas etapas do MESMO kit', () => {
+  // `card` serve a varios papeis; duas copias dela encheriam duas etapas e a
+  // pagina sairia com a mesma secao duas vezes.
+  const copiaA = { ...peca('cmp_card_a', 'card', 'ds_a'), conteudoId: 'hash_card' };
+  const copiaB = { ...peca('cmp_card_b', 'card', 'ds_a'), conteudoId: 'hash_card' };
+  const r = montarKitAutomatico(
+    'captar-contato',
+    [peca('cmp_hero', 'hero', 'ds_a'), copiaA, copiaB],
+    semMarca,
+  );
+  const cards = r.componentIds.filter((id) => id.startsWith('cmp_card_'));
+  assert.equal(cards.length, 1, 'so uma das copias entra no kit');
+});
+
+test('peca sem conteudoId continua valendo pelo proprio id', () => {
+  const pecas = [
+    peca('cmp_hero_a', 'hero', 'ds_a'),
+    peca('cmp_faq_1', 'faq', 'ds_b'),
+    peca('cmp_faq_2', 'faq', 'ds_c'),
+  ];
+  const primeiro = montarKitAutomatico('captar-contato', pecas, semMarca);
+  const faq = primeiro.passos.find((p) => p.papel === 'faq')?.componentId;
+  assert.ok(faq);
+  const segundo = montarKitAutomatico('captar-contato', pecas, semMarca, {
+    usosPorPeca: new Map([[faq, 1]]),
+  });
+  assert.notEqual(segundo.passos.find((p) => p.papel === 'faq')?.componentId, faq);
+});
