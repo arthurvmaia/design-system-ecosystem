@@ -228,10 +228,11 @@ export const resegmentar = (dsId: DesignSystemId, seco: boolean): Relato => {
    * que impede o acervo de se desmontar a cada refinamento.
    */
   const religou = religarBibliotecaAosSegmentos(dsId);
-  if (religou.religadas > 0 || religou.aindaOrfas > 0) {
+  if (religou.religadas > 0 || religou.aindaOrfas > 0 || religou.flagsReacesas > 0) {
     console.log(
-      `    Biblioteca religada: ${religou.religadas} (${religou.porNome} por nome, ` +
-        `${religou.porTrecho} pelo trecho)${religou.aindaOrfas > 0 ? `, ${religou.aindaOrfas} ainda sem vínculo` : ''}`,
+      `    Biblioteca religada: ${religou.religadas} pelo conteúdo` +
+        `${religou.aindaOrfas > 0 ? `, ${religou.aindaOrfas} ainda sem vínculo` : ''}` +
+        `${religou.flagsReacesas > 0 ? `, ${religou.flagsReacesas} flag(s) in_library reconciliada(s)` : ''}`,
     );
   }
   // A validação em navegador era da geração anterior de segmentos.

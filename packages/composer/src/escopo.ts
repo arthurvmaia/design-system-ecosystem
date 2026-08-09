@@ -397,6 +397,7 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
   }
 
   // ── Seletores ────────────────────────────────────────────────────────────
+  const documentoPodado: string[] = [];
   raizAst.walkRules((regra: Rule) => {
     // Passos de `@keyframes` (`from`, `to`, `40%`) não são seletores.
     const pai = regra.parent;
@@ -414,9 +415,103 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       regra.selector = depois;
       reescritas++;
     }
+    if (miraODocumento(regra.selector, opts)) {
+      for (const prop of tirarODocumentoDe(regra)) documentoPodado.push(prop);
+    }
   });
 
+  if (documentoPodado.length > 0) {
+    const conta = new Map<string, number>();
+    for (const p of documentoPodado) conta.set(p, (conta.get(p) ?? 0) + 1);
+    const lista = [...conta.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([p, n]) => `${p} (${n}×)`)
+      .join(', ');
+    avisos.push(
+      `${documentoPodado.length} declaração(ões) que descreviam o DOCUMENTO saíram da regra do <html>/<body>: ${lista}. No documento de origem elas eram a página; num div no meio de uma página composta viram uma seção invisível, uma segunda barra de rolagem ou uma caixa de 20px.`,
+    );
+  }
   return { css: raizAst.toString(), reescritas, renomeados, avisos };
+};
+
+/**
+ * A regra mira o PROXY nu, isto é, ela era do `<html>` ou do `<body>`.
+ *
+ * `ANCORA_DE` reescreve `body{…}` para `:where([data-ds-corpo="x"]){…}` e
+ * `html{…}` para `:where([data-ds-raiz="x"]){…}`. Depois do escopo, esse é o
+ * seletor que termina no fecha-parênteses da âncora e não tem mais nada
+ * pendurado — nem descendente, nem classe, nem `:is(...)`.
+ *
+ * `body.carregando` também conta: o estado do documento é do documento.
+ */
+const miraODocumento = (seletor: string, opts: { raiz: string; corpo: string }): boolean =>
+  seletor
+    .split(',')
+    .map((s) => s.trim())
+    .some(
+      (s) =>
+        (s.startsWith(`:where([${opts.corpo}])`) || s.startsWith(`:where([${opts.raiz}])`)) &&
+        /^:where\(\[[^\]]+\]\)(?:[.#][\w-]+|\[[^\]]*\]|:[\w-]+(?:\([^)]*\))?)*$/.test(s),
+    );
+
+/**
+ * O que era do DOCUMENTO e não pode virar propriedade de um `div`.
+ *
+ * ## O defeito, medido
+ *
+ * O `<body>` de uma das origens do acervo trazia `display:none!important` — um
+ * estado de carregamento congelado pela captura. `escoparCss` o reescreveu
+ * fielmente para `:where([data-ds-corpo="ds_x"]){display:none!important}`, e a
+ * SEÇÃO INTEIRA da página gerada desapareceu: 212 caracteres de conteúdo,
+ * altura zero, sem erro nenhum no console. Outra origem dava
+ * `position:fixed;height:20px` no corpo, e uma seção de 913px saía dentro de
+ * uma caixa de 20px, rolando por dentro.
+ *
+ * ## Por que a poda é aqui, e é certa
+ *
+ * Esta é a terceira irmã da mesma família, e as três já foram vistas na tela:
+ *
+ * 1. o `style` inline do `<body>` (tratado em `envolverEmProxies`);
+ * 2. a CLASSE do `<body>` — `overflow-y-auto`, `fixed`, `hidden`, `h-0`
+ *    (`DESCREVE_O_DOCUMENTO`, no mesmo arquivo);
+ * 3. a REGRA de folha do `<body>`, que é esta.
+ *
+ * No documento de origem cada uma delas descrevia a PÁGINA: `overflow` era a
+ * rolagem que ninguém vê como barra separada, `height` era o quanto o site
+ * ocupava, `position:fixed` era a moldura de um app. Copiadas para um `div` no
+ * meio de uma página composta, viram uma segunda barra de rolagem, uma caixa
+ * que corta o conteúdo e uma seção fora do fluxo.
+ *
+ * ## O que NÃO sai
+ *
+ * Tudo o que é aparência: `background`, `color`, `font`, `letter-spacing`,
+ * `--variáveis`. É delas que a peça tira a cara que tinha na origem, e é por
+ * isso que os proxies existem.
+ */
+const DO_DOCUMENTO =
+  /^(display|position|overflow(-[xy])?|(min-|max-)?(height|width)|top|right|bottom|left|inset(-.+)?|z-index)$/i;
+
+const tirarODocumentoDe = (regra: Rule): string[] => {
+  const tirados: string[] = [];
+  regra.each((no) => {
+    if (no.type !== 'decl') return;
+    const prop = no.prop.trim();
+    if (!DO_DOCUMENTO.test(prop)) return;
+    // `display` só sai quando ESCONDE. Um `<body>` em flex ou grid está
+    // descrevendo a moldura que a peça espera ter em volta, e tirá-la mudaria
+    // o desenho de quem nunca teve defeito nenhum.
+    if (/^display$/i.test(prop) && !/^\s*none\s*(!important)?\s*$/i.test(no.value)) return;
+    // `position` só sai quando TIRA DO FLUXO. `relative` é contexto de
+    // posicionamento e a peça de dentro costuma contar com ele.
+    if (/^position$/i.test(prop) && !/^\s*(fixed|absolute)\s*(!important)?\s*$/i.test(no.value)) {
+      return;
+    }
+    // Rolagem visível é o padrão; declarar `visible` não cria barra nenhuma.
+    if (/^overflow/i.test(prop) && /^\s*visible\s*(!important)?\s*$/i.test(no.value)) return;
+    tirados.push(prop.toLowerCase());
+    no.remove();
+  });
+  return tirados;
 };
 
 /**

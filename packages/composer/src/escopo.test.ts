@@ -403,3 +403,56 @@ test('folha desequilibrada não some da detecção de nomes globais', () => {
   const n = nomesGlobaisDe('@keyframes girar{from{opacity:0}to{opacity:1}}}');
   assert.ok(n.keyframes.has('girar'));
 });
+
+test('a regra do <body> perde o que descrevia o DOCUMENTO', () => {
+  // Medido: uma origem do acervo trazia `body{display:none!important}` — estado
+  // de carregamento congelado pela captura. Escopado fielmente, ele apagava a
+  // SECAO INTEIRA do site gerado: 212 caracteres, altura zero, sem erro nenhum.
+  // Outra dava `position:fixed;height:20px` e uma secao de 913px saia numa
+  // caixa de 20px, rolando por dentro.
+  const r = escoparCss(
+    'body{display:none!important;position:fixed;height:20px;overflow-y:auto;background:#03020A;color:#fff}' +
+      'html{overflow:hidden;font-size:18px}',
+    { raiz: 'data-ds-raiz="d"', corpo: 'data-ds-corpo="d"', sufixo: 'd' },
+  );
+  for (const foi of [
+    'display:none',
+    'position:fixed',
+    'height:20px',
+    'overflow-y:auto',
+    'overflow:hidden',
+  ]) {
+    assert.ok(!r.css.includes(foi), `${foi} nao pode sobreviver`);
+  }
+  // A APARENCIA fica: e dela que a peca tira a cara que tinha na origem.
+  assert.ok(r.css.includes('background:#03020A'));
+  assert.ok(r.css.includes('color:#fff'));
+  assert.ok(r.css.includes('font-size:18px'));
+  assert.ok(r.avisos.some((a) => a.includes('descreviam o DOCUMENTO')));
+});
+
+test('display e position do corpo SO saem quando escondem ou tiram do fluxo', () => {
+  // Um <body> em flex descreve a moldura que a peca espera; `relative` e
+  // contexto de posicionamento. Tirar isso mudaria o desenho de quem nunca teve
+  // defeito nenhum.
+  const r = escoparCss('body{display:flex;position:relative;overflow:visible}', {
+    raiz: 'data-ds-raiz="d"',
+    corpo: 'data-ds-corpo="d"',
+    sufixo: 'd',
+  });
+  assert.ok(r.css.includes('display:flex'));
+  assert.ok(r.css.includes('position:relative'));
+  assert.ok(r.css.includes('overflow:visible'));
+});
+
+test('a poda so alcanca a regra do DOCUMENTO, nunca a de dentro da peca', () => {
+  // `.modal{position:fixed}` e desenho da peca e continua inteiro.
+  const r = escoparCss('.modal{position:fixed;display:none}body .caixa{overflow:auto}', {
+    raiz: 'data-ds-raiz="d"',
+    corpo: 'data-ds-corpo="d"',
+    sufixo: 'd',
+  });
+  assert.ok(r.css.includes('position:fixed'), 'a peca mantem o proprio fixed');
+  assert.ok(r.css.includes('display:none'), 'a peca mantem o proprio none');
+  assert.ok(r.css.includes('overflow:auto'), 'descendente do corpo nao e o corpo');
+});

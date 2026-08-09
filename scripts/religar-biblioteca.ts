@@ -1,7 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { getDb, tables } from '@ds/indexer';
-import { libraryComponentBundleDir } from '@ds/shared';
 import { eq, isNull } from 'drizzle-orm';
 
 /**
@@ -9,9 +7,10 @@ import { eq, isNull } from 'drizzle-orm';
  *
  * ## O nó que isto desata
  *
- * `pnpm resegmentar` apaga e recria os segmentos de um design system, e
+ * `pnpm resegmentar` apagava e recriava os segmentos de um design system, e
  * `library_components.segment_id` é `on delete set null`. Toda linha da
- * Biblioteca daquela origem perde o vínculo — medido: **553 de 861**.
+ * Biblioteca daquela origem perdia o vínculo — medido: **553 de 861**, e **183
+ * de 183** das peças usadas por algum kit.
  *
  * O estrago tem dois lados, e o segundo é o que trava o trabalho:
  *
@@ -22,34 +21,49 @@ import { eq, isNull } from 'drizzle-orm';
  *    Linha órfã é inalcançável — e é por isso que não dava para tirar da
  *    Biblioteca as peças que o dono mandou tirar. A régua existia e não chegava.
  *
- * ## Como o vínculo é reencontrado, e o que cada passo resolve
+ * **A causa foi consertada na origem** (`segmentar.ts` reaproveita o id do
+ * segmento cujo conteúdo não mudou), então isto aqui é o REPARO do que já
+ * quebrou, não a rotina.
  *
- * Medido sobre as 553 órfãs de hoje:
+ * ## A chave, e por que é esta
  *
- * | chave | resolve |
- * |---|---|
- * | origem + nome + categoria, candidato ÚNICO | 477 |
- * | entre os empatados, o segmento cujo trecho de HTML está no bundle | +65 |
- * | ainda ambíguo | 11 |
+ * `library_components.bundle_hash` é exatamente `sha256(segments.html_snippet)`,
+ * gravado na promoção. Ele é a identidade que o segmento não tinha — e a
+ * conferência contra a verdade de campo fecha: bate em 844 de 844 linhas ainda
+ * ligadas, e em 400 de 400 `raw.html` do disco.
  *
- * 542 de 553 — 98%. O trecho de HTML é o desempate certo porque é o CONTEÚDO:
- * dois segmentos podem ter o mesmo nome e categoria na mesma origem (duas
- * faixas de cartões), e o que os separa é o que está escrito dentro.
+ * Medido sobre a travessia que de fato aconteceu (as 288 linhas ligadas no
+ * banco anterior à resegmentação, contra os segmentos de hoje):
  *
- * Os 11 que sobram ficam órfãos e são DITOS. Escolher um deles no chute ligaria
- * a peça ao segmento errado, e uma peça ligada ao segmento errado é pior que uma
- * peça sem vínculo: ela passa a ser julgada pela evidência de outra.
+ * | chave | religa | ambíguas | sem candidato |
+ * |---|---|---|---|
+ * | origem + `bundle_hash` | **288** | 0 | 0 |
+ * | origem + nome + categoria | 243 | 39 | 6 |
+ *
+ * A chave fraca não falha no meio: ela falha justamente na peça REPETIDA
+ * ("Botão", "Selo", "Recursos com sticky"), que é a maioria do acervo.
+ *
+ * O empate que sobra é empate de verdade — dois segmentos da mesma origem com
+ * HTML byte a byte idêntico. Escolher um no chute ligaria a peça ao segmento
+ * errado, e peça ligada ao segmento errado é pior que peça sem vínculo: ela
+ * passa a ser julgada pela evidência de outra.
+ *
+ * ## A metade que ninguém tinha medido
+ *
+ * Religar a FK não bastava. `segments.in_library` estava em 1 para **9**
+ * segmentos de 1396, enquanto **313** tinham linha na Biblioteca — e essa flag
+ * é o ÚNICO portão de idempotência do app (`routes/library.ts` e
+ * `planBatchLike`). Com ela apagada, a Galeria mostra a peça como não-curtida e
+ * cada clique cria OUTRA linha duplicada: o caminho da duplicação continuava
+ * aberto pelo app mesmo com a FK consertada.
  */
 
 export type Religacao = {
   religadas: number;
-  porNome: number;
-  porTrecho: number;
   aindaOrfas: number;
+  /** Segmentos cuja flag `in_library` foi reacesa para casar com a Biblioteca. */
+  flagsReacesas: number;
 };
-
-/** Quanto do trecho basta para reconhecer: o começo já é assinatura. */
-const ASSINATURA = 200;
 
 export const religarBibliotecaAosSegmentos = (dsId?: string): Religacao => {
   const db = getDb();
@@ -61,57 +75,64 @@ export const religarBibliotecaAosSegmentos = (dsId?: string): Religacao => {
     .all()
     .filter((o) => dsId === undefined || o.designSystemId === dsId);
 
-  if (orfas.length === 0) return { religadas: 0, porNome: 0, porTrecho: 0, aindaOrfas: 0 };
-
   const segs = db.select().from(tables.segments).all();
-  const porChave = new Map<string, typeof segs>();
+  const porConteudo = new Map<string, string | null>();
   for (const s of segs) {
-    const k = `${s.designSystemId}|${s.name}|${s.category}`;
-    porChave.set(k, [...(porChave.get(k) ?? []), s]);
+    if (typeof s.htmlSnippet !== 'string' || s.htmlSnippet.length === 0) continue;
+    const k = `${s.designSystemId}|${createHash('sha256').update(s.htmlSnippet).digest('hex')}`;
+    porConteudo.set(k, porConteudo.has(k) ? null : s.id);
   }
 
-  let porNome = 0;
-  let porTrecho = 0;
+  let religadas = 0;
   let aindaOrfas = 0;
 
   for (const o of orfas) {
-    const candidatos = porChave.get(`${o.designSystemId}|${o.name}|${o.category}`) ?? [];
-    let escolhido = candidatos.length === 1 ? candidatos[0] : undefined;
-    let viaTrecho = false;
-
-    if (escolhido === undefined && candidatos.length > 1) {
-      const index = join(libraryComponentBundleDir(o.id as `cmp_${string}`), 'index.html');
-      if (existsSync(index)) {
-        let html = '';
-        try {
-          html = readFileSync(index, 'utf8');
-        } catch {
-          html = '';
-        }
-        const casam = candidatos.filter(
-          (s) =>
-            typeof s.htmlSnippet === 'string' &&
-            s.htmlSnippet.length > 0 &&
-            html.includes(s.htmlSnippet.slice(0, ASSINATURA)),
-        );
-        if (casam.length === 1) {
-          escolhido = casam[0];
-          viaTrecho = true;
-        }
-      }
-    }
-
-    if (escolhido === undefined) {
+    const escolhido = porConteudo.get(`${o.designSystemId}|${o.bundleHash}`);
+    if (escolhido === undefined || escolhido === null) {
       aindaOrfas += 1;
       continue;
     }
     db.update(tables.libraryComponents)
-      .set({ segmentId: escolhido.id })
+      .set({ segmentId: escolhido })
       .where(eq(tables.libraryComponents.id, o.id))
       .run();
-    if (viaTrecho) porTrecho += 1;
-    else porNome += 1;
+    religadas += 1;
   }
 
-  return { religadas: porNome + porTrecho, porNome, porTrecho, aindaOrfas };
+  // A flag que o app usa como portão. Ver o bloco acima: sem ela, cada clique
+  // na Galeria cria mais uma duplicata da peça que já está na Biblioteca.
+  const flagsReacesas = reconciliarFlagDaBiblioteca(dsId);
+  return { religadas, aindaOrfas, flagsReacesas };
+};
+
+/**
+ * `segments.in_library` volta a dizer a verdade: 1 se existe linha viva na
+ * Biblioteca apontando para ele, 0 se não existe.
+ *
+ * Nos dois sentidos de propósito. A flag acesa sem linha nenhuma é tão ruim
+ * quanto a apagada com linha: ela ESCONDE a peça da Galeria, e o dono não tem
+ * como pôr de volta uma peça que o app acha que já está lá.
+ */
+export const reconciliarFlagDaBiblioteca = (dsId?: string): number => {
+  const db = getDb();
+  const comLinha = new Set(
+    db
+      .select()
+      .from(tables.libraryComponents)
+      .all()
+      .filter((l) => l.segmentId !== null)
+      .map((l) => l.segmentId as string),
+  );
+  let mudadas = 0;
+  for (const s of db.select().from(tables.segments).all()) {
+    if (dsId !== undefined && s.designSystemId !== dsId) continue;
+    const deveria = comLinha.has(s.id);
+    if (s.inLibrary === deveria) continue;
+    db.update(tables.segments)
+      .set({ inLibrary: deveria })
+      .where(eq(tables.segments.id, s.id))
+      .run();
+    mudadas += 1;
+  }
+  return mudadas;
 };

@@ -12,6 +12,7 @@
  * sozinho ao fechar um job de extração. Rodar na mão só é necessário para
  * consertar um design system que já ficou para trás.
  */
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { eq, getDb, runMigrations, tables } from '@ds/indexer';
 import { segmentDesignSystem } from '@ds/segmenter';
@@ -91,8 +92,105 @@ export const lerStackDoManifesto = (dsId: `ds_${string}`): string | null => {
 const MINIMO_ESPERADO = 4;
 
 /**
- * Segmenta e grava no índice. Idempotente: apaga os segmentos anteriores antes
- * de inserir, então rodar duas vezes não duplica nada.
+ * A identidade de um segmento entre duas segmentações é o CONTEÚDO dele.
+ *
+ * ## O que quebrava
+ *
+ * O motor cunha um ULID novo a cada persistência (`newSegmentId()` em
+ * `persist.ts`), então o id NÃO atravessa uma resegmentação. E como aqui se
+ * apagava tudo antes de reinserir, o `on delete set null` de
+ * `library_components.segment_id` desligava a Biblioteca inteira daquela
+ * origem.
+ *
+ * Medido no acervo: **553 de 861 linhas órfãs**, e — o que trava o trabalho —
+ * **183 de 183** das peças usadas por algum kit. Nenhuma peça em uso tinha
+ * vínculo.
+ *
+ * O estrago tem dois lados. `curar-biblioteca` reconhece "já está lá" por
+ * `segmentId`, então sem vínculo ele readiciona tudo (foi assim que a
+ * Biblioteca foi de 298 para 861 linhas). E as regras de aceite da Galeria só
+ * alcançam peça COM segmento: linha órfã é inalcançável, e por isso não dava
+ * para tirar da Biblioteca as peças que o dono mandou tirar.
+ *
+ * ## Por que dá para reaproveitar o id
+ *
+ * O corte é determinístico: medido na resegmentação real, **1349 dos 1396**
+ * segmentos saem byte a byte iguais de uma rodada para a outra. A
+ * resegmentação não perdeu peça nenhuma — perdeu só o NOME de cada uma.
+ *
+ * A chave é a mesma que a promoção já grava em `library_components.bundle_hash`
+ * (`sha256(htmlSnippet)`), conferida contra a verdade de campo: bate em 844 de
+ * 844 linhas ainda ligadas e em 400 de 400 `raw.html` do disco.
+ *
+ * Simulado sobre a travessia que de fato aconteceu: com o diff, as 288 linhas
+ * ligadas do banco anterior teriam mantido **288 de 288** vínculos, sem
+ * religação nenhuma. Religar depois recupera 243 de 288. Prevenir custa zero
+ * ambiguidade; remendar custa 45 casos duvidosos por travessia.
+ *
+ * ## O que fica de fora, e por quê
+ *
+ * Conteúdo repetido na mesma origem (dois cortes byte a byte idênticos) dá
+ * empate: 19 chaves do acervo cobrem 38 segmentos (2,7%). Empate não escolhe —
+ * esses nascem com id novo, como antes. Ligar ao errado é pior que não ligar:
+ * a peça passaria a ser julgada pela evidência de outra.
+ */
+const identidadeDoSegmento = (htmlSnippet: string | null): string | null =>
+  htmlSnippet === null || htmlSnippet.length === 0
+    ? null
+    : createHash('sha256').update(htmlSnippet).digest('hex');
+
+/** O mínimo que a decisão precisa saber de um segmento. */
+export type PecaComIdentidade = { id: string; htmlSnippet: string | null; parentId: string | null };
+
+export type Casamento<T> = {
+  /** Os segmentos a gravar, já com o id reaproveitado onde coube. */
+  gravar: T[];
+  /** Ids antigos que voltaram — estes são UPDATE, não INSERT. */
+  reaproveitados: Set<string>;
+};
+
+/**
+ * Decide, sem tocar no banco, quais ids atravessam a segmentação.
+ *
+ * Separada da transação porque é ELA que carrega o risco: um casamento errado
+ * liga uma peça da Biblioteca ao segmento de outra, e a peça passa a ser
+ * julgada pela evidência que não é dela.
+ */
+export const casarPorConteudo = <T extends PecaComIdentidade>(
+  antigos: readonly PecaComIdentidade[],
+  novos: readonly T[],
+): Casamento<T> => {
+  const porConteudo = new Map<string, string | null>();
+  for (const a of antigos) {
+    const k = identidadeDoSegmento(a.htmlSnippet);
+    if (k === null) continue;
+    // Chave repetida vira empate e sai da disputa: ver `identidadeDoSegmento`.
+    porConteudo.set(k, porConteudo.has(k) ? null : a.id);
+  }
+
+  const reaproveitados = new Set<string>();
+  const comId = novos.map((seg) => {
+    const k = identidadeDoSegmento(seg.htmlSnippet);
+    const antigo = k === null ? undefined : porConteudo.get(k);
+    if (antigo === undefined || antigo === null || reaproveitados.has(antigo)) return seg;
+    reaproveitados.add(antigo);
+    return { ...seg, id: antigo };
+  });
+
+  // `parentId` aponta para o id que o filho conhecia; se o pai reaproveitou o
+  // id antigo, o filho tem de apontar para o mesmo lugar. Sem esta tradução o
+  // subcomponente ficaria pendurado num id que não existe mais.
+  const de = new Map(novos.map((s, i) => [s.id, comId[i]?.id ?? s.id]));
+  const gravar = comId.map((s) =>
+    s.parentId === null ? s : { ...s, parentId: de.get(s.parentId) ?? s.parentId },
+  );
+  return { gravar, reaproveitados };
+};
+
+/**
+ * Segmenta e grava no índice. Idempotente: o segmento cujo conteúdo não mudou
+ * mantém o id (e com ele o vínculo da Biblioteca, a flag `in_library` e a
+ * classificação feita à mão); o que mudou entra novo e o que sumiu sai.
  */
 export const segmentarEIndexar = (dsId: `ds_${string}`): ResultadoSegmentacao => {
   // O modo `queue` insere no banco sem passar pelo boot do servidor — quem
@@ -110,9 +208,32 @@ export const segmentarEIndexar = (dsId: `ds_${string}`): ResultadoSegmentacao =>
   const db = getDb();
 
   db.transaction((tx) => {
-    tx.delete(tables.segments).where(eq(tables.segments.designSystemId, dsId)).run();
-    for (const seg of segments) {
+    // Os segmentos que ESTÃO no banco, indexados pelo conteúdo. Chave repetida
+    // vira empate e sai da disputa: ver `identidadeDoSegmento`.
+    const antigos = tx
+      .select()
+      .from(tables.segments)
+      .where(eq(tables.segments.designSystemId, dsId))
+      .all();
+    const { gravar, reaproveitados } = casarPorConteudo(antigos, segments);
+
+    // Só some quem não voltou. O DELETE largo era o que desligava a Biblioteca.
+    for (const a of antigos) {
+      if (reaproveitados.has(a.id)) continue;
+      tx.delete(tables.segments).where(eq(tables.segments.id, a.id)).run();
+    }
+    for (const seg of gravar) {
+      if (reaproveitados.has(seg.id)) {
+        const { id, ...campos } = seg;
+        tx.update(tables.segments).set(campos).where(eq(tables.segments.id, id)).run();
+        continue;
+      }
       tx.insert(tables.segments).values(seg).run();
+    }
+    if (antigos.length > 0) {
+      console.log(
+        `  Identidade preservada: ${reaproveitados.size} de ${antigos.length} segmento(s) mantiveram o id (e com ele o vínculo da Biblioteca).`,
+      );
     }
     // O fechamento do job é o único UPDATE que o modo fila faz nesta linha, e
     // era aqui que o fio do stack estava cortado: gravar junto custa uma
