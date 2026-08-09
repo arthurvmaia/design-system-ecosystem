@@ -1,5 +1,7 @@
+import { mecanismoDoComportamento } from '@ds/engine-v2';
 import {
-  CATEGORIAS_DE_PAGINA,
+  CATEGORIAS_DE_COMPORTAMENTO,
+  CATEGORIA_DE_FUNDO,
   type EtapaDeMarketing,
   type ObjetivoDoSite,
   ROLE_CATEGORIES,
@@ -169,6 +171,37 @@ export const montarKitAutomatico = (
     tentarCobrir(i, new Set());
   });
 
+  /**
+   * Terceira passada: REUSO, e só como último recurso.
+   *
+   * As sequências foram alongadas (de 5-7 seções de conteúdo para 9-10) e os
+   * kits têm 7 a 9 peças. Depois do pareamento máximo ainda sobram etapas
+   * vazias que TÊM candidata — a peça existe e já está em outra etapa. Uma
+   * `card` servindo a "Demonstração" e a "Catálogo" não é preguiça: o conteúdo
+   * muda, a forma repete, e é o que qualquer site real faz.
+   *
+   * Três limites, porque reuso sem limite vira página de uma peça só:
+   * no máximo UM reuso por peça (ela serve a duas etapas, nunca três), nunca no
+   * MESMO papel (aí seria a mesma seção duas vezes) e sempre depois do
+   * pareamento, para não roubar a vaga de quem só tem aquela.
+   */
+  const REUSO_MAXIMO = 1;
+  const reusosDaPeca = new Map<string, number>();
+  const reusadaDe = new Map<number, number>();
+  etapas.forEach((etapa, i) => {
+    if (escolhaDaEtapa.has(i)) return;
+    for (const candidata of candidatasPorEtapa[i] ?? []) {
+      const dona = etapaDaPeca.get(candidata.p.id);
+      if (dona === undefined) continue;
+      if ((reusosDaPeca.get(candidata.p.id) ?? 0) >= REUSO_MAXIMO) continue;
+      if (etapas[dona]?.papel === etapa.papel) continue;
+      reusosDaPeca.set(candidata.p.id, (reusosDaPeca.get(candidata.p.id) ?? 0) + 1);
+      reusadaDe.set(i, dona);
+      escolhaDaEtapa.set(i, candidata);
+      return;
+    }
+  });
+
   const passos: PassoDaMontagem[] = etapas.map((etapa, i) => {
     const escolhida = escolhaDaEtapa.get(i);
     if (escolhida === undefined) {
@@ -182,6 +215,18 @@ export const montarKitAutomatico = (
         motivo: haviaCandidata
           ? 'as peças desta categoria já cobrem outras etapas: a geração cria a seção no estilo do kit quando a permissão "criar seções faltantes" está ligada.'
           : 'sem peça desta categoria na Biblioteca: a geração cria a seção no estilo do kit quando a permissão "criar seções faltantes" está ligada.',
+      };
+    }
+    const origemDoReuso = reusadaDe.get(i);
+    if (origemDoReuso !== undefined) {
+      const de = etapas[origemDoReuso];
+      return {
+        papel: etapa.papel,
+        etapa: nomeDaEtapa(etapa),
+        faz: etapa.faz,
+        componentId: escolhida.p.id,
+        nome: escolhida.p.name,
+        motivo: `reaproveitada da etapa "${de === undefined ? '?' : nomeDaEtapa(de)}": o conteúdo muda, a forma repete.`,
       };
     }
     const razoes = [
@@ -202,7 +247,9 @@ export const montarKitAutomatico = (
 
   const escolhidos = passos.filter((p) => p.componentId !== null);
   const origensUsadas = new Set(
-    escolhidos.map((p) => pecas.find((x) => x.id === p.componentId)?.designSystemId),
+    escolhidos
+      .map((p) => pecas.find((x) => x.id === p.componentId)?.designSystemId)
+      .filter((o): o is string => o !== undefined),
   );
   if (origensUsadas.size > 1) {
     avisos.push(
@@ -222,34 +269,89 @@ export const montarKitAutomatico = (
    * A montagem casa peça com etapa da sequência, e comportamento não é etapa de
    * sequência nenhuma: ele não ocupa lugar na página. Por isso ele não constava
    * de `ROLE_CATEGORIES` e simplesmente nunca era escolhido — o dono podia curtir
-   * uma animação na Galeria e ela jamais apareceria num kit automático, que foi
-   * exatamente a falta que ele relatou.
+   * uma animação na Galeria e ela jamais apareceria num kit automático.
    *
-   * Entra o da origem principal, para o efeito casar com o CSS das seções (o
-   * escopo por origem é o que decide se ele alcança os elementos), e um por
-   * categoria, porque dois observadores de rolagem sobre os mesmos elementos não
-   * dobram o efeito — só o custo.
+   * Duas correções, e as duas vêm de medição no acervo:
+   *
+   * 1. **O pool são as origens QUE ENTRARAM na página.** `origensUsadas` já era
+   *    calculada logo acima e jogada fora. O CSS de um comportamento é escopado
+   *    por origem (`compor.ts`, proxies `data-ds-raiz`/`data-ds-corpo`), então
+   *    um comportamento de origem AUSENTE não alcança elemento nenhum: ele
+   *    viaja como peso de JS e CSS e a página fica parada. Medido: 12 de 12 kits
+   *    carregavam um "Revelar ao rolar" nessa condição, e o aviso antigo dizia
+   *    que ele "vale para todas as seções" — falso em 12 de 12.
+   * 2. **A deduplicação é por MECANISMO, não por categoria.** Só existem duas
+   *    categorias de comportamento (`interaction` e `cursor`) e `cursor` está em
+   *    zero no acervo: o teto de 2 por categoria era, na prática, 1. Entre as 45
+   *    `interaction` aprovadas há 4 mecanismos distintos (parallax 17, aparecer
+   *    13, fixar 8, revelar 7), média de 1,80 por origem.
+   *
+   * Nenhum comportamento das origens usadas significa NENHUM comportamento, e o
+   * aviso diz isso por extenso. Trocar um aviso falso por uma ausência declarada
+   * é ganho, não perda.
    */
-  const daPagina = pecas.filter((p) => CATEGORIAS_DE_PAGINA.includes(p.category));
-  const porCategoria = new Map<string, (typeof daPagina)[number]>();
-  for (const p of daPagina) {
-    const atual = porCategoria.get(p.category);
-    const melhorQueOAtual =
-      atual === undefined ||
-      (p.designSystemId === origemPrincipal && atual.designSystemId !== origemPrincipal);
-    if (melhorQueOAtual) porCategoria.set(p.category, p);
+  const TETO_DE_MECANISMOS = 2;
+  const comportamentosPossiveis = pecas.filter((p) =>
+    CATEGORIAS_DE_COMPORTAMENTO.includes(p.category),
+  );
+  const alcancam = comportamentosPossiveis
+    .filter((p) => origensUsadas.has(p.designSystemId))
+    .sort((a, b) => {
+      const daOrigem = (p: PecaParaMontagem): number =>
+        p.designSystemId === origemPrincipal ? 0 : 1;
+      return daOrigem(a) - daOrigem(b) || a.name.localeCompare(b.name);
+    });
+  const porMecanismo = new Map<string, PecaParaMontagem>();
+  for (const p of alcancam) {
+    // Peça cujo nome não veio da tabela de famílias não tem mecanismo conhecido:
+    // ela conta como o próprio nome, para não ser confundida com nenhuma outra.
+    const mecanismo = mecanismoDoComportamento(p.name) ?? `nome:${p.name}`;
+    if (!porMecanismo.has(mecanismo)) porMecanismo.set(mecanismo, p);
   }
-  const comportamentos = [...porCategoria.values()];
+  const comportamentos = [...porMecanismo.values()].slice(0, TETO_DE_MECANISMOS);
   if (comportamentos.length > 0) {
     avisos.push(
-      `${comportamentos.length} comportamento(s) de página no kit (${comportamentos.map((c) => c.name).join(', ')}): valem para todas as seções, sem ocupar uma.`,
+      `${comportamentos.length} comportamento(s) de página no kit (${comportamentos.map((c) => c.name).join(', ')}): eles vêm de origens que estão na página, então alcançam as seções dela.`,
+    );
+  } else if (comportamentosPossiveis.length > 0) {
+    avisos.push(
+      `Nenhum comportamento de página entrou: os ${comportamentosPossiveis.length} que a Biblioteca tem vêm de origens que não estão nesta página. O CSS deles é escopado por origem — viajariam sem alcançar elemento nenhum, e a página sairia parada com o carimbo de que se mexe.`,
+    );
+  }
+
+  /**
+   * Uma camada de fundo, no máximo, e só da ORIGEM PRINCIPAL.
+   *
+   * Fundo é da PÁGINA: `ehPecaDeFundo` manda a peça para
+   * `separarCamadasDePagina`, que a envolve como camada fixa atrás de tudo. Ela
+   * não disputa seção com ninguém — e por isso nunca era escolhida.
+   *
+   * Só da origem principal porque o fundo é a superfície que TODAS as seções
+   * pisam: vindo de outra origem, a luminância dele briga com o resto e o
+   * resgate de contraste por origem não o alcança. Uma só, porque duas camadas
+   * fixas se sobrepõem e a de baixo não é vista.
+   */
+  const fundo =
+    origemPrincipal === null
+      ? undefined
+      : pecas.find(
+          (p) => p.category === CATEGORIA_DE_FUNDO && p.designSystemId === origemPrincipal,
+        );
+  if (fundo !== undefined) {
+    avisos.push(
+      `A camada de fundo "${fundo.name}" entra como fundo da PÁGINA, atrás de todas as seções: ela não ocupa etapa nenhuma da sequência.`,
     );
   }
 
   return {
+    // `Set` porque a mesma peça pode servir a duas etapas depois do reuso, e o
+    // kit é um inventário: repetir o id ali significaria duas cópias do bundle.
     componentIds: [
-      ...escolhidos.map((p) => p.componentId as string),
-      ...comportamentos.map((c) => c.id),
+      ...new Set([
+        ...escolhidos.map((p) => p.componentId as string),
+        ...comportamentos.map((c) => c.id),
+        ...(fundo === undefined ? [] : [fundo.id]),
+      ]),
     ],
     passos,
     origemPrincipal,

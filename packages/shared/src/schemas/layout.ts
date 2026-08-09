@@ -109,7 +109,23 @@ export const ROLE_CATEGORIES: Record<SectionRole, string[]> = {
  * elas não constavam de papel nenhum, então nunca eram escolhidas, e o dono não
  * tinha como pôr uma animação no kit por mais que curtisse a peça na Galeria.
  */
-export const CATEGORIAS_DE_PAGINA: readonly string[] = ['interaction', 'cursor'];
+export const CATEGORIAS_DE_COMPORTAMENTO: readonly string[] = ['interaction', 'cursor'];
+
+/**
+ * O fundo é da PÁGINA, não de uma seção — `ehPecaDeFundo` e
+ * `separarCamadasDePagina`, logo abaixo, já o tratam como camada fixa.
+ *
+ * Faltava só a montagem de kit colocá-lo lá: são 8 peças curadas em 7 origens
+ * (`kind: 'effect'`, duas literalmente "Fundo animado da página") que nunca
+ * entraram em kit nenhum, porque `background` não estava em `ROLE_CATEGORIES`
+ * (correto: ela não ocupa seção) nem aqui (errado: ela é da página).
+ */
+export const CATEGORIA_DE_FUNDO = 'background';
+
+export const CATEGORIAS_DE_PAGINA: readonly string[] = [
+  ...CATEGORIAS_DE_COMPORTAMENTO,
+  CATEGORIA_DE_FUNDO,
+];
 
 /**
  * Como cada papel se chama em português, num lugar só.
