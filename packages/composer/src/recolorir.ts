@@ -141,11 +141,47 @@ const PROPS_DE_FUNDO = new Set([
   'box-shadow',
 ]);
 
-/** Luminância relativa (0 escuro → 1 claro) de um hexOpaco `#rrggbb`. */
+/**
+ * Luminância SIMPLES, sem decodificar a gama do sRGB.
+ *
+ * Ela mede "quão claro isto parece" e serve ao CLASSIFICADOR: é por ela que um
+ * hex vira superfície, tinta ou acento, e os limiares dessa classificação foram
+ * calibrados com esta escala. Trocá-la mudaria em silêncio o papel de cores que
+ * hoje são atribuídas certo — por isso ela FICA.
+ *
+ * Para contraste ela não serve, e o motivo está em `luminanciaWcag`.
+ */
 const luminanciaDoHex = (hexOpaco: string): number | null => {
   const m = /^#([0-9a-f]{6})$/i.exec(hexOpaco);
   if (m === null || m[1] === undefined) return null;
   const canal = (i: number): number => Number.parseInt(m[1]?.slice(i, i + 2) ?? '00', 16) / 255;
+  return 0.2126 * canal(0) + 0.7152 * canal(2) + 0.0722 * canal(4);
+};
+
+/**
+ * Luminância da WCAG, com a decodificação de gama do sRGB.
+ *
+ * É a única que serve para CONTRASTE, e a falta dela era um defeito medido: sem
+ * a gama, o motor **superestimava o contraste em +0,91 de média** nos 425
+ * trechos que a regra S4 reprovou nos 20 sites de prova, chegando a +3,43. Ele
+ * dava sinal verde e não recolorimava textos que o navegador reprova.
+ *
+ * Caso concreto: texto `#475569` sobre página `#0b0b0d`. O navegador lê 2,60:1;
+ * sem a gama o motor lia 4,03:1, concluía que passava e deixava como estava.
+ *
+ * Separada da de cima de propósito, e não trocada no lugar dela: a outra
+ * alimenta o CLASSIFICADOR de papel, cujos limiares foram calibrados na escala
+ * simples. Trocar as duas de uma vez mudaria a atribuição de papel de cores que
+ * hoje estão certas — um conserto de contraste não pode ter esse efeito
+ * colateral.
+ */
+const luminanciaWcag = (hexOpaco: string): number | null => {
+  const m = /^#([0-9a-f]{6})$/i.exec(hexOpaco);
+  if (m === null || m[1] === undefined) return null;
+  const canal = (i: number): number => {
+    const s = Number.parseInt(m[1]?.slice(i, i + 2) ?? '00', 16) / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
   return 0.2126 * canal(0) + 0.7152 * canal(2) + 0.0722 * canal(4);
 };
 
@@ -215,8 +251,8 @@ const distancia = (a: string, b: string): number | null => {
 
 /** Razão de contraste da WCAG entre dois hexOpacos (1 = igual, 21 = máximo). */
 const contraste = (a: string, b: string): number | null => {
-  const la = luminanciaDoHex(a);
-  const lb = luminanciaDoHex(b);
+  const la = luminanciaWcag(a);
+  const lb = luminanciaWcag(b);
   if (la === null || lb === null) return null;
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 };

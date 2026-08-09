@@ -281,20 +281,55 @@ const aplicarSubstituicoes = (
  * reimplementar a cascata: `body` como elemento inteiro basta, e `.body-x` ou
  * `#body` não são a página.
  */
+/**
+ * O valor de uma custom property declarada na própria folha da origem.
+ *
+ * Sites escritos à mão guardam a cor de página numa variável
+ * (`body{background:var(--bg-0)}` com `:root{--bg-0:#07070a}`), e sem resolver
+ * isso a leitura devolve nada. Medido no acervo: 49 das 270 falhas de leitura
+ * são exatamente esta forma (`--bg-0` 33, `--bg-base` 11, `--c-bg` 5).
+ *
+ * Segue a cadeia até três saltos: uma variável que aponta para outra é comum, e
+ * um ciclo travaria o laço.
+ */
+const valorDaVariavel = (css: string, nome: string, saltos = 3): string | null => {
+  if (saltos <= 0) return null;
+  const esc = nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = new RegExp(`${esc}\\s*:\\s*([^;}]+)`, 'i').exec(css);
+  const bruto = m?.[1]?.trim();
+  if (bruto === undefined) return null;
+  const encadeada = /var\(\s*(--[\w-]+)/.exec(bruto);
+  if (encadeada?.[1] !== undefined) return valorDaVariavel(css, encadeada[1], saltos - 1);
+  return bruto;
+};
+
+/** A primeira cor OPACA de um valor de declaração, resolvendo `var()`. */
+const corOpacaDoValor = (valor: string, css: string): string | null => {
+  const direta = coresDoValor(valor).find((c) => c.alfa === undefined);
+  if (direta !== undefined) return direta.hexOpaco;
+  const v = /var\(\s*(--[\w-]+)/.exec(valor);
+  if (v?.[1] === undefined) return null;
+  const resolvido = valorDaVariavel(css, v[1]);
+  if (resolvido === null) return null;
+  return coresDoValor(resolvido).find((c) => c.alfa === undefined)?.hexOpaco ?? null;
+};
+
 const corDePaginaNoCss = (css: string): string | null => {
   const regra = /([^{}]*)\{([^{}]*)\}/g;
   let m = regra.exec(css);
   while (m !== null) {
     const seletor = m[1] ?? '';
     const declaracoes = m[2] ?? '';
-    if (/(^|[\s,>+~])body(?![\w-])/i.test(seletor)) {
+    // `html` conta tanto quanto `body`: é dele que a página herda o fundo
+    // quando o `body` não declara nada, e é onde 203 das 270 falhas moram.
+    if (/(^|[\s,>+~])(body|html)(?![\w-])/i.test(seletor)) {
       for (const d of declaracoes.split(';')) {
         const i = d.indexOf(':');
         if (i < 0) continue;
         const prop = d.slice(0, i).trim().toLowerCase();
         if (prop !== 'background' && prop !== 'background-color') continue;
-        const opaca = coresDoValor(d.slice(i + 1)).find((c) => c.alfa === undefined);
-        if (opaca !== undefined) return opaca.hexOpaco;
+        const opaca = corOpacaDoValor(d.slice(i + 1), css);
+        if (opaca !== null) return opaca;
       }
     }
     m = regra.exec(css);
@@ -323,10 +358,76 @@ const corDePaginaNoCss = (css: string): string | null => {
  * responde, quem chama tem de DIZER que não soube, em vez de seguir com um
  * palpite calado.
  */
-export const corDePaginaDaOrigem = (attrs: string | undefined, css?: string): string | null => {
-  const naTag = attrs === undefined ? null : /bg-\[(#(?:[0-9a-f]{3}|[0-9a-f]{6}))\]/i.exec(attrs);
-  if (naTag?.[1] !== undefined) return naTag[1];
-  return css === undefined || css.trim().length === 0 ? null : corDePaginaNoCss(css);
+export const corDePaginaDaOrigem = (
+  attrsBody: string | undefined,
+  css?: string,
+  attrsHtml?: string,
+): string | null => {
+  /**
+   * CINCO idiomas, e a leitura falhava em três deles.
+   *
+   * Medido sobre os 425 trechos que a regra S4 reprovou nos 20 sites de prova:
+   * **270 (64%) vinham de a cor de página não ter sido lida**. Sem cor, o motor
+   * não conclui "tema oposto" — conclui NADA, e o silêncio caía no regime
+   * "temas combinam", que congela a superfície da origem e mesmo assim resgata
+   * o texto para a tinta da marca. Meia migração: tinta clara sobre cartão
+   * creme.
+   *
+   * Onde a cor realmente morava naquelas 270:
+   *
+   * | onde | falhas |
+   * |---|---|
+   * | `class="bg-[#hex]"` na tag `<html>` (não no `<body>`) | 203 |
+   * | `body{background:var(--bg-0)}` com a variável na folha | 49 |
+   * | classe nomeada (`bg-white`, `bg-background`) no body/html | 18 |
+   *
+   * Das 270, **268 se resolvem só com isto**: a tinta já medida passa de 3:1
+   * contra a superfície certa. Não é preciso tocar no texto.
+   *
+   * A ordem para na primeira que responde, e a tag vence a folha: quem escreveu
+   * a classe na tag decidiu ali.
+   */
+  const naTag = (attrs: string | undefined): string | null => {
+    if (attrs === undefined) return null;
+    const m = /bg-\[(#(?:[0-9a-f]{3}|[0-9a-f]{6}))\]/i.exec(attrs);
+    return m?.[1] ?? null;
+  };
+  const doBody = naTag(attrsBody);
+  if (doBody !== null) return doBody;
+  const doHtml = naTag(attrsHtml);
+  if (doHtml !== null) return doHtml;
+
+  const folha = css === undefined ? '' : css;
+  if (folha.trim().length === 0) return null;
+
+  const naFolha = corDePaginaNoCss(folha);
+  if (naFolha !== null) return naFolha;
+
+  /**
+   * Último idioma: a classe NOMEADA na tag, resolvida na folha.
+   *
+   * `<body class="bg-white">` não diz cor nenhuma sozinho — quem diz é
+   * `.bg-white{background-color:#fff}` lá embaixo. São 18 das 270.
+   */
+  for (const attrs of [attrsBody, attrsHtml]) {
+    if (attrs === undefined) continue;
+    const classes = /\bclass="([^"]*)"/i.exec(attrs)?.[1] ?? '';
+    for (const c of classes.split(/\s+/).filter((x) => /^bg-[\w-]+$/.test(x))) {
+      const esc = c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regra = new RegExp(`\\.${esc}(?![\\w-])[^{}]*\\{([^{}]*)\\}`, 'i').exec(folha);
+      const corpo = regra?.[1];
+      if (corpo === undefined) continue;
+      for (const d of corpo.split(';')) {
+        const i = d.indexOf(':');
+        if (i < 0) continue;
+        const prop = d.slice(0, i).trim().toLowerCase();
+        if (prop !== 'background' && prop !== 'background-color') continue;
+        const opaca = corOpacaDoValor(d.slice(i + 1), folha);
+        if (opaca !== null) return opaca;
+      }
+    }
+  }
+  return null;
 };
 
 /** Luminância relativa (0 escuro → 1 claro) de um hex; null quando não é hex. */
@@ -1113,10 +1214,10 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       if (!existsSync(indexPath)) continue;
       // A folha entra na leitura do tema: um site escrito à mão guarda a cor da
       // página em `body{background}`, não numa classe do Tailwind na tag.
-      const cor = corDePaginaDaOrigem(
-        atributosDoDocumentoDaPeca(readFileSync(indexPath, 'utf8')).body,
-        lerCssDoBundle(cmp.bundlePath).css,
-      );
+      // O `.html` já vinha de `atributosDoDocumentoDaPeca` e era jogado fora:
+      // 203 das 270 falhas de leitura tinham a cor exatamente ali.
+      const attrs = atributosDoDocumentoDaPeca(readFileSync(indexPath, 'utf8'));
+      const cor = corDePaginaDaOrigem(attrs.body, lerCssDoBundle(cmp.bundlePath).css, attrs.html);
       const lum = cor === null ? null : luminancia(cor);
       const oposto = lum !== null && Math.abs(lumDaMarca - lum) > 0.4;
       if (oposto) origensComFundoOposto.add(origem);

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import type { KitDesignSystem } from '@ds/shared';
 import { DEFAULT_PROJECT_BRANDING, ProjectLayout } from '@ds/shared';
-import { montarPaginaDoKit } from './pagina.js';
+import { corDePaginaDaOrigem, montarPaginaDoKit } from './pagina.js';
 
 /**
  * O teste de fogo da montagem: duas origens + um fundo + recoloração, tudo
@@ -2216,4 +2216,56 @@ test('nome da marca repetido lado a lado vira UM so', () => {
     else process.env.DS_ECOSYSTEM_ROOT = rootAnterior;
     rmSync(raiz, { recursive: true, force: true });
   }
+});
+
+test('corDePaginaDaOrigem le os CINCO idiomas em que a cor de pagina mora', () => {
+  // Medido nos 20 sites de prova: 270 dos 425 trechos que a S4 reprovava vinham
+  // de a cor NAO ter sido lida. Sem cor o motor nao conclui "tema oposto" —
+  // conclui nada, e o silencio cai no regime "temas combinam", que congela a
+  // superficie da origem e mesmo assim resgata o texto. Meia migracao.
+
+  // 1. bg-[#hex] no body (o unico que ja funcionava)
+  assert.equal(corDePaginaDaOrigem('class="bg-[#050505] antialiased"'), '#050505');
+
+  // 2. bg-[#hex] no HTML — 203 das 270 falhas moravam aqui
+  assert.equal(corDePaginaDaOrigem('class="text-zinc-400"', '', 'class="bg-[#050505]"'), '#050505');
+
+  // 3. body{background} na folha, com literal
+  assert.equal(corDePaginaDaOrigem(undefined, 'body{background:#101014}'), '#101014');
+
+  // 3b. html{background} tambem conta: e dele que a pagina herda
+  assert.equal(corDePaginaDaOrigem(undefined, 'html{background-color:#0a0a0f}'), '#0a0a0f');
+
+  // 4. body{background:var(--bg-0)} com a variavel na folha — 49 das 270
+  assert.equal(
+    corDePaginaDaOrigem(undefined, ':root{--bg-0:#07070a}body{background:var(--bg-0)}'),
+    '#07070a',
+  );
+
+  // 4b. variavel encadeada
+  assert.equal(
+    corDePaginaDaOrigem(
+      undefined,
+      ':root{--base:#123456;--bg:var(--base)}body{background:var(--bg)}',
+    ),
+    '#123456',
+  );
+
+  // 5. classe NOMEADA na tag, resolvida na folha — 18 das 270
+  assert.equal(
+    corDePaginaDaOrigem('class="bg-white text-black"', '.bg-white{background-color:#ffffff}'),
+    '#ffffff',
+  );
+
+  // O silencio continua sendo silencio: sem declaracao nenhuma, null.
+  assert.equal(corDePaginaDaOrigem('class="text-sm"', '.x{color:#fff}'), null);
+  assert.equal(corDePaginaDaOrigem(undefined, undefined), null);
+});
+
+test('a tag vence a folha: quem escreveu a classe ali decidiu', () => {
+  assert.equal(corDePaginaDaOrigem('class="bg-[#111111]"', 'body{background:#eeeeee}'), '#111111');
+});
+
+test('cor de pagina com ALFA nao conta: fundo semitransparente nao e o chao', () => {
+  assert.equal(corDePaginaDaOrigem(undefined, 'body{background:rgba(0,0,0,0.5)}'), null);
 });

@@ -388,3 +388,27 @@ test('temas compatíveis: fundo com papel de tinta fica com a cor da ORIGEM', ()
   assert.doesNotMatch(r.css, /--marca-/, 'nada de tinta pintando bloco');
   assert.match(r.css, /#111827/i, 'o bloco fica com a cor que tinha na origem');
 });
+
+test('o contraste usa a luminancia da WCAG, com gama — sem ela o motor superestimava', () => {
+  // Medido nos 425 trechos que a S4 reprovou nos 20 sites: sem decodificar a
+  // gama do sRGB o motor superestimava o contraste em +0,91 de media (ate
+  // +3,43), dava sinal verde e NAO recoloria texto que o navegador reprova.
+  //
+  // Caso concreto do acervo: texto #475569 sobre pagina #0b0b0d. O navegador le
+  // 2,60:1; sem gama o motor lia 4,03:1 e concluia que passava.
+  const cinza = '#475569';
+  const pagina = '#0b0b0d';
+  const r = recolorirCss(`.t{color:${cinza}}`, new Map(), {
+    retema: {
+      alvo: 'escuro',
+      fundoDaPagina: pagina,
+      tokens: { background: pagina, heading: '#f5f5fa', body: '#b8b8c8', primary: '#6d5cff' },
+    },
+  });
+  // Com a gama, 2,60:1 fica abaixo do piso de 3 e o texto E migrado para uma
+  // tinta que se le. Sem ela, ficava como estava.
+  assert.ok(
+    /var\(--marca-(heading|body|primary)/.test(r.css),
+    `texto a 2,60:1 tem de ser migrado, saiu: ${r.css}`,
+  );
+});
