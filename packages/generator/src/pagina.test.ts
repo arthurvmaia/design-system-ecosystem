@@ -2328,3 +2328,59 @@ test('nome da origem: pula o subdominio de servico e casa o rotulo colado', () =
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+test('a folha composta sai com as correcoes que nascem DEPOIS dela', () => {
+  /**
+   * A regressao que me enganou quatro vezes seguidas.
+   *
+   * `escrever('assets/styles.css', concatCss)` morava no meio da funcao, e
+   * `concatCss` continuava crescendo depois: e abaixo daquela linha que a raiz
+   * da peca volta ao fluxo e que o texto travado na opacidade inicial acende.
+   * Tudo isso ia para uma string que ja tinha virado arquivo.
+   *
+   * O sintoma nunca foi um erro: era o NUMERO NAO MEXER. S13 saiu de 33/40
+   * para 32/40 depois de um destravamento que, no papel, acendia centenas de
+   * trechos. A conferencia estava certa; a folha e que nao tinha a correcao.
+   */
+  const raiz = mkdtempSync(join(tmpdir(), 'folha-tardia-'));
+  try {
+    const a = bundle(
+      raiz,
+      'navfixa',
+      '<header class="fixed">menu do site</header>',
+      '.fixed{position:fixed}',
+    );
+    const out = join(raiz, 'saida');
+    montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'Folha',
+      kit: {
+        id: 'kit_f',
+        components: [
+          {
+            id: 'cmp_a',
+            name: 'Nav',
+            category: 'nav',
+            kind: 'component',
+            bundlePath: a,
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        preferDesignSystemId: 'ds_a',
+        secoes: [{ id: 's1', nome: 'Menu', papel: 'nav', componentIds: ['cmp_a'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      outputDir: out,
+    });
+    const estilos = readFileSync(join(out, 'assets', 'styles.css'), 'utf8');
+    assert.match(
+      estilos,
+      /\[data-secao\] \[data-ds-corpo\]>\.fixed\{position:relative!important\}/,
+      'a raiz da peca tem de voltar ao fluxo NA FOLHA, nao so na memoria',
+    );
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});

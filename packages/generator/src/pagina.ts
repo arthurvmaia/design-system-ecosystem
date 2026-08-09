@@ -2619,7 +2619,26 @@ ${criada.html}
     );
   }
 
-  escrever('assets/styles.css', concatCss);
+  /**
+   * A folha é escrita NO FIM, e isso não é estilo — é o que faz as correções
+   * existirem.
+   *
+   * `escrever('assets/styles.css', concatCss)` morava aqui, no meio do
+   * caminho. Só que `concatCss` continua CRESCENDO depois desta linha: é
+   * abaixo que `soltarRaizDaSecaoNoFluxo` devolve a raiz da peça ao fluxo e
+   * que `destravarOpacidadeSemRevelador` acende o texto que ficou na
+   * opacidade inicial. Tudo isso ia para uma string que já tinha virado
+   * arquivo — escrito e descartado no mesmo fôlego.
+   *
+   * O sintoma era sempre o mesmo, e me enganou quatro vezes seguidas: eu
+   * consertava, media, e o NÚMERO NÃO MEXIA. S13 de 33/40 para 32/40 depois
+   * de um destravamento que, no papel, acendia centenas de trechos. A
+   * conferência estava certa; a folha é que não tinha a correção dentro.
+   *
+   * A regra que fica: string que ainda vai crescer não vira arquivo no meio da
+   * função. Escrever é o último ato.
+   */
+  const escreverAFolhaComposta = (): void => escrever('assets/styles.css', concatCss);
   escrever('assets/criadas.css', entrada.cssCriado ?? '/* nenhuma seção criada */');
   escrever(
     'assets/responsivo.css',
@@ -2950,6 +2969,9 @@ ${linkDoMovimento}${linkDosEstados}${linkDasSecoesCriadas}${linkDasAbas}${linkDo
 ${scriptsHtml}${scriptDoMovimento}${scriptDosEstados}${scriptDasAbas}
 </body>
 </html>`;
+  // Agora sim: nada mais cresce em `concatCss`. Ver o bloco onde esta função
+  // foi declarada — a folha escrita cedo demais engolia as correções.
+  escreverAFolhaComposta();
   escrever('index.html', finalHtml);
 
   /**
