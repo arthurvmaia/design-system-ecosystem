@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
-import { NICHOS, gerarLogoSvg, gerarMarca, ilustracaoDataUri, ilustracaoDoNicho, logoDaMarca, logoDataUri, nichoPorId, textoSobre } from "../lib/marca-generator.mjs";
+import { NICHOS, fotoDoNicho, gerarLogoSvg, gerarMarca, ilustracaoDataUri, ilustracaoDoNicho, logoDaMarca, logoDataUri, nichoPorId, textoSobre } from "../lib/marca-generator.mjs";
 import { generateClientSite, sanitizeBrand } from "../lib/site-generator.mjs";
 
 /**
@@ -377,6 +377,36 @@ test("marca própria é 100% manual; as artes da Orbis só existem no caminho ge
   for (const foto of fotos) assert.ok(foto.slice(0, 600).includes("QUALIDADE"), "toda foto pede qualidade comercial");
   /* a logo continua sendo símbolo sem letra: modelo de imagem erra texto */
   assert.match(imagens, /Símbolo de marca minimalista[\s\S]{0,400}Sem letras/);
+});
+
+test("cada nicho tem foto real de produto, com o desenho como reserva", async () => {
+  const { readdir, stat } = await import("node:fs/promises");
+  const pasta = new URL("../public/nichos/", import.meta.url);
+  const arquivos = await readdir(pasta);
+  for (const nicho of NICHOS) {
+    const nome = `${nicho.id}.jpg`;
+    assert.ok(arquivos.includes(nome), `falta a foto do nicho ${nicho.id}`);
+    const { size } = await stat(new URL(nome, pasta));
+    /* leve o bastante para o cartão não ficar vazio esperando, e pesado o
+       bastante para ser foto e não um pixel */
+    assert.ok(size > 8 * 1024, `${nome} pequeno demais (${size} bytes)`);
+    assert.ok(size < 400 * 1024, `${nome} grande demais (${size} bytes)`);
+    assert.equal(fotoDoNicho(nicho.id), `/nichos/${nicho.id}.jpg`);
+  }
+
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+  assert.match(flow, /src=\{fotoDoNicho\(nicho\.id\)\}/, "o cartão usa a foto");
+  assert.match(flow, /onError=[\s\S]{0,120}ilustracaoDataUri\(nicho\.id\)/, "e cai no desenho se o arquivo faltar");
+  /* carregar tarde deixava o cartão vazio quando a aba não compõe quadros */
+  assert.doesNotMatch(flow, /cf-nicho-arte[\s\S]{0,200}loading="lazy"/);
+});
+
+test("as abas dos passos levam de volta, e não adiante do que falta", async () => {
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+  assert.match(flow, /passoMaisLonge/, "a tela lembra até onde a pessoa chegou");
+  assert.match(flow, /disabled=\{!liberado \|\| indice === passo\}/, "passo futuro e passo atual não são clicáveis");
+  assert.match(flow, /onClick=\{\(\) => irPara\(indice\)\}/);
+  assert.match(flow, /function irPara/);
 });
 
 test("SVG de terceiro não passa pelo sanitizador", () => {

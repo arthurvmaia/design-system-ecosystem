@@ -733,7 +733,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-head strong { font: 700 13px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); }
 .cf-head small { color: var(--muted-2); font-size: 11.5px; }
 .cf-steps { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; }
-.cf-steps li { flex: 1; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line-soft); color: var(--muted-2); font-size: 11.5px; font-weight: 600; letter-spacing: .06em; }
+.cf-steps li { flex: 1; display: flex; align-items: center; gap: 8px; padding: 9px 12px; transition: border-color .2s, color .2s; border: 1px solid var(--line-soft); color: var(--muted-2); font-size: 11.5px; font-weight: 600; letter-spacing: .06em; }
 .cf-steps li i { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid currentColor; border-radius: 50%; font-size: 10px; font-style: normal; }
 .cf-steps li.active { border-color: rgba(34,211,238,.5); color: var(--green-bright); background: rgba(6,182,212,.06); }
 .cf-steps li.done { color: var(--muted); }
@@ -850,6 +850,9 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-peca code { color: var(--muted-2); font-size: 10.5px; }
 .cf-peca-ok { display: inline-flex; align-items: center; gap: 3px; color: var(--green-bright); font: 700 9px var(--font-geist-mono); letter-spacing: .1em; text-transform: uppercase; font-style: normal; }
 .cf-foot-dica { color: var(--muted); font-size: 12px; text-align: right; flex: 1; }
+.cpr-host { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--line-soft); background: #fff; }
+.cpr-frame { position: absolute; top: 0; left: 0; border: 0; transform-origin: top left; pointer-events: none; }
+.cpr-vazio { position: absolute; inset: 0; display: grid; place-content: center; background: var(--panel-2); color: var(--muted-2); font-size: 11.5px; text-align: center; padding: 20px; }
 .cf-preview-logo { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line-soft); }
 .cf-preview-logo img { width: 34px; height: 34px; object-fit: contain; background: #fff; border: 1px solid var(--line); }
 .cf-preview-logo span { color: var(--muted-2); font-size: 11px; }

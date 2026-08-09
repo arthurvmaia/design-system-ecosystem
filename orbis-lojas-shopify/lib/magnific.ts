@@ -29,7 +29,12 @@ const BASE = "https://api.magnific.com";
  * cliente escolher para onde a chave é enviada.
  */
 export const MODELOS_MAGNIFIC = Object.freeze({
-  imagem: Object.freeze(["mystic", "flux-dev", "flux-2-turbo", "hyperflux", "seedream-4"]),
+  imagem: Object.freeze([
+    "mystic", "flux-dev", "flux-2-turbo", "hyperflux", "seedream-4",
+    /* Nano Banana (Gemini): fotografia realista. Vive noutro caminho da API e
+       fala outro vocabulário de enquadramento — ver `corpoDoPedido`. */
+    "text-to-image/nano-banana-pro", "text-to-image/nano-banana-pro-flash",
+  ]),
   video: Object.freeze(["kling-v2.5-pro", "wan-2-5-i2v-1080p", "runway-gen4-turbo"]),
   upscale: Object.freeze(["image-upscaler"]),
 });
@@ -89,6 +94,45 @@ export function aspectoValido(valor: string): boolean {
   return ASPECTOS.includes(valor);
 }
 
+/** `widescreen_16_9` → `16:9`: o vocabulário curto que o Nano Banana usa. */
+export function razaoCurta(aspecto: string): string {
+  const partes = aspecto.match(/(\d+)_(\d+)$/);
+  return partes ? `${partes[1]}:${partes[2]}` : "1:1";
+}
+
+function ehNanoBanana(modelo: string) {
+  return modelo.includes("nano-banana");
+}
+
+/**
+ * O corpo do pedido, no formato do modelo escolhido.
+ *
+ * Cada família fala uma língua: o Mystic quer `widescreen_16_9` e aceita
+ * `styling.colors`; o Nano Banana quer `16:9` e `2K`, e não tem campo de
+ * paleta — nele as cores entram pelo texto. Traduzir aqui evita a família
+ * errada receber um campo que ela recusa, o que derruba a geração inteira.
+ */
+function corpoDoPedido(
+  { papel, modelo, prompt, aspecto, cores, imagemBase64 }:
+    { papel: PapelMagnific; modelo: string; prompt: string; aspecto: string; cores: string[]; imagemBase64?: string },
+): Record<string, unknown> {
+  if (papel === "upscale") return { image: imagemBase64, prompt, scale_factor: "2x" };
+  if (papel === "video") {
+    const corpo: Record<string, unknown> = { prompt, aspect_ratio: aspecto };
+    if (imagemBase64) corpo.image = imagemBase64;
+    return corpo;
+  }
+  if (ehNanoBanana(modelo)) {
+    return { prompt, aspect_ratio: razaoCurta(aspecto), resolution: "2K" };
+  }
+  const corpo: Record<string, unknown> = { prompt, aspect_ratio: aspecto, resolution: "2k" };
+  /* `styling.colors` é o que faz a imagem sair na paleta da marca em vez de
+     depender de o modelo obedecer as cores citadas no texto */
+  const paleta = cores.filter((cor) => /^#[0-9a-f]{6}$/i.test(cor)).slice(0, 5);
+  if (paleta.length) corpo.styling = { colors: paleta.map((cor) => ({ color: cor, weight: 1 })) };
+  return corpo;
+}
+
 /** Abre a tarefa de geração. O resultado vem depois, por `consultarTarefa`. */
 export async function pedirGeracao(
   chave: string,
@@ -97,16 +141,7 @@ export async function pedirGeracao(
 ): Promise<TarefaMagnific> {
   if (!modeloValido(papel, modelo)) throw new Error("MODELO_NAO_PERMITIDO");
   if (papel !== "upscale" && !aspectoValido(aspecto)) throw new Error("ASPECTO_NAO_PERMITIDO");
-  const corpo: Record<string, unknown> = papel === "upscale"
-    ? { image: imagemBase64, prompt, scale_factor: "2x" }
-    : { prompt, aspect_ratio: aspecto, resolution: "2k" };
-  /* `styling.colors` é o que faz a imagem sair na paleta da marca em vez de
-     depender de o modelo obedecer as cores citadas no texto */
-  const paleta = cores.filter((cor) => /^#[0-9a-f]{6}$/i.test(cor)).slice(0, 5);
-  if (papel === "imagem" && paleta.length) {
-    corpo.styling = { colors: paleta.map((cor) => ({ color: cor, weight: 1 })) };
-  }
-  if (papel === "video" && imagemBase64) corpo.image = imagemBase64;
+  const corpo = corpoDoPedido({ papel, modelo, prompt, aspecto, cores, imagemBase64 });
   const bruto = await chamar(chave, `/v1/ai/${modelo}`, { method: "POST", body: JSON.stringify(corpo) });
   const tarefa = extrair(bruto);
   if (!tarefa) throw new Error("MAGNIFIC_SEM_TASK_ID");

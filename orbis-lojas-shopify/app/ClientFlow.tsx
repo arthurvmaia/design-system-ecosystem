@@ -3,11 +3,11 @@
 import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, FolderOpen, PenLine, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Orbis } from "@/app/Orbis";
-import { ClientSitePreview } from "@/app/ClientSitePreview";
+import { ClientPreviaReal } from "@/app/ClientPreviaReal";
 import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada";
 import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
-import { NICHOS, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
+import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
 import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
 
 /**
@@ -55,6 +55,9 @@ function marcaGerada(nicheId: string, semente: string, sobrescritas: Partial<Mar
 
 export function ClientFlow({ onExit }: { onExit: () => void }) {
   const [passo, setPasso] = useState(0);
+  /* até onde a pessoa já chegou: o que ficou para trás é clicável, o que vem
+     depois não, senão daria para pular um passo que ainda nem foi preenchido */
+  const [passoMaisLonge, setPassoMaisLonge] = useState(0);
   const [modo, setModo] = useState<Modo | null>(null);
   const [nicheId, setNicheId] = useState("");
   const [semente, setSemente] = useState("orbis");
@@ -112,6 +115,12 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     })();
     return () => { ativo = false; };
   }, []);
+
+  /** Troca de passo guardando até onde a pessoa já chegou. */
+  function irPara(indice: number) {
+    setPasso(indice);
+    setPassoMaisLonge((atual) => Math.max(atual, indice));
+  }
 
   /* quantas peças o cliente já enviou, para o passo do tema dizer sem rodeio */
   const enviadasPeloCliente = useMemo(
@@ -289,7 +298,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   }
 
   function recomecar() {
-    setPasso(0); setModo(null); setNicheId(""); setGerada(false);
+    setPasso(0); setPassoMaisLonge(0); setModo(null); setNicheId(""); setGerada(false);
     setMarca(MARCA_VAZIA); setEditadoAMao({});
     setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null);
     setImagensGeradas({}); setProgressoIa("");
@@ -356,13 +365,27 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             <button className="text-button" onClick={onExit}>Sair</button>
           </header>
 
+          {/* As abas são o caminho de volta: voltar dois passos com o botão
+              "Voltar" é trabalho que a pessoa já fez uma vez. Só não deixam
+              pular adiante do que ainda falta preencher. */}
           <ol className="cf-steps">
-            {PASSOS.map((rotulo, indice) => (
-              <li key={rotulo} className={indice === passo ? "active" : indice < passo ? "done" : ""}>
-                <i>{indice < passo ? <Check size={11} /> : String(indice + 1).padStart(2, "0")}</i>
-                {rotulo}
-              </li>
-            ))}
+            {PASSOS.map((rotulo, indice) => {
+              const liberado = indice <= passoMaisLonge;
+              return (
+                <li key={rotulo} className={indice === passo ? "active" : indice < passo ? "done" : ""}>
+                  <button
+                    type="button"
+                    disabled={!liberado || indice === passo}
+                    onClick={() => irPara(indice)}
+                    aria-current={indice === passo ? "step" : undefined}
+                    title={liberado ? `Ir para ${rotulo}` : "Termine o passo anterior primeiro"}
+                  >
+                    <i>{indice < passo ? <Check size={11} /> : String(indice + 1).padStart(2, "0")}</i>
+                    {rotulo}
+                  </button>
+                </li>
+              );
+            })}
           </ol>
 
           {erro && <div className="error-banner" role="alert"><CircleAlert size={16} /><span>{erro}</span><button onClick={() => setErro(null)}>Entendi</button></div>}
@@ -388,8 +411,14 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                   <div className="cf-nichos">
                     {NICHOS.map((nicho: { id: string; nome: string; resumo: string }) => (
                       <button key={nicho.id} className={`cf-nicho ${nicheId === nicho.id ? "selecionado" : ""}`} onClick={() => escolherNicho(nicho.id)}>
-                        {/* eslint-disable-next-line @next/next/no-img-element -- SVG gerado aqui, em data URI. */}
-                        <img className="cf-nicho-arte" src={ilustracaoDataUri(nicho.id)} alt="" />
+                        {/* eslint-disable-next-line @next/next/no-img-element -- arquivo local do app; o desenho vetorial é a reserva. */}
+                        <img
+                          className="cf-nicho-arte"
+                          src={fotoDoNicho(nicho.id)}
+                          alt=""
+                          
+                          onError={(evento) => { evento.currentTarget.src = ilustracaoDataUri(nicho.id); }}
+                        />
                         <strong>{nicho.nome}</strong>
                         <small>{nicho.resumo}</small>
                         {nicheId === nicho.id && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
@@ -506,10 +535,10 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           )}
 
           <footer className="cf-foot">
-            {passo > 0 ? <button className="secondary-button" onClick={() => setPasso(passo - 1)}><ArrowLeft size={15} /> Voltar</button> : <span />}
+            {passo > 0 ? <button className="secondary-button" onClick={() => irPara(passo - 1)}><ArrowLeft size={15} /> Voltar</button> : <span />}
             {passo === 1 && <span className="cf-foot-dica">Escreva o nome da marca. Ele aparece na loja inteira.</span>}
             {passo < PASSOS.length - 1 ? (
-              <button className="primary-button" disabled={!podeAvancar} onClick={() => setPasso(passo + 1)}>Próximo <ArrowRight size={15} /></button>
+              <button className="primary-button" disabled={!podeAvancar} onClick={() => irPara(passo + 1)}>Próximo <ArrowRight size={15} /></button>
             ) : (
               <button className="primary-button" onClick={() => void pedirLoja()}>Criar minha loja <ArrowRight size={15} /></button>
             )}
@@ -518,7 +547,13 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
 
         <aside className="cf-preview" aria-label="Prévia da loja">
           <span className="cf-preview-title">Prévia ao vivo</span>
-          <ClientSitePreview brand={marca} sections={template.sections} />
+          {/* a home REAL do tema com a marca aplicada, não um desenho de caixas */}
+          <ClientPreviaReal themeId={themeId} nicheId={nicheId} marca={{
+            name: marca.name || "Minha Marca", slogan: marca.slogan, description: marca.description,
+            primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
+            headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
+            collections: marca.collections, imagens: { ...marca.imagens, ...imagensGeradas },
+          }} />
           {marca.logoDataUri && (
             <div className="cf-preview-logo">
               {/* eslint-disable-next-line @next/next/no-img-element -- data URI gerado localmente. */}

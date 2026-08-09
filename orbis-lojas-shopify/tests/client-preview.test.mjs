@@ -4,10 +4,20 @@ import test from "node:test";
 
 /** Fase 5: prévia no fluxo do cliente, alimentada pela marca que o gerador usa. */
 
-test("o fluxo do cliente mostra a prévia reativa com a marca e o modelo escolhidos", async () => {
+test("a prévia do cliente é a home real do tema, com a marca aplicada", async () => {
   const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
-  assert.match(flow, /<ClientSitePreview brand=\{marca\} sections=\{template\.sections\}/, "a prévia recebe a MESMA marca e o MESMO modelo que vão ao gerador");
+  const previa = await readFile(new URL("../app/ClientPreviaReal.tsx", import.meta.url), "utf8");
+  const rota = await readFile(new URL("../app/api/theme-render/route.ts", import.meta.url), "utf8");
+
   assert.match(flow, /className="cf-preview"/, "coluna de prévia presente");
+  /* a prévia recebe o tema escolhido e a MESMA marca que vai ao gerador */
+  assert.match(flow, /<ClientPreviaReal themeId=\{themeId\} nicheId=\{nicheId\}/);
+  /* e renderiza o tema de verdade, pelo mesmo motor da entrega */
+  assert.match(previa, /\/api\/theme-render/);
+  assert.match(rota, /aplicarMarcaNoTema\(base, marca\)/, "o servidor aplica a marca antes de renderizar");
+  /* vitrine, não editor: o quadro não navega nem compra */
+  const sandbox = previa.match(/sandbox="([^"]*)"/)?.[1] ?? "";
+  assert.equal(sandbox, "allow-same-origin", `o quadro da prévia não pode ganhar mais permissão que ler: veio "${sandbox}"`);
 });
 
 test("a prévia só usa dados da marca; sem copy inventada", async () => {

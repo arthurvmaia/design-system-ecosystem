@@ -3,6 +3,7 @@ import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
 import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { renderThemePage, type PreviewCartItem } from "@/lib/theme-render";
+import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
 
 const FINGERPRINT = /^[0-9a-f]{16}$/;
 
@@ -96,7 +97,36 @@ export async function POST(request: Request) {
     const identity = await getIdentity();
     if (!identity) return new Response("Authentication required", { status: 401 });
     const viewer = await ensureUser(identity);
-    const body = await request.json() as { shopify?: ShopifyThemeImport; page?: string; sections?: unknown; cartItems?: unknown; handle?: unknown; variantId?: unknown };
+    const body = await request.json() as {
+      shopify?: ShopifyThemeImport; page?: string; sections?: unknown; cartItems?: unknown;
+      handle?: unknown; variantId?: unknown; themeId?: unknown; marca?: unknown;
+    };
+
+    /**
+     * Prévia da loja do cliente: tema pelo id, com a marca aplicada na hora.
+     *
+     * A área do cliente não tem o tema em mãos (ele mora no banco), e mostrar o
+     * tema cru seria mentir — a pessoa está escolhendo cores e fontes. Aqui o
+     * MESMO `aplicarMarcaNoTema` da entrega roda antes de renderizar, então a
+     * prévia é a loja que vai sair.
+     */
+    if (typeof body.themeId === "string" && body.marca && typeof body.marca === "object") {
+      await ensureDatabase();
+      const linha = await getD1()
+        .prepare("SELECT default_settings AS defaults FROM themes WHERE id = ? AND status = 'published'")
+        .bind(body.themeId).first<{ defaults: string }>();
+      if (!linha) return Response.json({ error: "THEME_NOT_FOUND" }, { status: 404 });
+      let base: ShopifyThemeImport | null = null;
+      try { base = (JSON.parse(linha.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { base = null; }
+      if (!base) return Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 404 });
+      const marca = body.marca as Parameters<typeof aplicarMarcaNoTema>[1];
+      const { theme } = aplicarMarcaNoTema(base, marca);
+      const resposta = await renderResponse(viewer.id, theme, String(body.page ?? "index"), {
+        nicheId: typeof (body.marca as { nicheId?: unknown }).nicheId === "string" ? (body.marca as { nicheId: string }).nicheId : undefined,
+      });
+      return resposta ?? Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 404 });
+    }
+
     if (!body.shopify?.sourceFingerprint) return Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 400 });
     const onlySections = Array.isArray(body.sections) ? body.sections.map(String).slice(0, 8) : undefined;
     const response = await renderResponse(viewer.id, body.shopify, body.page ?? "index", { cartItems: sanitizeCartItems(body.cartItems), onlySections, handle: sanitizeHandle(body.handle), variantId: Number(body.variantId) || undefined });

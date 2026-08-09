@@ -440,6 +440,17 @@ export function ilustracaoDataUri(id) {
   return logoDataUri(ilustracaoDoNicho(id));
 }
 
+/**
+ * A foto do nicho, para o cartão de escolha.
+ *
+ * São fotografias de produto de verdade, geradas uma vez pelo Nano Banana Pro e
+ * guardadas em `public/nichos/`. O desenho vetorial continua como reserva: se o
+ * arquivo faltar, o cartão cai nele em vez de mostrar imagem quebrada.
+ */
+export function fotoDoNicho(id) {
+  return `/nichos/${nichoPorId(id).id}.jpg`;
+}
+
 /* ------------------------------------------------------------------- marca */
 
 const FORMAS = ["circulo", "losango", "arco", "escudo", "hexagono", "moldura"];
