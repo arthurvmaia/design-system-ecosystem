@@ -48,6 +48,7 @@ import { getDb, tables } from '@ds/indexer';
 import { type ResultadoDeAceite, projectDir } from '@ds/shared';
 import { asc, eq } from 'drizzle-orm';
 import { executadoDireto } from './executado-direto.js';
+import { maisNovoPorNome } from './kits-escolha.js';
 
 /** Uma linha do placar: um kit e o que aconteceu com ele. */
 type ProvaDeKit = {
@@ -120,11 +121,18 @@ export const provarKits = async (opcoes: {
   apenas: string | null;
 }): Promise<ProvaDeKit[]> => {
   const db = getDb();
-  const kits = db
-    .select({ id: tables.kits.id, name: tables.kits.name })
+  const todos = db
+    .select({ id: tables.kits.id, name: tables.kits.name, createdAt: tables.kits.createdAt })
     .from(tables.kits)
     .orderBy(asc(tables.kits.name))
     .all();
+
+  const kits = maisNovoPorNome(todos);
+  if (todos.length > kits.length) {
+    console.log(
+      `  ${todos.length - kits.length} kit(s) superado(s) ficam de fora: mesmo nome, versao mais antiga.`,
+    );
+  }
 
   const filtro = opcoes.apenas === null ? null : opcoes.apenas.toLowerCase();
   const escolhidos =
