@@ -180,6 +180,33 @@ export const limparEstadoRevelado = (
   );
   if (reveladas.length === 0) return { html, limpas: 0, classes: [] };
 
+  /**
+   * A TERCEIRA prova: o script tem de ALCANÇAR esta página.
+   *
+   * As duas provas acima — existe `IntersectionObserver`, e algum script cita a
+   * classe — dizem que o revelador existe. Não dizem que ele encontra alguém.
+   * E é aí que estava o pior defeito que o banco de prova achou: em **8 de 12
+   * kits**, uma seção inteira saía com `opacity: 0` e ficava **invisível para
+   * sempre**.
+   *
+   * A mecânica é a mesma do site que não se mexia: o CSS da origem é escopado
+   * por origem e o script procura por classe. Quando a peça que revela vem de
+   * uma origem e as seções vêm de outra, `querySelectorAll` volta vazio. Só que
+   * aqui o estrago é maior: lá o conteúdo aparecia e não animava; aqui a classe
+   * final é tirada, ninguém a devolve, e o texto some.
+   *
+   * O comentário desta função já previa o risco por extenso — *"se o script que
+   * a reaplica não estiver na página, ele fica invisível PARA SEMPRE"* — e a
+   * guarda que ele descrevia cobria só metade dele. Esta é a outra metade.
+   *
+   * Sem alcance, a classe FICA. O site nasce sem a animação de entrada, que é
+   * uma perda pequena e visível; a alternativa é uma seção em branco, que é uma
+   * perda grande e silenciosa.
+   */
+  if (!comportamentoAlcancaAPagina(html, alvosDoComportamento(scripts))) {
+    return { html, limpas: 0, classes: [] };
+  }
+
   const alvo = new Set<string>(reveladas);
   let limpas = 0;
   const saida = html.replace(/\bclass\s*=\s*"([^"]*)"/gi, (inteiro, valor: string) => {
@@ -215,6 +242,241 @@ export const limparParaComposicao = (corpo: string): string =>
       .replace(/<link[^>]*rel=["']stylesheet["'][^>]*>/gi, ''),
     'data-ds-camadas-de-fundo',
   ).trim();
+
+/**
+ * As coleções de ícone que são, na verdade, CATÁLOGOS DE LOGOTIPO de empresa.
+ *
+ * `simple-icons` é o caso puro: cada ícone dela É a marca de uma empresa real.
+ * `logos` e `skill-icons` são da mesma natureza. Um ícone dessas coleções num
+ * site de cliente não é decoração — é o logotipo de outra companhia.
+ */
+const COLECOES_DE_MARCA = ['simple-icons', 'logos', 'skill-icons'];
+
+/**
+ * As marcas que FICAM, porque no rodapé elas não são marca de terceiro: são o
+ * endereço do próprio cliente.
+ *
+ * Isto nasceu de um falso positivo medido na primeira versão desta função. Ela
+ * tirou, junto com os quatro parceiros do museu, o `instagram`, o `facebook`, o
+ * `youtube` e o `x` do rodapé — que eram exatamente os links sociais DO CLUBE.
+ * O ícone da rede é a placa do link, não a propaganda da rede.
+ *
+ * A régua, então, não é "de que coleção veio", é PARA QUE SERVE: ícone de
+ * plataforma onde a marca do cliente tem perfil é afordância de navegação;
+ * logotipo de empresa numa fileira de "parceiros" é conteúdo da origem.
+ */
+const PLATAFORMAS_DE_CONTATO = new Set([
+  'instagram',
+  'facebook',
+  'x',
+  'twitter',
+  'youtube',
+  'linkedin',
+  'tiktok',
+  'whatsapp',
+  'telegram',
+  'pinterest',
+  'threads',
+  'spotify',
+  'github',
+  'gitlab',
+  'discord',
+  'twitch',
+  'behance',
+  'dribbble',
+  'medium',
+  'reddit',
+  'snapchat',
+  'kwai',
+  'maps',
+  'googlemaps',
+  'waze',
+  'gmail',
+  'googlemybusiness',
+]);
+
+/**
+ * Tira do corpo os LOGOTIPOS DE TERCEIRO que a peça trouxe da origem.
+ *
+ * O defeito foi visto pelo dono no primeiro site do clube: uma faixa "Operado
+ * por" (na origem, "Em parceria com") exibindo British Museum, Sotheby's,
+ * ArtStation e Kickstarter — os parceiros de um template de MUSEU, agora no
+ * hero de um time de futebol.
+ *
+ * Por que nada pegava isso: a troca de mídia só enxerga `<img>` e `<video>` com
+ * `src` dentro de `assets/<cmpId>/`, e estes são `<iconify-icon>` ou `<svg>`
+ * inline — a regex estruturalmente não casa. Pelo texto também não havia como:
+ * marca pictórica não tem texto, e "Sotheby's" nunca entraria na lista de nomes
+ * da origem, que só conhece o nome de quem FEZ o template.
+ *
+ * O que resolve é o sinal que a captura já grava e ninguém lia:
+ * `data-ds-icone-origem="simple-icons:sothebys"` diz, por extenso, de que
+ * coleção o ícone veio. Coleção de logotipo → é marca de terceiro, e sai.
+ *
+ * Sai o ELEMENTO inteiro, não só o desenho: deixar a casca vazia manteria o
+ * respiro de um logotipo que não existe mais, e a fileira ficaria com buracos
+ * regulares — pior que encurtar. A fileira é `flex-wrap`, então ela encolhe sem
+ * desmontar. E o que saiu é DITO, para virar decisão de quem monta o kit.
+ */
+/**
+ * Troca o MONOGRAMA da origem pelo logotipo da marca.
+ *
+ * ## O defeito
+ *
+ * Nem todo logotipo é `<img>`. Um site feito com utilitárias costuma desenhar a
+ * marca como uma LETRA dentro de um quadrado: um `<div class="w-8 h-8
+ * rounded-full">` com um `<span>M</span>` dentro. Para a troca de mídia isso é
+ * invisível — ela só enxerga `<img>` e `<video>` —, e para a troca de texto
+ * também, porque "M" não é o nome de empresa nenhuma.
+ *
+ * O dono viu o "M" na barra de navegação de um clube que TEM escudo. Consertei
+ * aquele caso com uma substituição escrita à mão no `entrada-geracao.json`, e
+ * então medi o site: sobravam **outros dois** — o mesmo monograma reaparece no
+ * avatar do depoimento e no balão de conversa. Substituição por site conserta um
+ * lugar; o defeito é da classe.
+ *
+ * ## A régua, e por que ela é estreita
+ *
+ * Só troca o que é INEQUIVOCAMENTE um selo de marca: caixa pequena (até 16 na
+ * escala de utilitárias), quadrada ou redonda, e cujo conteúdo inteiro é uma ou
+ * duas LETRAS MAIÚSCULAS. Um "4" de contador, um "GG" de tamanho de camisa numa
+ * caixa grande, ou uma caixa com palavra dentro não entram.
+ *
+ * Sem logotipo da marca, nada acontece: trocar a letra por vazio deixaria um
+ * círculo oco, que é pior que a letra errada.
+ */
+export const trocarMonogramaDaOrigem = (
+  corpo: string,
+  logo: { src: string; alt: string } | null,
+): { html: string; trocados: number } => {
+  if (logo === null) return { html: corpo, trocados: 0 };
+  let trocados = 0;
+  // A caixa: `w-8 h-8`… até `w-16 h-16`, com canto arredondado. As duas classes
+  // de tamanho têm de bater — caixa que não é quadrada não é selo de marca.
+  /*
+    Só o `<div>` MAIS INTERNO casa, e o veto de aninhamento é o que garante isso.
+    Sem ele a expressão casava qualquer div e CONSUMIA a região inteira, então o
+    selo lá dentro nunca era visitado — medido: de dois monogramas trocados
+    passou para um, com dois sobrando. É a mesma armadilha do `String.replace`
+    que a poda de container já tinha ensinado.
+  */
+  const html = corpo.replace(
+    /(<div\b[^>]*\bclass="([^"]*)"[^>]*>)((?:(?!<\/?div\b)[\s\S]){0,200}?)(<\/div>)/gi,
+    (inteiro, abre: string, classes: string, dentro: string, fecha: string) => {
+      /**
+       * A ordem das classes NÃO importa — e supor que importava deixou um
+       * monograma passar.
+       *
+       * A primeira versão exigia `w-N` antes de `h-N` na mesma expressão. No
+       * site do clube havia um `h-10 w-10`, altura primeiro, e ele atravessou
+       * intacto: dois monogramas trocados e um sobrando. Quem escreve utilitária
+       * não segue ordem nenhuma, então a checagem é por presença.
+       */
+      const tam = /\bw-(8|10|12|14|16)\b/.exec(classes)?.[1];
+      if (tam === undefined) return inteiro;
+      if (!new RegExp(`\\bh-${tam}\\b`).test(classes)) return inteiro;
+      if (!/\brounded[\w-]*\b/.test(classes)) return inteiro;
+      // O conteúdo inteiro, sem tags: tem de ser uma ou duas maiúsculas.
+      const texto = dentro.replace(/<[^>]*>/g, '').trim();
+      if (!/^[A-ZÀ-Þ]{1,2}$/.test(texto)) return inteiro;
+      // Uma `<img>` já ali significa que o slot foi resolvido por outro caminho.
+      if (/<img\b/i.test(dentro)) return inteiro;
+      trocados += 1;
+      return `${abre}<img src="${logo.src}" alt="${logo.alt}" style="width:100%;height:100%;object-fit:contain">${fecha}`;
+    },
+  );
+  return { html, trocados };
+};
+
+export const removerMarcasDeTerceiro = (corpo: string): { html: string; removidas: string[] } => {
+  const removidas: string[] = [];
+  const daColecaoDeMarca = (tag: string): string | null => {
+    const m = /\b(?:data-ds-icone-origem|icon)\s*=\s*"([^"]+)"/i.exec(tag);
+    const nome = m?.[1];
+    if (nome === undefined) return null;
+    const [colecao, marca] = nome.toLowerCase().split(':');
+    if (colecao === undefined || !COLECOES_DE_MARCA.includes(colecao)) return null;
+    // Rede social e mapa ficam: ali o ícone é a placa do link do cliente.
+    if (marca !== undefined && PLATAFORMAS_DE_CONTATO.has(marca)) return null;
+    return nome;
+  };
+  /**
+   * O buraco é MARCADO em vez de apagado direto — e é isso que permite podar.
+   *
+   * Apagar e pronto deixou, no site do clube, o rótulo "OPERADO POR" sozinho
+   * sobre uma fileira vazia: um título anunciando nada. Trocar por vazio é
+   * justamente o que a doutrina do projeto proíbe. Com a marca no lugar, dá
+   * para saber QUAIS containers ficaram ocos por causa da remoção — e só esses
+   * são podados. Um `<div>` que já era vazio antes (espaçador, moldura
+   * decorativa) não tem marca dentro e não é tocado.
+   */
+  const MARCA = '<!--ds-marca-de-terceiro-removida-->';
+  // `<iconify-icon …></iconify-icon>` e `<span …><svg>…</svg></span>`: as duas
+  // formas que a captura produz para o MESMO ícone, conforme o runtime da
+  // origem tenha ou não terminado de desenhar antes do instantâneo.
+  let html = corpo
+    .replace(/<iconify-icon\b[^>]*>[\s\S]*?<\/iconify-icon>/gi, (bloco) => {
+      const nome = daColecaoDeMarca(bloco);
+      if (nome === null) return bloco;
+      removidas.push(nome);
+      return MARCA;
+    })
+    .replace(/<span\b[^>]*>[\s\S]*?<\/span>/gi, (bloco) => {
+      const nome = daColecaoDeMarca(bloco);
+      if (nome === null) return bloco;
+      removidas.push(nome);
+      return MARCA;
+    });
+
+  if (removidas.length > 0) {
+    /**
+     * Poda: o container que ficou SÓ com marcas some, e a marca sobe no lugar
+     * dele — assim a fileira vazia vira marca, e o pai que só tinha a fileira e
+     * um rótulo curto some também. É o que apaga o "OPERADO POR" órfão.
+     *
+     * O rótulo curto tem teto (60 caracteres) porque isso é uma ETIQUETA de
+     * fileira, não conteúdo: um parágrafo de verdade nunca é levado junto.
+     * A poda repete até parar de mudar, com teto de voltas — HTML torto não
+     * pode virar laço infinito.
+     */
+    const soMarcasEEspaco = (dentro: string): boolean =>
+      dentro.split(MARCA).join('').trim().length === 0;
+    const soMarcasERotuloCurto = (dentro: string): boolean => {
+      const semMarcas = dentro.split(MARCA).join('');
+      const rotulo = /^\s*<(p|span|h[1-6])\b[^>]*>([^<]{0,60})<\/\1>\s*$/i.exec(semMarcas);
+      return rotulo !== null;
+    };
+    /**
+     * Casa o container mais interno — e o veto de aninhamento é só de BLOCO.
+     *
+     * Duas correções medidas moram nesta linha:
+     *
+     * 1. Vetar só a PRÓPRIA tag não bastava: uma `<section>` casava primeiro e
+     *    engolia a fileira inteira. Como ela tinha outro conteúdo, voltava sem
+     *    mudar — e `String.replace` CONSOME a região casada, então o `<div>` de
+     *    dentro nunca era visitado, e nada era podado.
+     * 2. Vetar TODOS, inclusive `<p>`, também não servia: o rótulo órfão É um
+     *    `<p>`, então o pai que tinha rótulo + fileira nunca casava, e o
+     *    "Operado por" sobrevivia sozinho — exatamente o defeito a consertar.
+     *
+     * Por isso o veto lista só os blocos (`div/ul/li/section/aside`): o rótulo
+     * passa como conteúdo e pode ser levado junto, e cada volta do laço sobe um
+     * nível na árvore.
+     */
+    const CONTAINERS =
+      /<(div|ul|li|p|section|aside)\b[^>]*>((?:(?!<\/?(?:div|ul|li|section|aside)\b)[\s\S])*?)<\/\1>/gi;
+    for (let volta = 0; volta < 6; volta++) {
+      const antes = html;
+      html = html.replace(CONTAINERS, (bloco, _tag: string, dentro: string) => {
+        if (!dentro.includes(MARCA)) return bloco;
+        return soMarcasEEspaco(dentro) || soMarcasERotuloCurto(dentro) ? MARCA : bloco;
+      });
+      if (html === antes) break;
+    }
+    html = html.split(MARCA).join('');
+  }
+  return { html, removidas };
+};
 
 /**
  * Reescreve referências de asset do HTML para o namespace do componente:
@@ -380,3 +642,88 @@ export const REGRA_QUE_ABRE_PASSAGEM =
  */
 export const REGRA_DA_TINTA_DA_MARCA =
   '[data-secao]>[data-ds-raiz],[data-secao] [data-ds-corpo],[data-ds-criado]{color:var(--marca-body)}';
+
+/**
+ * Os SELETORES que os scripts de uma peça de comportamento saem procurando.
+ *
+ * Isto existe porque um comportamento pode chegar à página inteiro — CSS na
+ * cascata, script no fim do body, tudo copiado, nenhum aviso — e ainda assim
+ * não fazer NADA. Medido no site do clube: a única peça de comportamento do kit
+ * ("Revelar ao rolar", origem `ds_01KZEQ2GW3RPGGWNRZEKCBFVX9`) trouxe dois
+ * scripts, um procurando `.scroll-item` e o outro `[data-counter-target]`.
+ * Ocorrências dos dois no `index.html` gerado: **0 e 0**. O CSS dela também
+ * casava zero, porque sai escopado na origem dela e nenhuma seção da página
+ * veio daquela origem.
+ *
+ * Não é azar daquele site: só 5 das 55 origens da Biblioteca têm peça de
+ * comportamento, e nenhum dos 12 kits usa uma dessas 5 como origem de seção.
+ * Comportamento estrangeiro é o caso NORMAL — e um comportamento estrangeiro é
+ * classe CSS + script que a alterna em quem a carrega. Quem não carrega a
+ * classe não é alcançado por conserto de escopo nenhum.
+ *
+ * O que se lê aqui é só o literal: `querySelector('…')` e
+ * `querySelectorAll('…')`, nas três aspas. Seletor montado por concatenação
+ * escapa, e escapar é o lado certo do erro — a decisão que isto alimenta
+ * degrada para "não dá para provar que morreu".
+ */
+export const alvosDoComportamento = (scripts: readonly string[]): string[] => {
+  const achados: string[] = [];
+  const padrao = /querySelector(?:All)?\(\s*(['"`])([^'"`]+)\1/g;
+  for (const s of scripts) {
+    for (const m of s.matchAll(padrao)) {
+      const sel = (m[2] ?? '').trim();
+      if (sel !== '' && !achados.includes(sel)) achados.push(sel);
+    }
+  }
+  return achados;
+};
+
+/**
+ * O comportamento ALCANÇA algum elemento desta página?
+ *
+ * A prova é por token, não por `querySelector` de verdade: aqui não há DOM, e
+ * a montagem é determinística e sem navegador. Cada seletor é quebrado no que
+ * ele exige do HTML — `.x` exige a classe `x`, `#z` exige `id="z"`, `[data-y]`
+ * exige o atributo `data-y` — e basta UM desses tokens existir no documento
+ * para o comportamento ser considerado vivo.
+ *
+ * Duas degradações deliberadas, e as duas erram para "vivo":
+ *
+ * - lista de seletores VAZIA devolve `true`. Script que monta o seletor por
+ *   concatenação, ou que trabalha por `addEventListener` no documento, não
+ *   deixa literal para ler. Não dá para provar a morte, então ninguém é
+ *   acusado dela.
+ * - seletor que não pede classe, id nem atributo (`'section'`, `'a'`) também
+ *   conta como alcance: um seletor de tag acha alguma coisa em qualquer página.
+ *
+ * É a mesma disciplina de `limparEstadoRevelado`: só age com a prova na mão,
+ * porque o custo do falso positivo (apagar em silêncio um comportamento que
+ * funcionava) é maior que o do falso negativo (um aviso a menos).
+ */
+export const comportamentoAlcancaAPagina = (
+  html: string,
+  seletores: readonly string[],
+): boolean => {
+  if (seletores.length === 0) return true;
+
+  const classes = new Set<string>();
+  for (const m of html.matchAll(/\bclass\s*=\s*"([^"]*)"/gi)) {
+    for (const c of (m[1] ?? '').split(/\s+/)) if (c !== '') classes.add(c);
+  }
+  const ids = new Set<string>();
+  for (const m of html.matchAll(/\bid\s*=\s*"([^"]*)"/gi)) {
+    const v = (m[1] ?? '').trim();
+    if (v !== '') ids.add(v);
+  }
+
+  for (const sel of seletores) {
+    const pedeClasse = [...sel.matchAll(/\.([\w-]+)/g)].map((m) => m[1] ?? '');
+    const pedeId = [...sel.matchAll(/#([\w-]+)/g)].map((m) => m[1] ?? '');
+    const pedeAtributo = [...sel.matchAll(/\[\s*([\w-]+)/g)].map((m) => m[1] ?? '');
+    if (pedeClasse.length + pedeId.length + pedeAtributo.length === 0) return true;
+    if (pedeClasse.some((c) => classes.has(c))) return true;
+    if (pedeId.some((i) => ids.has(i))) return true;
+    if (pedeAtributo.some((a) => new RegExp(`\b${a}\b`, 'i').test(html))) return true;
+  }
+  return false;
+};

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   REGRA_QUE_ABRE_PASSAGEM,
+  alvosDoComportamento,
+  comportamentoAlcancaAPagina,
   envolverCamadaDePagina,
   envolverSecao,
   extrairCamadasDeFundo,
@@ -11,6 +13,8 @@ import {
   limparTransformCongelado,
   reescreverRefsCss,
   reescreverRefsHtml,
+  removerMarcasDeTerceiro,
+  trocarMonogramaDaOrigem,
 } from './montagem.js';
 
 test('extrairCorpo: documento completo vira só o corpo; fragmento passa direto', () => {
@@ -252,4 +256,246 @@ test('a limpeza não mexe em classe de aba, menu ou carrossel', () => {
   ]);
   assert.equal(r.limpas, 0);
   assert.equal(r.html, html);
+});
+
+/**
+ * Logotipo de OUTRA empresa não entra no site do cliente.
+ *
+ * O caso: uma faixa "Em parceria com" de um template de museu, com os ícones
+ * `simple-icons:britishmuseum` e `simple-icons:sothebys`, foi parar no hero de
+ * um site de clube de futebol. Nada pegava: a troca de mídia só vê `<img>` e
+ * `<video>` de `assets/<cmp>/`, e marca pictórica não tem texto para uma
+ * varredura textual achar.
+ *
+ * O sinal que resolve já era gravado pela captura e ninguém lia: a COLEÇÃO do
+ * ícone. `simple-icons` é um catálogo de logotipos de empresa.
+ */
+test('ícone de coleção de LOGOTIPO sai do corpo; ícone comum fica', () => {
+  const corpo = [
+    '<div class="parceiros">',
+    '<iconify-icon icon="simple-icons:sothebys" data-ds-icone-origem="simple-icons:sothebys"></iconify-icon>',
+    '<span data-ds-icone-origem="simple-icons:kickstarter" data-ds-icone="inline"><svg><path d="M0 0"/></svg></span>',
+    '<iconify-icon icon="lucide:arrow-right" data-ds-icone-origem="lucide:arrow-right"></iconify-icon>',
+    '<span class="rotulo">Em parceria com</span>',
+    '</div>',
+  ].join('\n');
+  const r = removerMarcasDeTerceiro(corpo);
+  assert.ok(!r.html.includes('sothebys'), 'a casca do iconify sai inteira');
+  assert.ok(!r.html.includes('kickstarter'), 'o svg inline sai inteiro');
+  assert.ok(r.html.includes('lucide:arrow-right'), 'seta não é marca: fica');
+  assert.ok(r.html.includes('Em parceria com'), 'texto vizinho não é tocado');
+  assert.deepEqual(r.removidas, ['simple-icons:sothebys', 'simple-icons:kickstarter']);
+});
+
+test('corpo sem marca de terceiro atravessa intacto', () => {
+  const corpo = '<div><iconify-icon icon="lucide:star"></iconify-icon><span>oi</span></div>';
+  const r = removerMarcasDeTerceiro(corpo);
+  assert.equal(r.html, corpo);
+  assert.deepEqual(r.removidas, []);
+});
+
+/**
+ * Ícone de rede social FICA — foi um falso positivo medido.
+ *
+ * A primeira versão desta função tirou, junto com os quatro parceiros do museu,
+ * o instagram/facebook/youtube/x do rodapé do site do clube. Mas ali o ícone da
+ * rede não é marca de terceiro: é a placa do link do PRÓPRIO cliente, que tem
+ * perfil nessas plataformas. A régua não é de que coleção veio — é para que
+ * serve.
+ */
+test('rede social do rodapé FICA; parceiro da origem sai, na mesma peça', () => {
+  const corpo = [
+    '<footer>',
+    '<iconify-icon icon="simple-icons:instagram" data-ds-icone-origem="simple-icons:instagram"></iconify-icon>',
+    '<iconify-icon icon="simple-icons:youtube" data-ds-icone-origem="simple-icons:youtube"></iconify-icon>',
+    '<iconify-icon icon="simple-icons:sothebys" data-ds-icone-origem="simple-icons:sothebys"></iconify-icon>',
+    '</footer>',
+  ].join('\n');
+  const r = removerMarcasDeTerceiro(corpo);
+  assert.ok(r.html.includes('instagram'), 'o link social do cliente fica');
+  assert.ok(r.html.includes('youtube'), 'o link social do cliente fica');
+  assert.ok(!r.html.includes('sothebys'), 'o parceiro do site de origem sai');
+  assert.deepEqual(r.removidas, ['simple-icons:sothebys']);
+});
+
+/**
+ * A fileira que ficou oca some — e o rótulo dela vai junto.
+ *
+ * Apagar só os ícones deixou, no site do clube, um "OPERADO POR" sozinho sobre
+ * nada: um título anunciando o vazio. Degradar para o vazio é justamente o que
+ * a doutrina proíbe.
+ */
+test('fileira de parceiros que esvaziou some, com o rótulo dela', () => {
+  const corpo = [
+    '<div class="w-full border-t pt-8">',
+    '<p class="uppercase">Operado por</p>',
+    '<div class="flex flex-wrap gap-8">',
+    '<iconify-icon icon="simple-icons:sothebys" data-ds-icone-origem="simple-icons:sothebys"></iconify-icon>',
+    '<iconify-icon icon="simple-icons:artstation" data-ds-icone-origem="simple-icons:artstation"></iconify-icon>',
+    '</div>',
+    '</div>',
+    '<p>Este parágrafo continua.</p>',
+  ].join('\n');
+  const r = removerMarcasDeTerceiro(corpo);
+  assert.ok(!r.html.includes('Operado por'), 'o rótulo órfão sai junto com a fileira');
+  assert.ok(!r.html.includes('border-t'), 'o embrulho da faixa sai também');
+  assert.ok(r.html.includes('Este parágrafo continua.'), 'o conteúdo vizinho fica');
+  assert.equal(r.removidas.length, 2);
+});
+
+test('poda não leva junto container que ainda tem conteúdo', () => {
+  const corpo = [
+    '<div class="parceiros">',
+    '<iconify-icon icon="simple-icons:sothebys" data-ds-icone-origem="simple-icons:sothebys"></iconify-icon>',
+    '<img src="assets/cmp_x/foto.jpg">',
+    '</div>',
+  ].join('\n');
+  const r = removerMarcasDeTerceiro(corpo);
+  assert.ok(r.html.includes('parceiros'), 'o container fica: ainda tem a foto');
+  assert.ok(r.html.includes('foto.jpg'));
+  assert.ok(!r.html.includes('sothebys'));
+});
+
+test('div que JÁ era vazio antes não é podado', () => {
+  const corpo =
+    '<div class="espacador"></div><div class="p"><iconify-icon data-ds-icone-origem="simple-icons:sothebys"></iconify-icon></div>';
+  const r = removerMarcasDeTerceiro(corpo);
+  assert.ok(r.html.includes('espacador'), 'vazio sem marca dentro não é tocado');
+});
+
+// ── O comportamento que viaja e não alcança nada ────────────────────────────
+
+test('alvosDoComportamento lê o literal nas três aspas, com e sem All', () => {
+  const alvos = alvosDoComportamento([
+    "document.querySelectorAll('.scroll-item').forEach(fn)",
+    'const c = document.querySelectorAll("[data-counter-target]");',
+    'document.querySelector(`#topo`)',
+  ]);
+  assert.deepEqual(alvos, ['.scroll-item', '[data-counter-target]', '#topo']);
+});
+
+test('seletor montado por concatenação degrada para VIVO: não há o que provar', () => {
+  // O literal que sobra (`.`) não pede classe, id nem atributo nenhum. Sem
+  // exigência não há prova de morte, e o lado certo do erro é não acusar.
+  const alvos = alvosDoComportamento(['document.querySelectorAll("." + nome)']);
+  assert.equal(comportamentoAlcancaAPagina('<section data-secao="hero"></section>', alvos), true);
+});
+
+test('comportamentoAlcancaAPagina: a classe está na página', () => {
+  const html = '<section data-secao="hero"><div class="scroll-item">oi</div></section>';
+  assert.equal(comportamentoAlcancaAPagina(html, ['.scroll-item']), true);
+});
+
+/**
+ * O caso do clube, reduzido: os dois seletores do único comportamento do kit
+ * contra o HTML que a página de fato tem. Zero ocorrências dos dois.
+ */
+test('comportamentoAlcancaAPagina: nenhum alvo existe — o comportamento é morto', () => {
+  const html = '<section data-secao="hero"><h1 class="titulo">Clube</h1></section>';
+  assert.equal(comportamentoAlcancaAPagina(html, ['.scroll-item', '[data-counter-target]']), false);
+});
+
+test('comportamentoAlcancaAPagina: sem seletor nenhum, degrada para vivo', () => {
+  assert.equal(comportamentoAlcancaAPagina('<section></section>', []), true);
+});
+
+/**
+ * Sem alcance, a classe de revelação FICA — e a seção não some.
+ *
+ * O pior defeito que o banco de prova achou: em 8 de 12 kits uma seção inteira
+ * saía com `opacity: 0` e ficava invisível PARA SEMPRE. As duas provas antigas
+ * (existe IntersectionObserver, algum script cita a classe) diziam que o
+ * revelador EXISTE, não que ele ENCONTRA alguém — e quando a peça que revela vem
+ * de uma origem e as seções vêm de outra, `querySelectorAll` volta vazio.
+ *
+ * Perder a animação de entrada é uma perda pequena e visível. Uma seção em
+ * branco é uma perda grande e silenciosa.
+ */
+test('revelação sem alcance na página: a classe NÃO é tirada', () => {
+  const script = `document.querySelectorAll('.scroll-item').forEach(function(el){
+    new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting) e.target.classList.add('in-view'); }); }).observe(el);
+  });`;
+  // A página NÃO tem `.scroll-item` — o alvo do script não existe aqui.
+  const html = '<section class="bloco in-view"><h2 class="in-view">Título</h2></section>';
+  const r = limparEstadoRevelado(html, [script]);
+  assert.equal(r.limpas, 0, 'nada foi tirado');
+  assert.ok(r.html.includes('in-view'), 'a classe fica, e a seção continua visível');
+});
+
+test('revelação COM alcance: a classe é tirada e a animação volta', () => {
+  const script = `document.querySelectorAll('.scroll-item').forEach(function(el){
+    new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting) e.target.classList.add('in-view'); }); }).observe(el);
+  });`;
+  // Agora a página TEM `.scroll-item`: o script acha quem revelar.
+  const html = '<section class="scroll-item in-view"><h2>Título</h2></section>';
+  const r = limparEstadoRevelado(html, [script]);
+  assert.equal(r.limpas, 1);
+  assert.ok(!r.html.includes('in-view'), 'a classe sai para o script reaplicá-la ao rolar');
+  assert.ok(r.html.includes('scroll-item'), 'o alvo do script continua lá');
+});
+
+/**
+ * O monograma da ORIGEM vira o logotipo da marca — em todas as peças.
+ *
+ * O dono viu o "M" na nav de um clube que tem escudo. Consertei aquele caso com
+ * uma substituição escrita à mão, e ao medir o site sobravam OUTROS DOIS: o
+ * mesmo monograma reaparece no avatar do depoimento e no balão de conversa.
+ * Substituição por site conserta um lugar; o defeito é da classe.
+ */
+test('monograma da origem vira o logotipo da marca; conteúdo comum não é tocado', () => {
+  const logo = { src: 'midia/escudo.png', alt: 'Clube' };
+  const corpo = [
+    '<div class="w-8 h-8 rounded-full bg-stone-800"><span class="font-serif">M</span></div>',
+    '<div class="w-12 h-12 rounded-lg bg-blue-600">M</div>',
+    '<div class="w-8 h-8 rounded-full bg-stone-800"><span>4</span></div>',
+    '<div class="w-24 h-24 rounded-full"><span>GG</span></div>',
+    '<div class="w-8 h-8 rounded-full"><span>Sócio</span></div>',
+  ].join('\n');
+  const r = trocarMonogramaDaOrigem(corpo, logo);
+  assert.equal(r.trocados, 2, 'os dois selos de marca, e só eles');
+  assert.equal((r.html.match(/midia\/escudo\.png/g) ?? []).length, 2);
+  assert.ok(r.html.includes('>4<') || r.html.includes('<span>4</span>'), 'número de contador fica');
+  assert.ok(r.html.includes('GG'), 'caixa grande não é selo de marca: fica');
+  assert.ok(r.html.includes('Sócio'), 'palavra dentro da caixa não é monograma');
+});
+
+test('sem logotipo da marca, o monograma fica: círculo oco é pior', () => {
+  const corpo = '<div class="w-8 h-8 rounded-full"><span>M</span></div>';
+  const r = trocarMonogramaDaOrigem(corpo, null);
+  assert.equal(r.trocados, 0);
+  assert.equal(r.html, corpo);
+});
+
+test('slot que já tem imagem não é trocado de novo', () => {
+  const corpo = '<div class="w-8 h-8 rounded-full"><img src="midia/escudo.png" alt="x"></div>';
+  const r = trocarMonogramaDaOrigem(corpo, { src: 'midia/outro.png', alt: 'y' });
+  assert.equal(r.trocados, 0);
+});
+
+/**
+ * A ORDEM das classes não importa — supor que importava deixou um passar.
+ *
+ * A primeira versão exigia `w-N` antes de `h-N`. No site do clube havia um
+ * `h-10 w-10`, altura primeiro, e ele atravessou intacto: dois monogramas
+ * trocados e um sobrando. Quem escreve utilitária não segue ordem nenhuma.
+ */
+test('monograma com a ALTURA declarada antes da largura também é trocado', () => {
+  const logo = { src: 'midia/escudo.png', alt: 'Clube' };
+  const corpo =
+    '<div class="shrink-0 h-10 w-10 bg-gradient-to-br from-[#FBFCD4] rounded-xl flex items-center">M</div>';
+  const r = trocarMonogramaDaOrigem(corpo, logo);
+  assert.equal(r.trocados, 1);
+  assert.ok(r.html.includes('midia/escudo.png'));
+});
+
+test('caixa quadrada SEM canto arredondado não é selo de marca', () => {
+  const corpo = '<div class="w-10 h-10 bg-red-500">M</div>';
+  const r = trocarMonogramaDaOrigem(corpo, { src: 'x.png', alt: 'y' });
+  assert.equal(r.trocados, 0);
+});
+
+test('altura e largura DIFERENTES não são selo de marca', () => {
+  const corpo = '<div class="w-10 h-16 rounded-full">M</div>';
+  const r = trocarMonogramaDaOrigem(corpo, { src: 'x.png', alt: 'y' });
+  assert.equal(r.trocados, 0, 'retângulo não é selo');
 });
