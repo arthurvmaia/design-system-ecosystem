@@ -57,9 +57,31 @@ img, video, iframe, canvas, svg, picture {
   }
   h1 { font-size: clamp(1.75rem, 8vw, 2.75rem); }
   h2 { font-size: clamp(1.4rem, 6vw, 2rem); }
-  /* Alvos de toque dignos. */
-  a, button, [role="button"], input, select, textarea {
-    min-height: 44px;
+  /*
+    Alvos de toque dignos — e agora nas DUAS medidas, com peso para vencer.
+
+    A versão anterior definia só \`min-height\` e sem \`!important\`, e a regra S15
+    (que passou a MEDIR isto) mostrou o buraco no primeiro site: um botão de
+    menu saiu 24x44px. Alto o bastante, estreito demais — o dedo erra na
+    horizontal do mesmo jeito. E qualquer regra mais específica da peça
+    capturada sobrepunha a intenção em silêncio.
+
+    O \`!important\` fica confinado ao breakpoint móvel, como o do grid logo
+    acima: no desktop o desenho da origem manda.
+
+    \`inline-flex\` para o botão-ícone porque \`min-width\` sozinho alarga a caixa
+    e deixa o ícone encostado num canto; centrar é parte de acertar o alvo.
+  */
+  a, button, [role="button"], [role="tab"], input, select, textarea, summary {
+    min-height: 44px !important;
+  }
+  button, [role="button"], [role="tab"], input[type="button"], input[type="submit"], summary {
+    min-width: 44px !important;
+  }
+  button, [role="button"], [role="tab"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   /* Navegação horizontal densa vira lista rolável suave, sem estourar. */
   [data-secao="nav"] nav,

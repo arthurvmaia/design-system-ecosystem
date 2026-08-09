@@ -368,6 +368,37 @@ const varsDaEscala = (escala: EscalaDaOrigem | null | undefined): string => {
 };
 
 /**
+ * O PISO de 12px, e só no celular.
+ *
+ * A régua é MEDIDA na origem, e é assim que deve ser: ela carrega a proporção
+ * que aquele designer escolheu. Só que a régua de um site pode começar em 11px,
+ * e num telefone 11px não se lê — medido no site do clube, onde
+ * `--marca-passo-1` saiu 11px e três trechos ("Vagas na Área VIP", "O clube",
+ * "No jogo") ficaram abaixo do legível.
+ *
+ * Levantar o degrau na régua inteira seria falsear a medição e mexeria no
+ * desktop, onde 11px em rótulo de caixa alta é escolha legítima. Então o piso
+ * vive numa media query: no celular o degrau miúdo vira 12px, e no desktop a
+ * régua da origem continua exatamente como foi medida.
+ *
+ * É a mesma natureza do alvo de toque de 44px — acessibilidade que só o
+ * tamanho da tela justifica.
+ */
+const PISO_DE_LETRA_NO_CELULAR = 12;
+
+const pisoDaEscalaNoCelular = (escala: EscalaDaOrigem | null | undefined): string => {
+  if (escala == null || escala.degraus.length === 0) return '';
+  const linhas: string[] = [];
+  escala.degraus.forEach((px, i) => {
+    if (Number.isFinite(px) && px < PISO_DE_LETRA_NO_CELULAR) {
+      linhas.push(`    ${nomeDoPasso(i)}: ${PISO_DE_LETRA_NO_CELULAR}px;`);
+    }
+  });
+  if (linhas.length === 0) return '';
+  return `\n@media (max-width: 640px) {\n  :root {\n${linhas.join('\n')}\n  }\n}\n`;
+};
+
+/**
  * CSS da marca aplicado ao site gerado.
  *
  * A tipografia sai de `buildTypographyCss` (fonte da verdade compartilhada):
@@ -431,7 +462,7 @@ body { font-size: ${e.corpoTamanho}; line-height: ${e.corpoLineHeight}; }
   ${branding.palette.accent ? `--brand-accent: ${branding.palette.accent};` : ''}
 ${varsSemanticas}${varsDaEscala(escala)}
 }
-/* Override dos --primary do componente para casar com a marca. */
+${pisoDaEscalaNoCelular(escala)}/* Override dos --primary do componente para casar com a marca. */
 :root { --primary: var(--brand-primary); }
 body { background: var(--brand-bg); color: var(--brand-fg); }
 ${escalaCss}${
