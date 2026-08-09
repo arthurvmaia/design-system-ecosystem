@@ -16,6 +16,7 @@
     "acervo:lote": "tsx scripts/acervo-lote.ts",
     "curar": "tsx scripts/curar-biblioteca.ts",
     "kits": "tsx scripts/montar-kits.ts",
+    "kits:provar": "tsx scripts/kits-provar.ts",
     "projeto:de-kit": "tsx scripts/projeto-de-kit.ts",
     "site:gerar": "tsx scripts/site-gerar.ts",
     "fila": "tsx scripts/fila.ts",
