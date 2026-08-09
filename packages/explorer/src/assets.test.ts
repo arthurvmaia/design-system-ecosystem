@@ -158,3 +158,23 @@ test('extensão CONHECIDA na URL continua valendo; MIME continua mandando', () =
   assert.equal(extPara('https://f/x.woff2', 'application/octet-stream'), 'woff2');
   assert.equal(extPara('https://f/x.17', 'text/css'), 'css');
 });
+
+test('url() com aspa HTML-escapada nao carrega a entidade para o endereco', () => {
+  // Num style="..." a aspa interna E OBRIGATORIAMENTE escapada, e o padrao de
+  // extracao aceitava qualquer coisa que nao fosse ' " ou ) — e &quot; nao e
+  // nenhum dos tres. A entidade ia parar no caminho do arquivo e a referencia
+  // nunca resolvia. Medido: 28 bundles da Biblioteca e 12 ocorrencias nos 20
+  // sites de prova, uma delas o fundo de uma secao inteira.
+  const html =
+    '<section style="background: url(&quot;assets/bg.jpg&quot;) center / cover"></section>';
+  const refs = extractAssetRefs(html, '', 'https://exemplo.com/pagina');
+  const bg = refs.find((r) => r.raw.includes('bg.jpg'));
+  assert.ok(bg, 'a referencia foi encontrada');
+  assert.equal(bg?.raw, 'assets/bg.jpg', 'sem a entidade grudada');
+  assert.equal(bg?.absolute, 'https://exemplo.com/assets/bg.jpg');
+});
+
+test('url() com aspa normal continua funcionando', () => {
+  const refs = extractAssetRefs('<div style="background:url(\'bg/hero.webp\')"></div>', '', null);
+  assert.ok(refs.some((r) => r.raw === 'bg/hero.webp'));
+});

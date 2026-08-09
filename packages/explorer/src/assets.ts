@@ -48,6 +48,26 @@ const MIME_EXT: Record<string, string> = {
   'application/json': 'json',
 };
 
+/**
+ * Tira a ASPA ESCAPADA que sobra dentro de `url()` num atributo `style`.
+ *
+ * Num `style="background:url(&quot;bg.jpg&quot;)"`, a aspa interna vem
+ * HTML-escapada — é obrigatório, porque o atributo já é delimitado por aspa. O
+ * padrão de extração aceitava qualquer coisa que não fosse `'`, `"` ou `)`, e
+ * `&quot;` não é nenhum dos três: a entidade entrava no endereço e ia parar no
+ * caminho do arquivo.
+ *
+ * O resultado é uma referência que nunca resolve: `url(&quot;assets/bg.jpg&quot;)`
+ * com o endereço da origem colado na frente. Medido: **28 bundles da
+ * Biblioteca** e 12 ocorrências nos 20 sites de prova, e uma delas era o fundo
+ * de uma seção inteira.
+ */
+const semAspasHtml = (u: string): string =>
+  u
+    .replace(/^(?:&quot;|&#0*34;|&apos;|&#0*39;)/i, '')
+    .replace(/(?:&quot;|&#0*34;|&apos;|&#0*39;)$/i, '')
+    .trim();
+
 const MIME_KIND: Array<[RegExp, CapturedAssetKind]> = [
   [/^text\/css/i, 'css'],
   [/javascript/i, 'js'],
@@ -123,7 +143,8 @@ export const extractAssetRefs = (html: string, css: string, baseUrl: string | nu
   }
   // HTML/CSS: url(...).
   for (const input of [html, css]) {
-    for (const m of input.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi)) add(m[2] ?? '');
+    for (const m of input.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi))
+      add(semAspasHtml(m[2] ?? ''));
   }
   // CSS: @import "..." e @import url(...) (o url já pego acima).
   for (const m of css.matchAll(/@import\s+(['"])([^'"]+)\1/gi)) add(m[2] ?? '');
