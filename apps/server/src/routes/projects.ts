@@ -43,6 +43,11 @@ import { criarMarcaAutomatica, criarMidiasDasSecoes } from '../lib/marca-automat
 import { montarKitAutomatico } from '../lib/montar-kit-automatico.js';
 import { recolorabilidadeDoBundle } from '../lib/recolorabilidade-do-bundle.js';
 import { enqueueTask } from '../lib/task-queue.js';
+import {
+  avisoDePedidoAoMagnific,
+  lerEscolhaDeImagem,
+  lerFluxoDoPedido,
+} from '../lib/trava-de-imagem.js';
 
 export const projectsRoute = new Hono();
 
@@ -173,12 +178,29 @@ projectsRoute.post(
        * peças. Com ela, o mesmo acervo dá visuais diferentes.
        */
       origem: z.string().startsWith('ds_').optional(),
+      /**
+       * A TRAVA: de onde as imagens desta marca saem.
+       *
+       * Sem ela a rota RECUSA — ver `trava-de-imagem.ts`. O ilimitado do
+       * Magnific não vale nesta sessão, então toda geração consome crédito, e
+       * um clique de atalho não pode esconder gasto de milhares.
+       */
+      imagens: z.enum(['desenho', 'magnific']).optional(),
+      /** `wizard` já vem com magnific; `expressa` (o padrão) pergunta. */
+      fluxo: z.enum(['expressa', 'wizard']).optional(),
     }),
   ),
   async (c) => {
     const recusa = exigeSenhaDeAcao(c);
     if (recusa !== null) return recusa;
-    const { objetivo, nicho, nome, marca: nomeDaMarca, origem } = c.req.valid('json');
+    const corpo = c.req.valid('json');
+    const { objetivo, nicho, nome, marca: nomeDaMarca, origem } = corpo;
+
+    // A trava, antes de qualquer trabalho: recusar depois de montar o kit
+    // desperdiçaria a montagem e ainda deixaria lixo no banco.
+    const decisao = lerEscolhaDeImagem(corpo, lerFluxoDoPedido(corpo));
+    if (!decisao.ok) return c.json(decisao, 400);
+
     const db = getDb();
 
     const pecas = db.select().from(tables.libraryComponents).all();
@@ -497,12 +519,19 @@ projectsRoute.post('/:id/marca-automatica', async (c) => {
   if (!row) return c.json({ error: 'not_found' }, 404);
 
   let nicho: string | null = null;
+  let corpoDaMarca: unknown = null;
   try {
-    const corpo = (await c.req.json()) as { nicho?: unknown };
+    corpoDaMarca = await c.req.json();
+    const corpo = corpoDaMarca as { nicho?: unknown };
     if (typeof corpo.nicho === 'string' && corpo.nicho.trim() !== '') nicho = corpo.nicho.trim();
   } catch {
     // sem corpo é uso legítimo: nicho é opcional
   }
+
+  // A trava também aqui: este é o botão "criar marca automaticamente" de tela,
+  // e o dono pediu que TODA tela que cria marca pergunte antes de gastar.
+  const decisaoDaMarca = lerEscolhaDeImagem(corpoDaMarca, lerFluxoDoPedido(corpoDaMarca));
+  if (!decisaoDaMarca.ok) return c.json(decisaoDaMarca, 400);
 
   const r = await criarMarcaAutomatica(id, { nicho, secoes: secoesQueAceitamMidia(row) });
   const media = [...lerManifest(row.mediaManifestJson), ...r.media];
@@ -511,7 +540,14 @@ projectsRoute.post('/:id/marca-automatica', async (c) => {
     .where(eq(tables.projects.id, id))
     .run();
 
-  return c.json({ branding: r.branding, media }, 201);
+  return c.json(
+    {
+      branding: r.branding,
+      media,
+      ...(decisaoDaMarca.escolha === 'magnific' ? { aviso: avisoDePedidoAoMagnific(id) } : {}),
+    },
+    201,
+  );
 });
 
 /**
