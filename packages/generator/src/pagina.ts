@@ -14,6 +14,7 @@ import {
   type ReguasDeEscala,
   type Retema,
   atributosDeProxy,
+  coresDoValor,
   envolverEmProxies,
   escoparCss,
   fontesDaOrigem,
@@ -25,6 +26,7 @@ import {
   retemarHtmlInline,
   retipografarCss,
   soltarAncestraisAusentes,
+  tokensDeMovimento,
 } from '@ds/composer';
 import {
   type KitComponenteDeGeracao,
@@ -40,18 +42,31 @@ import {
   listarAssetsFaltando,
   projectGeneratedVersionDir,
   projectMediaDir,
+  rastreamentoDeTerceiro,
   reguasParaOrigem,
   resolverSecoes,
   separarCamadasDePagina,
   separarComportamentosDaPagina,
   vaultCaptureV2Dir,
 } from '@ds/shared';
+import { SCRIPT_DAS_ABAS, cssDasAbas, temAbasCriadas } from './abas-da-pagina.js';
 import { lerCssDoBundle } from './cascata.js';
+import {
+  CSS_DO_ALTERNADOR,
+  type EstadoDerivado,
+  SCRIPT_DO_ALTERNADOR,
+  avisosDosEstados,
+  derivarEstados,
+  lerEstadosDoBundle,
+  podarEstadosJaVivos,
+} from './estados.js';
 import { buildBrandingCss } from './index.js';
 import {
   REGRA_DA_TINTA_DA_MARCA,
   REGRA_QUE_ABRE_PASSAGEM,
+  alvosDoComportamento,
   atributosDoDocumentoDaPeca,
+  comportamentoAlcancaAPagina,
   envolverCamadaDePagina,
   envolverSecao,
   extrairCamadasDeFundo,
@@ -61,7 +76,15 @@ import {
   limparTransformCongelado,
   reescreverRefsCss,
   reescreverRefsHtml,
+  removerMarcasDeTerceiro,
+  trocarMonogramaDaOrigem,
 } from './montagem.js';
+import {
+  SCRIPT_DA_REVELACAO,
+  cssDaRevelacao,
+  destravarRevelacaoSemGatilho,
+  marcarAlvosDeRevelacao,
+} from './movimento-da-pagina.js';
 import { removerScriptsQueCompilamCss } from './pecas.js';
 import { cssResponsivoBase } from './responsivo.js';
 
@@ -103,6 +126,14 @@ export type SecaoCriativa = {
    * ou sozinho quando a seção não tem peça.
    */
   htmlCriado?: string;
+  /**
+   * O texto que cada ESTADO capturado desta seção mostra quando ligado, por id
+   * de estado (`st_1`, `st_2`…). Só é lido quando o estado muda TEXTO, e existe
+   * por uma razão só: o texto da origem NUNCA viaja. Sem esta entrada o estado
+   * cai com `precisa-texto`, e isso é melhor que injetar a palavra que a outra
+   * empresa escreveu.
+   */
+  estados?: Record<string, { rotulo?: string; texto?: string }>;
 };
 
 export type EntradaDaPagina = {
@@ -224,11 +255,66 @@ const aplicarSubstituicoes = (
   return saida;
 };
 
-/** A cor de `bg-[#hex]` nos atributos de `<body>` da origem, quando declarada. */
-const corDeFundoDaOrigem = (attrs: string | undefined): string | null => {
-  if (attrs === undefined) return null;
-  const m = /bg-\[(#(?:[0-9a-f]{3}|[0-9a-f]{6}))\]/i.exec(attrs);
-  return m?.[1] ?? null;
+/**
+ * A cor que a FOLHA dá ao `body` — a página da origem, quando ela mora no CSS.
+ *
+ * Vale a PRIMEIRA regra que pinta o body com cor opaca, e não a última: a
+ * declaração base vem antes das variações, então `@media (prefers-color-scheme:
+ * dark){body{background:#000}}` num site claro não inverte o tema lido aqui.
+ *
+ * Alfa < 1 não define página: por baixo de um fundo translúcido ainda há o que
+ * pintar, e o tema é do que está embaixo.
+ *
+ * Isto lê TEMA (claro ou escuro), não renderização exata — por isso não vale
+ * reimplementar a cascata: `body` como elemento inteiro basta, e `.body-x` ou
+ * `#body` não são a página.
+ */
+const corDePaginaNoCss = (css: string): string | null => {
+  const regra = /([^{}]*)\{([^{}]*)\}/g;
+  let m = regra.exec(css);
+  while (m !== null) {
+    const seletor = m[1] ?? '';
+    const declaracoes = m[2] ?? '';
+    if (/(^|[\s,>+~])body(?![\w-])/i.test(seletor)) {
+      for (const d of declaracoes.split(';')) {
+        const i = d.indexOf(':');
+        if (i < 0) continue;
+        const prop = d.slice(0, i).trim().toLowerCase();
+        if (prop !== 'background' && prop !== 'background-color') continue;
+        const opaca = coresDoValor(d.slice(i + 1)).find((c) => c.alfa === undefined);
+        if (opaca !== undefined) return opaca.hexOpaco;
+      }
+    }
+    m = regra.exec(css);
+  }
+  return null;
+};
+
+/**
+ * A cor de PÁGINA de uma origem: a superfície sobre a qual ela foi desenhada.
+ *
+ * Duas fontes, nesta ordem, porque duas sintaxes guardam o mesmo fato:
+ *
+ * 1. `bg-[#hex]` na tag `<body>` — o idioma do Tailwind arbitrário;
+ * 2. `body { background(-color): ... }` na folha — onde um site escrito à mão
+ *    põe a cor da página.
+ *
+ * Ler só a primeira foi o defeito medido no site do clube, e ele custou 14
+ * trechos ilegíveis num site só. A origem `green-museum` é de tema CLARO e
+ * declara `body{background-color:#E6E3D6}` no CSS, sem nada na tag — então o
+ * tema dela saía DESCONHECIDO. E desconhecido caía no regime "os temas
+ * combinam", que é o único internamente INCOERENTE: ele mantém a superfície da
+ * origem e mesmo assim resgata o texto para a tinta da marca. Metade da
+ * migração. Na tela: tinta clara da marca sobre o cartão creme da origem.
+ *
+ * Por isso a leitura precisa cobrir as duas sintaxes — e quando nenhuma
+ * responde, quem chama tem de DIZER que não soube, em vez de seguir com um
+ * palpite calado.
+ */
+export const corDePaginaDaOrigem = (attrs: string | undefined, css?: string): string | null => {
+  const naTag = attrs === undefined ? null : /bg-\[(#(?:[0-9a-f]{3}|[0-9a-f]{6}))\]/i.exec(attrs);
+  if (naTag?.[1] !== undefined) return naTag[1];
+  return css === undefined || css.trim().length === 0 ? null : corDePaginaNoCss(css);
 };
 
 /** Luminância relativa (0 escuro → 1 claro) de um hex; null quando não é hex. */
@@ -611,6 +697,83 @@ const trocarVideosDaOrigem = (
 };
 
 /**
+ * A vaga de FOTO que recebe um VÍDEO.
+ *
+ * Até aqui a troca era estritamente preservadora de tipo: `<img>` virava
+ * `<img>`, `<video>` virava `<video>`, e não havia caminho nenhum de um para o
+ * outro. Isso deixava o pedido do dono sem via — *"em componentes que tem
+ * espaço para midia, vc se ver que da para encaixar um video de forma harmonica
+ * e bonita, vc pode gerar um video"* —, porque a peça capturada quase nunca traz
+ * um `<video>`: ela traz `<img>`.
+ *
+ * A decisão de QUE vaga comporta vídeo não mora aqui, e é de propósito: ela é do
+ * criativo, que olha a página e ancora um `kind: 'video'` naquela seção. Aqui
+ * mora só o mecanismo — quando a seção tem vídeo sobrando e nenhuma tag
+ * `<video>` para recebê-lo, a primeira foto de origem ainda não trocada vira o
+ * vídeo.
+ *
+ * **Sempre `muted` e `playsInline`.** Sem os dois, o navegador do celular
+ * RECUSA o autoplay e o que aparece é um retângulo preto — pior que a foto que
+ * estava ali. `loop` porque vídeo ambiente que para no fim deixa a seção morta,
+ * e `poster` com a foto que ele substituiu, para o primeiro quadro não ser
+ * vazio enquanto carrega.
+ */
+const trocarFotoPorVideo = (
+  html: string,
+  cmpId: string,
+  videos: readonly string[],
+  capa: string | undefined,
+): { html: string; usados: number } => {
+  /**
+   * A vaga tem de ser GRANDE — "a primeira que aparecer" produziu um absurdo.
+   *
+   * Medido no site do clube: o vídeo de estádio de 8 segundos foi parar num
+   * `w-10 h-10 rounded-full grayscale`, que é o avatar de 40px do depoimento.
+   * Vídeo ali não é decisão de desenho, é acidente.
+   *
+   * A marcação diz o tamanho, e é dela que sai a régua: uma medida pequena
+   * declarada (`w-10`, `h-8`…) desqualifica a vaga, e `w-full`, `h-full`,
+   * `inset-0`, `aspect-` ou `object-cover` qualificam. Sem nenhum dos dois
+   * sinais a vaga é ACEITA — a peça pode dimensionar por CSS próprio, e recusar
+   * por falta de pista deixaria o vídeo de fora justamente nas peças bem
+   * escritas.
+   */
+  const vagaComporta = (classes: string): boolean => {
+    if (/\b[wh]-(?:[1-9]|1[0-6])\b/.test(classes)) return false;
+    if (/\brounded-full\b/.test(classes) && !/\b(?:w-full|h-full|inset-0)\b/.test(classes)) {
+      return false;
+    }
+    return true;
+  };
+
+  let usados = 0;
+  const saida = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    if (usados >= videos.length) return tag;
+    const src = /\bsrc\s*=\s*"([^"]+)"/i.exec(tag)?.[1];
+    if (src === undefined || !src.startsWith(`assets/${cmpId}/`)) return tag;
+    if (src.includes('/frames/')) return tag;
+    // As classes da `<img>` viajam: é delas que vem o tamanho, o recorte e o
+    // arredondamento da vaga. Vídeo sem elas sai fora da moldura.
+    const classes = /\bclass\s*=\s*"([^"]*)"/i.exec(tag)?.[1] ?? '';
+    if (!vagaComporta(classes)) return tag;
+    const novo = videos[usados];
+    if (novo === undefined) return tag;
+    usados += 1;
+    const classe = classes === '' ? '' : ` class="${classes}"`;
+    /**
+     * A capa vem da MÍDIA DO PROJETO, nunca do asset da origem.
+     *
+     * Usar a foto que estava ali seria devolver a imagem de outra empresa como
+     * primeiro quadro do vídeo — o mesmo vazamento que a troca de mídia existe
+     * para fechar. Sem capa do projeto, melhor sem capa nenhuma.
+     */
+    const poster = capa === undefined ? '' : ` poster="${capa}"`;
+    return `<video${classe} src="${novo}"${poster} autoplay loop muted playsinline></video>`;
+  });
+  return { html: saida, usados };
+};
+
+/**
  * Palavras que aparecem em endereço de site e não são nome de marca.
  *
  * Sem esta lista, `design-studio.example.com` mandaria trocar "design" e
@@ -851,72 +1014,13 @@ const nomesQueSobraram = (html: string, nomes: readonly string[]): string[] => {
 };
 
 /**
- * Marcas de RASTREAMENTO de terceiro dentro de um script.
+ * As três constantes e a régua do rastreamento moram em `@ds/shared`.
  *
- * Não são todas as que existem — são as que aparecem em site real com folga
- * suficiente para valer a busca. O que não estiver aqui passa, e é por isso que
- * a conferência de rede na validação continua sendo obrigatória.
+ * Elas nasceram aqui e rodavam tarde demais: na montagem da página, quando a
+ * peça já tinha entrado no kit e o site já era do cliente. A curadoria — que
+ * roda com o bundle EM DISCO — precisa da MESMA régua para recusar antes, e
+ * duas cópias divergiriam na primeira regex nova. Ver `shared/rastreamento.ts`.
  */
-const MARCAS_DE_RASTREIO = [
-  /\bgtag\s*\(/,
-  /\bdataLayer\s*\.\s*push\b/,
-  /\bGoogleAnalyticsObject\b/,
-  /\bfbq\s*\(/,
-  /\bttq\s*\.\s*(load|page|track)\b/,
-  /\b_hjSettings\b/,
-  /\bclarity\s*\(/,
-  /\bsnaptr\s*\(/,
-  /\b_linkedin_partner_id\b/,
-  /\bG-[A-Z0-9]{8,}\b/,
-  /\bAW-\d{9,}\b/,
-  /\bUA-\d{4,}-\d+\b/,
-  /\bGTM-[A-Z0-9]{5,}\b/,
-];
-
-/** Endereços que existem para CARREGAR o rastreador — o script é o vendedor. */
-const CARREGADORES_DE_RASTREIO = [
-  'googletagmanager.com',
-  'google-analytics.com',
-  'googleadservices.com',
-  'connect.facebook.net',
-  'static.hotjar.com',
-  'clarity.ms',
-  'snap.licdn.com',
-  'analytics.tiktok.com',
-];
-
-/**
- * O que este script é, do ponto de vista de quem vai ENTREGAR o site.
- *
- * Um site gerado carregava a `gtag.js` de 572 KB e o snippet
- * `gtag('config','G-…')` da EMPRESA DE ORIGEM, vindos dentro dos bundles
- * capturados. No navegador eles carregavam de verdade: cada visitante do site do
- * cliente virava `page_view` e `scroll` na conta de outra empresa. Nada quebrava,
- * nada aparecia no console — o estrago só existe do lado de fora.
- *
- * Três respostas, porque o conserto de cada caso é diferente:
- *
- * - **`puro`**: o arquivo existe só para rastrear (é a biblioteca do fornecedor,
- *   ou o snippet de quatro linhas que a inicia). Sai inteiro, e o site não perde
- *   nada — ninguém escolheu aquele desenho por causa do analytics.
- * - **`misturado`**: tem rastreamento E outra coisa junta. Tirar o arquivo
- *   levaria comportamento real embora, então ele FICA e a regra S2 reprova: quem
- *   entrega precisa decidir, não descobrir depois.
- * - **`null`**: não é rastreamento.
- *
- * A régua do `puro`: ou o script carrega o fornecedor pelo endereço dele (aí é o
- * vendedor, não código do site), ou é pequeno o bastante para ser só o snippet de
- * inicialização e não registra evento nenhum de interface (`addEventListener`).
- */
-const RASTREIO_PEQUENO = 4096;
-const rastreamentoDeTerceiro = (js: string): 'puro' | 'misturado' | null => {
-  const temMarca = MARCAS_DE_RASTREIO.some((r) => r.test(js));
-  const carregaFornecedor = CARREGADORES_DE_RASTREIO.some((d) => js.includes(d));
-  if (!temMarca && !carregaFornecedor) return null;
-  if (carregaFornecedor) return 'puro';
-  if (js.length <= RASTREIO_PEQUENO && !/\baddEventListener\s*\(/.test(js)) return 'puro';
-  return 'misturado';
-};
 
 /** Os `<script src>` remotos de um documento de bundle, na ordem. */
 const scriptsRemotosDe = (html: string): string[] => {
@@ -979,12 +1083,29 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       if (retemaPorOrigem.has(origem)) continue;
       const indexPath = join(cmp.bundlePath, 'index.html');
       if (!existsSync(indexPath)) continue;
-      const cor = corDeFundoDaOrigem(
+      // A folha entra na leitura do tema: um site escrito à mão guarda a cor da
+      // página em `body{background}`, não numa classe do Tailwind na tag.
+      const cor = corDePaginaDaOrigem(
         atributosDoDocumentoDaPeca(readFileSync(indexPath, 'utf8')).body,
+        lerCssDoBundle(cmp.bundlePath).css,
       );
       const lum = cor === null ? null : luminancia(cor);
       const oposto = lum !== null && Math.abs(lumDaMarca - lum) > 0.4;
       if (oposto) origensComFundoOposto.add(origem);
+      /**
+       * Tema que não se leu vira AVISO, porque o silêncio aqui já custou caro.
+       *
+       * Sem cor de página, `oposto` é falso por falta de dado — não por
+       * medição — e a origem cai no regime "os temas combinam". Esse regime
+       * mantém a superfície da origem E resgata o texto para a tinta da marca:
+       * quando o palpite erra, sai tinta clara sobre cartão claro. Dizer que
+       * não se soube é o que separa "medi e combinam" de "não medi".
+       */
+      if (cor === null) {
+        avisos.push(
+          `[${origem}] não deu para ler a cor de página desta origem (nem \`bg-[#hex]\` no <body>, nem \`body{background}\` na folha): ela foi tratada como tema COMPATÍVEL com a marca, então as superfícies dela ficam como estavam. Se aparecer texto claro sobre bloco claro nas peças desta origem, é por aqui.`,
+        );
+      }
       /**
        * TODA origem ganha retema; o que muda é a extensão.
        *
@@ -1143,6 +1264,21 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    * falta de substituta" — no HTML pronto as duas são só um `<img>`.
    */
   const paraOAceite = { fotosDaOrigem: 0, videosDaOrigem: 0, secoesVazias: [] as string[] };
+  /**
+   * Peça → origem, e as origens que de fato PISARAM na página.
+   *
+   * As duas existem para julgar se um comportamento está vivo. O CSS de um
+   * comportamento sai escopado na origem dele; se nenhuma seção, camada ou
+   * ponteiro da página veio daquela origem, aquele CSS casa zero elementos —
+   * medido no site do clube, onde o único comportamento do kit tinha origem
+   * `ds_…CBFVX9` e os proxies presentes eram outros três.
+   *
+   * `origensNaPagina` só recebe origem cujo corpo ENTROU no HTML: `processarPeca`
+   * sozinho não basta, porque ele também roda para peças cujo corpo é depois
+   * descartado (é o caso do próprio comportamento não-`cursor`).
+   */
+  const origemDaPeca = new Map<string, string>();
+  const origensNaPagina = new Set<string>();
   /** Quantas vezes o nome da empresa de origem foi trocado pelo da marca. */
   let nomesTrocados = 0;
   /** Os nomes de todas as origens do kit, para a varredura final da regra S2. */
@@ -1160,12 +1296,44 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
    * As mídias do projeto ANCORADAS em cada seção, na ordem em que chegaram.
    * É delas que sai a troca das fotos de origem.
    */
+  /**
+   * Os arquivos que a MARCA declarou como logotipo — venham rotulados como
+   * vierem na lista de mídia.
+   *
+   * O `kind` da mídia é declaração de quem escreveu a lista, e declaração erra.
+   * Medido no site do clube: o escudo entrou como `kind: 'image'` e foi parar
+   * numa vaga de foto de 272x520. O escudo é **33% transparente**, então o que
+   * apareceu foi o fundo escuro do cartão atravessando o vazio do logotipo — o
+   * dono viu "espaço preto sobrando" e estava certo.
+   *
+   * Logotipo tem margem própria e fundo vazio por construção. Esticado numa
+   * caixa de foto ele sempre sobra, com qualquer `object-fit`. Então a régua não
+   * é o rótulo: é a PROCEDÊNCIA. Arquivo que a marca registrou como logo não
+   * preenche vaga de foto, e isso vale para qualquer marca.
+   */
+  const arquivosDeLogo = new Set<string>();
+  const anotarLogo = (p: unknown): void => {
+    if (typeof p === 'string' && p.trim() !== '') arquivosDeLogo.add(p);
+  };
+  for (const l of entrada.branding.logos ?? []) anotarLogo(l.path);
+  anotarLogo(entrada.branding.logoPath);
+  anotarLogo(entrada.branding.faviconPath);
+  for (const p of Object.values(entrada.branding.logosLocais ?? {})) {
+    anotarLogo(p);
+    if (p !== null && typeof p === 'object') anotarLogo((p as { path?: unknown }).path);
+  }
+
   const midiaPorSecao = new Map<string, { fotos: string[]; videos: string[] }>();
+  const logosBarradas: string[] = [];
   for (const m of entrada.midia ?? []) {
     if (m.secaoId === undefined) continue;
     // Marca não é conteúdo: a logo tem o caminho das variações e do favicon, e
     // entrar aqui faria o símbolo da empresa substituir a foto do hero.
     if (m.kind === 'logo' || m.kind === 'icon') continue;
+    if (arquivosDeLogo.has(m.de)) {
+      if (!logosBarradas.includes(m.de)) logosBarradas.push(m.de);
+      continue;
+    }
     const lista = midiaPorSecao.get(m.secaoId) ?? { fotos: [], videos: [] };
     // Foto e vídeo em filas SEPARADAS, porque os buracos que eles preenchem são
     // de formatos diferentes: pôr um `.mp4` no `src` de uma `<img>` não mostra
@@ -1175,15 +1343,68 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     else lista.fotos.push(m.para);
     midiaPorSecao.set(m.secaoId, lista);
   }
+  if (logosBarradas.length > 0) {
+    avisos.push(
+      `${logosBarradas.length} arquivo(s) da marca estavam na lista de mídia como se fossem foto (${logosBarradas.slice(0, 3).join(', ')}) e ficaram de fora das vagas de conteúdo: logotipo tem fundo vazio e margem própria, e esticado numa vaga de foto ele deixa o fundo do cartão aparecendo. Ele continua entrando onde é logotipo — cabeçalho, rodapé e favicon.`,
+    );
+  }
+  /**
+   * O logotipo que substitui o MONOGRAMA da origem.
+   *
+   * Preferência por `simbolo` e `reduzida`: o monograma mora numa caixa pequena
+   * e quadrada, e uma logo horizontal com o nome escrito, espremida ali, sai
+   * ilegível.
+   *
+   * O destino é calculado aqui porque as logos só são copiadas no FIM da
+   * montagem, depois das seções — e a peça precisa do caminho na hora de trocar.
+   * Quando a mesma imagem já viaja como MÍDIA do projeto, o alvo é o dela: dois
+   * caminhos para o mesmo arquivo seriam duas cópias dentro do `.zip`.
+   */
+  const alvoDeMidiaPorFonte = new Map<string, string>();
+  for (const m of entrada.midia ?? []) {
+    if (!alvoDeMidiaPorFonte.has(m.de)) alvoDeMidiaPorFonte.set(m.de, m.para);
+  }
+  const logoParaMonograma = ((): { src: string; alt: string } | null => {
+    const logos = entrada.branding.logos ?? [];
+    const escolhida =
+      logos.find((l) => l.tipo === 'simbolo') ??
+      logos.find((l) => l.tipo === 'reduzida') ??
+      logos.find((l) => l.tipo === 'principal') ??
+      logos[0];
+    if (escolhida === undefined) return null;
+    const ext = (escolhida.path.split('.').pop() ?? 'svg').toLowerCase();
+    const src = alvoDeMidiaPorFonte.get(escolhida.path) ?? `midia/logo-${escolhida.tipo}.${ext}`;
+    return { src, alt: entrada.branding.brandName || 'Logotipo' };
+  })();
+
   /** As filas da seção em processamento; cada peça consome o que usar. */
   let fotosDaSecao: string[] = [];
   let videosDaSecao: string[] = [];
+
+  /**
+   * As alças dos ESTADOS capturados, numeradas pela PÁGINA inteira.
+   *
+   * Contador da página, e não da peça, porque a mesma peça pode entrar em duas
+   * seções: alça por peça repetiria `orb-1` e o alternador acharia o elemento
+   * errado. E é `data-orbis-ancora`, nunca `id`: id é maquinaria da peça, e é
+   * dele que o script da origem depende (`getElementById('active-card')`).
+   */
+  let alcasDeEstado = 0;
+  const proximaAncora = (): string => {
+    alcasDeEstado += 1;
+    return `orb-${alcasDeEstado}`;
+  };
+  /** O que cada estado capturado virou. Vira `estados-derivados.json`. */
+  const derivadosDeEstado: EstadoDerivado[] = [];
 
   const processarPeca = (
     cmpId: string,
     substituicoes: Record<string, string> | undefined,
     rotulo: string,
-    opcoes?: { descartarReferenciaVisual?: boolean },
+    opcoes?: {
+      descartarReferenciaVisual?: boolean;
+      copiaDeEstado?: Record<string, { rotulo?: string; texto?: string }>;
+    },
   ): string | null => {
     const cmp = porId.get(cmpId);
     if (cmp === undefined) {
@@ -1223,6 +1444,7 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     // motivos de as páginas saírem paradas.
     const manterCores = ehPecaDeFundo(cmp);
     const origemBase = cmp.designSystemId ?? cmp.id;
+    origemDaPeca.set(cmpId, origemBase);
     const origem = manterCores ? `${origemBase}__original` : origemBase;
 
     if (!origensComCss.has(origem)) {
@@ -1346,6 +1568,47 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     let corpo = limparTransformCongelado(semCompilador.corpo);
 
     /**
+     * O LOGOTIPO DE OUTRA EMPRESA sai — mesma decisão dos scripts de
+     * rastreamento acima, e pelo mesmo motivo: não é conteúdo, é marca alheia.
+     *
+     * O dono viu no hero do clube uma faixa "Operado por" com British Museum,
+     * Sotheby's, ArtStation e Kickstarter — os parceiros de um template de
+     * museu. Nada pegava: a troca de mídia só enxerga `<img>`/`<video>` de
+     * `assets/<cmpId>/`, e marca pictórica não tem texto para a regra S2 achar.
+     *
+     * Some do HTML e é DITO, como os rastreadores. Não vira pendência porque
+     * não há decisão humana a tomar: logotipo de terceiro no site do cliente é
+     * defeito em qualquer leitura.
+     */
+    /**
+     * O MONOGRAMA da origem vira o logotipo da marca.
+     *
+     * Vem antes da remoção de marcas de terceiro de propósito: o monograma é um
+     * slot de logotipo que se RESOLVE, não um logotipo alheio que se remove.
+     * Trocado aqui, ele não chega à poda de container vazio.
+     *
+     * Medido no site do clube: a substituição escrita à mão no
+     * `entrada-geracao.json` consertava a nav e sobravam OUTROS DOIS — o mesmo
+     * "M" reaparece no avatar do depoimento e no balão. Substituição por site
+     * conserta um lugar; isto vale para todas as peças de todos os sites.
+     */
+    const comLogo = trocarMonogramaDaOrigem(corpo, logoParaMonograma);
+    corpo = comLogo.html;
+    if (comLogo.trocados > 0) {
+      avisos.push(
+        `[${rotulo}] ${comLogo.trocados} monograma(s) da origem (uma letra numa caixa, que é como aquele site desenhava a marca dele) foram trocados pelo logotipo desta marca.`,
+      );
+    }
+
+    const semMarcasAlheias = removerMarcasDeTerceiro(corpo);
+    corpo = semMarcasAlheias.html;
+    if (semMarcasAlheias.removidas.length > 0) {
+      avisos.push(
+        `[${rotulo}] ${semMarcasAlheias.removidas.length} logotipo(s) de OUTRA empresa saíram da peça (${semMarcasAlheias.removidas.join(', ')}): vieram de uma coleção de logotipos do site de origem e não têm nada a ver com esta marca.`,
+      );
+    }
+
+    /**
      * O container perdido é da ORIGEM, não desta peça.
      *
      * Só a nav costuma carregar a margem negativa que o denuncia (é ela que
@@ -1428,6 +1691,31 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       corpo = reescreverRefsHtml(corpo, cmpId);
       // Com as refs já no namespace da peça, dá para reconhecer o que é foto
       // DA ORIGEM e trocá-la pela do projeto.
+      /**
+       * O VÍDEO escolhe a vaga ANTES das fotos, e a ordem é a decisão.
+       *
+       * Medido: rodando depois, as fotos da seção já haviam ocupado as duas
+       * vagas de `<img>` da peça e o vídeo não tinha onde pousar — ele
+       * simplesmente não aparecia no site, sem erro nenhum.
+       *
+       * Vídeo é mais escasso que foto e custa mais para produzir; quando o
+       * criativo ancora um numa seção, é porque ele quer aquilo ali. Uma vaga
+       * por peça, para o vídeo não comer a seção inteira e deixar as fotos de
+       * fora — o inverso do defeito.
+       *
+       * Só quando a peça NÃO tem `<video>`: tendo, aquele é o destino natural e
+       * a troca vídeo→vídeo mais abaixo faz o trabalho com a capa junto.
+       */
+      if (videosDaSecao.length > 0 && !/<video\b/i.test(corpo)) {
+        const fv = trocarFotoPorVideo(corpo, cmpId, videosDaSecao.slice(0, 1), fotosDaSecao[0]);
+        corpo = fv.html;
+        videosDaSecao = videosDaSecao.slice(fv.usados);
+        if (fv.usados > 0) {
+          avisos.push(
+            `[${rotulo}] uma vaga de foto recebeu VÍDEO do projeto: a peça não trazia tag de vídeo, e sem isto o vídeo ancorado nesta seção não teria onde entrar. Ele entra mudo, em laço e inline, que é o que o celular deixa tocar sozinho, e a capa sai da mídia do projeto — nunca do asset da origem.`,
+          );
+        }
+      }
       const troca = trocarFotosDaOrigem(corpo, cmpId, fotosDaSecao);
       corpo = troca.html;
       fotosDaSecao = fotosDaSecao.slice(troca.usadas);
@@ -1442,6 +1730,15 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
           `[${rotulo}] ${troca.mantidas} foto(s) do site de origem CONTINUAM na página: não havia mídia do projeto para esta seção. Gere as mídias automáticas ou envie imagens para ela — enquanto isso o site mostra a foto de outra empresa.`,
         );
       }
+      /**
+       * Vídeo do projeto que não achou `<video>` na peça entra na vaga de FOTO.
+       *
+       * Roda ANTES da troca vídeo→vídeo, e a ordem importa: se houvesse
+       * `<video>` na peça, ele seria o destino natural e esta conversão roubaria
+       * o arquivo dele. Por isso ela só age quando a peça não tem `<video>`
+       * nenhum — a checagem é o próprio `tv.usados` sair zero, então a
+       * conversão vem depois de saber disso.
+       */
       // O vídeo segue a mesma régua, e com mais urgência: vídeo de outra
       // empresa é a marca dela falando dentro do site do cliente.
       const tv = trocarVideosDaOrigem(corpo, cmpId, videosDaSecao, fotosDaSecao);
@@ -1464,6 +1761,42 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     if (existsSync(framesDir)) {
       cpSync(framesDir, join(outputDir, 'assets', cmpId, 'frames'), { recursive: true });
       corpo = corpo.replaceAll('src="frames/', `src="assets/${cmpId}/frames/`);
+    }
+
+    /**
+     * OS ESTADOS CAPTURADOS VIRAM INTERAÇÃO — e é aqui, não antes.
+     *
+     * Depois de `reescreverRefsHtml` e da troca de mídia, porque é só com as
+     * refs já no namespace `assets/<cmpId>/` que dá para distinguir "o mesmo
+     * asset local" de "uma URL do servidor de outra empresa", e é só depois da
+     * troca que se sabe se a foto que o estado quer repor JÁ foi substituída
+     * pela do projeto (se foi, repô-la fura a S2). Antes da varredura de
+     * `<script>` logo abaixo, para que nada emitido aqui passe pelo coletor.
+     *
+     * A fila de mídia da seção não é tocada: este caminho nunca lê
+     * `fotosDaSecao`/`videosDaSecao` nem chama as trocas. Ele só reescreve
+     * atributos em elementos que já existem.
+     */
+    const doBundle = lerEstadosDoBundle(cmp.bundlePath);
+    if (doBundle.aviso !== null) avisos.push(`[${rotulo}] ${doBundle.aviso}`);
+    if (doBundle.estados.length > 0) {
+      const derivacao = derivarEstados({
+        pecaId: cmpId,
+        corpo,
+        estados: doBundle.estados,
+        copiaPorEstado: new Map(Object.entries(opcoes?.copiaDeEstado ?? {})),
+        nomesDaOrigem: nomesDestaOrigem,
+        proximaAncora,
+      });
+      // Os `<template>` entram FORA dos proxies de propósito: eles não
+      // renderizam nada, e fora do `[data-ds-raiz]` o CSS escopado da origem
+      // não tem como alcançá-los. O alternador os acha por `querySelector`.
+      corpo =
+        derivacao.templates.length > 0
+          ? `${derivacao.corpo}\n${derivacao.templates}`
+          : derivacao.corpo;
+      derivadosDeEstado.push(...derivacao.derivados);
+      for (const a of avisosDosEstados(derivacao.derivados)) avisos.push(`[${rotulo}] ${a}`);
     }
 
     for (const s of scriptsRemotosDe(documento)) {
@@ -1502,15 +1835,43 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
         if (rastreio === 'misturado') {
           rastreadores.mantidos.push(src ?? `trecho embutido em ${rotulo}`);
         }
+        /**
+         * Tag cujo ARQUIVO não existe não é emitida — é 404 garantido.
+         *
+         * Medido no banco de prova, no kit de imóvel: três peças citavam o
+         * mesmo script e nenhum dos três arquivos estava em disco. O site
+         * subia com três requisições que só podiam falhar, e a regra S8
+         * reprovava por referência quebrada.
+         *
+         * Duas coisas se somavam. O dedupe usava o hash do arquivo COPIADO e,
+         * quando ele faltava, caía no caminho como chave — e o caminho carrega
+         * o namespace da peça, então três cópias do mesmo script viravam três
+         * chaves distintas e nenhuma era deduplicada. E a tag seguia emitida
+         * mesmo sem arquivo.
+         *
+         * Agora a identidade sai do arquivo do BUNDLE, que sempre existe, e a
+         * ausência do copiado vira aviso em vez de 404 silencioso.
+         */
         let chave: string;
         if (src !== undefined) {
-          // O nome do arquivo é hash de conteúdo nos bundles novos, mas o
-          // caminho carrega o namespace da peça — a identidade de verdade são
-          // os bytes, então o dedupe lê o arquivo já copiado para o site.
-          const arquivo = join(outputDir, src);
-          chave = existsSync(arquivo)
-            ? createHash('sha1').update(readFileSync(arquivo)).digest('hex')
-            : src;
+          const copiado = join(outputDir, src);
+          const noBundle = join(cmp.bundlePath, src.replace(`assets/${cmpId}/`, 'assets/'));
+          const fonte = existsSync(copiado) ? copiado : existsSync(noBundle) ? noBundle : null;
+          if (fonte === null) {
+            avisos.push(
+              `[${rotulo}] o script ${src} não existe nem no site nem no bundle da peça: a tag saiu, para o site não subir com uma requisição que só pode falhar.`,
+            );
+            return '';
+          }
+          chave = createHash('sha1').update(readFileSync(fonte)).digest('hex');
+          // A tag só vale se o arquivo estiver NO SITE. Existindo só no bundle,
+          // a referência apontaria para o vazio depois de o site viajar.
+          if (!existsSync(copiado)) {
+            avisos.push(
+              `[${rotulo}] o script ${src} existe no bundle mas não foi copiado para o site: a tag saiu em vez de virar 404.`,
+            );
+            return '';
+          }
         } else {
           chave = `inline:${conteudo.trim()}`;
         }
@@ -1537,7 +1898,12 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   let camadasHtml = '';
   if (separado.camadas.length > 0) {
     const corpos = separado.camadas
-      .map((c) => processarPeca(c.id, undefined, 'fundo da página'))
+      .map((c) => {
+        const corpo = processarPeca(c.id, undefined, 'fundo da página');
+        // A origem só conta como presente quando o corpo dela entra no HTML.
+        if (corpo !== null) origensNaPagina.add(origemDaPeca.get(c.id) ?? c.id);
+        return corpo;
+      })
       .filter((c): c is string => c !== null);
     if (corpos.length > 0) {
       camadasHtml = `\n${envolverCamadaDePagina(corpos.join('\n'), {
@@ -1572,6 +1938,13 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
   // não atrás como o fundo: o ponteiro personalizado precisa ficar por cima, e o
   // resto não ocupa espaço nenhum de qualquer forma.
   let comportamentoHtml = '';
+  /** Cada comportamento que chegou, com o que se precisa para julgá-lo vivo. */
+  const comportamentosProcessados: {
+    nome: string;
+    origem: string;
+    ehCursor: boolean;
+    scripts: string[];
+  }[] = [];
   if (comportamento.comportamentos.length > 0) {
     /**
      * A peça de comportamento também recebe fotos do projeto.
@@ -1603,10 +1976,24 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     const corpos: string[] = [];
     const soComportamento: string[] = [];
     for (const c of comportamento.comportamentos) {
+      // Os scripts que ESTA peça acrescentou, isolados pela fatia que ela abriu
+      // em `corpoDosScriptsLocais`. É deles que saem os seletores que provam se
+      // o comportamento alcança alguma coisa — o julgamento em si só pode
+      // acontecer depois de as seções existirem, mais abaixo.
+      const antes = corpoDosScriptsLocais.length;
       const corpo = processarPeca(c.id, undefined, 'comportamento da página');
+      const scriptsDaPeca = corpoDosScriptsLocais.slice(antes);
       if (corpo === null) continue;
-      if (c.category === 'cursor') corpos.push(corpo);
-      else soComportamento.push(c.name);
+      comportamentosProcessados.push({
+        nome: c.name,
+        origem: origemDaPeca.get(c.id) ?? c.id,
+        ehCursor: c.category === 'cursor',
+        scripts: scriptsDaPeca,
+      });
+      if (c.category === 'cursor') {
+        corpos.push(corpo);
+        origensNaPagina.add(origemDaPeca.get(c.id) ?? c.id);
+      } else soComportamento.push(c.name);
     }
     if (soComportamento.length > 0) {
       avisos.push(
@@ -1634,10 +2021,12 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
     for (const peca of secao.pecas) {
       const corpo = processarPeca(peca.id, criativo?.substituicoes, secao.nome || secao.slug, {
         descartarReferenciaVisual: temCriado,
+        copiaDeEstado: criativo?.estados,
       });
       if (corpo === null) continue;
       partes.push(corpo);
       usados.push(peca.id);
+      origensNaPagina.add(origemDaPeca.get(peca.id) ?? peca.id);
     }
     if (temCriado && criativo?.htmlCriado !== undefined) {
       // O envelope dá à seção criada o mesmo ponto de apoio que os proxies dão
@@ -2055,6 +2444,163 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
       `Movimento devolvido: ${revelacao.limpas} elemento(s) tinham a classe de revelação (${revelacao.classes.join(', ')}) já aplicada pela captura — o observador de rolagem viajou junto e não tinha o que revelar. Eles voltam ao estado inicial e a página se anima ao rolar.`,
     );
   }
+
+  /**
+   * O comportamento que viajou inteiro e não faz NADA.
+   *
+   * Ele chegava sem uma linha de aviso: CSS na cascata, script no fim do body,
+   * assets copiados. Medido no site do clube: a única peça de comportamento do
+   * kit ("Revelar ao rolar") tinha origem que nenhuma seção usava, então o CSS
+   * dela — escopado naquela origem — casava zero elementos, e os dois scripts
+   * dela procuravam `.scroll-item` e `[data-counter-target]`, com 0 e 0
+   * ocorrências no `index.html`. O site saía parado e a S6 carimbava verde.
+   *
+   * O julgamento tem de acontecer AQUI, depois das seções e das camadas: antes
+   * delas não existe página contra a qual medir alcance. Só o veredito desceu —
+   * o `processarPeca` de cada comportamento continua lá em cima, onde o CSS
+   * dele entra na cascata antes do CSS das seções.
+   *
+   * Duas provas, e as duas precisam valer: a origem do comportamento pisou na
+   * página, E algum seletor literal dos scripts dele acha alvo. Sem seletor
+   * legível a segunda degrada para "vivo" — ver `comportamentoAlcancaAPagina`.
+   */
+  const htmlParaAlcance = `${revelacao.html}${comportamentoHtml}`;
+  const comportamentosVivos: string[] = [];
+  const comportamentosMortos: string[] = [];
+  for (const c of comportamentosProcessados) {
+    // O ponteiro é o próprio elemento na página: ele não procura alvo nenhum.
+    const alvos = c.ehCursor ? [] : alvosDoComportamento(c.scripts);
+    const vivo =
+      c.ehCursor ||
+      (origensNaPagina.has(c.origem) && comportamentoAlcancaAPagina(htmlParaAlcance, alvos));
+    if (vivo) {
+      comportamentosVivos.push(c.nome);
+      continue;
+    }
+    comportamentosMortos.push(`${c.nome} (${c.origem})`);
+    const presentes = [...origensNaPagina];
+    avisos.push(
+      `O comportamento "${c.nome}" (origem ${c.origem}) viajou e NÃO alcança nada: as origens que a página tem são ${presentes.length > 0 ? presentes.join(', ') : 'nenhuma'}${
+        alvos.length > 0
+          ? `, e os seletores dos scripts dele (${alvos.slice(0, 3).join(', ')}) não acham elemento nenhum`
+          : ''
+      }. O CSS dele sai escopado numa origem ausente e casa zero elementos: é peso morto, e o site fica parado ao rolar.`,
+    );
+  }
+
+  /**
+   * A CAMADA DE MOVIMENTO do compositor — a rede quando nada reage à rolagem.
+   *
+   * `layout.motion` é declarado pelo usuário no wizard e, até aqui, o
+   * determinístico não o lia em lugar nenhum (só uma string de prompt). Honrar
+   * a declaração é o conserto; ignorá-la era o defeito. E a camada só entra
+   * quando NADA mais revela ao rolar — comportamento vivo ou classe de
+   * revelação devolvida desligam a rede, porque duas revelações sobre o mesmo
+   * elemento são piores que uma.
+   *
+   * O porquê inteiro (0/12 kits com comportamento de origem própria; o ritmo
+   * medido em vez de chutado; por que isto não fere "não mude a essência")
+   * mora em `movimento-da-pagina.ts`.
+   */
+  // `nenhuma` vira `null` em vez de um booleano: assim o tipo que chega em
+  // `cssDaRevelacao` é o da intensidade, e não o do campo inteiro. Booleano
+  // separado deixaria o compilador sem como saber que 'nenhuma' já saiu.
+  const intensidade = entrada.layout.motion === 'nenhuma' ? null : entrada.layout.motion;
+  const jaReageARolagem = comportamentosVivos.length > 0 || revelacao.limpas > 0;
+  let corpoDaPagina = revelacao.html;
+
+  /**
+   * A PODA DOS ESTADOS QUE JÁ ESTÃO VIVOS.
+   *
+   * É aqui e em nenhum outro lugar: este é o único ponto em que
+   * `corpoDosScriptsLocais` está completo (todas as peças já passaram) e o
+   * corpo da página é uma string só. Os scripts locais viajam para o fim do
+   * body, e se o da origem já liga aquele clique, o fio desta fatia seria o
+   * SEGUNDO listener: abre e fecha na mesma ação. Foi o defeito dos "dois
+   * listeners no botão do menu mobile", e não vale a pena repeti-lo.
+   */
+  const poda = podarEstadosJaVivos({
+    html: corpoDaPagina,
+    derivados: derivadosDeEstado,
+    scriptsLocais: corpoDosScriptsLocais,
+  });
+  corpoDaPagina = poda.html;
+  derivadosDeEstado.length = 0;
+  derivadosDeEstado.push(...poda.derivados);
+  for (const id of poda.podados) {
+    avisos.push(
+      `o estado "${id}" foi podado: o script da origem já liga aquele clique, e um segundo tratador abriria e fecharia na mesma ação.`,
+    );
+  }
+  const estadosLigados = derivadosDeEstado.filter((d) => d.veredito === 'ligado').length;
+  let linkDosEstados = '';
+  let scriptDosEstados = '';
+  if (estadosLigados > 0) {
+    escrever('assets/estados.css', CSS_DO_ALTERNADOR);
+    linkDosEstados = '<link rel="stylesheet" href="assets/estados.css"/>\n';
+    scriptDosEstados = `\n${SCRIPT_DO_ALTERNADOR}`;
+  }
+
+  let linkDoMovimento = '';
+  let scriptDoMovimento = '';
+  if (intensidade !== null && !jaReageARolagem) {
+    const marcado = marcarAlvosDeRevelacao(corpoDaPagina);
+    if (marcado.marcados > 0) {
+      const tokens = tokensDeMovimento(concatCss);
+      corpoDaPagina = marcado.html;
+      escrever('assets/movimento.css', cssDaRevelacao(tokens, intensidade));
+      linkDoMovimento = '<link rel="stylesheet" href="assets/movimento.css"/>\n';
+      scriptDoMovimento = `\n${SCRIPT_DA_REVELACAO}`;
+      avisos.push(
+        `Nenhuma peça deste site reagia à rolagem, e o layout pede movimento "${intensidade}": a camada de movimento do compositor entrou e marcou ${marcado.marcados} seção(ões) para revelar ao aparecer (a primeira dobra, a navegação e o rodapé ficam de fora). A duração (${tokens.mediaMs}ms) e a curva (${tokens.easing}) saíram MEDIDAS do CSS do próprio kit, em ${tokens.amostras} declaração(ões) — nada dentro das peças foi tocado.`,
+      );
+    }
+  }
+  const movimentoAoRolar = jaReageARolagem || scriptDoMovimento !== '';
+
+  /**
+   * O conteúdo preso a um ancestral de revelação que não chega é DESTRAVADO.
+   *
+   * Achado pelo banco de prova: 8 de 12 kits entregavam uma seção inteira em
+   * `opacity: 0`, invisível para sempre. O CSS da origem esconde o elemento até
+   * que um ANCESTRAL ganhe `.in-view`, e quem põe essa classe é o script da
+   * origem — que quase nunca alcança a página composta, porque a peça de
+   * comportamento vem de outra origem que a das seções.
+   *
+   * Roda depois da camada de movimento de propósito: se ela entrou, o conteúdo
+   * já tem quem o revele e não há nada a destravar.
+   */
+  const destrave = destravarRevelacaoSemGatilho(concatCss, corpoDaPagina);
+  let linkDoDestrave = '';
+  if (destrave.classes.length > 0) {
+    escrever('assets/destrave.css', destrave.css);
+    linkDoDestrave = '<link rel="stylesheet" href="assets/destrave.css"/>\n';
+    avisos.push(
+      `${destrave.classes.length} classe(s) da origem nasciam invisíveis esperando um ancestral de revelação que não chega nesta página (${destrave.classes.slice(0, 4).join(', ')}): o conteúdo foi destravado. Perder a animação de entrada é perda pequena e visível; uma seção em branco é perda grande e silenciosa.`,
+    );
+  }
+
+  /**
+   * As ABAS que o criativo escreveu ganham estilo e comportamento.
+   *
+   * É o contorno para o que a captura não entrega: dos 100 estados do acervo,
+   * 75 são idênticos ao HTML base, e no site do clube não havia `role="tab"`
+   * nenhum — os ícones que pareciam abas eram desenho. Em vez de DERIVAR
+   * interação de uma captura vazia, o compositor a CONSTRÓI a partir da
+   * marcação padrão, uma vez por página, no ritmo medido do próprio kit.
+   */
+  let linkDasAbas = '';
+  let scriptDasAbas = '';
+  if (temAbasCriadas(corpoDaPagina)) {
+    const tokens = tokensDeMovimento(concatCss);
+    escrever('assets/abas.css', cssDasAbas(tokens.mediaMs, tokens.easing));
+    linkDasAbas = '<link rel="stylesheet" href="assets/abas.css"/>\n';
+    scriptDasAbas = `\n${SCRIPT_DAS_ABAS}`;
+    avisos.push(
+      `A página tem abas escritas no conteúdo criado: o compositor pôs o estilo e o alternador (clique e setas do teclado), com a transição de ${tokens.mediaMs}ms medida no CSS do kit. Sem JavaScript o conteúdo de todas as abas continua legível, empilhado.`,
+    );
+  }
+
   const finalHtml = `<!doctype html>
 <html lang="${entrada.lang ?? 'pt-BR'}">
 <head>
@@ -2063,12 +2609,12 @@ export const montarPaginaDoKit = (entrada: EntradaDaPagina): ResultadoDaPagina =
 <title>${tituloDaAba}</title>
 ${faviconLink}${fontLinks}<link rel="stylesheet" href="assets/styles.css"/>
 <link rel="stylesheet" href="assets/criadas.css"/>
-<link rel="stylesheet" href="assets/responsivo.css"/>
+${linkDoMovimento}${linkDosEstados}${linkDasAbas}${linkDoDestrave}<link rel="stylesheet" href="assets/responsivo.css"/>
 <link rel="stylesheet" href="assets/marca.css"/>
 <link rel="stylesheet" href="assets/ajustes.css"/>
 </head>
-<body>${revelacao.html}${comportamentoHtml}
-${scriptsHtml}
+<body>${corpoDaPagina}${comportamentoHtml}
+${scriptsHtml}${scriptDoMovimento}${scriptDosEstados}${scriptDasAbas}
 </body>
 </html>`;
   escrever('index.html', finalHtml);
@@ -2160,6 +2706,11 @@ ${scriptsHtml}
     secoesVazias: paraOAceite.secoesVazias,
     temFavicon: faviconHref !== null,
     pecasComMovimento: entrada.kit.components.filter((c) => c.kind === 'animation').length,
+    // O inventário do kit acima continua sendo o que é — inventário. O que
+    // decide a S6 agora é o que a PÁGINA tem, e são estes três.
+    comportamentosVivos: comportamentosVivos.length,
+    comportamentosMortos,
+    movimentoAoRolar,
   });
   for (const v of aceite.vereditos) {
     if (v.estado === 'passou') continue;
@@ -2177,6 +2728,27 @@ ${scriptsHtml}
    * ÀQUELA versão, viaja no .zip e some junto quando ela é apagada.
    */
   escrever('aceite.json', JSON.stringify({ formato: 1, geradoEm: Date.now(), ...aceite }, null, 2));
+
+  /**
+   * O QUE ACONTECEU COM CADA ESTADO CAPTURADO, por escrito.
+   *
+   * Os `bundle/states.json` existem desde sempre e ninguém os lia: uma busca no
+   * repositório inteiro achava a própria escrita e mais nada. Este arquivo é a
+   * primeira vez que o conteúdo daqueles 16 arquivos (100 estados medidos) sai
+   * em texto, com o motivo de cada um ter entrado ou ficado de fora. Ele vale
+   * mais que os fios que liga: é por ele que se enxerga o que a captura
+   * precisa melhorar.
+   */
+  if (derivadosDeEstado.length > 0) {
+    escrever(
+      'estados-derivados.json',
+      JSON.stringify(
+        { formato: 1, geradoEm: Date.now(), ligados: estadosLigados, estados: derivadosDeEstado },
+        null,
+        2,
+      ),
+    );
+  }
 
   return {
     outputDir,

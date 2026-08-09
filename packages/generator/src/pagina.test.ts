@@ -1689,3 +1689,470 @@ test('peça SEM pasta de assets também é limpa, e sem marca a regra S2 reprova
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+/**
+ * O tema da origem mora na FOLHA quando ela não está na tag — e ler só a tag
+ * produzia meia migração.
+ *
+ * Medido no site do clube (marca escura, `#0b1530`): a origem `green-museum` é
+ * de tema CLARO e declara `body{background-color:#E6E3D6}` no CSS, sem
+ * `bg-[#hex]` nenhum no `<body>`. A leitura antiga só entendia a tag, devolvia
+ * `null`, e `null` caía em "os temas combinam" — o único regime INCOERENTE,
+ * porque mantém a superfície da origem e mesmo assim resgata o texto para a
+ * tinta da marca.
+ *
+ * Na tela isso foi um cartão creme da origem com tinta clara da marca por cima:
+ * 14 trechos abaixo do piso de contraste num site só. O que o teste trava é a
+ * COERÊNCIA do par — fundo e texto migram juntos, ou nenhum dos dois migra.
+ */
+test('o tema da origem é lido da FOLHA quando o <body> não o declara', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-tema-'));
+  try {
+    // Sem `bg-[#hex]` na tag: o `bundle()` põe `class="fundo-a"`, e é só isso.
+    const peca = bundle(
+      raiz,
+      'claro',
+      '<section class="cartao"><p class="texto">x</p></section>',
+      'body{background-color:#E6E3D6}.cartao{background:#EAE8DE}.texto{color:#57534e}',
+    );
+    const r = montarPaginaDoKit({
+      projectId: 'prj_tema',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_claro',
+            name: 'Cartão',
+            category: 'other',
+            kind: 'component',
+            bundlePath: peca,
+            designSystemId: 'ds_claro',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'A', componentIds: ['cmp_claro'] }],
+      }),
+      // Marca ESCURA: é o contraste com o `#E6E3D6` da folha que faz a origem
+      // ser de tema oposto — o fato que a leitura antiga não enxergava.
+      branding: {
+        ...DEFAULT_PROJECT_BRANDING,
+        palette: { primary: '#0050c4', background: '#0b1530', foreground: '#ffffff' },
+      },
+      outputDir: join(raiz, 'saida'),
+    });
+    const styles = readFileSync(join(r.outputDir, 'assets', 'styles.css'), 'utf8');
+
+    // O fundo do cartão MIGRA: é isso que a leitura da tag não conseguia, e é o
+    // lado do par que ficava para trás.
+    assert.match(
+      styles,
+      /--marca-(surface|background)[^)]*#EAE8DE/i,
+      'o cartão claro da origem migra para a superfície da marca',
+    );
+    // E o texto migra junto. Os dois na marca é coerente; um só é o defeito.
+    assert.match(styles, /--marca-[\w-]+, #57534e/i, 'o texto migra junto com o fundo');
+    // Tema lido é tema medido: o aviso de "não deu para ler" não pode aparecer.
+    assert.ok(
+      !r.avisos.some((a) => a.includes('não deu para ler a cor de página')),
+      'a cor de página foi lida da folha, então não há aviso de desconhecido',
+    );
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('origem sem cor de página em lugar nenhum: o desconhecido é DITO', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-tema-mudo-'));
+  try {
+    const peca = bundle(raiz, 'mudo', '<section class="c">x</section>', '.c{color:#333}');
+    const r = montarPaginaDoKit({
+      projectId: 'prj_mudo',
+      titulo: 'T',
+      kit: {
+        id: 'kit_t',
+        components: [
+          {
+            id: 'cmp_mudo',
+            name: 'C',
+            category: 'other',
+            kind: 'component',
+            bundlePath: peca,
+            designSystemId: 'ds_mudo',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'A', componentIds: ['cmp_mudo'] }],
+      }),
+      branding: {
+        ...DEFAULT_PROJECT_BRANDING,
+        palette: { primary: '#0050c4', background: '#0b1530', foreground: '#ffffff' },
+      },
+      outputDir: join(raiz, 'saida'),
+    });
+    // Sem dado, o regime segue o de sempre — mas para de ser silencioso: quem
+    // ler o relatório sabe onde procurar se sair texto claro sobre bloco claro.
+    assert.ok(
+      r.avisos.some((a) => a.includes('não deu para ler a cor de página')),
+      'origem sem cor de página declarada avisa em vez de seguir calada',
+    );
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+// ── O comportamento que viaja e não anima nada, e a camada que salva ────────
+
+/**
+ * Um bundle de COMPORTAMENTO: quase nada de HTML e um script que procura, por
+ * seletor, os elementos que ele anima. É a forma exata das 8 peças
+ * `animation/interaction` do acervo.
+ */
+const bundleDeComportamento = (raiz: string, nome: string, seletor: string): string => {
+  const dir = join(raiz, nome);
+  mkdirSync(join(dir, 'assets', 'css'), { recursive: true });
+  mkdirSync(join(dir, 'assets', 'js'), { recursive: true });
+  writeFileSync(
+    join(dir, 'index.html'),
+    [
+      '<!doctype html><html class="tema-a"><head>',
+      '<link rel="stylesheet" href="assets/css/tokens.css">',
+      '</head><body class="fundo-a">',
+      '<div class="amostra-da-origem">amostra dos alvos na origem</div>',
+      '<script src="assets/js/rev.js"></script>',
+      '</body></html>',
+    ].join(''),
+    'utf8',
+  );
+  writeFileSync(
+    join(dir, 'assets', 'css', 'tokens.css'),
+    `${seletor}{opacity:0;transition:opacity 400ms ease-out}`,
+    'utf8',
+  );
+  writeFileSync(
+    join(dir, 'assets', 'js', 'rev.js'),
+    [
+      'var io = new IntersectionObserver(function(e){});',
+      `document.querySelectorAll('${seletor}').forEach(function(el){ io.observe(el); });`,
+    ].join('\n'),
+    'utf8',
+  );
+  return dir;
+};
+
+const montarComComportamento = (raiz: string, motion: 'nenhuma' | 'sutil') => {
+  const secao = bundle(
+    raiz,
+    `secao-${motion}`,
+    '<div class="cartao">Conteúdo</div>',
+    '.cartao{padding:24px;transition:transform 200ms ease-out}',
+  );
+  const comp = bundleDeComportamento(raiz, `comp-${motion}`, '.scroll-item');
+  const out = join(raiz, `saida-${motion}`);
+  const r = montarPaginaDoKit({
+    projectId: 'prj_teste',
+    titulo: 'Clube',
+    kit: {
+      id: 'kit_c',
+      components: [
+        {
+          id: 'cmp_secao',
+          name: 'Seção',
+          category: 'hero',
+          kind: 'component',
+          bundlePath: secao,
+          designSystemId: 'ds_a',
+        },
+        {
+          id: 'cmp_comp',
+          name: 'Revelar ao rolar',
+          category: 'interaction',
+          kind: 'animation',
+          bundlePath: comp,
+          designSystemId: 'ds_b',
+        },
+      ],
+    },
+    layout: ProjectLayout.parse({
+      motion,
+      secoes: [
+        { id: 's1', nome: 'Menu', papel: 'nav', componentIds: ['cmp_secao', 'cmp_comp'] },
+        { id: 's2', nome: 'Abertura', papel: 'hero', componentIds: ['cmp_secao'] },
+        { id: 's3', nome: 'Planos', papel: 'pricing', componentIds: ['cmp_secao'] },
+        { id: 's4', nome: 'Chamada', papel: 'cta', componentIds: ['cmp_secao'] },
+      ],
+    }),
+    branding: DEFAULT_PROJECT_BRANDING,
+    outputDir: out,
+  });
+  return { r, index: readFileSync(join(out, 'index.html'), 'utf8'), out };
+};
+
+/**
+ * O defeito do site do clube, reduzido: o comportamento é da origem `ds_b`,
+ * nenhuma seção veio dela, e o script dele procura `.scroll-item` — que não
+ * existe em lugar nenhum da página. Antes disto ele chegava calado e a S6
+ * carimbava "passou".
+ */
+test('comportamento de origem ausente é declarado morto, e a S6 reprova', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'comport-morto-'));
+  try {
+    const { r, index, out } = montarComComportamento(raiz, 'nenhuma');
+
+    assert.ok(
+      r.avisos.some((a) => a.includes('Revelar ao rolar') && a.includes('NÃO alcança nada')),
+      `nenhum aviso de morte: ${r.avisos.join(' | ')}`,
+    );
+    assert.ok(!index.includes('scroll-item'), 'de fato não há alvo na página');
+
+    const s6 = r.aceite.vereditos.find((v) => v.codigo === 'S6');
+    assert.equal(s6?.estado, 'reprovou');
+    assert.match(s6?.motivo ?? '', /ds_b/, 'o motivo nomeia a origem ausente');
+
+    // `motion: 'nenhuma'` é declaração do usuário e é respeitada: sem camada.
+    assert.ok(!existsSync(join(out, 'assets', 'movimento.css')));
+    assert.ok(!index.includes('data-orbis-revelar'));
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+test('sem nada que reaja à rolagem, a camada de movimento do compositor entra', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'comport-camada-'));
+  try {
+    const { r, index, out } = montarComComportamento(raiz, 'sutil');
+
+    const css = readFileSync(join(out, 'assets', 'movimento.css'), 'utf8');
+    assert.match(index, /<link rel="stylesheet" href="assets\/movimento\.css"\/>/);
+    // Entre criadas.css e responsivo.css: o marca.css continua vencendo.
+    assert.ok(
+      index.indexOf('criadas.css') < index.indexOf('movimento.css'),
+      'depois das seções criadas',
+    );
+    assert.ok(
+      index.indexOf('movimento.css') < index.indexOf('responsivo.css'),
+      'antes do responsivo',
+    );
+    assert.ok(index.indexOf('movimento.css') < index.indexOf('marca.css'), 'antes da marca');
+
+    // A marcação é por SEÇÃO, e a primeira (a nav) fica de fora.
+    assert.match(index, /data-orbis-revelar/);
+    assert.ok(!/data-secao="nav"[^>]*data-orbis-revelar/.test(index), 'a nav não é revelada');
+    assert.equal(
+      (index.match(/<section[^>]*data-orbis-revelar/g) ?? []).length,
+      3,
+      'hero, pricing e cta',
+    );
+    // Nada dentro da peça foi tocado: o cartão da origem segue intacto.
+    assert.ok(index.includes('class="cartao"'));
+
+    // O ritmo é MEDIDO no CSS do kit (200ms e 400ms estão nos bundles).
+    assert.match(css, /--orbis-duracao-media:\s*\d+ms/);
+    assert.match(css, /ease-out/);
+    assert.match(index, /IntersectionObserver' in window/);
+
+    const s6 = r.aceite.vereditos.find((v) => v.codigo === 'S6');
+    assert.equal(s6?.estado, 'passou', 'a página passa a reagir à rolagem');
+    // E o comportamento morto continua sendo dito — a camada não o encobre.
+    assert.ok(r.avisos.some((a) => a.includes('NÃO alcança nada')));
+    assert.ok(r.avisos.some((a) => a.includes('camada de movimento do compositor entrou')));
+    // O site segue fechado em si: a folha nova está em disco.
+    assert.ok(r.independente.fechadoEmSi, r.independente.pendentes.join(', '));
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+/**
+ * O outro lado: comportamento da MESMA origem das seções, alcançando alvo de
+ * verdade. Aqui a camada do compositor NÃO entra — duas revelações sobre o
+ * mesmo elemento seriam piores que uma.
+ */
+test('comportamento vivo desliga a camada: quem já se mexe não é remexido', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'comport-vivo-'));
+  try {
+    const secao = bundle(
+      raiz,
+      'secao-viva',
+      '<div class="cartao scroll-item">Conteúdo</div>',
+      '.cartao{padding:24px;transition:transform 200ms ease-out}',
+    );
+    const comp = bundleDeComportamento(raiz, 'comp-vivo', '.scroll-item');
+    const out = join(raiz, 'saida-viva');
+    const r = montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'Clube',
+      kit: {
+        id: 'kit_v',
+        components: [
+          {
+            id: 'cmp_secao',
+            name: 'Seção',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: secao,
+            designSystemId: 'ds_a',
+          },
+          {
+            id: 'cmp_comp',
+            name: 'Revelar ao rolar',
+            category: 'interaction',
+            kind: 'animation',
+            bundlePath: comp,
+            // MESMA origem das seções: o CSS escopado dela alcança as peças.
+            designSystemId: 'ds_a',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        motion: 'sutil',
+        secoes: [
+          { id: 's1', nome: 'Abertura', papel: 'hero', componentIds: ['cmp_secao', 'cmp_comp'] },
+          { id: 's2', nome: 'Planos', papel: 'pricing', componentIds: ['cmp_secao'] },
+        ],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      outputDir: out,
+    });
+    const index = readFileSync(join(out, 'index.html'), 'utf8');
+
+    assert.ok(!r.avisos.some((a) => a.includes('NÃO alcança nada')), 'ninguém é acusado de morto');
+    assert.ok(!existsSync(join(out, 'assets', 'movimento.css')), 'a camada não entra');
+    assert.ok(!index.includes('data-orbis-revelar'));
+    assert.equal(r.aceite.vereditos.find((v) => v.codigo === 'S6')?.estado, 'passou');
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Vídeo do projeto entra numa vaga de FOTO quando a peça não tem `<video>`.
+ *
+ * A troca era estritamente preservadora de tipo, e a peça capturada quase nunca
+ * traz `<video>` — ela traz `<img>`. Sem esta conversão, um vídeo ancorado numa
+ * seção simplesmente não tinha onde entrar, e o pedido "põe vídeo onde couber"
+ * ficava sem via.
+ */
+test('vídeo ancorado entra na vaga de foto quando a peça não tem tag de vídeo', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-video-'));
+  const anterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = raiz;
+    const peca = bundle(
+      raiz,
+      'galeria',
+      '<section><img class="w-full h-64 rounded-xl" src="assets/foto.jpg" alt=""></section>',
+      '.x{color:#111}',
+    );
+    mkdirSync(join(peca, 'assets'), { recursive: true });
+    writeFileSync(join(peca, 'assets', 'foto.jpg'), 'jpg', 'utf8');
+    const midiaDir = join(raiz, 'projects', 'prj_v', 'media');
+    mkdirSync(midiaDir, { recursive: true });
+    writeFileSync(join(midiaDir, 'clipe.mp4'), 'mp4', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_v',
+      titulo: 'T',
+      kit: {
+        id: 'kit_v',
+        components: [
+          {
+            id: 'cmp_g',
+            name: 'Galeria',
+            category: 'gallery',
+            kind: 'component',
+            bundlePath: peca,
+            designSystemId: 'ds_v',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Galeria', componentIds: ['cmp_g'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      midia: [{ de: 'clipe.mp4', para: 'midia/clipe.mp4', secaoId: 'sec_1', kind: 'video' }],
+      outputDir: join(raiz, 'saida'),
+    });
+    const html = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.match(html, /<video[^>]*src="midia\/clipe\.mp4"/, 'o vídeo entrou na vaga da foto');
+    assert.match(html, /<video[^>]*\bmuted\b/, 'mudo: sem isso o celular recusa o autoplay');
+    assert.match(html, /<video[^>]*\bplaysinline\b/, 'inline: senão abre em tela cheia');
+    assert.match(html, /<video[^>]*\bloop\b/);
+    // A capa NUNCA é o asset da origem: seria devolver a imagem de outra
+    // empresa como primeiro quadro do vídeo, que é o vazamento que a troca de
+    // mídia existe para fechar. Sem foto do projeto, melhor sem capa.
+    assert.ok(!/poster="assets\//.test(html), 'a capa nunca sai do asset da origem');
+    assert.match(html, /<video[^>]*class="w-full h-64 rounded-xl"/, 'as classes da vaga viajam');
+    assert.ok(r.avisos.some((a) => a.includes('vaga de foto recebeu VÍDEO')));
+  } finally {
+    if (anterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = anterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
+
+/**
+ * A vaga de vídeo tem de ser GRANDE — "a primeira que aparecer" deu absurdo.
+ *
+ * Medido no site do clube: um vídeo de estádio de 8 segundos foi parar num
+ * `w-10 h-10 rounded-full grayscale`, que é o avatar de 40px de um depoimento.
+ * Vídeo ali não é decisão de desenho, é acidente. A marcação diz o tamanho, e é
+ * dela que sai a régua.
+ */
+test('o vídeo pula a vaga pequena e pousa na grande', () => {
+  const raiz = mkdtempSync(join(tmpdir(), 'pagina-vaga-'));
+  const anterior = process.env.DS_ECOSYSTEM_ROOT;
+  try {
+    process.env.DS_ECOSYSTEM_ROOT = raiz;
+    const peca = bundle(
+      raiz,
+      'depoimento',
+      [
+        '<section>',
+        '<img class="w-10 h-10 rounded-full object-cover" src="assets/avatar.jpg" alt="">',
+        '<img class="w-full h-full object-cover absolute inset-0" src="assets/fundo.jpg" alt="">',
+        '</section>',
+      ].join(''),
+      '.x{color:#111}',
+    );
+    mkdirSync(join(peca, 'assets'), { recursive: true });
+    writeFileSync(join(peca, 'assets', 'avatar.jpg'), 'a', 'utf8');
+    writeFileSync(join(peca, 'assets', 'fundo.jpg'), 'b', 'utf8');
+    const midiaDir = join(raiz, 'projects', 'prj_vv', 'media');
+    mkdirSync(midiaDir, { recursive: true });
+    writeFileSync(join(midiaDir, 'clipe.mp4'), 'mp4', 'utf8');
+
+    const r = montarPaginaDoKit({
+      projectId: 'prj_vv',
+      titulo: 'T',
+      kit: {
+        id: 'kit_vv',
+        components: [
+          {
+            id: 'cmp_d',
+            name: 'Depoimento',
+            category: 'testimonials',
+            kind: 'component',
+            bundlePath: peca,
+            designSystemId: 'ds_vv',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        secoes: [{ id: 'sec_1', nome: 'Depoimentos', componentIds: ['cmp_d'] }],
+      }),
+      branding: DEFAULT_PROJECT_BRANDING,
+      midia: [{ de: 'clipe.mp4', para: 'midia/clipe.mp4', secaoId: 'sec_1', kind: 'video' }],
+      outputDir: join(raiz, 'saida'),
+    });
+    const html = readFileSync(join(r.outputDir, 'index.html'), 'utf8');
+    assert.match(html, /<video[^>]*class="w-full h-full[^"]*"/, 'o vídeo foi para a vaga grande');
+    assert.ok(!/<video[^>]*class="w-10 h-10/.test(html), 'o avatar de 40px não recebe vídeo');
+  } finally {
+    if (anterior === undefined) process.env.DS_ECOSYSTEM_ROOT = undefined;
+    else process.env.DS_ECOSYSTEM_ROOT = anterior;
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
