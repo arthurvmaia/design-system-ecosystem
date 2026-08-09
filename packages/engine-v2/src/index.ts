@@ -268,7 +268,11 @@ export {
 export { escolherCamadasDePagina } from './segment/camadas-de-pagina.js';
 // A Refinaria: o que o resegmentar offline precisa além do que já saía.
 export { escolherPecas } from './segment/pecas.js';
-export { escolherComportamentos } from './segment/comportamentos.js';
+export {
+  type MecanismoDeComportamento,
+  escolherComportamentos,
+  mecanismoDoComportamento,
+} from './segment/comportamentos.js';
 export { atributosDoDocumento } from './compiler/documento.js';
 export type { EvidenciaDaCaptura } from './evidencia.js';
 export { runtimesQueViajam } from './compiler/runtime-local.js';

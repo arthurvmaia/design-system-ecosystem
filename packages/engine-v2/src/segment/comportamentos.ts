@@ -15,32 +15,74 @@ import type { ScrollBehavior, StructuralNode } from '@ds/shared';
  * se repete vira um exemplar com contagem, do mesmo jeito que uma peça repetida.
  */
 
+/**
+ * COMO o comportamento se mexe, independente do nome que a pessoa lê.
+ *
+ * Duas famílias podem ter o mesmo nome (`reveal` e `class-toggle` são as duas
+ * "Revelar ao rolar") e o nome viaja para a Biblioteca com um sufixo de
+ * contagem ("Revelar ao rolar (×16)"). Quem quiser saber se dois comportamentos
+ * fazem a MESMA coisa — o montador de kit, para não pôr dois observadores de
+ * rolagem sobre os mesmos elementos — precisa do mecanismo, não do rótulo.
+ */
+export type MecanismoDeComportamento =
+  | 'revelar'
+  | 'aparecer'
+  | 'parallax'
+  | 'fixar'
+  | 'transformar';
+
 /** Famílias que valem como componente, com o nome que a pessoa lê. */
-const FAMILIA: Record<string, { nome: string; explicacao: string }> = {
+const FAMILIA: Record<
+  string,
+  { nome: string; explicacao: string; mecanismo: MecanismoDeComportamento }
+> = {
   reveal: {
     nome: 'Revelar ao rolar',
     explicacao: 'Os elementos aparecem conforme a página desce, em vez de já estarem lá.',
+    mecanismo: 'revelar',
   },
   'class-toggle': {
     nome: 'Revelar ao rolar',
     explicacao: 'Os elementos aparecem conforme a página desce, em vez de já estarem lá.',
+    mecanismo: 'revelar',
   },
   'progress-opacity': {
     nome: 'Aparecer conforme rola',
     explicacao: 'A opacidade acompanha o quanto a página já desceu.',
+    mecanismo: 'aparecer',
   },
   parallax: {
     nome: 'Parallax ao rolar',
     explicacao: 'As camadas andam em velocidades diferentes e criam profundidade.',
+    mecanismo: 'parallax',
   },
   sticky: {
     nome: 'Fixar ao rolar',
     explicacao: 'O elemento gruda na tela enquanto a seção passa por baixo.',
+    mecanismo: 'fixar',
   },
   'progress-transform': {
     nome: 'Transformar conforme rola',
     explicacao: 'A posição ou a escala acompanham o quanto a página já desceu.',
+    mecanismo: 'transformar',
   },
+};
+
+/**
+ * O mecanismo de um comportamento, a partir do NOME com que ele foi para a
+ * Biblioteca.
+ *
+ * É o caminho de volta: da Biblioteca em diante só sobra o nome da peça, e o
+ * mecanismo — que decidiu tudo — tinha ficado para trás. Sai da MESMA tabela
+ * que produziu o nome, então não pode divergir em silêncio: renomear uma
+ * família sem atualizar o mapa é impossível, porque não há dois mapas.
+ *
+ * O sufixo de contagem ("(×16)") é somado na hora de nomear e é tirado aqui.
+ */
+export const mecanismoDoComportamento = (nome: string): MecanismoDeComportamento | null => {
+  const limpo = nome.replace(/\s*\(×\s*\d+\s*\)\s*$/u, '').trim();
+  for (const v of Object.values(FAMILIA)) if (v.nome === limpo) return v.mecanismo;
+  return null;
 };
 
 /**
