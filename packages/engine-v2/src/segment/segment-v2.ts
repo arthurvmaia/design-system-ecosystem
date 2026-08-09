@@ -244,6 +244,14 @@ export type SinaisDeConteudo = {
   perguntas: number;
   /** Quantos campos de formulário. */
   campos: number;
+  /** Blocos de citação e trechos entre aspas — a assinatura do depoimento. */
+  citacoes: number;
+  /** Elementos cujo conteúdo INTEIRO é um número com unidade (`+250%`, `12k`). */
+  numerosDestacados: number;
+  /** Imagens sem rótulo nenhum por perto — a assinatura da nuvem de logos. */
+  imagensSemTexto: number;
+  /** Marcos numerados de etapa (`step-1`, `Etapa 2`, `class="timeline-step"`). */
+  marcosDeEtapa: number;
 };
 
 /**
@@ -270,13 +278,75 @@ export const inferirCategoria = (
   if (sinais.perguntas >= 3) {
     return { categoria: 'faq', evidencia: `${sinais.perguntas} perguntas` };
   }
+  /**
+   * Depoimento, faixa de números, nuvem de logos e linha do tempo vêm ANTES de
+   * `gallery`/`feature`/`card`, porque os quatro SÃO, por definição, itens
+   * repetidos — e o pega-tudo os engolia.
+   *
+   * Medido no acervo (1389 segmentos): `card+gallery+feature` somavam 683 (49%)
+   * e as quatro categorias abaixo estavam em ZERO absoluto. Não era falta de
+   * matéria-prima: era ordem de regra.
+   *
+   * Recomputando as categorias de seção sobre a evidência já gravada dos 57
+   * sites capturados (sem abrir navegador nenhum): `stats` 8 em 7 origens,
+   * `logo-cloud` 5 em 3, `testimonial` 4 em 4, `timeline` 4 em 4 — 21 seções que
+   * saíam como `card`, `gallery` ou `feature`, e que agora têm papel na página.
+   *
+   * É o que faz `ROLE_CATEGORIES` ter o que escolher para os papéis
+   * `testimonials`, `stats`, `logos` e `about`: das 32 etapas que os dez kits
+   * automáticos deixavam vazias, 32 eram falta de peça DESTA categoria, e
+   * nenhuma era disputa por peça já ocupada.
+   */
+  if (sinais.itensRepetidos >= 2 && sinais.citacoes >= 2) {
+    return {
+      categoria: 'testimonial',
+      evidencia: `${sinais.citacoes} citações em ${sinais.itensRepetidos} itens`,
+    };
+  }
+  if (sinais.numerosDestacados >= 3 && sinais.itensRepetidos >= 2) {
+    return {
+      categoria: 'stats',
+      evidencia: `${sinais.numerosDestacados} números com unidade em ${sinais.itensRepetidos} itens`,
+    };
+  }
+  // Nuvem de logos: imagem repetida SEM rótulo e sem título. Com legenda é
+  // galeria; com título é feature. O que sobra sem texto nenhum é a faixa de
+  // marcas de cliente.
+  if (
+    sinais.itensRepetidos >= 3 &&
+    sinais.imagensSemTexto >= 3 &&
+    sinais.imagensSemTexto >= sinais.imagens - 1 &&
+    sinais.titulos <= 1
+  ) {
+    return {
+      categoria: 'logo-cloud',
+      evidencia: `${sinais.imagensSemTexto} imagens sem rótulo em ${sinais.itensRepetidos} itens`,
+    };
+  }
+  if (sinais.marcosDeEtapa >= 3 && sinais.itensRepetidos >= 2) {
+    return {
+      categoria: 'timeline',
+      evidencia: `${sinais.marcosDeEtapa} marcos de etapa em ${sinais.itensRepetidos} itens`,
+    };
+  }
   if (sinais.itensRepetidos >= 3 && sinais.imagens >= sinais.itensRepetidos - 1) {
     return { categoria: 'gallery', evidencia: `${sinais.itensRepetidos} itens com imagem` };
   }
   if (sinais.itensRepetidos >= 3 && sinais.titulos >= 3) {
     return { categoria: 'feature', evidencia: `${sinais.itensRepetidos} itens com título` };
   }
+  /**
+   * O vocabulário de id/classe é consultado ANTES do pega-tudo `card`.
+   *
+   * Um `id="testimonials"` é evidência mais forte que "tem dois divs iguais", e
+   * até aqui ele nunca era lido: o pega-tudo devolvia `card` e a busca por
+   * pistas ficava para depois, num caminho que só segmento SEM item repetido
+   * alcançava. Continua depois da semântica e do conteúdo — muda só a posição
+   * relativa ao pega-tudo, que não é evidência de coisa nenhuma.
+   */
+  const pista = pistaDoVocabulario(node);
   if (sinais.itensRepetidos >= 2) {
+    if (pista !== null) return { categoria: pista, evidencia: `vocabulário:${pista}` };
     return { categoria: 'card', evidencia: `${sinais.itensRepetidos} itens repetidos` };
   }
   if (sinais.acoes >= 1 && sinais.texto.length < 400 && sinais.titulos >= 1) {
@@ -291,14 +361,23 @@ export const inferirCategoria = (
     return { categoria: 'overlay', evidencia: 'conteúdo em portal' };
   }
 
-  // SÓ id e classes: o texto VISÍVEL entrava no vocabulário e o rodapé do
-  // Google virou "team: Equipe" porque o texto continha "Sobre". Palavra que o
-  // usuário lê é conteúdo, não anotação de estrutura.
+  if (pista !== null) return { categoria: pista, evidencia: `vocabulário:${pista}` };
+  return { categoria: 'other', evidencia: 'sem evidência de categoria' };
+};
+
+/**
+ * A categoria que o id e as classes do nó sugerem, ou `null`.
+ *
+ * SÓ id e classes: o texto VISÍVEL entrava no vocabulário e o rodapé do Google
+ * virou "team: Equipe" porque o texto continha "Sobre". Palavra que o usuário lê
+ * é conteúdo, não anotação de estrutura.
+ */
+const pistaDoVocabulario = (node: StructuralNode): ComponentCategory | null => {
   const vocabulario = [node.fingerprint.id ?? '', ...node.fingerprint.stableClasses].join(' ');
   for (const [cat, re] of PISTAS) {
-    if (re.test(vocabulario)) return { categoria: cat, evidencia: `vocabulário:${cat}` };
+    if (re.test(vocabulario)) return cat;
   }
-  return { categoria: 'other', evidencia: 'sem evidência de categoria' };
+  return null;
 };
 
 // ── Validação ────────────────────────────────────────────────────────────────
@@ -699,7 +778,48 @@ export const contarSinais = (html: string): SinaisDeConteudo => {
     ),
     perguntas: contar(/\?/g),
     campos: contar(/<(?:input|textarea|select)[\s>]/gi),
+    // Citação: a marcação semântica, ou o par de aspas tipográficas. Aspas
+    // retas (") ficam de fora de propósito — elas são delimitador de atributo
+    // no HTML e apareceriam em todo segmento.
+    citacoes:
+      contar(/<(?:blockquote|cite|q)[\s>]/gi) +
+      Math.floor((semTags.match(/[“”«»„]/g) ?? []).length / 2),
+    // Número com UNIDADE e nada mais dentro do elemento: `+250%`, `12k`, `3x`.
+    // Sem a unidade a conta pegaria preço, ano e número de item de lista.
+    numerosDestacados: contar(/>\s*[+-]?\d[\d.,\s]{0,12}\s*(?:%|\+|k|K|M|x|×|mil|mi|bi)\s*</g),
+    imagensSemTexto: contarImagensSemRotulo(html),
+    // Marco de etapa: o número ordinal escrito (`step-1`, `Etapa 2`) ou a
+    // classe do ITEM. A classe do item é conteúdo — o vocabulário de `PISTAS`
+    // olha só o id e as classes da SEÇÃO, e uma linha do tempo costuma anotar
+    // a etapa, não a seção.
+    marcosDeEtapa:
+      contar(/\b(?:step|etapa|passo|fase)[-_\s]?\d/gi) +
+      contar(/class="[^"]*\b(?:timeline|roadmap|stepper|steps)\b/gi),
   };
+};
+
+/**
+ * Imagens que não têm rótulo nenhum até a próxima imagem.
+ *
+ * É o que separa uma galeria (foto com legenda) de uma nuvem de logos (marca
+ * atrás de marca, sem uma palavra entre elas). O `alt` não conta: ele não é
+ * texto que a pessoa lê na página, e toda nuvem de logos tem `alt` com o nome
+ * do cliente — se contasse, a assinatura desapareceria justamente onde ela é
+ * mais forte.
+ */
+const contarImagensSemRotulo = (html: string): number => {
+  let n = 0;
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const inicio = (m.index ?? 0) + m[0].length;
+    const depois = html.slice(inicio, inicio + 400);
+    const ateAProxima = depois.split(/<img\b/i)[0] ?? depois;
+    const texto = ateAProxima
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+    if (texto.length < 3) n++;
+  }
+  return n;
 };
 
 /** Irmãos com a MESMA lista de classes — a assinatura de um grid de cards. */

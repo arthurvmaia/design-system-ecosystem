@@ -236,6 +236,98 @@ test('papel semântico vence tudo', () => {
   assert.equal(inferirCategoria(n, contarSinais(''), [], false).categoria, 'footer');
 });
 
+// ── Os quatro papéis que nasciam mortos no pega-tudo ────────────────────────
+
+/**
+ * Depoimento, faixa de números, nuvem de logos e linha do tempo SÃO itens
+ * repetidos: os quatro batiam em `itensRepetidos >= 2 → card` antes de qualquer
+ * regra própria existir. Medido no acervo: as quatro categorias em ZERO entre
+ * 1389 segmentos, enquanto `card+gallery+feature` somavam 683.
+ *
+ * O HTML de cada caso é o mínimo que o acervo mostrou. Sem os ramos novos,
+ * cada um destes testes devolve a categoria citada no `assert` de regressão.
+ */
+
+/** Um nó neutro: sem id nem classe que sirvam de pista. */
+const neutro = () => node({ fingerprint: fp({ tag: 'div', id: 'section-3' }) });
+
+const repetir = (item: string, n: number): string => `<div>${item.repeat(n)}</div>`;
+
+test('grade de cartões com citação é DEPOIMENTO, não card', () => {
+  const html = repetir(
+    '<div class="depo rounded-xl p-6"><blockquote>Mudou o nosso jeito de trabalhar.</blockquote><p>Ana</p></div>',
+    3,
+  );
+  const s = contarSinais(html);
+  assert.equal(s.citacoes, 3);
+  const r = inferirCategoria(neutro(), s, [], false);
+  assert.equal(r.categoria, 'testimonial', 'o pega-tudo devolvia "card"');
+  assert.ok(r.evidencia.includes('citações'));
+});
+
+test('itens cujo título é um número com unidade são FAIXA DE NÚMEROS, não feature', () => {
+  const html = repetir('<div class="num flex flex-col"><h3>+250%</h3><p>de aumento</p></div>', 4);
+  const s = contarSinais(html);
+  assert.equal(s.numerosDestacados, 4);
+  const r = inferirCategoria(neutro(), s, [], false);
+  assert.equal(r.categoria, 'stats', 'com 4 títulos o ramo de "feature" vencia');
+  assert.ok(r.evidencia.includes('números com unidade'));
+});
+
+test('imagens repetidas sem rótulo nenhum são NUVEM DE LOGOS, não galeria', () => {
+  const html = repetir(
+    '<div class="logo grayscale opacity-60"><img src="a.svg" alt="Cliente"></div>',
+    6,
+  );
+  const s = contarSinais(html);
+  assert.equal(s.imagensSemTexto, 6, 'o `alt` não é rótulo lido na página');
+  const r = inferirCategoria(neutro(), s, [], false);
+  assert.equal(r.categoria, 'logo-cloud', 'o ramo de "gallery" pegava antes');
+});
+
+test('itens marcados com etapa são LINHA DO TEMPO, não feature', () => {
+  const html = repetir(
+    '<div class="timeline-step relative"><h4>Descoberta</h4><p>Entendemos o problema.</p></div>',
+    4,
+  );
+  const s = contarSinais(html);
+  assert.equal(s.marcosDeEtapa, 4);
+  assert.equal(inferirCategoria(neutro(), s, [], false).categoria, 'timeline');
+});
+
+/**
+ * O par de não-regressão. Sem ele o conserto acima vira o defeito oposto: uma
+ * grade de recursos virando "faixa de números" porque tem um "3" no título, ou
+ * uma galeria com legenda virando nuvem de logos.
+ */
+test('grade com título e parágrafo continua FEATURE', () => {
+  const html = repetir(
+    '<div class="card rounded-xl p-6"><h3>Rápido</h3><p>Entrega em minutos, sem espera.</p></div>',
+    3,
+  );
+  assert.equal(inferirCategoria(neutro(), contarSinais(html), [], false).categoria, 'feature');
+});
+
+test('grade de imagem COM legenda continua GALERIA', () => {
+  const html = repetir(
+    '<div class="foto overflow-hidden rounded"><img src="a.jpg"><p>Casa Ipê</p></div>',
+    4,
+  );
+  const s = contarSinais(html);
+  assert.equal(s.imagensSemTexto, 0, 'cada imagem tem legenda logo abaixo');
+  assert.equal(inferirCategoria(neutro(), s, [], false).categoria, 'gallery');
+});
+
+test('o vocabulário do id é consultado ANTES do pega-tudo "card"', () => {
+  // Quatro itens repetidos sem sinal de conteúdo nenhum: o pega-tudo devolvia
+  // `card` e a pista `faq` do id jamais era alcançada.
+  const html = repetir('<div class="item border-b py-4">Como funciona</div>', 4);
+  const n = node({ fingerprint: fp({ tag: 'div', id: 'faq-lista' }) });
+  const r = inferirCategoria(n, contarSinais(html), [], false);
+  assert.equal(r.categoria, 'faq');
+  assert.equal(r.evidencia, 'vocabulário:faq');
+});
+
 // ── Validação: o antídoto do card preto ─────────────────────────────────────
 
 test('canvas sem nada desenhado é REPROVADO, com o motivo escrito', () => {
@@ -1284,13 +1376,8 @@ test('o texto VISÍVEL não classifica: rodapé com "Sobre" não é equipe', () 
     role: 'unknown',
   });
   const sinais = {
+    ...contarSinais(''),
     texto: 'Sobre o Google Produtos Privacidade Termos',
-    titulos: 0,
-    itensRepetidos: 0,
-    imagens: 0,
-    campos: 0,
-    precos: 0,
-    perguntas: 0,
     acoes: 1,
   };
   const r = inferirCategoria(rodape, sinais, [], false);
