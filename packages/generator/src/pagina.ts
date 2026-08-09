@@ -80,6 +80,7 @@ import {
   reescreverRefsCss,
   reescreverRefsHtml,
   removerMarcasDeTerceiro,
+  soltarRaizDaSecaoNoFluxo,
   trocarMonogramaDaOrigem,
 } from './montagem.js';
 import {
@@ -2724,6 +2725,11 @@ ${criada.html}
       `${nav.ligados} link(s) do menu passaram a apontar para as seções desta página. Eles vinham do site de origem, apontando para âncoras e rotas que não existem aqui — clicar não fazia nada.`,
     );
   }
+
+  // A raiz de cada peça volta ao fluxo: quem flutua é a `<section>`. Sem isto,
+  // a seção da nav sai com 0px e reprova S14, S18 e S19 de uma vez só.
+  const soltas = soltarRaizDaSecaoNoFluxo(concatCss);
+  if (soltas.classes.length > 0) concatCss += soltas.css;
 
   const destravadas = destravarOpacidadeSemRevelador(
     concatCss,

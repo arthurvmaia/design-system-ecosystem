@@ -16,6 +16,7 @@ import {
   reescreverRefsCss,
   reescreverRefsHtml,
   removerMarcasDeTerceiro,
+  soltarRaizDaSecaoNoFluxo,
   trocarMonogramaDaOrigem,
 } from './montagem.js';
 
@@ -592,4 +593,29 @@ test('ancora que ja aponta para uma secao desta pagina nao e mexida', () => {
   const r = ancorarNavNasSecoes(html, [{ id: 'sec_1', papel: 'pricing', nome: 'Planos' }]);
   assert.equal(r.ligados, 0);
   assert.ok(r.html.includes('href="#sec_7"'));
+});
+
+test('soltarRaizDaSecaoNoFluxo: a raiz da peca volta ao fluxo, o de dentro fica', () => {
+  // Um <header class="fixed top-0> e a coisa mais comum numa nav. Recortado
+  // para dentro de uma <section> que so tem ele, a secao sai com ZERO pixel —
+  // e isso reprovava S14 (secao colapsada), S19 (emenda negativa de -1447px) e
+  // S18 (70px de conteudo em caixa de 0px) ao mesmo tempo.
+  const r = soltarRaizDaSecaoNoFluxo(
+    ':where([data-ds-raiz="d"], [data-ds-corpo="d"]):is(.fixed){position:fixed}' +
+      ':where([data-ds-corpo="d"]) .absolute{position:absolute}' +
+      ':where([data-ds-corpo="d"]) .cartao{position:relative}',
+  );
+  assert.deepEqual(r.classes, ['absolute', 'fixed']);
+  assert.match(r.css, /\[data-secao\] \[data-ds-corpo\]>\.fixed/);
+  assert.match(r.css, /position:relative!important/);
+  assert.ok(!r.css.includes('.cartao'), 'quem ja esta no fluxo nao entra');
+  // O alcance e o minimo: so o filho DIRETO do proxy, isto e, a raiz da peca.
+  // Camada decorativa `fixed inset-0` dentro do hero continua intocada.
+  assert.ok(!/\[data-ds-corpo\] \./.test(r.css), 'nada de descendente solto');
+});
+
+test('soltarRaizDaSecaoNoFluxo: sem peca fora do fluxo, nao emite regra', () => {
+  const r = soltarRaizDaSecaoNoFluxo('.a{color:red}.b{position:relative}');
+  assert.equal(r.css, '');
+  assert.deepEqual(r.classes, []);
 });

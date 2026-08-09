@@ -845,6 +845,95 @@ export const destravarOpacidadeSemRevelador = (
 };
 
 /**
+ * A RAIZ da peça volta para o fluxo dentro da seção.
+ *
+ * ## O defeito, medido
+ *
+ * Um `<header class="fixed top-0">` é a coisa mais comum que existe numa nav. Na
+ * origem ele flutua sobre a página e o `<body>` continua com a altura do resto
+ * do site. Recortado para dentro de uma `<section>` que só tem ELE, o resultado
+ * é uma seção de **zero pixel**: o menu está no DOM, tem 70px de altura própria,
+ * e ocupa lugar nenhum.
+ *
+ * Isso reprova três regras de uma vez, e as três apareciam separadas no banco de
+ * prova como se fossem defeitos diferentes:
+ *
+ * - **S14** — `nav (51 caracteres, 0px de altura)`: a seção tem conteúdo e não
+ *   ocupa espaço.
+ * - **S19** — `nav -> hero: colados (-1447px)`: a emenda entre as duas seções é
+ *   NEGATIVA, porque o hero começa onde a nav deveria estar.
+ * - **S18** — `nav › div (70px de conteudo em 0px de caixa)`: o filho do menu
+ *   rola dentro de uma caixa de altura zero.
+ *
+ * O mesmo vale para `absolute`: medido num kit, `nav pos=absolute h=110` numa
+ * seção de 0px.
+ *
+ * ## Por que é aqui, e não na peça
+ *
+ * O motor JÁ sabia disso pela metade: quando a nav de origem é sticky/fixed, a
+ * `<section>` recebe `data-fixa-no-topo` e É ELA que vira `position:sticky` —
+ * porque na composição o containing block da nav é a própria section, onde
+ * sticky não tem curso nenhum. A section assumiu o papel de flutuar; faltava
+ * soltar a peça, que continuava fixa e continuava sem ocupar espaço.
+ *
+ * Esta é a outra metade. E ela não fere a essência do componente: a hierarquia,
+ * a grade, o movimento e o espaçamento interno da peça ficam exatamente como
+ * estavam — o que muda é de QUEM é o `position`, e quem flutua agora é o
+ * embrulho que o compositor mesmo criou.
+ *
+ * ## O alcance é o mínimo que resolve
+ *
+ * O seletor exige `[data-ds-corpo] > `, ou seja, só o elemento RAIZ da peça. As
+ * camadas decorativas `fixed inset-0` de dentro do hero, os balões `absolute` de
+ * um cartão e os menus suspensos continuam intocados — eles se posicionam contra
+ * a peça, e a peça continua ali.
+ *
+ * `relative` e não `sticky`: sticky dentro do proxy teria como curso a altura do
+ * próprio proxy, isto é, curso nenhum — ele se comportaria como `relative` e
+ * ainda prometeria o que não entrega. Quem flutua é a section.
+ */
+export const soltarRaizDaSecaoNoFluxo = (css: string): { css: string; classes: string[] } => {
+  const classes = new Set<string>();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const seletor = m[1] ?? '';
+    const corpo = m[2] ?? '';
+    if (!/(?:^|[;\s])position\s*:\s*(?:fixed|absolute)\s*(?:!important)?\s*(?:;|$)/i.test(corpo)) {
+      continue;
+    }
+    /**
+     * As DUAS formas do seletor contam, e ler só uma foi um defeito já vivido.
+     *
+     * O CSS composto traz a regra de classe escopada como
+     * `:where([data-ds-raiz="x"], [data-ds-corpo="x"]) .fixed` E como
+     * `:where(...):is(.fixed)`. Uma leitura que só reconhecia `.classe{}` nu
+     * mapeou ZERO classes num site inteiro — foi assim que a conferência de par
+     * de cores nasceu cega.
+     *
+     * Só classe simples no FIM do seletor: `.a:hover`, `.a .b` e afins
+     * descrevem uma situação, não o repouso.
+     */
+    for (const c of seletor.matchAll(/[\s>+~,(]\.((?:\\.|[\w-])+)\s*(?=[,){]|$)/g)) {
+      const nome = (c[1] ?? '').replace(/\\/g, '');
+      if (nome !== '') classes.add(nome);
+    }
+    for (const c of seletor.matchAll(/:is\(\.((?:\\.|[\w-])+)\)/g)) {
+      const nome = (c[1] ?? '').replace(/\\/g, '');
+      if (nome !== '') classes.add(nome);
+    }
+  }
+  if (classes.size === 0) return { css: '', classes: [] };
+
+  const lista = [...classes].sort();
+  const seletores = lista
+    .map((c) => `[data-secao] [data-ds-corpo]>.${c.replace(/([^\w-])/g, '\\$1')}`)
+    .join(',');
+  return {
+    css: `\n/* A raiz da peça volta para o fluxo: quem flutua é a section (data-fixa-no-topo). */\n${seletores}{position:relative!important}\n`,
+    classes: lista,
+  };
+};
+
+/**
  * Os links da NAV passam a apontar para as seções DESTA página.
  *
  * ## O defeito

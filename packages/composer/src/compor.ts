@@ -70,8 +70,8 @@ const valorDe = (attrs: string | undefined, nome: string): string => {
 const escaparAtributo = (v: string): string => v.replace(/"/g, '&quot;');
 
 /**
- * Classes do `<body>` de origem que impõem o tamanho da PÁGINA, e por isso não
- * podem viajar para dentro de uma peça.
+ * Classes do `<html>`/`<body>` de origem que descrevem o DOCUMENTO, e por isso
+ * não podem viajar para dentro de uma peça.
  *
  * `min-h-screen` no corpo do site de origem quer dizer "a página ocupa pelo
  * menos a tela". Copiada para o proxy de cada peça, ela passa a querer dizer
@@ -79,15 +79,42 @@ const escaparAtributo = (v: string): string => v.replace(/"/g, '&quot;');
  * aconteceu: a nav de um site gerado saiu com 1000 px de altura e a primeira
  * dobra ficou vazia, com o menu boiando sozinho num gradiente.
  *
- * O resto das classes do corpo continua viajando, e deve: é delas que vem o
- * tema, a cor de tinta e a fonte que a peça espera ter em volta.
+ * A altura era só a primeira dessa família. Medido nos 20 sites do banco de
+ * prova, com o navegador lendo o estilo COMPUTADO de cada proxy:
+ *
+ * | o que o proxy virou | vezes | classe de origem |
+ * |---|---|---|
+ * | `overflow-y: auto`     | 168 | `overflow-y-auto`, `overflow-auto` |
+ * | `position: fixed`      |  20 | `fixed` |
+ * | `display: none`        |  12 | `hidden` |
+ * | `overflow-y: hidden`   |   8 | `overflow-hidden` |
+ * | `height: 0px` / `20px` |   6 | `h-0`, `h-5` |
+ * | `position: absolute`   |   1 | `absolute` |
+ *
+ * Cada uma dessas é inofensiva no documento e destrutiva num `div`:
+ *
+ * - `overflow` no `<body>` É a rolagem da página, e ninguém a vê como barra
+ *   separada; num bloco no meio da página vira uma SEGUNDA barra, que esconde
+ *   conteúdo e sequestra a roda do mouse. O dono fotografou as duas barras.
+ * - `fixed`/`absolute` tiram o documento do fluxo. A seção que embrulha a peça
+ *   passa a ter ZERO de altura: o texto está lá, ocupa lugar nenhum, e a página
+ *   fica com um buraco. Medido: seções `logos`, `faq`, `stats` e `nav` a 0px.
+ * - `hidden` é `display:none`. É estado de carregamento congelado pela captura —
+ *   e apagava a seção inteira do site gerado.
+ * - `h-0`/`h-5` no corpo davam uma caixa de 20px para uma seção de 913px.
+ *
+ * `relative` fica, de propósito: ele não tira nada do fluxo e costuma ser o
+ * contexto de posicionamento que a peça espera ter em volta. E o resto das
+ * classes do corpo continua viajando, e deve: é delas que vem o tema, a cor de
+ * tinta e a fonte que a peça conta encontrar.
  */
-const TAMANHO_DA_PAGINA = /^(?:min-)?h-(?:screen|full|dvh|svh|lvh)$|^min-h-\[/;
+const DESCREVE_O_DOCUMENTO =
+  /^(?:min-|max-)?h-|^overflow(-[xy])?-|^(?:fixed|absolute|sticky|hidden|invisible)$/;
 
 const semTamanhoDePagina = (classes: string): string =>
   classes
     .split(/\s+/)
-    .filter((c) => c.length > 0 && !TAMANHO_DA_PAGINA.test(c))
+    .filter((c) => c.length > 0 && !DESCREVE_O_DOCUMENTO.test(c.replace(/^[a-z-]+:/, '')))
     .join(' ');
 
 /**

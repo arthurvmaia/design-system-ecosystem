@@ -184,3 +184,36 @@ test('a rolagem do DOCUMENTO nao vira rolagem de um div no proxy', () => {
   assert.ok(/color: red/.test(html), 'o resto do estilo continua viajando');
   assert.ok(/class="dark antialiased"/.test(html), 'o tema continua viajando');
 });
+
+test('classe que descreve o DOCUMENTO nao viaja para o proxy', () => {
+  // Medido nos 20 sites do banco de prova, lendo o estilo computado de cada
+  // proxy: overflow-y:auto em 168, position:fixed em 20, display:none em 12,
+  // overflow-y:hidden em 8, altura travada em 6, position:absolute em 1.
+  // Todas vinham de CLASSE do <body> da origem — inofensiva no documento,
+  // destrutiva num div no meio da pagina.
+  const html = envolverEmProxies({
+    origem: 'ds_1',
+    html: '<p>x</p>',
+    css: '',
+    documentoAttrs: {
+      html: 'class="dark h-full overflow-hidden"',
+      body: 'class="antialiased overflow-y-auto fixed hidden h-0 md:h-screen relative bg-teal-700 font-sans"',
+    },
+  });
+  for (const some of [
+    'overflow-y-auto',
+    'overflow-hidden',
+    '"fixed',
+    ' fixed',
+    'hidden',
+    'h-0',
+    'h-full',
+    'h-screen',
+  ]) {
+    assert.ok(!html.includes(some), `${some} nao pode viajar`);
+  }
+  // O que e TEMA continua indo: e dele que a peca tira a cara que tinha.
+  for (const fica of ['dark', 'antialiased', 'relative', 'bg-teal-700', 'font-sans']) {
+    assert.ok(html.includes(fica), `${fica} tem de continuar viajando`);
+  }
+});
