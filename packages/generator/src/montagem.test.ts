@@ -536,3 +536,16 @@ test('seletor de ESTADO nao e destravado: hover descreve situacao, nao repouso',
   const r = destravarOpacidadeSemRevelador(css, ["document.querySelector('.nada')"], html);
   assert.deepEqual(r.destravadas, []);
 });
+
+test('conteudo de HOVER nao e destravado: quebraria o desenho do cartao', () => {
+  // Caso real de um site de prova: um cartao de preco que abre as vantagens
+  // quando o ponteiro chega. `pointer-events:none` junto da opacidade zero e a
+  // assinatura disso — quem nao recebe clique espera o ponteiro, nao um script.
+  const html =
+    '<div class="pricing-card"><div class="pc-hidden-content"><li>Vantagem</li></div></div>';
+  const css =
+    '.pc-hidden-content{opacity:0;pointer-events:none;transition:opacity .4s}' +
+    '.pricing-card:hover .pc-hidden-content{opacity:1}';
+  const r = destravarOpacidadeSemRevelador(css, ["document.querySelector('.nada')"], html);
+  assert.deepEqual(r.destravadas, [], 'o hover fica como esta');
+});

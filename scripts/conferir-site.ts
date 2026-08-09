@@ -277,8 +277,20 @@ const MEDIR = `() => {
      * Camada de sobreposicao (hover, brilho) fica de fora: ela e invisivel por
      * projeto e nao recebe clique. Texto que ninguem alcanca nao e conteudo
      * escondido, e decoracao esperando o ponteiro.
+     *
+     * A opacidade aqui e a EFETIVA, e a diferenca era o defeito: opacity NAO
+     * e herdada como valor computado (o filho continua em 1 mesmo dentro de um
+     * pai em 0), enquanto pointer-events E herdada. A guarda lia a opacidade do
+     * proprio elemento, achava 1, e nunca disparava — enquanto a deteccao logo
+     * abaixo ja usava a efetiva, que sobe a arvore. Duas medidas diferentes na
+     * mesma funcao.
+     *
+     * O caso real: um cartao de preco que revela as vantagens no hover — a
+     * classe do conteudo tem opacity 0 com pointer-events none, e a regra de
+     * hover do cartao a leva a 1. Desenho deliberado, acusado como texto que
+     * sumiu. (Sem crase neste bloco: ele e um template literal.)
      */
-    if (e.pointerEvents === 'none' && Number.parseFloat(e.opacity) === 0) continue;
+    if (e.pointerEvents === 'none' && opacidadeEfetiva(el) === 0) continue;
     /**
      * Texto quase invisível NÃO é decoração — é conteúdo que não apareceu.
      *

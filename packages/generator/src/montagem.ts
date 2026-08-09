@@ -806,6 +806,19 @@ export const destravarOpacidadeSemRevelador = (
     const corpo = m[2] ?? '';
     const op = /(?:^|[;\s])opacity\s*:\s*(0|0?\.0*[0-9])(?:\s|;|!|$)/i.exec(corpo);
     if (op === null) continue;
+    /**
+     * `pointer-events: none` junto da opacidade zero diz HOVER, não revelação.
+     *
+     * É a assinatura de conteúdo que aparece quando o ponteiro chega — um
+     * cartão de preço que abre as vantagens, uma legenda sobre a foto. Medido
+     * num site de prova: `.pc-hidden-content{opacity:0;pointer-events:none}`
+     * com `.pricing-card:hover .pc-hidden-content{opacity:1}`.
+     *
+     * Destravar isso não conserta nada e QUEBRA o desenho: o cartão passaria a
+     * mostrar tudo de uma vez. Quem não recebe clique não está esperando script
+     * nenhum — está esperando o ponteiro.
+     */
+    if (/pointer-events\s*:\s*none/i.test(corpo)) continue;
     // Só classe simples: seletor com estado (`:hover`) ou descendente descreve
     // uma situação, não o repouso — e mexer nele mudaria o comportamento.
     for (const c of seletor.matchAll(/(?:^|[,\s])\.((?:\\.|[\w-])+)\s*(?=,|\{|$)/g)) {
