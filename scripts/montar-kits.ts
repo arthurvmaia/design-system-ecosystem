@@ -8,7 +8,7 @@
  *
  * ## Por que uma leva, e não um kit
  *
- * Um kit serve a um objetivo e a um visual. Dez kits cobrem nichos diferentes —
+ * Um kit serve a um objetivo e a um visual. Uma leva cobre nichos diferentes —
  * é a diferença entre ter uma resposta e ter um acervo de respostas, e foi o
  * pedido do dono: "monte 10 kits que combinem para diferentes nichos e estrutura
  * de projeto".
@@ -22,7 +22,7 @@
  * 1. **O objetivo** decide a SEQUÊNCIA de seções — captar contato não argumenta
  *    como vender produto.
  * 2. **A origem preferida** decide o VISUAL — é ela que faz a mesma Biblioteca
- *    render kits com caras diferentes. Sem ela, os dez sairiam iguais: a origem
+ *    render kits com caras diferentes. Sem ela, todos sairiam iguais: a origem
  *    de maior cobertura venceria sempre, que é exatamente o "vc sempre escolhe
  *    os mesmos componentes" que o dono cobrou.
  *
@@ -106,6 +106,69 @@ const NICHOS: { nome: string; objetivo: ObjetivoDoSite; descricao: string }[] = 
     nome: 'Marca pessoal',
     objetivo: 'captar-contato',
     descricao: 'Uma voz só, do começo ao fim, com o contato sempre a um passo.',
+  },
+  /**
+   * A segunda dezena, pedida pelo dono: "quero mais 10 kits e bem distintos,
+   * use bastante a biblioteca".
+   *
+   * Ela só faz sentido depois de duas coisas que já entraram: a nota passou a
+   * cobrar REPETIÇÃO (peça usada na leva perde para uma alternativa fresca) e a
+   * contagem é por CONTEÚDO, não por id. Sem as duas, dobrar a leva dobraria o
+   * carimbo em vez de dobrar a variedade.
+   *
+   * Os nichos são escolhidos para espalhar o objetivo — cinco de cada família,
+   * somados aos dez de cima —, porque é o objetivo que decide a SEQUÊNCIA, e
+   * sequência repetida pede as mesmas categorias de peça.
+   */
+  {
+    nome: 'Advocacia e consultoria',
+    objetivo: 'apresentar-servico',
+    descricao: 'Autoridade e clareza: a área de atuação, o método e o primeiro contato.',
+  },
+  {
+    nome: 'Academia e bem-estar',
+    objetivo: 'captar-contato',
+    descricao: 'Rotina, resultado e a aula experimental como porta de entrada.',
+  },
+  {
+    nome: 'Agência e marketing',
+    objetivo: 'apresentar-servico',
+    descricao: 'Cases na frente, processo no meio, proposta no fim.',
+  },
+  {
+    nome: 'Moda e vestuário',
+    objetivo: 'vender-produto',
+    descricao: 'Coleção em imagem cheia, grade e preço sem rodeio.',
+  },
+  {
+    nome: 'Turismo e hospedagem',
+    objetivo: 'vender-produto',
+    descricao: 'Lugar, experiência e disponibilidade — a foto vende e a data fecha.',
+  },
+  {
+    nome: 'Construtora e reforma',
+    objetivo: 'apresentar-servico',
+    descricao: 'Obra entregue, etapas do serviço e orçamento como chamada.',
+  },
+  {
+    nome: 'Fotografia e audiovisual',
+    objetivo: 'mostrar-trabalho',
+    descricao: 'A imagem ocupa a tela; o texto entra só onde ela não explica.',
+  },
+  {
+    nome: 'Beleza e estética',
+    objetivo: 'captar-contato',
+    descricao: 'Antes e depois, procedimento explicado e agenda a um toque.',
+  },
+  {
+    nome: 'Fintech e finanças',
+    objetivo: 'vender-produto',
+    descricao: 'Número que convence, segurança declarada e abertura de conta curta.',
+  },
+  {
+    nome: 'Causa e organização social',
+    objetivo: 'mostrar-trabalho',
+    descricao: 'O que já foi feito, com quem, e como somar — impacto antes do pedido.',
   },
 ];
 
