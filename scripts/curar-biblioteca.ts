@@ -32,8 +32,10 @@
  * ## O que a nota premia
  *
  * Fidelidade medida, movimento reproduzível (o dono pediu movimento em toda
- * rodada), estado capturado e riqueza de conteúdo. Empate desfaz-se pela
- * fidelidade.
+ * rodada), estado capturado e riqueza de conteúdo. Empate desfaz-se pelo id do
+ * segmento — arbitrário, mas ESTÁVEL: o comentário antigo prometia desempate
+ * por fidelidade e o código tinha uma chave só, então empate caía na ordem em
+ * que o banco devolvia as linhas.
  *
  * ## O teto por origem
  *
@@ -41,6 +43,13 @@
  * peças boas ocuparia sozinho um terço dela, e os kits sairiam todos parecidos.
  * O teto é o que garante variedade — que é exatamente o que o dono cobrou
  * ("vc sempre escolhe os mesmos componentes").
+ *
+ * ## Onde mora a decisão
+ *
+ * Aqui ficou a leitura de disco. A NOTA e a ESCOLHA (reserva por papel, cotas,
+ * tetos) moram em `curadoria-escolha.ts`, puras e com teste próprio — enquanto
+ * viviam neste arquivo, que chamava `principal()` na importação, importá-lo num
+ * teste rodaria a curadoria do acervo real da máquina.
  */
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { getDb, tables } from '@ds/indexer';
@@ -48,31 +57,15 @@ import {
   type PecaParaAceite,
   SegmentsManifest,
   type SegmentsManifest as SegmentsManifestType,
-  conferirPecaDaGaleria,
   libraryComponentDir,
+  rastreamentoDoBundle,
   vaultSegmentsManifest,
 } from '@ds/shared';
 import { eq } from 'drizzle-orm';
 import { lerBundleInfo } from '../apps/server/src/lib/bundle-v2.js';
 import { montarComponente } from '../apps/server/src/routes/library.js';
-
-type Nota = {
-  segId: string;
-  dsId: string;
-  nome: string;
-  categoria: string;
-  kind: string;
-  nota: number;
-  motivos: string[];
-  reprova: string | null;
-  /** O motivo da reprova SEM os números — é por ele que o resumo agrupa. */
-  reprovaTipo: string | null;
-  jaNaBiblioteca: boolean;
-};
-
-const MIN_HTML = 200;
-/** Categorias cujo valor é o COMPORTAMENTO, não o tamanho do HTML. */
-const PEQUENAS_POR_NATUREZA = new Set(['interaction', 'cursor']);
+import { type Nota, avaliarPeca, escolherParaBiblioteca } from './curadoria-escolha.js';
+import { executadoDireto } from './executado-direto.js';
 
 const manifestoDe = (() => {
   const cache = new Map<string, SegmentsManifestType | null>();
@@ -93,6 +86,13 @@ const manifestoDe = (() => {
   };
 })();
 
+/**
+ * A leitura de disco de uma peça; a NOTA em si mora em `curadoria-escolha.ts`.
+ *
+ * A separação existe para a decisão poder ser testada: enquanto tudo morava
+ * aqui, importar este arquivo num teste rodaria a curadoria do acervo real da
+ * máquina, porque a última linha chamava `principal()`.
+ */
 const avaliar = (seg: {
   id: string;
   designSystemId: string;
@@ -105,96 +105,30 @@ const avaliar = (seg: {
 }): Nota => {
   const manifesto = manifestoDe(seg.designSystemId);
   const insight = (manifesto?.insights ?? []).find((i) => i.segmentId === seg.id) ?? null;
-  const motivos: string[] = [];
-  let nota = 0;
-  let reprova: string | null = null;
-  let reprovaTipo: string | null = null;
+  const bundle = lerBundleInfo(seg.designSystemId as `ds_${string}`, { position: seg.position });
 
-  const html = seg.htmlSnippet ?? '';
-
-  /**
-   * A REGRA DE ACEITE DA GALERIA manda aqui (`docs/regras-de-aceite.md`).
-   *
-   * Ela é o portão que o dono pediu: "uma etapa de conferência antes de você
-   * realmente colocar isso na galeria". A curadoria continua tendo a nota dela
-   * para ORDENAR, mas quem decide se a peça pode subir é a regra — senão haveria
-   * dois critérios, e o mais frouxo venceria na primeira pressa.
-   */
-  const repr =
-    (lerBundleInfo(seg.designSystemId as `ds_${string}`, { position: seg.position })
-      ?.representation as PecaParaAceite['representacao'] | undefined) ?? null;
-  const aceite = conferirPecaDaGaleria({
-    categoria: seg.category,
-    kind: seg.kind,
-    htmlSnippet: html,
-    representacao: (insight?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
-    // A captura não guarda, por segmento, qual runtime trouxe script — isso
-    // mora no manifesto do bundle. Aqui a lista fica vazia e G1 passa; a
-    // conferência completa de G1 acontece na compilação, onde o bundle existe.
-    runtimes: [],
-    movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
-    classesDeRevelacao: [],
-    temObservadorDeRolagem: false,
-    refsQuebradas: [],
-    assetsNaOrigem: [],
-  });
-  const primeiraReprovacao = aceite.vereditos.find((v) => v.estado === 'reprovou');
-  if (primeiraReprovacao !== undefined) {
-    reprova = `${primeiraReprovacao.codigo}: ${primeiraReprovacao.motivo}`;
-    reprovaTipo = `${primeiraReprovacao.codigo} — ${primeiraReprovacao.titulo}`;
-  }
-  const pendencias = aceite.vereditos.filter((v) => v.estado === 'pendente');
-  if (insight?.support === 'nao-suportado') {
-    reprova = 'a captura não reproduz este item';
-    reprovaTipo = 'a captura não reproduz este item';
-  }
-  if (insight?.comparacaoVisual?.ok === false) {
-    reprova = `o bundle não bate com o que a captura viu (${Math.round((insight.comparacaoVisual.delta ?? 0) * 100)}% de diferença)`;
-    reprovaTipo = 'o bundle não bate com o que a captura viu';
-  }
-  if (seg.kind === 'asset') {
-    reprova = 'peça promovida como imagem congelada do site de origem';
-    reprovaTipo = 'imagem congelada do site de origem';
-  }
-
-  for (const p of pendencias) motivos.push(`pendência ${p.codigo}`);
-
-  const fid = insight?.fidelity ?? 0;
-  nota += fid;
-  if (fid > 0) motivos.push(`fidelidade ${fid}`);
-
-  if (repr === 'capsula-runtime') {
-    nota += 8;
-    motivos.push('cena viva (cápsula de runtime)');
-  }
-  if ((insight?.interactions?.length ?? 0) > 0) {
-    nota += 6;
-    motivos.push(`${insight?.interactions?.length} interação(ões)`);
-  }
-  if (seg.kind === 'animation') {
-    nota += 10;
-    motivos.push('carrega movimento');
-  }
-  if (PEQUENAS_POR_NATUREZA.has(seg.category)) {
-    nota += 12;
-    motivos.push('comportamento de página: vale para o site inteiro');
-  }
-  // Conteúdo, com retorno decrescente: uma peça de 40 KB não vale o dobro de
-  // uma de 20 KB — passa a ser uma dobra inteira, que é outra coisa.
-  nota += Math.min(10, Math.round(Math.log2(Math.max(1, html.length / 200)) * 2));
-
-  return {
+  return avaliarPeca({
     segId: seg.id,
     dsId: seg.designSystemId,
     nome: seg.name,
     categoria: seg.category,
     kind: seg.kind,
-    nota,
-    motivos,
-    reprova,
-    reprovaTipo,
+    htmlSnippet: seg.htmlSnippet,
     jaNaBiblioteca: seg.inLibrary,
-  };
+    fidelidade: insight?.fidelity ?? 0,
+    representacao: (bundle?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
+    representacaoDoInsight:
+      (insight?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
+    interacoes: insight?.interactions?.length ?? 0,
+    movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
+    suporte: insight?.support ?? null,
+    comparacaoVisualOk: insight?.comparacaoVisual?.ok ?? null,
+    comparacaoVisualDelta: insight?.comparacaoVisual?.delta ?? null,
+    // O bundle está em disco AGORA: G8 é a única regra do aceite que a curadoria
+    // consegue conferir por inteiro, e é a que evita levar para o kit uma peça
+    // cujo script mistura o analytics da origem com o comportamento dela.
+    rastreamento: bundle === null ? null : rastreamentoDoBundle(bundle.dir).estado,
+  });
 };
 
 const principal = (): void => {
@@ -234,48 +168,8 @@ const principal = (): void => {
     }),
   );
 
-  const aprovadas = notas.filter((n) => n.reprova === null).sort((a, b) => b.nota - a.nota);
-
-  /**
-   * A escolha é POR CATEGORIA, e não uma fila única de notas.
-   *
-   * Uma fila única parece mais justa e é inútil aqui: medido nesta Galeria, as
-   * quinze primeiras colocadas eram TODAS `interaction`, porque comportamento de
-   * página soma pontos por natureza. Com teto por origem, elas ocupariam as
-   * vagas e sobrariam poucas seções — e uma Biblioteca sem hero, sem preços e
-   * sem rodapé não monta kit nenhum, por melhor que seja a nota média.
-   *
-   * Então cada categoria recebe a sua cota, e dentro dela vence a nota. Efeito
-   * e comportamento têm cota pequena de propósito: um por página basta, e o
-   * dono escolhe qual.
-   */
-  const COTA_POR_CATEGORIA: Record<string, number> = {
-    interaction: 8,
-    cursor: 6,
-    background: 8,
-    overlay: 4,
-    typography: 4,
-  };
-  const COTA_PADRAO = 24;
-
-  const porOrigem = new Map<string, number>();
-  const porCategoria = new Map<string, number>();
-  const porCategoriaNaOrigem = new Map<string, number>();
-  const escolhidas: Nota[] = [];
-  for (const n of aprovadas) {
-    const cota = COTA_POR_CATEGORIA[n.categoria] ?? COTA_PADRAO;
-    if ((porCategoria.get(n.categoria) ?? 0) >= cota) continue;
-    // Teto por origem: sem ele a Biblioteca vira o retrato de dois ou três
-    // sites e os dez kits saem parecidos.
-    if ((porOrigem.get(n.dsId) ?? 0) >= tetoPorOrigem) continue;
-    // E teto por (origem, categoria): dois heros do mesmo site é repetição.
-    const chave = `${n.dsId}|${n.categoria}`;
-    if ((porCategoriaNaOrigem.get(chave) ?? 0) >= 2) continue;
-    porOrigem.set(n.dsId, (porOrigem.get(n.dsId) ?? 0) + 1);
-    porCategoria.set(n.categoria, (porCategoria.get(n.categoria) ?? 0) + 1);
-    porCategoriaNaOrigem.set(chave, (porCategoriaNaOrigem.get(chave) ?? 0) + 1);
-    escolhidas.push(n);
-  }
+  const aprovadas = notas.filter((n) => n.reprova === null);
+  const escolhidas = escolherParaBiblioteca(notas, { tetoPorOrigem });
 
   const entrar = escolhidas.filter((n) => !n.jaNaBiblioteca);
   const sair = notas.filter(
@@ -391,4 +285,4 @@ const principal = (): void => {
   console.log('');
 };
 
-principal();
+if (executadoDireto(import.meta.url)) principal();
