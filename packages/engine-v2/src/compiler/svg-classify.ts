@@ -255,9 +255,28 @@ export const classificarSvg = (svg: string, ctx: ContextoSvg = {}): Classificaca
  * Sem isto, dois SVGs com um gradiente chamado `a` no mesmo bundle fazem o
  * segundo herdar o do primeiro — um bug visual silencioso e difícil de achar.
  * Reescreve declaração e referência juntas, para não quebrar o par.
+ *
+ * ## Só os ids que são REFERENCIADOS dentro do SVG
+ *
+ * A colisão que esta função existe para impedir acontece por `url(#id)` e
+ * `href="#id"` — gradiente, filtro, máscara, clipPath, sprite. Um id que
+ * ninguém referencia assim não participa dela, e renomeá-lo não protege nada.
+ *
+ * Protege nada e QUEBRA: o script da peça procura o elemento por
+ * `getElementById('pipeline-svg')`, recebe `null` e desiste na primeira linha.
+ * O desenho congela na geometria que tinha na captura, e não há erro em lugar
+ * nenhum — o script simplesmente volta.
+ *
+ * Medido na peça que o dono reprovou (a linha do tempo que se preenche ao
+ * rolar): cinco ids prefixados, e só DOIS eram referenciados — `glow-grad` e
+ * `glow-line`. Os outros três (`pipeline-svg`, `pipeline-path-base`,
+ * `pipeline-path-glow`) foram renomeados à toa, e eram exatamente os três que o
+ * `pipeline.js` procurava. No acervo, 4 bundles de 607 estavam nesse estado —
+ * a linha do tempo e um gráfico, o gráfico sem ninguém ter notado.
  */
 export const isolarIdsSvg = (svg: string, prefixo: string): string => {
-  const ids = contarIdsInternos(svg);
+  const referenciados = new Set(fragmentosUsados(svg));
+  const ids = contarIdsInternos(svg).filter((id) => referenciados.has(id));
   if (ids.length === 0) return svg;
   let out = svg;
   for (const id of ids) {
