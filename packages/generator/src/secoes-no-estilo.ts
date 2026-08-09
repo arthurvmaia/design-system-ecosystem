@@ -82,7 +82,8 @@ const faixaDeNumeros = (n: number): string =>
 const nuvemDeLogos = (n: number): string =>
   Array.from(
     { length: n },
-    (_, i) => `    <div class="ds-criada-logo" role="img" aria-label="Espaço para logo ${i + 1}">[logo ${i + 1}]</div>`,
+    (_, i) =>
+      `    <div class="ds-criada-logo" role="img" aria-label="Espaço para logo ${i + 1}">[logo ${i + 1}]</div>`,
   ).join('\n');
 
 /** Papéis cujo conteúdo é afirmação de fato sobre terceiro. Não se inventa. */
