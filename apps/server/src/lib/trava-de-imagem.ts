@@ -98,5 +98,4 @@ export const lerFluxoDoPedido = (corpo: unknown): FluxoDoPedido =>
  * AGORA, e o pedido fica registrado para o agente atender com a ferramenta.
  */
 export const avisoDePedidoAoMagnific = (projectId: string): string =>
-  `As imagens deste projeto (${projectId}) foram DESENHADAS e há um pedido de geração pelo Magnific registrado. ` +
-  'O servidor não fala com o Magnific — quem gera é o agente, pela ferramenta. Peça a ele para atender o pedido.';
+  `As imagens deste projeto (${projectId}) foram DESENHADAS e há um pedido de geração pelo Magnific registrado. O servidor não fala com o Magnific — quem gera é o agente, pela ferramenta. Peça a ele para atender o pedido.`;
