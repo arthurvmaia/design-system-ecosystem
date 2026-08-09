@@ -88,6 +88,21 @@ export const montarKitAutomatico = (
      * diferença entre um acervo e um carimbo.
      */
     origemPreferida?: string | null;
+    /**
+     * Quantos kits JÁ montados nesta leva usam cada peça.
+     *
+     * Sem isto, a nota não tem nenhum termo de repetição: em todo papel que a
+     * origem principal não cobre, os doze kits escolhem o mesmo vencedor
+     * global. Medido na leva de 2026-08-09, e foi o dono quem viu primeiro: o
+     * mesmo FAQ em 9 de 12 kits, o mesmo depoimento em 9, o mesmo "Aparecer
+     * conforme rola" em 9. De 607 peças na Biblioteca, 84 entravam em algum
+     * kit — 13,8% do acervo, com 24 das 55 origens.
+     *
+     * A origem preferida sozinha não resolve: ela troca o VISUAL principal e
+     * deixa intactas justamente as etapas que ela não cobre, que são as que
+     * repetem.
+     */
+    usosPorPeca?: ReadonlyMap<string, number>;
   },
 ): KitAutomatico => {
   const etapas: readonly EtapaDeMarketing[] = SEQUENCIAS[objetivo];
@@ -130,8 +145,30 @@ export const montarKitAutomatico = (
    */
   const vitalidade = (kind: string): number =>
     kind === 'asset' ? -10 : kind === 'animation' ? 0.5 : 0;
-  const nota = (c: { daOrigem: boolean; marca: number | null; kind: string }): number =>
-    (c.daOrigem ? 2 : 0) + (c.marca ?? 0) + vitalidade(c.kind);
+
+  /**
+   * O que cada repetição custa, e por que 1,5.
+   *
+   * É de propósito que UMA repetição (−1,5) não vence a coerência de origem
+   * (+2): duas levas de nichos diferentes podem legitimamente vestir a mesma
+   * peça, e forçar variedade aí trocaria um kit coerente por um remendado. A
+   * SEGUNDA repetição custa 3 e aí sim passa na frente — a partir dali a peça
+   * virou carimbo, e uma alternativa de outra origem é melhor que o carimbo.
+   *
+   * Escalonado, não binário: onde a Biblioteca é magra o custo se distribui
+   * sozinho em vez de travar. Com 3 depoimentos para 12 kits, o resultado é
+   * ~4 usos de cada em vez de 9 numa só.
+   */
+  const PESO_DA_REPETICAO = 1.5;
+  const usos = opcoes?.usosPorPeca ?? new Map<string, number>();
+  const repeticao = (id: string): number => -PESO_DA_REPETICAO * (usos.get(id) ?? 0);
+
+  const nota = (c: {
+    p: PecaParaMontagem;
+    daOrigem: boolean;
+    marca: number | null;
+    kind: string;
+  }): number => (c.daOrigem ? 2 : 0) + (c.marca ?? 0) + vitalidade(c.kind) + repeticao(c.p.id);
 
   const candidatasPorEtapa = etapas.map((etapa) =>
     candidatasDe(etapa.papel, pecas)
@@ -141,7 +178,7 @@ export const montarKitAutomatico = (
         marca: marcaDe(p.id),
         kind: p.kind,
       }))
-      .sort((a, b) => nota(b) - nota(a)),
+      .sort((a, b) => nota(b) - nota(a) || a.p.id.localeCompare(b.p.id)),
   );
 
   // Pareamento máximo etapa×peça por caminhos aumentantes (Kuhn): quando a
@@ -299,7 +336,11 @@ export const montarKitAutomatico = (
     .sort((a, b) => {
       const daOrigem = (p: PecaParaMontagem): number =>
         p.designSystemId === origemPrincipal ? 0 : 1;
-      return daOrigem(a) - daOrigem(b) || a.name.localeCompare(b.name);
+      // O mesmo peso de repetição das seções: sem ele, "Aparecer conforme
+      // rola" entrava em 9 dos 12 kits e "Fixar ao rolar" em 8, porque a
+      // ordem só olhava origem e nome.
+      const repetido = (p: PecaParaMontagem): number => usos.get(p.id) ?? 0;
+      return daOrigem(a) - daOrigem(b) || repetido(a) - repetido(b) || a.name.localeCompare(b.name);
     });
   const porMecanismo = new Map<string, PecaParaMontagem>();
   for (const p of alcancam) {

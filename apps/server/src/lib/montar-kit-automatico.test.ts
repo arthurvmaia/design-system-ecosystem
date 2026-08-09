@@ -239,3 +239,87 @@ test('fundo de OUTRA origem não entra: ele é a superfície que todas as seçõ
   const r = montarKitAutomatico('captar-contato', pecas, semMarca);
   assert.ok(!r.componentIds.includes('cmp_fundo_b'));
 });
+
+test('peça já usada na leva perde para uma alternativa fresca do mesmo papel', () => {
+  // Duas peças de FAQ, ambas fora da origem principal: sem contagem de uso,
+  // a mesma vence sempre e vira carimbo nos dez kits.
+  const pecas = [
+    peca('cmp_hero_a', 'hero', 'ds_a'),
+    peca('cmp_faq_1', 'faq', 'ds_b'),
+    peca('cmp_faq_2', 'faq', 'ds_c'),
+  ];
+  const primeiro = montarKitAutomatico('captar-contato', pecas, semMarca);
+  const faqDoPrimeiro = primeiro.passos.find((p) => p.papel === 'faq')?.componentId;
+  assert.ok(faqDoPrimeiro !== null && faqDoPrimeiro !== undefined);
+
+  const segundo = montarKitAutomatico('captar-contato', pecas, semMarca, {
+    usosPorPeca: new Map([[faqDoPrimeiro, 1]]),
+  });
+  assert.notEqual(
+    segundo.passos.find((p) => p.papel === 'faq')?.componentId,
+    faqDoPrimeiro,
+    'o segundo kit tem de pegar a OUTRA peça de faq',
+  );
+});
+
+test('UMA repetição não vence a coerência de origem: kit remendado é pior', () => {
+  // A peça da origem principal já foi usada uma vez (−1,5) e ainda assim tem
+  // de ganhar da estrangeira fresca, porque `daOrigem` vale +2.
+  const pecas = [
+    peca('cmp_hero_a', 'hero', 'ds_a'),
+    peca('cmp_faq_a', 'faq', 'ds_a'),
+    peca('cmp_faq_z', 'faq', 'ds_z'),
+  ];
+  const r = montarKitAutomatico('captar-contato', pecas, semMarca, {
+    origemPreferida: 'ds_a',
+    usosPorPeca: new Map([['cmp_faq_a', 1]]),
+  });
+  assert.equal(r.passos.find((p) => p.papel === 'faq')?.componentId, 'cmp_faq_a');
+});
+
+test('a SEGUNDA repetição já passa na frente: a partir dali a peça virou carimbo', () => {
+  const pecas = [
+    peca('cmp_hero_a', 'hero', 'ds_a'),
+    peca('cmp_faq_a', 'faq', 'ds_a'),
+    peca('cmp_faq_z', 'faq', 'ds_z'),
+  ];
+  const r = montarKitAutomatico('captar-contato', pecas, semMarca, {
+    origemPreferida: 'ds_a',
+    usosPorPeca: new Map([['cmp_faq_a', 2]]),
+  });
+  assert.equal(r.passos.find((p) => p.papel === 'faq')?.componentId, 'cmp_faq_z');
+});
+
+test('categoria magra distribui em vez de travar: tres pecas nao viram uma so', () => {
+  // O caso real: 3 depoimentos para 12 kits. O certo não é recusar — é espalhar.
+  const pecas = [
+    peca('cmp_hero_a', 'hero', 'ds_a'),
+    peca('cmp_dep_1', 'testimonial', 'ds_b'),
+    peca('cmp_dep_2', 'testimonial', 'ds_c'),
+    peca('cmp_dep_3', 'testimonial', 'ds_d'),
+  ];
+  const usos = new Map<string, number>();
+  const escolhidos: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    const r = montarKitAutomatico('captar-contato', pecas, semMarca, { usosPorPeca: usos });
+    const id = r.passos.find((p) => p.papel === 'testimonials')?.componentId;
+    assert.ok(id, 'toda rodada tem de escolher um depoimento');
+    escolhidos.push(id);
+    usos.set(id, (usos.get(id) ?? 0) + 1);
+  }
+  assert.equal(new Set(escolhidos).size, 3, 'as tres pecas entram em circulacao');
+  for (const n of [...new Set(escolhidos)].map((id) => escolhidos.filter((x) => x === id).length)) {
+    assert.equal(n, 2, 'seis kits sobre tres pecas: duas vezes cada, nunca 6 numa so');
+  }
+});
+
+test('sem usosPorPeca nada muda: quem nao passa a conta continua com o mesmo kit', () => {
+  const pecas = [
+    peca('cmp_hero_a', 'hero', 'ds_a'),
+    peca('cmp_faq_1', 'faq', 'ds_b'),
+    peca('cmp_faq_2', 'faq', 'ds_c'),
+  ];
+  const a = montarKitAutomatico('captar-contato', pecas, semMarca);
+  const b = montarKitAutomatico('captar-contato', pecas, semMarca, { usosPorPeca: new Map() });
+  assert.deepEqual(a.componentIds, b.componentIds);
+});

@@ -158,6 +158,8 @@ const principal = (): void => {
   // dez kits terem caras diferentes. Origem já usada não se repete enquanto
   // houver origem nova que cubra o objetivo.
   const usadas = new Set<string>();
+  /** Quantos kits desta leva já usam cada peça. Ver `usosPorPeca` na montagem. */
+  const usosPorPeca = new Map<string, number>();
   const planejados: {
     nicho: (typeof NICHOS)[number];
     origem: string | null;
@@ -177,7 +179,13 @@ const principal = (): void => {
 
     const r = montarKitAutomatico(nicho.objetivo, pecas, marca, {
       origemPreferida: escolhida?.ds ?? null,
+      usosPorPeca,
     });
+    // A conta anda ENTRE os kits, e é isso que os faz distintos: o segundo kit
+    // já paga por tudo que o primeiro usou. Sem ela, a origem preferida troca
+    // só o visual principal e as etapas que ela não cobre repetem o mesmo
+    // vencedor global em todos os dez.
+    for (const id of r.componentIds) usosPorPeca.set(id, (usosPorPeca.get(id) ?? 0) + 1);
     planejados.push({
       nicho,
       origem: escolhida?.ds ?? null,
