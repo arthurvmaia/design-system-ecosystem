@@ -318,13 +318,15 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           {delivery ? (
             <>
               <p>
-                Deixei tudo na sua Área de Trabalho. O <b>ZIP é o tema Shopify completo</b>: suba em
-                {" "}<b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo ZIP</b>. Para
-                {" "}olhar sem subir nada, abra <b>previa-local/index.html</b> dentro da pasta.
+                Deixei <b>uma pasta</b> na sua Área de Trabalho, com duas coisas dentro. O <b>ZIP é o
+                tema</b>: suba em <b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo
+                ZIP</b> e clique em Publicar. A pasta <b>previa</b> é só para olhar aqui, com dois
+                cliques no index.html. Tem um LEIA-ME lá dentro repetindo isso.
               </p>
               <div className="cf-paths">
-                <div><Download size={15} /> <span>{delivery.zipPath}</span></div>
                 <div><FolderOpen size={15} /> <span>{delivery.folderPath}</span></div>
+                <div><Download size={15} /> <span>{delivery.zipPath}</span></div>
+                <div><FolderOpen size={15} /> <span>{delivery.entryPath}</span></div>
               </div>
             </>
           ) : (

@@ -1,4 +1,4 @@
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import { exec } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -113,9 +113,13 @@ export function localDelivery(): Plugin {
               const rawName = url.searchParams.get("name") ?? "minha-marca";
               const slug = rawName.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "minha-marca";
 
+              // UMA pasta na Área de Trabalho, não duas coisas soltas: antes
+              // saíam `site-x` e `site-x.zip` lado a lado, com o mesmo nome e
+              // sem dizer para que servia cada uma.
               const desktop = join(homedir(), "Desktop");
-              const zipPath = join(desktop, `site-${slug}.zip`);
-              const folderPath = join(desktop, `site-${slug}`);
+              const folderPath = join(desktop, `loja-${slug}`);
+              const zipPath = join(folderPath, `tema-${slug}.zip`);
+              const previewPath = join(folderPath, "previa", "index.html");
 
               const files = unzipSync(new Uint8Array(zip));
               // Se algo estiver segurando a pasta (Explorer, um servidor com o
@@ -123,18 +127,39 @@ export function localDelivery(): Plugin {
               await rm(folderPath, { recursive: true, force: true }).catch(() => {});
               await mkdir(folderPath, { recursive: true });
               const root = resolve(folderPath);
+
+              // O ZIP que vai para a Shopify tem SÓ o tema. A prévia sai dele e
+              // vira uma pasta ao lado — dentro do ZIP ela é uma pasta que a
+              // Shopify não conhece, e o pacote precisa passar limpo.
+              const somenteTema: Record<string, Uint8Array> = {};
               for (const [path, content] of Object.entries(files)) {
-                // Contra ZIP Slip: o destino tem de continuar DENTRO da pasta —
-                // com separador, senão "site-abc-outra" passaria por prefixo.
-                const target = resolve(root, path);
-                if (target !== root && !target.startsWith(root + sep)) continue;
-                await mkdir(resolve(target, ".."), { recursive: true });
-                await writeFile(target, content);
+                if (path.startsWith("previa-local/")) {
+                  const destino = resolve(root, "previa", path.slice("previa-local/".length));
+                  if (destino !== root && !destino.startsWith(root + sep)) continue;
+                  await mkdir(resolve(destino, ".."), { recursive: true });
+                  await writeFile(destino, content);
+                  continue;
+                }
+                somenteTema[path] = content;
               }
-              await writeFile(zipPath, zip);
+              await writeFile(zipPath, Buffer.from(zipSync(somenteTema, { level: 6 })));
+
+              await writeFile(join(folderPath, "LEIA-ME.txt"), [
+                `Loja de ${slug}`,
+                "",
+                `1) tema-${slug}.zip`,
+                "   Este é o tema da sua loja. Suba em:",
+                "   Shopify > Loja online > Temas > Adicionar tema > Enviar arquivo ZIP",
+                "   Depois clique em Publicar para ele virar a loja no ar.",
+                "",
+                "2) previa/index.html",
+                "   Só para olhar no seu computador, com dois cliques.",
+                "   Não precisa subir nada para ver esta parte.",
+                "",
+              ].join("\r\n"), "utf8");
 
               response.setHeader("content-type", "application/json");
-              response.end(JSON.stringify({ zipPath, folderPath, entryPath: join(folderPath, "index.html") }));
+              response.end(JSON.stringify({ zipPath, folderPath, entryPath: previewPath }));
             } catch (error) {
               response.statusCode = 500;
               response.setHeader("content-type", "application/json");
