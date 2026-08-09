@@ -58,10 +58,21 @@ const principal = async (): Promise<void> => {
   }
 
   const db = getDb();
+  /**
+   * Nome empatado resolve no MAIS NOVO.
+   *
+   * `pnpm kits` monta uma leva por nicho e não apaga a anterior: rodar duas
+   * vezes deixa dois "Imóvel e arquitetura" no banco. Com a ordem natural do
+   * SQLite, o `find` pegava sempre o PRIMEIRO — o kit velho, justamente o que a
+   * remontagem acabou de substituir. O banco de prova então provava o kit
+   * antigo e dizia o nome do novo, que é o pior tipo de resultado: parece
+   * medição e é engano.
+   */
   const kit = db
     .select()
     .from(tables.kits)
     .all()
+    .sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))
     .find((k) => k.name.toLowerCase().includes(nomeDoKit.toLowerCase()));
   if (kit === undefined) {
     console.log(`\n  Kit "${nomeDoKit}" não existe. Kits:`);
