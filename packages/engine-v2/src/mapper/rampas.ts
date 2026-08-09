@@ -198,8 +198,28 @@ export const derivarRampas = (nos: readonly RawNode[]): RampasDaPagina => {
     if (proprio > 0 && v.fontSize > 0) {
       tipografia.push({ valor: v.fontSize, ref: n.ref, caracteres: proprio });
     }
+    /**
+     * O respiro de um EMBRULHO de página não é respiro: é layout.
+     *
+     * A amostragem pegava `padY`, `padX` e `gap` de qualquer nó visível,
+     * inclusive do contêiner que envolve a página inteira. Medido no acervo: a
+     * rampa de um site termina em **2520px** e a de outro em 470px, contra uma
+     * mediana de 120px para o maior degrau. Ninguém escreve respiro de 2520px —
+     * aquilo é a altura de um wrapper entrando na régua como se fosse espaço.
+     *
+     * O estrago não fica na régua: esses degraus viram `--marca-espaco-10/11`, a
+     * reescala manda respiros legítimos para eles, e a peça sai empurrada para
+     * fora do eixo da página. Foi a causa medida por trás dos elementos
+     * ceifados na borda — 198 deles nos 20 sites de prova.
+     *
+     * O teto sai do PRÓPRIO nó, não de constante: um respiro maior que a metade
+     * da caixa que o contém não está separando duas coisas, está sendo a coisa.
+     */
+    const meia = Math.max(n.box.w, n.box.h) / 2;
     for (const valor of [v.padY, v.padX, v.gap]) {
-      if (valor > 0) espaco.push({ valor, ref: n.ref, caracteres: 0 });
+      if (valor <= 0) continue;
+      if (meia > 0 && valor > meia) continue;
+      espaco.push({ valor, ref: n.ref, caracteres: 0 });
     }
     if (v.radius > 0) raio.push({ valor: v.radius, ref: n.ref, caracteres: 0 });
   }
