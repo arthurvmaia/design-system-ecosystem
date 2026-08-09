@@ -15,6 +15,7 @@ import {
   type Retema,
   atributosDeProxy,
   coresDoValor,
+  corrigirParesDeCor,
   envolverEmProxies,
   escoparCss,
   fontesDaOrigem,
@@ -2582,6 +2583,33 @@ ${criada.html}
     scriptsLocais: corpoDosScriptsLocais,
   });
   corpoDaPagina = poda.html;
+
+  /**
+   * O PAR conferido: o texto e o fundo em que ele senta, juntos.
+   *
+   * A recoloração migra cor por cor e cada escolha isolada está certa; a guarda
+   * que existia confere o texto contra o fundo da PÁGINA. Só que o texto que
+   * falha não senta na página — senta num botão, num cartão, numa faixa.
+   *
+   * Medido num botão do banco de prova: na origem o par dava 16,64:1
+   * (#FBFCD4 × stone-900) e depois da migração dava 1,96:1, com cada lado
+   * passando sozinho contra a página. Foi este par que reprovou a S4 em 19 dos
+   * 20 kits.
+   */
+  if (tokensDaMarca !== undefined) {
+    const par = corrigirParesDeCor(corpoDaPagina, concatCss, tokensDaMarca);
+    corpoDaPagina = par.html;
+    if (par.corrigidos.length > 0) {
+      const exemplo = par.corrigidos[0];
+      const detalhe =
+        exemplo === undefined
+          ? '.'
+          : ` (o pior: --marca-${exemplo.papelAntes} sobre --marca-${exemplo.papelDoFundo} dava ${exemplo.razaoAntes.toFixed(2)}:1, virou --marca-${exemplo.papelDepois}).`;
+      avisos.push(
+        `${par.corrigidos.length} par(es) de cor colapsaram depois da recoloração e foram corrigidos na TINTA${detalhe}`,
+      );
+    }
+  }
   derivadosDeEstado.length = 0;
   derivadosDeEstado.push(...poda.derivados);
   for (const id of poda.podados) {
