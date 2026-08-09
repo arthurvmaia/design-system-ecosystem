@@ -562,11 +562,34 @@ const MEDIR = `() => {
   let alturaUtil = 0;
   {
     alturaTotal = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
-    let soma = 0;
+    /*
+      Somar a altura de cada elemento CONTA DUAS VEZES quem esta dentro de quem:
+      um <li> dentro de um <p> dentro de um cartao soma tres. A primeira versao
+      disso deu 115% de fracao util em quatro sites — impossivel, e o numero
+      denunciou o metodo.
+
+      O certo e medir a UNIAO das faixas verticais ocupadas: cada elemento
+      contribui com o intervalo [topo, base] no documento, e intervalos que se
+      cruzam viram um so.
+    */
+    const faixas = [];
+    const topoDoDoc = window.scrollY || document.documentElement.scrollTop || 0;
     for (const el of document.querySelectorAll('[data-secao] p, [data-secao] h1, [data-secao] h2, [data-secao] h3, [data-secao] h4, [data-secao] li, [data-secao] img, [data-secao] video, [data-secao] button, [data-secao] input')) {
       const r = el.getBoundingClientRect();
-      if (r.height > 0 && r.width > 0) soma += r.height;
+      if (r.height <= 0 || r.width <= 0) continue;
+      faixas.push([r.top + topoDoDoc, r.bottom + topoDoDoc]);
     }
+    faixas.sort((a, b) => a[0] - b[0]);
+    let soma = 0;
+    let ini = null;
+    let fim = null;
+    for (const [a, b] of faixas) {
+      if (ini === null) { ini = a; fim = b; continue; }
+      if (a <= fim) { if (b > fim) fim = b; continue; }
+      soma += fim - ini;
+      ini = a; fim = b;
+    }
+    if (ini !== null) soma += fim - ini;
     alturaUtil = Math.round(soma);
   }
 
