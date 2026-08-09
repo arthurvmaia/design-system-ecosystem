@@ -243,3 +243,84 @@ test('luminancia e contrasteRatio: sanidade WCAG', () => {
   assert.ok(Math.abs(contrasteRatio('#000000', '#ffffff') - 21) < 0.1);
   assert.ok(Math.abs(contrasteRatio('#777777', '#777777') - 1) < 0.01);
 });
+
+/**
+ * O token de LINK nasce legível — porque link que não se lê não é link.
+ *
+ * Medido no site do clube: a primária é o azul do escudo (`#0050c4`) e o fundo
+ * é o marinho do app (`#0b1530`). `link` era a primária crua, dando 2,5:1, e
+ * **19 dos 27 trechos reprovados na conferência eram `<a>`** — o menu inteiro,
+ * o rodapé inteiro e os contatos.
+ *
+ * O que o teste trava: `link` passa do piso sobre a página E sobre as duas
+ * superfícies dela, sem mexer em `primary`, que continua a cor do dono.
+ */
+test('link nasce legível sobre a página e as superfícies; primary fica intacta', () => {
+  const t = distribuirTokens({
+    cores: [
+      { id: 'a', nome: 'Marinho', hex: '#0b1530' },
+      { id: 'b', nome: 'Azul do escudo', hex: '#0050c4' },
+      { id: 'c', nome: 'Branco', hex: '#ffffff' },
+    ],
+    atribuicoes: {},
+  });
+  const fundo = t.background as string;
+  assert.equal(t.primary, '#0050c4', 'a primária é a cor do dono, crua');
+  for (const chao of [t.background, t.surface, t['surface-elevated']] as string[]) {
+    assert.ok(
+      contrasteRatio(t.link as string, chao) >= 3,
+      `link ${t.link} não se lê sobre ${chao}`,
+    );
+  }
+  // Matiz preservado: o link continua sendo o azul da marca, só que legível.
+  assert.notEqual(t.link, t.primary);
+  assert.ok(luminancia(t.link as string) > luminancia(fundo), 'clareou, porque o fundo é escuro');
+});
+
+test('paleta que já se lê não é mexida: link continua a primária', () => {
+  // Tema CLARO de verdade (maioria das cores clara), com uma primária escura
+  // que já passa do piso sobre o branco: não há defeito para consertar.
+  const t = distribuirTokens({
+    cores: [
+      { id: 'a', nome: 'Branco', hex: '#ffffff' },
+      { id: 'b', nome: 'Azul', hex: '#1746a2' },
+      { id: 'c', nome: 'Marinho', hex: '#10245c' },
+      { id: 'd', nome: 'Cinza claro', hex: '#f7f7f7' },
+    ],
+    atribuicoes: {},
+  });
+  assert.equal(t.primary, '#1746a2');
+  assert.equal(t.link, t.primary, 'sem defeito para consertar, nada é ajustado');
+});
+
+/**
+ * A correção do link vale TAMBÉM sobre atribuição manual — e é a única que vale.
+ *
+ * É exatamente o caso do clube: a marca atribuiu `link → principal` na mão, e
+ * `principal` é o azul do escudo sobre o marinho do app. `link` é o único token
+ * cuja função inteira é ser texto, então escolher a cor dele é escolher a
+ * identidade do link, não escolher que ele suma.
+ */
+test('link atribuído À MÃO também é conferido; os outros tokens manuais não', () => {
+  const t = distribuirTokens({
+    cores: [
+      { id: 'fundo', nome: 'Marinho', hex: '#0b1530' },
+      { id: 'superficie', nome: 'Superfície', hex: '#16244a' },
+      { id: 'titulo', nome: 'Branco', hex: '#ffffff' },
+      { id: 'principal', nome: 'Azul do escudo', hex: '#0050c4' },
+    ],
+    atribuicoes: {
+      background: 'fundo',
+      surface: 'superficie',
+      heading: 'titulo',
+      primary: 'principal',
+      link: 'principal',
+    },
+  });
+  assert.equal(t.primary, '#0050c4', 'primary manual é respeitada crua: ali a cor preenche');
+  assert.equal(t.surface, '#16244a', 'os outros tokens manuais não são tocados');
+  assert.notEqual(t.link, '#0050c4', 'o link manual foi levado até o piso');
+  for (const chao of ['#0b1530', '#16244a']) {
+    assert.ok(contrasteRatio(t.link as string, chao) >= 3, `link não se lê sobre ${chao}`);
+  }
+});

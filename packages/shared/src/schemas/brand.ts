@@ -419,6 +419,47 @@ export const ajustarHex = (hex: string, fator: number): string => {
 };
 
 /**
+ * O piso de contraste de TEXTO, o mesmo da conferência do site (WCAG, texto
+ * grande). Repetido aqui como número e não importado de `regras-de-aceite`
+ * porque este arquivo é schema e não pode depender das regras — o teste amarra
+ * os dois para não desencostarem.
+ */
+const PISO_DE_TEXTO = 3;
+
+/**
+ * A cor ajustada até se LER sobre os fundos onde ela vai pousar.
+ *
+ * Existe por um token só, e por um defeito medido: `link` nascia igual à
+ * primária, sem nenhuma conferência. No site do clube a primária é o azul do
+ * escudo (`#0050c4`) e o fundo é o marinho do app (`#0b1530`) — 2,5:1. Todo
+ * link do site saiu ilegível: **19 dos 27 trechos reprovados eram `<a>`**, no
+ * menu, no rodapé e nos contatos.
+ *
+ * `link` é texto POR DEFINIÇÃO — não existe link que não se lê. Então ele não
+ * pode ser a cor da marca crua: ele é a cor da marca ANDADA até o piso, no
+ * mesmo matiz, longe dos fundos. `primary` continua exatamente a cor do dono,
+ * porque ali ela é tinta de preencher, não de escrever.
+ *
+ * O passo é pequeno (0,06) e o teto é 12 voltas: paleta impossível devolve o
+ * melhor que deu, nunca um laço infinito nem um branco chapado.
+ */
+const legivelComoTexto = (cor: string, fundos: readonly string[]): string => {
+  if (fundos.length === 0) return cor;
+  const pior = (c: string): number =>
+    fundos.reduce((m, f) => Math.min(m, contrasteRatio(c, f)), Number.POSITIVE_INFINITY);
+  if (pior(cor) >= PISO_DE_TEXTO) return cor;
+  // Anda para o lado OPOSTO ao dos fundos: fundo escuro pede tinta mais clara.
+  const mediaDosFundos = fundos.reduce((s, f) => s + luminancia(f), 0) / fundos.length;
+  const passo = mediaDosFundos < 0.5 ? 0.06 : -0.06;
+  let atual = cor;
+  for (let i = 0; i < 12; i++) {
+    atual = ajustarHex(atual, passo);
+    if (pior(atual) >= PISO_DE_TEXTO) return atual;
+  }
+  return atual;
+};
+
+/**
  * Distribuição automática dos tokens sobre a paleta — DETERMINÍSTICA, por
  * luminância e contraste: fundo = a mais extrema em luminância; texto = a de
  * maior contraste com o fundo; primária = a primeira cor NÃO usada como
@@ -450,10 +491,13 @@ export const distribuirTokens = (
 
   const primaria = cores.find((c) => c.hex !== fundo && c.hex !== texto)?.hex ?? texto;
 
+  const superficie = ajustarHex(fundo, luminancia(fundo) >= 0.5 ? -0.04 : 0.06);
+  const superficieAlta = ajustarHex(fundo, luminancia(fundo) >= 0.5 ? -0.08 : 0.12);
+
   const auto: Partial<Record<TokenSemantico, string>> = {
     background: fundo,
-    surface: ajustarHex(fundo, luminancia(fundo) >= 0.5 ? -0.04 : 0.06),
-    'surface-elevated': ajustarHex(fundo, luminancia(fundo) >= 0.5 ? -0.08 : 0.12),
+    surface: superficie,
+    'surface-elevated': superficieAlta,
     heading: texto,
     body: texto,
     muted: ajustarHex(texto, luminancia(fundo) >= 0.5 ? 0.35 : -0.35),
@@ -474,6 +518,35 @@ export const distribuirTokens = (
     if (hex !== undefined && (TOKENS_SEMANTICOS as readonly string[]).includes(token)) {
       auto[token as TokenSemantico] = hex;
     }
+  }
+
+  /**
+   * E o link se lê — venha ele da automática ou da mão de quem montou a marca.
+   *
+   * Esta é a ÚNICA correção que passa por cima de uma atribuição manual, e a
+   * razão é o que `link` é: o único token da lista cuja função inteira é ser
+   * TEXTO. Escolher a cor dele é escolher a identidade do link, não escolher
+   * que ele desapareça — honrar a letra da escolha quebrando a função dela
+   * seria a leitura errada.
+   *
+   * O que se preserva é o MATIZ: a cor continua o azul da marca, andada em
+   * luminância até o piso. O que muda é só o suficiente para ler.
+   *
+   * Medido: o clube atribuiu `link → principal` (`#0050c4`, o azul do escudo)
+   * sobre o marinho `#0b1530`. Deu 2,5:1 e **19 dos 27 trechos reprovados na
+   * conferência do site eram `<a>`** — o menu inteiro, o rodapé inteiro e os
+   * três contatos. A própria nota da marca já dizia que aquele azul não se lê
+   * sobre aquele fundo; o que faltava era o motor conferir.
+   *
+   * `primary` NÃO passa por aqui: ali a cor é tinta de preencher (botão,
+   * selo), e preencher com a cor crua do dono é o certo.
+   */
+  const chao = auto.background;
+  if (auto.link !== undefined && chao !== undefined) {
+    auto.link = legivelComoTexto(
+      auto.link,
+      [chao, auto.surface, auto['surface-elevated']].filter((c): c is string => c !== undefined),
+    );
   }
   return auto;
 };
