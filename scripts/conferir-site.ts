@@ -775,6 +775,11 @@ export const conferirNoNavegador = async (
         colapsadas: string[];
         alvosPequenos: string[];
         textoMiudo: string[];
+        imagensMinusculas: string[];
+        rolagemAninhada: string[];
+        respiroMorto: string[];
+        alturaTotal: number;
+        alturaUtil: number;
       };
       await pagina.close();
       const medida: SiteNoNavegador = {
@@ -786,6 +791,20 @@ export const conferirNoNavegador = async (
         secoesColapsadas: bruto.colapsadas,
         alvosDeToquePequenos: bruto.alvosPequenos,
         textoMiudo: bruto.textoMiudo,
+        /**
+         * Os quatro campos das regras S17 a S20.
+         *
+         * Este objeto é montado campo a campo, e não por espalhamento: campo
+         * novo medido no navegador que ninguém copia aqui some em silêncio, e a
+         * regra nasce sem nunca disparar. Aconteceu — as quatro rodaram sobre
+         * 20 sites e devolveram nada, porque o veredito lia um objeto onde elas
+         * não estavam.
+         */
+        imagensMinusculas: bruto.imagensMinusculas,
+        rolagemAninhada: bruto.rolagemAninhada,
+        respiroMorto: bruto.respiroMorto,
+        alturaTotal: bruto.alturaTotal,
+        alturaUtil: bruto.alturaUtil,
       };
       saida.push({ largura, medida, aceite: conferirSiteNoNavegador(medida) });
     }
