@@ -830,7 +830,18 @@ export const api = {
    * seguida pelo generateProject de sempre, com a mesma credencial.
    */
   expresso: (
-    input: { objetivo: ObjetivoDoSite; nicho?: string; nome?: string; marca?: string },
+    input: {
+      objetivo: ObjetivoDoSite;
+      nicho?: string;
+      nome?: string;
+      marca?: string;
+      /**
+       * De onde saem as imagens da marca. **Obrigatório na via expressa**: o
+       * servidor recusa sem isto (a trava), porque geração pelo Magnific
+       * consome crédito e um atalho não pode escondê-lo.
+       */
+      imagens: 'desenho' | 'magnific';
+    },
     senhaDeAcao?: string,
   ) =>
     jsonFetch<{

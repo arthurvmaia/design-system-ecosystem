@@ -40,6 +40,19 @@ export function ExpressoPage() {
   const [pedindoSenha, setPedindoSenha] = useState(false);
   const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
   const [resultado, setResultado] = useState<Resultado | null>(null);
+  /**
+   * A TRAVA das imagens.
+   *
+   * A via expressa é um clique que faz três coisas caras, e uma delas passou a
+   * poder gastar crédito de verdade: o ilimitado do Magnific não vale na
+   * sessão, e cada imagem custa ~75. O dono pediu que a tela SEMPRE pergunte
+   * aqui — no wizard, onde ele preenche etapa por etapa, o padrão já é Magnific
+   * porque a intenção está demonstrada.
+   *
+   * Começa em `desenho`: o atalho existe para ver o site rápido, e quem quiser
+   * gastar diz que quer.
+   */
+  const [imagens, setImagens] = useState<'desenho' | 'magnific'>('desenho');
   const { acompanhar } = useTrabalho();
 
   useReveal([resultado]);
@@ -52,6 +65,7 @@ export function ExpressoPage() {
           objetivo,
           nicho: nicho.trim() === '' ? undefined : nicho.trim(),
           marca: marca.trim() === '' ? undefined : marca.trim(),
+          imagens,
         },
         senhaDeAcao,
       );
@@ -173,6 +187,42 @@ export function ExpressoPage() {
                   background: 'transparent',
                 }}
               />
+            </div>
+            <div>
+              <span className="ds-label">4 · de onde saem as imagens</span>
+              {/*
+                A TRAVA. Ela é uma escolha explícita, e não uma caixinha marcada
+                por padrão, porque o custo é real: o ilimitado do Magnific não
+                vale nesta sessão e cada imagem consome crédito. No wizard, onde
+                a pessoa preenche etapa por etapa, o padrão já é Magnific — aqui,
+                num atalho de um clique, ela decide.
+              */}
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                {(
+                  [
+                    { v: 'desenho', t: 'Desenho local', d: 'grátis, mais simples' },
+                    { v: 'magnific', t: 'Magnific', d: 'gera crédito: ~75 por imagem' },
+                  ] as const
+                ).map((op) => (
+                  <button
+                    key={op.v}
+                    type="button"
+                    onClick={() => setImagens(op.v)}
+                    aria-pressed={imagens === op.v}
+                    className="flex-1 rounded-none border px-3 py-2 text-left text-[13px] transition-colors"
+                    style={{
+                      borderColor: imagens === op.v ? 'var(--color-signal)' : 'var(--color-border)',
+                      color: 'var(--color-fg)',
+                      background: 'transparent',
+                    }}
+                  >
+                    <span className="block font-medium">{op.t}</span>
+                    <span className="block text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                      {op.d}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
