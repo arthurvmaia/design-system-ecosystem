@@ -183,3 +183,29 @@ test('fechamento fora de ordem nao desmonta a pilha', () => {
   const r = corrigirParesDeCor(html, CSS, TOKENS);
   assert.ok(Array.isArray(r.corrigidos), 'nao quebra');
 });
+
+test('proxy da origem NAO conta como fundo: ele e transparente por construcao', () => {
+  // A regressao medida: 52 textos pintados com --marca-background sobre a
+  // propria pagina, porque `bg-teal-700` num [data-ds-corpo] foi lido como
+  // superficie real. O proxy nao pinta.
+  const html =
+    '<div data-ds-corpo="ds_1" class="bg-[#FBFCD4]"><h2 class="text-stone-900">FAQ</h2></div>';
+  const r = corrigirParesDeCor(html, CSS, TOKENS);
+  assert.equal(r.corrigidos.length, 0, 'o fundo ali e o da PAGINA, e heading se le nela');
+  assert.ok(!r.html.includes('style="color'), 'nada foi pintado');
+});
+
+test('papel de TEXTO vence papel de superficie quando os dois servem', () => {
+  // Fundo escuro: heading (texto) e background (superficie) ambos contrastam.
+  // O de texto tem de ganhar — superficie como tinta e ultimo recurso.
+  assert.equal(tintaQueSeLeSobre('primary', TOKENS), 'primary-foreground');
+});
+
+test('sobre fundo claro de VERDADE, a tinta escura da pagina e a escolha certa', () => {
+  // O botao ambar que abriu esta frente: nenhum papel de texto do tema escuro
+  // se le sobre ele, e --marca-background (escuro) da 8:1.
+  const escolhido = tintaQueSeLeSobre('accent', TOKENS);
+  assert.equal(escolhido, 'background');
+  const hex = (TOKENS as Record<string, string>)[escolhido ?? ''];
+  assert.ok((contrasteEntre(hex, TOKENS.accent) ?? 0) >= 3);
+});

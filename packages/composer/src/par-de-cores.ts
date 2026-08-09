@@ -170,23 +170,36 @@ export const tintaQueSeLeSobre = (
 ): string | null => {
   const fundo = tokens[papelDoFundo];
   if (fundo === undefined) return null;
+  /**
+   * Papéis de TEXTO primeiro; `background` e `surface` só no fim.
+   *
+   * Sobre um fundo CLARO a tinta que se lê é escura, e num tema escuro a única
+   * cor escura da paleta é a da página — então eles são candidatos legítimos, e
+   * tirá-los deixaria sem conserto justamente o botão âmbar que abriu esta
+   * frente (1,96:1).
+   *
+   * O perigo deles é real e foi medido: 52 elementos saíram pintados com
+   * `--marca-background` sobre a própria página, 1,00:1. Mas a causa não era a
+   * lista — era ler como superfície um `[data-ds-corpo]` que o compositor deixa
+   * TRANSPARENTE de propósito. Consertado o proxy, o fundo claro que chega aqui
+   * é fundo claro de verdade, e a tinta escura sobre ele é a escolha certa.
+   *
+   * A ordem importa: um papel de texto que sirva vence sempre um de superfície.
+   */
   const candidatos = [
     `${papelDoFundo}-foreground`,
     'primary-foreground',
     'heading',
     'body',
+    'muted',
     'background',
     'surface',
-    'muted',
   ];
-  let melhor: { papel: string; razao: number } | null = null;
   for (const papel of candidatos) {
     const hex = tokens[papel];
     if (hex === undefined) continue;
     const razao = contrasteEntre(hex, fundo);
-    if (razao === null) continue;
-    if (razao >= piso) return papel;
-    if (melhor === null || razao > melhor.razao) melhor = { papel, razao };
+    if (razao !== null && razao >= piso) return papel;
   }
   return null;
 };
@@ -284,12 +297,32 @@ export const corrigirParesDeCor = (
     const autoFechada = /\/\s*$/.test(attrs) || SEM_FILHO.has(nome);
     const classesDoEl = /\bclass="([^"]*)"/i.exec(attrs)?.[1] ?? '';
     const listaDoEl = classesDoEl.split(/\s+/).filter(Boolean);
-    let fundoProprio: string | null = null;
-    for (const c of listaDoEl) {
-      const f = mapa.fundo.get(c);
-      if (f !== undefined) {
-        fundoProprio = f;
-        break;
+
+    /**
+     * O proxy da origem NÃO pinta, mesmo carregando classe de fundo.
+     *
+     * `REGRA_QUE_ABRE_PASSAGEM` deixa `[data-ds-raiz]`, `[data-ds-corpo]` e
+     * `[data-ds-criado]` transparentes de propósito, para a página ser UMA
+     * superfície contínua. A classe da origem (`bg-teal-700`) continua no
+     * atributo e não desenha nada.
+     *
+     * Ler aquilo como superfície real foi o que produziu a pior regressão desta
+     * frente: eu via um fundo CLARO que não existia, escolhia tinta escura para
+     * ele, e a tinta caía sobre o fundo ESCURO da página. Medido nos 20 sites
+     * de prova: 52 elementos pintados com `--marca-background` sobre a própria
+     * página — texto exatamente da cor do fundo, 1,00:1.
+     *
+     * Dentro de um proxy, o fundo é o da PÁGINA.
+     */
+    const ehProxy = /\bdata-ds-(?:raiz|corpo|criado)\b/i.test(attrs);
+    let fundoProprio: string | null = ehProxy ? 'background' : null;
+    if (!ehProxy) {
+      for (const c of listaDoEl) {
+        const f = mapa.fundo.get(c);
+        if (f !== undefined) {
+          fundoProprio = f;
+          break;
+        }
       }
     }
     const resultado = conferir(tudo, attrs, classesDoEl, listaDoEl, fundoProprio);
