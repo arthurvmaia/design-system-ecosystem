@@ -138,3 +138,48 @@ test('as duas formas convivem: solta e escopada da mesma classe', () => {
   const css = '.x, :where([data-ds-raiz="ds_1"]):is(.x){color:var(--marca-body)}';
   assert.equal(mapearClassesPorPapel(css).tinta.get('x'), 'body');
 });
+
+test('o fundo vem do ANCESTRAL: e o caso normal, nao a excecao', () => {
+  // Foi este o shape que reprovava em S4 e que a primeira versao nao via:
+  // o cartao carrega a superficie, o texto mora dentro dele.
+  const html =
+    '<div class="bg-[#FBFCD4]"><h3 class="text-3xl text-stone-900">Tours personalizados</h3></div>';
+  const r = corrigirParesDeCor(html, CSS, TOKENS);
+  assert.equal(r.corrigidos.length, 1);
+  assert.equal(r.corrigidos[0]?.papelDoFundo, 'accent');
+  assert.ok(/<h3[^>]*style="color:var\(--marca-/.test(r.html), 'a correcao vai no h3');
+  assert.ok(!/<div[^>]*style="color/.test(r.html), 'o cartao nao e tocado');
+});
+
+test('o ancestral MAIS PROXIMO manda: fundo de dentro vence o de fora', () => {
+  const html =
+    '<div class="bg-marca"><div class="bg-[#FBFCD4]"><p class="text-stone-900">x</p></div></div>';
+  const r = corrigirParesDeCor(html, CSS, TOKENS);
+  assert.equal(r.corrigidos.length, 1);
+  assert.equal(r.corrigidos[0]?.papelDoFundo, 'accent', 'o de dentro, nao o primary de fora');
+});
+
+test('o fundo NAO vaza para fora do elemento que o declarou', () => {
+  const html = '<div class="bg-[#FBFCD4]"><span>a</span></div><p class="text-stone-900">fora</p>';
+  const r = corrigirParesDeCor(html, CSS, TOKENS);
+  assert.equal(r.corrigidos.length, 0, 'o <p> esta depois do </div> e nao herda nada');
+});
+
+test('tag sem filho nao empilha: <img> nao vira ancestral de ninguem', () => {
+  const html = '<img class="bg-[#FBFCD4]"><p class="text-stone-900">depois</p>';
+  assert.equal(corrigirParesDeCor(html, CSS, TOKENS).corrigidos.length, 0);
+});
+
+test('tag auto-fechada mantem a barra no lugar certo', () => {
+  const html = '<div class="bg-[#FBFCD4]"><br class="text-stone-900" /></div>';
+  const r = corrigirParesDeCor(html, CSS, TOKENS);
+  assert.ok(!/\/ style=/.test(r.html), 'nada de atributo depois da barra');
+  assert.ok(/style="color:var\(--marca-[a-z-]+\)" \/>/.test(r.html));
+});
+
+test('fechamento fora de ordem nao desmonta a pilha', () => {
+  // HTML de captura vem torto; a pilha nao pode entrar em pane por causa disso.
+  const html = '<div class="bg-[#FBFCD4]"><span></div><p class="text-stone-900">x</p>';
+  const r = corrigirParesDeCor(html, CSS, TOKENS);
+  assert.ok(Array.isArray(r.corrigidos), 'nao quebra');
+});

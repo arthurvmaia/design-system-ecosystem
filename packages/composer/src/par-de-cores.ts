@@ -207,6 +207,24 @@ export type ParCorrigido = {
  * ou outra passagem — já decidiu, e sobrepor decisão explícita é como duas
  * correções passam a brigar.
  */
+/** Tags que não abrem escopo: não empilham e não têm filho. */
+const SEM_FILHO = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
+
 export const corrigirParesDeCor = (
   html: string,
   css: string,
@@ -218,9 +236,75 @@ export const corrigirParesDeCor = (
 
   const corrigidos: ParCorrigido[] = [];
 
-  const saida = html.replace(/<([a-z][\w-]*)\b([^>]*)>/gi, (tudo, tag: string, attrs: string) => {
-    const classes = /\bclass="([^"]*)"/i.exec(attrs)?.[1];
-    if (classes === undefined) return tudo;
+  /**
+   * A pilha de ancestrais com fundo — e é ela que fez a regra funcionar.
+   *
+   * A primeira versão exigia fundo e tinta no MESMO elemento, e achou zero num
+   * site que reprovava em S4. Os dois trechos que falhavam eram
+   *
+   *     h3 .text-3xl .font-newsreader .text-stone-900   1,96:1
+   *     p  .text-stone-700 .text-lg .leading-relaxed    1,12:1
+   *
+   * e nenhum dos dois carrega classe de fundo: o fundo vinha do CARTÃO que os
+   * envolve. É o caso NORMAL, não a exceção — quem escreve HTML põe a
+   * superfície no contêiner e o texto dentro dele.
+   *
+   * Então o fundo do elemento é o do ancestral mais próximo que declara um, ele
+   * mesmo incluído. Sem pilha, a regra só pegaria botão — que é justamente o
+   * caso raro.
+   */
+  const pilha: { tag: string; fundo: string | null }[] = [];
+  const fundoVigente = (): string | null => {
+    for (let i = pilha.length - 1; i >= 0; i--) {
+      const f = pilha[i]?.fundo;
+      if (f != null) return f;
+    }
+    return null;
+  };
+
+  const saida = html.replace(
+    /<\/([a-z][\w-]*)\s*>|<([a-z][\w-]*)\b([^>]*)>/gi,
+    (tudo, fechando: string | undefined, tag: string | undefined, attrs: string | undefined) => {
+      if (fechando !== undefined) {
+        const alvo = fechando.toLowerCase();
+        for (let i = pilha.length - 1; i >= 0; i--) {
+          if (pilha[i]?.tag === alvo) {
+            pilha.length = i;
+            break;
+          }
+        }
+        return tudo;
+      }
+      return abrir(tudo, tag ?? '', attrs ?? '');
+    },
+  );
+
+  function abrir(tudo: string, tag: string, attrs: string): string {
+    const nome = tag.toLowerCase();
+    const autoFechada = /\/\s*$/.test(attrs) || SEM_FILHO.has(nome);
+    const classesDoEl = /\bclass="([^"]*)"/i.exec(attrs)?.[1] ?? '';
+    const listaDoEl = classesDoEl.split(/\s+/).filter(Boolean);
+    let fundoProprio: string | null = null;
+    for (const c of listaDoEl) {
+      const f = mapa.fundo.get(c);
+      if (f !== undefined) {
+        fundoProprio = f;
+        break;
+      }
+    }
+    const resultado = conferir(tudo, attrs, classesDoEl, listaDoEl, fundoProprio);
+    if (!autoFechada) pilha.push({ tag: nome, fundo: fundoProprio });
+    return resultado;
+  }
+
+  function conferir(
+    tudo: string,
+    attrs: string,
+    classes: string,
+    lista: readonly string[],
+    fundoProprio: string | null,
+  ): string {
+    if (classes === '') return tudo;
     /**
      * O `style` é extraído ANTES de procurar `color` dentro dele.
      *
@@ -231,15 +315,17 @@ export const corrigirParesDeCor = (
     const styleAtual = /\bstyle="([^"]*)"/i.exec(attrs)?.[1] ?? '';
     if (styleAtual.split(';').some((d) => /^\s*color\s*:/i.test(d))) return tudo;
 
-    const lista = classes.split(/\s+/).filter(Boolean);
-    let papelDoFundo: string | null = null;
     let papelDaTinta: string | null = null;
     for (const c of lista) {
-      const f = mapa.fundo.get(c);
-      if (f !== undefined && papelDoFundo === null) papelDoFundo = f;
       const t = mapa.tinta.get(c);
-      if (t !== undefined && papelDaTinta === null) papelDaTinta = t;
+      if (t !== undefined) {
+        papelDaTinta = t;
+        break;
+      }
     }
+    // O fundo é o próprio, quando ele declara um; senão, o do ancestral mais
+    // próximo que declara. É onde o texto realmente senta.
+    const papelDoFundo = fundoProprio ?? fundoVigente();
     if (papelDoFundo === null || papelDaTinta === null) return tudo;
 
     const hexFundo = tokens[papelDoFundo];
@@ -261,15 +347,20 @@ export const corrigirParesDeCor = (
 
     const estilo = `color:var(--marca-${nova})`;
     const jaTemStyle = /\bstyle="([^"]*)"/i.exec(attrs);
+    // A barra da tag auto-fechada fica no FIM, depois do style novo: colar o
+    // atributo depois dela produziria `<img/ style=…>`, que o navegador lê como
+    // um atributo chamado "/".
+    const semBarra = attrs.replace(/\/\s*$/, '');
+    const barra = attrs === semBarra ? '' : ' /';
     const novosAttrs =
       jaTemStyle === null
-        ? `${attrs} style="${estilo}"`
-        : attrs.replace(
+        ? `${semBarra} style="${estilo}"${barra}`
+        : semBarra.replace(
             /\bstyle="([^"]*)"/i,
             (_t, v: string) => `style="${v.trim().replace(/;$/, '')};${estilo}"`,
-          );
-    return `<${tag}${novosAttrs}>`;
-  });
+          ) + barra;
+    return `<${tudo.slice(1).match(/^[a-z][\w-]*/i)?.[0] ?? ''}${novosAttrs}>`;
+  }
 
   return { html: saida, corrigidos };
 };
