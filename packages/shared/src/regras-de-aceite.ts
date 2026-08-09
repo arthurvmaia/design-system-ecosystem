@@ -64,6 +64,11 @@ export type PecaParaAceite = {
   refsQuebradas: readonly string[];
   /** Assets que continuam apontando para o endereço de origem. */
   assetsNaOrigem: readonly string[];
+  /**
+   * O rastreamento de terceiro que o bundle carrega, medido em disco
+   * (`rastreamentoDoBundle`). `null` também é resposta: não há rastreio ali.
+   */
+  rastreamento: 'puro' | 'misturado' | null;
 };
 
 /**
@@ -226,6 +231,42 @@ export const conferirPecaDaGaleria = (p: PecaParaAceite): ResultadoDeAceite => {
       : { codigo: 'G7', titulo: 'A peça não engole as vizinhas', estado: 'passou', motivo: '' },
   );
 
+  /**
+   * G8 — o rastreamento da origem não viaja.
+   *
+   * A régua já existia, mas rodava na MONTAGEM DA PÁGINA (S2), quando a peça já
+   * estava no kit e o site já era do cliente. Ali sobra uma escolha ruim: tirar
+   * o script leva o comportamento embora, manter manda o visitante do cliente
+   * para a conta de analytics de outra empresa. Nos dois casos alguém precisa
+   * DECIDIR, e num kit essa decisão se repete em todo site que o usar.
+   *
+   * Então ela desce para a Galeria, onde a decisão é barata: a peça não entra.
+   *
+   * Só `misturado` reprova. O `puro` passa porque o motor o tira sozinho na
+   * montagem, e ninguém escolheu aquele desenho por causa do analytics.
+   *
+   * Medido nos 290 bundles da Biblioteca: 6 misturados, 47 puros, 237 sem
+   * rastreio. As 6 são do MESMO site de origem e 3 delas estavam no único kit
+   * que reprovava no banco de prova — em S2, exatamente por isto. O custo da
+   * regra é 2,1% do acervo, concentrado num site só.
+   */
+  v.push(
+    p.rastreamento === 'misturado'
+      ? {
+          codigo: 'G8',
+          titulo: 'O rastreamento da origem não viaja',
+          estado: 'reprovou',
+          motivo:
+            'o script desta peça mistura rastreamento de terceiro com comportamento: tirá-lo leva o comportamento embora e mantê-lo conta o visitante do cliente na conta de outra empresa. Isso obriga uma decisão humana em todo site que usar a peça, e um kit é reuso.',
+        }
+      : {
+          codigo: 'G8',
+          titulo: 'O rastreamento da origem não viaja',
+          estado: 'passou',
+          motivo: '',
+        },
+  );
+
   return juntar(v);
 };
 
@@ -260,6 +301,22 @@ export type SiteParaAceite = {
   temFavicon: boolean;
   /** Quantas peças com movimento entraram no site. */
   pecasComMovimento: number;
+  /**
+   * Comportamentos que chegaram à página E alcançam algum elemento dela.
+   *
+   * A distinção entre este campo e `comportamentosMortos` é a razão de a S6
+   * existir de novo: um comportamento pode viajar inteiro — CSS na cascata,
+   * script no fim do body — e não tocar em nada.
+   */
+  comportamentosVivos: number;
+  /** Comportamentos que viajaram e não alcançam nada (nome + origem). */
+  comportamentosMortos: readonly string[];
+  /**
+   * A página tem alguma coisa que reage à ROLAGEM: comportamento vivo, classe
+   * de revelação devolvida ao estado inicial, ou a camada de movimento do
+   * próprio compositor.
+   */
+  movimentoAoRolar: boolean;
 };
 
 export const conferirSiteGerado = (s: SiteParaAceite): ResultadoDeAceite => {
@@ -326,17 +383,58 @@ export const conferirSiteGerado = (s: SiteParaAceite): ResultadoDeAceite => {
         },
   );
 
-  // S6 — o site se mexe.
+  /**
+   * S6 — o site se mexe. E agora ela olha a PÁGINA, não o inventário do kit.
+   *
+   * A versão anterior era `pecasComMovimento > 0`, alimentado por
+   * `kit.components.filter(kind === 'animation').length` — o inventário do kit.
+   * Medido no site de um clube: S6 deu `passou` com a página literalmente
+   * parada ao rolar. O único comportamento do kit ("Revelar ao rolar") tinha
+   * origem que nenhuma seção usava; o CSS dele saiu escopado numa origem
+   * ausente e os scripts procuravam `.scroll-item` e `[data-counter-target]`,
+   * com 0 e 0 ocorrências no `index.html`. Movimento real que sobrou na página
+   * inteira: dois `animate-pulse` e transições de hover.
+   *
+   * É o mesmo defeito que a S4 já tinha e este arquivo já documenta: regra
+   * alimentada por constante é pior que regra ausente, porque carimba verde.
+   *
+   * A ordem dos ramos é a ordem da prova:
+   * 1. algo REAGE À ROLAGEM na página — comportamento vivo ou a camada do
+   *    compositor → passou, e nada mais precisa ser dito;
+   * 2. comportamento morto na página → REPROVOU. Não é pendência: o site sai
+   *    com peso de JS e CSS que não faz nada e com o carimbo de que se mexe;
+   * 3. nenhuma peça com movimento no kit → pendência (o texto de sempre);
+   * 4. há peça animada, mas nada reage à rolagem → pendência, dito por extenso.
+   */
+  const mortos = s.comportamentosMortos;
+  // Comportamento VIVO já é reação à rolagem; o campo entra na conta em vez de
+  // ficar declarado e nunca lido, que é como um contrato apodrece calado.
+  const reageARolagem = s.movimentoAoRolar || s.comportamentosVivos > 0;
   v.push(
-    s.pecasComMovimento > 0
+    reageARolagem
       ? { codigo: 'S6', titulo: 'O site se mexe', estado: 'passou', motivo: '' }
-      : {
-          codigo: 'S6',
-          titulo: 'O site se mexe',
-          estado: 'pendente',
-          motivo:
-            'nenhuma peça do kit carrega movimento: a página vai sair parada. Escolha uma animação na Biblioteca.',
-        },
+      : mortos.length > 0
+        ? {
+            codigo: 'S6',
+            titulo: 'O site se mexe',
+            estado: 'reprovou',
+            motivo: `${mortos.length} comportamento(s) do kit viajaram e não alcançam elemento nenhum (${mortos.slice(0, 3).join(', ')}): a origem deles não está na página e as classes que eles animam não existem nas seções. O site sai parado ao rolar com o carimbo de que se mexe.`,
+          }
+        : s.pecasComMovimento === 0
+          ? {
+              codigo: 'S6',
+              titulo: 'O site se mexe',
+              estado: 'pendente',
+              motivo:
+                'nenhuma peça do kit carrega movimento: a página vai sair parada. Escolha uma animação na Biblioteca.',
+            }
+          : {
+              codigo: 'S6',
+              titulo: 'O site se mexe',
+              estado: 'pendente',
+              motivo:
+                'as peças animadas do kit só se mexem ao carregar e ao passar o mouse; nada reage à rolagem.',
+            },
   );
 
   // S7 — a marca aparece onde se espera.
@@ -421,6 +519,15 @@ export type SiteNoNavegador = {
   transbordam: readonly string[];
   /** Seções que têm conteúdo e saíram com altura zero. */
   secoesColapsadas: readonly string[];
+  /**
+   * Botão, link ou campo menor que 44px no CELULAR — mira que o dedo erra.
+   *
+   * Opcional porque o veredito de um site conferido antes desta regra existir
+   * continua válido: ausente significa "não medido", e não "zero achados".
+   */
+  alvosDeToquePequenos?: readonly string[];
+  /** Texto abaixo de 12px no celular: nenhuma outra regra lia tamanho de letra. */
+  textoMiudo?: readonly string[];
 };
 
 /** 3:1 é o piso de texto grande do WCAG; abaixo disso não se lê com folga. */
@@ -530,6 +637,56 @@ export const conferirSiteNoNavegador = (m: SiteNoNavegador): ResultadoDeAceite =
           motivo: `${m.secoesColapsadas.length} seção(ões) têm conteúdo e não ocupam espaço nenhum em ${m.largura}px (${m.secoesColapsadas.slice(0, 3).join('; ')}): a peça veio de um site cujo layout é orquestrado por rolagem e não sobrevive ao recorte. Troque a peça.`,
         },
   );
+
+  /**
+   * S15 — o dedo acerta o que ele mira.
+   *
+   * O CSS responsivo do compositor já escrevia `min-height: 44px` para link,
+   * botão e campo, e a intenção estava documentada lá. Só que ela não é
+   * `!important` e NUNCA foi conferida: uma regra mais específica da peça
+   * capturada a sobrepõe em silêncio, e ela define só altura — um botão de
+   * ícone sai alto e estreito e passa.
+   *
+   * Intenção escrita sem verificação é a mesma doença da regra alimentada por
+   * constante: parece garantia e não é.
+   */
+  const alvos = m.alvosDeToquePequenos;
+  if (alvos !== undefined) {
+    v.push(
+      alvos.length === 0
+        ? { codigo: 'S15', titulo: 'O dedo acerta os alvos', estado: 'passou', motivo: '' }
+        : {
+            codigo: 'S15',
+            titulo: 'O dedo acerta os alvos',
+            estado: 'reprovou',
+            motivo: `${alvos.length} alvo(s) de toque menores que 44px em ${m.largura}px (${alvos.slice(0, 3).join('; ')}): no celular, errar o toque deixa de ser acidente e vira regra.`,
+          },
+    );
+  }
+
+  /**
+   * S16 — a letra tem tamanho de leitura.
+   *
+   * Nenhuma regra lia `font-size`. S4 compara cores e S13 mede opacidade, e as
+   * duas dão verde para um texto de 8px com contraste perfeito — que no celular
+   * é ilegível na prática e não aparecia em medição nenhuma.
+   *
+   * O piso é 12px e não 16: rótulo em caixa alta, crédito de foto e nota de
+   * rodapé vivem legitimamente entre 12 e 14. Abaixo de 12 não há uso honesto.
+   */
+  const miudo = m.textoMiudo;
+  if (miudo !== undefined) {
+    v.push(
+      miudo.length === 0
+        ? { codigo: 'S16', titulo: 'A letra se lê no celular', estado: 'passou', motivo: '' }
+        : {
+            codigo: 'S16',
+            titulo: 'A letra se lê no celular',
+            estado: 'reprovou',
+            motivo: `${miudo.length} trecho(s) abaixo de 12px em ${m.largura}px (${miudo.slice(0, 3).join('; ')}): contraste perfeito não salva letra que não dá para ler.`,
+          },
+    );
+  }
 
   return juntar(v);
 };

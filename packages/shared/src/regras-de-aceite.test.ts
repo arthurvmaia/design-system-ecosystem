@@ -20,6 +20,7 @@ const peca = (over: Partial<PecaParaAceite> = {}): PecaParaAceite => ({
   temObservadorDeRolagem: false,
   refsQuebradas: [],
   assetsNaOrigem: [],
+  rastreamento: null,
   ...over,
 });
 
@@ -35,6 +36,9 @@ const site = (over: Partial<SiteParaAceite> = {}): SiteParaAceite => ({
   secoesVazias: [],
   temFavicon: true,
   pecasComMovimento: 2,
+  comportamentosVivos: 1,
+  comportamentosMortos: [],
+  movimentoAoRolar: true,
   ...over,
 });
 
@@ -139,6 +143,32 @@ test('G6: movimento promovido a imagem congelada reprova', () => {
   assert.equal(cod(r, 'G6')?.estado, 'reprovou');
 });
 
+/**
+ * G8 nasceu de um caso medido: 3 peças do único kit que reprovava no banco de
+ * prova traziam scripts que MISTURAM rastreamento com comportamento. A regra S2
+ * já reprovava isso, mas tarde — com o site do cliente montado. Aqui a decisão é
+ * barata: a peça não entra.
+ */
+test('G8: script que mistura rastreamento com comportamento REPROVA na Galeria', () => {
+  const r = conferirPecaDaGaleria(peca({ rastreamento: 'misturado' }));
+  assert.equal(cod(r, 'G8')?.estado, 'reprovou');
+  assert.ok(!r.aprovado);
+  assert.ok(
+    cod(r, 'G8')?.motivo.includes('decisão humana'),
+    'o motivo diz POR QUE isso não pode ficar para depois',
+  );
+});
+
+test('G8: rastreamento PURO passa — o motor tira sozinho na montagem', () => {
+  const r = conferirPecaDaGaleria(peca({ rastreamento: 'puro' }));
+  assert.equal(cod(r, 'G8')?.estado, 'passou');
+  assert.ok(r.aprovado);
+});
+
+test('G8: peça sem rastreamento nenhum passa', () => {
+  assert.equal(cod(conferirPecaDaGaleria(peca({ rastreamento: null })), 'G8')?.estado, 'passou');
+});
+
 // ── Site gerado ─────────────────────────────────────────────────────────────
 
 test('site íntegro passa em tudo', () => {
@@ -214,9 +244,48 @@ test('S8: referência quebrada reprova — apagar a origem quebraria o site', ()
   assert.ok(!r.aprovado);
 });
 
+test('S6: a página que reage à rolagem passa', () => {
+  const r = conferirSiteGerado(site({ movimentoAoRolar: true }));
+  assert.equal(r.vereditos.find((v) => v.codigo === 'S6')?.estado, 'passou');
+});
+
+/**
+ * O caso do clube, com os números que ele tinha. Esta é a forma exata que hoje
+ * dava `passou`: três peças `animation` no inventário do kit, o único
+ * comportamento morto na página, e nada reagindo à rolagem.
+ */
+test('S6: comportamento que viajou e não alcança nada REPROVA', () => {
+  const r = conferirSiteGerado(
+    site({
+      pecasComMovimento: 3,
+      comportamentosVivos: 0,
+      comportamentosMortos: ['Revelar ao rolar (ds_01KZEQ2GW3RPGGWNRZEKCBFVX9)'],
+      movimentoAoRolar: false,
+    }),
+  );
+  const s6 = r.vereditos.find((v) => v.codigo === 'S6');
+  assert.equal(s6?.estado, 'reprovou');
+  assert.match(s6?.motivo ?? '', /Revelar ao rolar/);
+  assert.ok(!r.aprovado, 'carimbo verde sobre página parada não sobe');
+});
+
 test('S6: kit sem movimento nenhum sobe com pendência, não barrado', () => {
-  const r = conferirSiteGerado(site({ pecasComMovimento: 0 }));
-  assert.equal(r.vereditos.find((v) => v.codigo === 'S6')?.estado, 'pendente');
+  const r = conferirSiteGerado(
+    site({ pecasComMovimento: 0, comportamentosVivos: 0, movimentoAoRolar: false }),
+  );
+  const s6 = r.vereditos.find((v) => v.codigo === 'S6');
+  assert.equal(s6?.estado, 'pendente');
+  assert.match(s6?.motivo ?? '', /nenhuma peça do kit carrega movimento/);
+  assert.ok(r.aprovado);
+});
+
+test('S6: peça animada que só reage ao hover é pendência, e a frase diz isso', () => {
+  const r = conferirSiteGerado(
+    site({ pecasComMovimento: 2, comportamentosVivos: 0, movimentoAoRolar: false }),
+  );
+  const s6 = r.vereditos.find((v) => v.codigo === 'S6');
+  assert.equal(s6?.estado, 'pendente');
+  assert.match(s6?.motivo ?? '', /nada reage à rolagem/);
   assert.ok(r.aprovado);
 });
 
@@ -267,13 +336,15 @@ const noNavegador = (over: Partial<SiteNoNavegador> = {}): SiteNoNavegador => ({
   textoApagado: [],
   slotsDeMidiaVazios: [],
   transbordam: [],
+  secoesColapsadas: [],
   ...over,
 });
 
 test('site desenhado sem defeito passa nas três', () => {
   const r = conferirSiteNoNavegador(noNavegador());
   assert.ok(r.aprovado);
-  assert.equal(r.vereditos.length, 4);
+  // S4, S13, S11, S12 e S14 — a última entrou junto com `secoesColapsadas`.
+  assert.equal(r.vereditos.length, 5);
 });
 
 test('S4: texto da MESMA cor do fundo reprova, e o motivo mostra o pior', () => {

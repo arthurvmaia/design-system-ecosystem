@@ -28,6 +28,7 @@ import {
   libraryComponentDir,
   libraryComponentMetadata,
   newComponentId,
+  rastreamentoDoBundle,
   reescreverParaLocal,
   vaultCaptureAssetsDir,
   vaultCaptureManifest,
@@ -669,6 +670,7 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
    * quem poderia decidir usá-la mesmo assim.
    */
   const insight = lerInsightDoSegmento(seg.designSystemId as `ds_${string}`, seg.id);
+  const bundle = lerBundleInfo(seg.designSystemId as `ds_${string}`, { position: seg.position });
   const aceite = conferirPecaDaGaleria({
     categoria: seg.category,
     kind: seg.kind,
@@ -676,10 +678,11 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
     // A representação mora no manifesto do BUNDLE, não no insight — foi assim
     // que ela apareceu aqui: `insight.representation` não existe, e um `as`
     // escondia isso do compilador enquanto o valor chegava `undefined`.
-    representacao:
-      lerBundleInfo(seg.designSystemId as `ds_${string}`, {
-        position: seg.position,
-      })?.representation ?? null,
+    representacao: bundle?.representation ?? null,
+    // O bundle está em disco NESTE momento, então G8 é conferível aqui: o botão
+    // de curtir e o script de curadoria têm de aplicar a mesma régua, senão o
+    // mais frouxo vence sempre que alguém clicar em vez de rodar o script.
+    rastreamento: bundle === null ? null : rastreamentoDoBundle(bundle.dir).estado,
     runtimes: [],
     movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
     classesDeRevelacao: [],

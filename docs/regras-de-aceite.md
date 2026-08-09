@@ -118,6 +118,22 @@ Peça que não passa e não tem conserto sobe assim mesmo, marcada, com o motivo
 uma frase que se entende sem abrir o código. Cena que depende de runtime remoto
 proprietário é o exemplo legítimo.
 
+### G8. O rastreamento da origem não viaja
+
+Peça cujo script MISTURA rastreamento de terceiro com comportamento não entra na
+Galeria. Rastreamento puro passa: o motor o remove sozinho na montagem, inteiro,
+e nada se perde.
+
+*Por que:* a S2 já reprovava isso, mas só na entrega do site — quando a peça já
+estava no kit e a página já era do cliente. Ali sobram duas saídas ruins: tirar o
+script leva o comportamento embora, mantê-lo conta o visitante do cliente na
+conta de analytics de outra empresa. As duas exigem uma decisão humana, e num kit
+essa decisão se repete em todo site que o usar.
+
+*Medido:* 6 dos 290 bundles da Biblioteca vinham misturados, todos do MESMO site
+de origem, e 3 deles estavam no único kit que reprovava no banco de prova —
+exatamente em S2. A regra custa 2,1% do acervo, concentrado num site só.
+
 ---
 
 # Regra de aceite do SITE GERADO
