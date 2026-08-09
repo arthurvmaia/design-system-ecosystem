@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  aplicarAjuste,
   contrasteEntre,
   corrigirParesDeCor,
+  lerAjusteRelativo,
   mapearClassesPorPapel,
   tintaQueSeLeSobre,
 } from './par-de-cores.js';
@@ -242,4 +244,46 @@ test('tinta literal que JA se le sobre o fundo nao e tocada', () => {
     TOKENS,
   );
   assert.equal(r.corrigidos.length, 0, 'branco sobre #1a1210 se le, e nada muda');
+});
+
+test('cor DERIVADA: compara a cor que a tela pinta, nao o token cru', () => {
+  // A recoloracao emite `oklch(from var(--marca-X) calc(l - 0.457) ...)` quando
+  // o papel foi herdado de um vizinho de matiz. Ler o token era comparar uma cor
+  // que NAO esta na tela: o par passava aqui e a pessoa via 1,49:1.
+  const a = lerAjusteRelativo(
+    'oklch(from var(--marca-secondary, #0d0c22) calc(l - 0.457) calc(c * 0.192) h)',
+  );
+  assert.ok(a !== null);
+  assert.equal(a.deltaL.toFixed(3), '-0.457');
+  assert.equal(a.ratioC.toFixed(3), '0.192');
+  assert.equal(lerAjusteRelativo('var(--marca-primary, #fff)'), null, 'sem ajuste, nada a ler');
+
+  // Escurecer de fato escurece, e clarear clareia — a ida e a volta do OKLCH.
+  const escuro = aplicarAjuste('#808080', { deltaL: -0.4, ratioC: 1 });
+  const claro = aplicarAjuste('#808080', { deltaL: 0.3, ratioC: 1 });
+  assert.ok(escuro !== null && claro !== null);
+  const n = (h: string) => Number.parseInt(h.slice(1, 3), 16);
+  assert.ok(n(escuro) < 0x60, `escureceu pouco: ${escuro}`);
+  assert.ok(n(claro) > 0xa0, `clareou pouco: ${claro}`);
+  // Sem ajuste nenhum, a cor volta praticamente igual (a ida e volta e fiel).
+  const igual = aplicarAjuste('#3b7dd8', { deltaL: 0, ratioC: 1 });
+  assert.ok(igual !== null);
+  for (let i = 1; i < 7; i += 2) {
+    const d = Math.abs(
+      Number.parseInt(igual.slice(i, i + 2), 16) - Number.parseInt('#3b7dd8'.slice(i, i + 2), 16),
+    );
+    assert.ok(d <= 2, `ida e volta perdeu o canal ${i}: ${igual}`);
+  }
+});
+
+test('o par com fundo DERIVADO e corrigido pela cor pintada', () => {
+  // O caso medido: `.text-[#0D0C22]` recolorida para secondary com l - 0.457
+  // sobre um fundo tambem derivado. Antes, os dois tokens crus contrastavam e a
+  // conferencia dizia que estava tudo bem.
+  const css =
+    ':where([data-ds-corpo="d"]):is(.caixa){background-color:var(--marca-surface, #eee)}' +
+    ':where([data-ds-corpo="d"]):is(.tinta){color:oklch(from var(--marca-heading, #0d0c22) calc(l - 0.62) calc(c * 0.2) h)}';
+  const tokens = { ...TOKENS, surface: '#1f1a15', heading: '#f3ede4' };
+  const r = corrigirParesDeCor('<div class="caixa"><p class="tinta">oi</p></div>', css, tokens);
+  assert.equal(r.corrigidos.length, 1, `o par derivado tem de ser visto: ${r.html}`);
 });

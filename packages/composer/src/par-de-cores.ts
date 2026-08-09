@@ -75,6 +75,83 @@ export const contrasteEntre = (a: string, b: string): number | null => {
 };
 
 /**
+ * A cor DERIVADA: o papel da marca com o ajuste que a recoloração aplicou.
+ *
+ * ## Por que isto precisa existir aqui
+ *
+ * A recoloração não escreve só `var(--marca-primary)`. Quando o papel foi
+ * herdado de um vizinho de matiz, o que separava as duas cores tem de
+ * sobreviver à troca, e ela emite a cor RELATIVA:
+ *
+ * ```css
+ * color: oklch(from var(--marca-secondary, #0d0c22) calc(l - 0.457) calc(c * 0.192) h)
+ * ```
+ *
+ * A conferência do par lia `var(--marca-secondary)` e comparava o TOKEN CRU —
+ * enquanto a tela pintava uma cor 0,457 de luminância mais escura. Ela concluía
+ * que o par estava bom e a pessoa via 1,49:1. Medido: era esta a forma de todos
+ * os trechos de S4 que sobraram depois do par literal.
+ *
+ * Julgar contraste pela cor que NÃO está na tela é o mesmo defeito da régua
+ * alimentada por constante, com outra roupa.
+ */
+export type AjusteDeCor = { deltaL: number; ratioC: number };
+
+/** `oklch(from var(--marca-X, …) calc(l - 0.457) calc(c * 0.192) h)` → o ajuste. */
+export const lerAjusteRelativo = (valor: string): AjusteDeCor | null => {
+  if (!/oklch\(\s*from/i.test(valor)) return null;
+  const l = /calc\(\s*l\s*([+-])\s*([\d.]+)\s*\)/i.exec(valor);
+  const c = /calc\(\s*c\s*\*\s*([\d.]+)\s*\)/i.exec(valor);
+  if (l === null && c === null) return null;
+  const sinal = l?.[1] === '-' ? -1 : 1;
+  return {
+    deltaL: l === null ? 0 : sinal * Number.parseFloat(l[2] ?? '0'),
+    ratioC: c === null ? 1 : Number.parseFloat(c[1] ?? '1'),
+  };
+};
+
+const paraLinear = (x: number): number => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
+const deLinear = (x: number): number =>
+  x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
+
+/** Aplica o ajuste da recoloração a um hex, no mesmo espaço em que ela o escreveu. */
+export const aplicarAjuste = (hex: string, ajuste: AjusteDeCor): string | null => {
+  const n = hexOpaco(hex);
+  if (n === null) return null;
+  const v = Number.parseInt(n.slice(1), 16);
+  const [r, g, b] = [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((c) => paraLinear(c / 255)) as [
+    number,
+    number,
+    number,
+  ];
+
+  const lc = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const mc = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const sc = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const L = 0.2104542553 * lc + 0.793617785 * mc - 0.0040720468 * sc;
+  const A = 1.9779984951 * lc - 2.428592205 * mc + 0.4505937099 * sc;
+  const B = 0.0259040371 * lc + 0.7827717662 * mc - 0.808675766 * sc;
+
+  const Ln = Math.min(1, Math.max(0, L + ajuste.deltaL));
+  const An = A * ajuste.ratioC;
+  const Bn = B * ajuste.ratioC;
+
+  const l2 = (Ln + 0.3963377774 * An + 0.2158037573 * Bn) ** 3;
+  const m2 = (Ln - 0.1055613458 * An - 0.0638541728 * Bn) ** 3;
+  const s2 = (Ln - 0.0894841775 * An - 1.291485548 * Bn) ** 3;
+  const canais = [
+    4.0767416621 * l2 - 3.3077115913 * m2 + 0.2309699292 * s2,
+    -1.2684380046 * l2 + 2.6097574011 * m2 - 0.3413193965 * s2,
+    -0.0041960863 * l2 - 0.7034186147 * m2 + 1.707614701 * s2,
+  ].map((x) =>
+    Math.round(Math.min(255, Math.max(0, deLinear(x) * 255)))
+      .toString(16)
+      .padStart(2, '0'),
+  );
+  return `#${canais.join('')}`;
+};
+
+/**
  * As classes de um seletor — só as que valem por si, sem depender de ancestral.
  *
  * ## As duas formas, e por que a segunda me pegou
@@ -130,10 +207,15 @@ export const mapearClassesPorPapel = (
   fundo: Map<string, string>;
   /** `classe → hex` da tinta que NÃO virou papel (ver `literalDe`). */
   tintaLiteral: Map<string, string>;
+  /** `classe → ajuste` quando a recoloração escreveu cor DERIVADA (ver `lerAjusteRelativo`). */
+  ajusteDaTinta: Map<string, AjusteDeCor>;
+  ajusteDoFundo: Map<string, AjusteDeCor>;
 } => {
   const tinta = new Map<string, string>();
   const fundo = new Map<string, string>();
   const tintaLiteral = new Map<string, string>();
+  const ajusteDaTinta = new Map<string, AjusteDeCor>();
+  const ajusteDoFundo = new Map<string, AjusteDeCor>();
 
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const seletor = m[1] ?? '';
@@ -177,16 +259,23 @@ export const mapearClassesPorPapel = (
       return `#${n(1)}${n(2)}${n(3)}`;
     };
 
+    const valorDe = (prop: RegExp): string =>
+      new RegExp(`${prop.source}\\s*:([^;]*)`, 'i').exec(corpo)?.[1] ?? '';
+
     const pTinta = papelDe(/(?:^|[;\s])color/);
     const pFundo = papelDe(/background(?:-color)?/);
     const lTinta = pTinta === null ? literalDe(/(?:^|[;\s])color/) : null;
+    const aTinta = lerAjusteRelativo(valorDe(/(?:^|[;\s])color/));
+    const aFundo = lerAjusteRelativo(valorDe(/background(?:-color)?/));
     for (const c of classes) {
       if (pTinta !== null && !tinta.has(c)) tinta.set(c, pTinta);
       if (pFundo !== null && !fundo.has(c)) fundo.set(c, pFundo);
       if (lTinta !== null && !tintaLiteral.has(c)) tintaLiteral.set(c, lTinta);
+      if (aTinta !== null && !ajusteDaTinta.has(c)) ajusteDaTinta.set(c, aTinta);
+      if (aFundo !== null && !ajusteDoFundo.has(c)) ajusteDoFundo.set(c, aFundo);
     }
   }
-  return { tinta, fundo, tintaLiteral };
+  return { tinta, fundo, tintaLiteral, ajusteDaTinta, ajusteDoFundo };
 };
 
 /**
@@ -307,9 +396,12 @@ export const corrigirParesDeCor = (
    * mesmo incluído. Sem pilha, a regra só pegaria botão — que é justamente o
    * caso raro.
    */
-  const pilha: { tag: string; fundo: string | null }[] = [];
+  const pilha: { tag: string; fundo: string | null; ajuste: AjusteDeCor | undefined }[] = [];
+  /** O ajuste do fundo VIGENTE, para pintar a mesma cor que a tela pinta. */
+  let ajusteVigente: AjusteDeCor | undefined;
   const fundoVigente = (): string | null => {
     for (let i = pilha.length - 1; i >= 0; i--) {
+      ajusteVigente = pilha[i]?.ajuste;
       const f = pilha[i]?.fundo;
       if (f != null) return f;
     }
@@ -357,17 +449,26 @@ export const corrigirParesDeCor = (
      */
     const ehProxy = /\bdata-ds-(?:raiz|corpo|criado)\b/i.test(attrs);
     let fundoProprio: string | null = ehProxy ? 'background' : null;
+    let ajusteDoFundoProprio: AjusteDeCor | undefined;
     if (!ehProxy) {
       for (const c of listaDoEl) {
         const f = mapa.fundo.get(c);
         if (f !== undefined) {
           fundoProprio = f;
+          ajusteDoFundoProprio = mapa.ajusteDoFundo.get(c);
           break;
         }
       }
     }
-    const resultado = conferir(tudo, attrs, classesDoEl, listaDoEl, fundoProprio);
-    if (!autoFechada) pilha.push({ tag: nome, fundo: fundoProprio });
+    const resultado = conferir(
+      tudo,
+      attrs,
+      classesDoEl,
+      listaDoEl,
+      fundoProprio,
+      ajusteDoFundoProprio,
+    );
+    if (!autoFechada) pilha.push({ tag: nome, fundo: fundoProprio, ajuste: ajusteDoFundoProprio });
     return resultado;
   }
 
@@ -377,6 +478,7 @@ export const corrigirParesDeCor = (
     classes: string,
     lista: readonly string[],
     fundoProprio: string | null,
+    ajusteDoFundoProprio: AjusteDeCor | undefined,
   ): string {
     if (classes === '') return tudo;
     /**
@@ -390,10 +492,12 @@ export const corrigirParesDeCor = (
     if (styleAtual.split(';').some((d) => /^\s*color\s*:/i.test(d))) return tudo;
 
     let papelDaTinta: string | null = null;
+    let classeDaTinta: string | null = null;
     for (const c of lista) {
       const t = mapa.tinta.get(c);
       if (t !== undefined) {
         papelDaTinta = t;
+        classeDaTinta = c;
         break;
       }
     }
@@ -416,13 +520,33 @@ export const corrigirParesDeCor = (
     }
     // O fundo é o próprio, quando ele declara um; senão, o do ancestral mais
     // próximo que declara. É onde o texto realmente senta.
+    ajusteVigente = undefined;
     const papelDoFundo = fundoProprio ?? fundoVigente();
+    const ajusteDoFundoUsado = fundoProprio !== null ? ajusteDoFundoProprio : ajusteVigente;
     if (papelDoFundo === null || (papelDaTinta === null && hexDaTintaLiteral === null)) {
       return tudo;
     }
 
-    const hexFundo = tokens[papelDoFundo];
-    const hexTinta = papelDaTinta === null ? hexDaTintaLiteral : tokens[papelDaTinta];
+    /**
+     * A cor a comparar é a que a tela PINTA, não o token cru.
+     *
+     * Quando a recoloração emitiu cor derivada — `oklch(from var(--marca-X)
+     * calc(l - 0.457) …)` —, ler o token era comparar uma cor que não está na
+     * tela. Foi assim que o par passava aqui e a pessoa via 1,49:1.
+     */
+    const pintado = (papel: string, ajuste: AjusteDeCor | undefined): string | undefined => {
+      const base = tokens[papel];
+      if (base === undefined || ajuste === undefined) return base;
+      return aplicarAjuste(base, ajuste) ?? base;
+    };
+    const hexFundo = pintado(papelDoFundo, ajusteDoFundoUsado);
+    const hexTinta =
+      papelDaTinta === null
+        ? hexDaTintaLiteral
+        : pintado(
+            papelDaTinta,
+            classeDaTinta === null ? undefined : mapa.ajusteDaTinta.get(classeDaTinta),
+          );
     if (hexFundo === undefined || hexTinta === undefined || hexTinta === null) return tudo;
     const razao = contrasteEntre(hexTinta, hexFundo);
     if (razao === null || razao >= piso) return tudo;
