@@ -206,6 +206,6 @@ test('sobre fundo claro de VERDADE, a tinta escura da pagina e a escolha certa',
   // se le sobre ele, e --marca-background (escuro) da 8:1.
   const escolhido = tintaQueSeLeSobre('accent', TOKENS);
   assert.equal(escolhido, 'background');
-  const hex = (TOKENS as Record<string, string>)[escolhido ?? ''];
+  const hex = (TOKENS as Record<string, string>)[escolhido ?? ''] ?? '';
   assert.ok((contrasteEntre(hex, TOKENS.accent) ?? 0) >= 3);
 });

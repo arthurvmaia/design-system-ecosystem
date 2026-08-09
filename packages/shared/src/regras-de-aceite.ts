@@ -577,6 +577,22 @@ export type SiteNoNavegador = {
   alvosDeToquePequenos?: readonly string[];
   /** Texto abaixo de 12px no celular: nenhuma outra regra lia tamanho de letra. */
   textoMiudo?: readonly string[];
+  /**
+   * Mídia de conteúdo desenhada pequena demais para se ver.
+   *
+   * As quatro medidas abaixo nasceram do dono OLHANDO os sites de prova e
+   * apontando o que a régua não via. Todas opcionais pelo mesmo motivo das duas
+   * de cima: ausente é "não medido", nunca "zero achados".
+   */
+  imagensMinusculas?: readonly string[];
+  /** Blocos que rolam DENTRO da página, criando uma segunda barra. */
+  rolagemAninhada?: readonly string[];
+  /** Vãos vazios grandes entre uma seção e a próxima. */
+  respiroMorto?: readonly string[];
+  /** Altura total da página, em px. */
+  alturaTotal?: number;
+  /** Altura somada do que é texto e mídia de verdade, em px. */
+  alturaUtil?: number;
 };
 
 /** 3:1 é o piso de texto grande do WCAG; abaixo disso não se lê com folga. */
@@ -733,6 +749,110 @@ export const conferirSiteNoNavegador = (m: SiteNoNavegador): ResultadoDeAceite =
             titulo: 'A letra se lê no celular',
             estado: 'reprovou',
             motivo: `${miudo.length} trecho(s) abaixo de 12px em ${m.largura}px (${miudo.slice(0, 3).join('; ')}): contraste perfeito não salva letra que não dá para ler.`,
+          },
+    );
+  }
+
+  /**
+   * S17 — a mídia entregue se vê.
+   *
+   * A S11 confere o slot VAZIO. O dono fotografou o oposto: uma foto de
+   * conteúdo desenhada com 48px no meio do hero, dentro de uma vaga larga. A
+   * vaga foi preenchida e o resultado é pior que vazio — ocupa o lugar e não
+   * mostra nada. Ícone, logo e avatar ficam de fora: são pequenos por natureza.
+   */
+  const minusculas = m.imagensMinusculas;
+  if (minusculas !== undefined) {
+    v.push(
+      minusculas.length === 0
+        ? { codigo: 'S17', titulo: 'A mídia entregue se vê', estado: 'passou', motivo: '' }
+        : {
+            codigo: 'S17',
+            titulo: 'A mídia entregue se vê',
+            estado: 'reprovou',
+            motivo: `${minusculas.length} mídia(s) de conteúdo desenhadas pequenas demais em ${m.largura}px (${minusculas.slice(0, 3).join('; ')}): a vaga foi preenchida e ninguém enxerga o que há ali.`,
+          },
+    );
+  }
+
+  /**
+   * S18 — uma barra de rolagem só.
+   *
+   * A página rola; um bloco dentro dela também. Vem de marcação da ORIGEM que
+   * viajou (`overflow-y:auto` no corpo da peça): lá aquele bloco era a página
+   * inteira, aqui é uma seção. Rolagem aninhada esconde conteúdo e sequestra a
+   * roda do mouse — quem rola a página para de rolar quando o ponteiro entra
+   * ali.
+   */
+  const aninhada = m.rolagemAninhada;
+  if (aninhada !== undefined) {
+    v.push(
+      aninhada.length === 0
+        ? { codigo: 'S18', titulo: 'Uma barra de rolagem só', estado: 'passou', motivo: '' }
+        : {
+            codigo: 'S18',
+            titulo: 'Uma barra de rolagem só',
+            estado: 'reprovou',
+            motivo: `${aninhada.length} bloco(s) rolam dentro da página em ${m.largura}px (${aninhada.slice(0, 2).join('; ')}): é marcação da origem, onde aquele bloco era a página inteira.`,
+          },
+    );
+  }
+
+  /**
+   * S19 — o respiro entre seções é de gente.
+   *
+   * Dois limites, e o dono apontou os DOIS em sites diferentes: "muito espaço
+   * em branco de um componente para o outro" e, no seguinte, "componentes
+   * colado um com outro". Cada peça traz o respiro da própria origem —
+   * empilhadas, ora somam ora se anulam, e nenhuma das duas é escolha de
+   * ninguém.
+   */
+  const respiro = m.respiroMorto;
+  if (respiro !== undefined) {
+    v.push(
+      respiro.length === 0
+        ? {
+            codigo: 'S19',
+            titulo: 'O respiro entre seções é de gente',
+            estado: 'passou',
+            motivo: '',
+          }
+        : {
+            codigo: 'S19',
+            titulo: 'O respiro entre seções é de gente',
+            estado: 'reprovou',
+            motivo: `${respiro.length} emenda(s) entre seções fora de proporção em ${m.largura}px (${respiro.slice(0, 3).join('; ')}).`,
+          },
+    );
+  }
+
+  /**
+   * S20 — a página não é mais alta que o conteúdo dela.
+   *
+   * "O scroll desce muito lento" é altura: a pessoa rola por vazio. A medida é
+   * a fração da altura total que é texto e mídia de verdade. Abaixo de 20% não
+   * há leitura possível do porquê — é vão.
+   *
+   * O piso é baixo de propósito: página com respiro generoso é escolha de
+   * desenho, e esta regra existe para o caso PATOLÓGICO, não para ter gosto.
+   */
+  const total = m.alturaTotal;
+  const util = m.alturaUtil;
+  if (total !== undefined && util !== undefined && total > 0) {
+    const fracao = util / total;
+    v.push(
+      fracao >= 0.2
+        ? {
+            codigo: 'S20',
+            titulo: 'A página não é mais alta que o conteúdo dela',
+            estado: 'passou',
+            motivo: '',
+          }
+        : {
+            codigo: 'S20',
+            titulo: 'A página não é mais alta que o conteúdo dela',
+            estado: 'reprovou',
+            motivo: `só ${(fracao * 100).toFixed(0)}% dos ${total}px de altura são texto ou mídia em ${m.largura}px: a maior parte do que se rola é vão.`,
           },
     );
   }

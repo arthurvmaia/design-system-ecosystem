@@ -456,7 +456,134 @@ const MEDIR = `() => {
     }
   }
 
-  return { contrastes, apagados, vazios, fora, colapsadas, alvosPequenos, textoMiudo };
+  /*
+    IMAGEM ENTREGUE MINUSCULA.
+    A regra do slot vazio (S11) so ve a vaga SEM imagem. O dono fotografou o
+    oposto: uma foto de conteudo desenhada com 48px no meio do hero — a vaga foi
+    preenchida e o resultado e pior que vazio, porque ninguem enxerga o que ha
+    ali. Icone, logo e avatar sao pequenos POR NATUREZA e ficam de fora: o alvo
+    e a midia de CONTEUDO, a que a peca reservou area para mostrar.
+  */
+  const imagensMinusculas = [];
+  {
+    const vistosImg = new Set();
+    for (const el of document.querySelectorAll('[data-secao] img, [data-secao] video')) {
+      const r = el.getBoundingClientRect();
+      const menor = Math.min(r.width, r.height);
+      if (menor === 0) continue;
+      if (menor >= 96) continue;
+      const cls = (el.getAttribute('class') || '').toLowerCase();
+      const alt = (el.getAttribute('alt') || '').toLowerCase();
+      const ehEnfeite =
+        /icon|logo|avatar|badge|selo|marca|bandeira|flag/.test(cls + ' ' + alt) ||
+        el.closest('nav, header, footer, [role="navigation"], button, a[aria-label]') !== null;
+      if (ehEnfeite) continue;
+      // Midia de CONTEUDO: a que a peca reservou area para. Se a caixa em volta
+      // e larga e a imagem e um selo, o slot esta subaproveitado.
+      const pai = el.parentElement;
+      const larguraDoPai = pai ? pai.getBoundingClientRect().width : 0;
+      if (larguraDoPai < 200) continue;
+      const chave = onde(el) + '|' + (el.getAttribute('src') || '').slice(-24);
+      if (vistosImg.has(chave)) continue;
+      vistosImg.add(chave);
+      imagensMinusculas.push(
+        onde(el) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) + 'px em vaga de ' + Math.round(larguraDoPai) + 'px'
+      );
+    }
+  }
+
+  /*
+    SEGUNDA BARRA DE ROLAGEM.
+    A pagina rola; um bloco dentro dela tambem. O dono viu duas barras na mesma
+    tela. Vem de marcacao da ORIGEM que viajou (overflow-y:auto no corpo da
+    peca): la aquele bloco era a pagina inteira, aqui e uma secao. Rolagem
+    aninhada esconde conteudo e sequestra a roda do mouse.
+  */
+  const rolagemAninhada = [];
+  {
+    for (const el of document.querySelectorAll('[data-secao] *')) {
+      const e = getComputedStyle(el);
+      const rola = e.overflowY === 'auto' || e.overflowY === 'scroll';
+      if (!rola) continue;
+      if (el.scrollHeight <= el.clientHeight + 8) continue;
+      // Pre, code e tabela rolam por desenho, e ai a barra e intencional.
+      if (el.closest('pre, code, table') !== null) continue;
+      rolagemAninhada.push(
+        onde(el) + ' (' + el.scrollHeight + 'px de conteudo em ' + el.clientHeight + 'px de caixa)'
+      );
+      if (rolagemAninhada.length >= 6) break;
+    }
+  }
+
+  /*
+    RESPIRO MORTO ENTRE SECOES.
+    Espaco vazio entre o fim de uma secao e o comeco da proxima. Cada peca traz
+    o proprio respiro da origem, e empilhadas elas somam: o dono viu "muito
+    espaco em branco de um componente para o outro", e e isso que faz a pagina
+    ficar longa sem ter mais conteudo — a mesma queixa do scroll lento.
+  */
+  const respiroMorto = [];
+  {
+    const secs = [...document.querySelectorAll('[data-secao]')];
+    for (let i = 0; i + 1 < secs.length; i++) {
+      const a = secs[i].getBoundingClientRect();
+      const b = secs[i + 1].getBoundingClientRect();
+      const vao = Math.round(b.top - a.bottom);
+      /*
+        Dois limites, nao um. O dono apontou os DOIS extremos em sites
+        diferentes: "muito espaco em branco de um componente para o outro" e,
+        no seguinte, "componentes colado um com outro". Cada peca traz o
+        respiro da propria origem — empilhadas, ora somam ora se anulam.
+      */
+      if (vao > 160) {
+        respiroMorto.push(
+          (secs[i].getAttribute('data-secao') || '?') + ' -> ' +
+          (secs[i + 1].getAttribute('data-secao') || '?') + ': ' + vao + 'px de vao'
+        );
+        continue;
+      }
+      // Colado: sem respiro nenhum, duas pecas viram uma mancha so.
+      if (vao < 8 && a.height > 80 && b.height > 80) {
+        respiroMorto.push(
+          (secs[i].getAttribute('data-secao') || '?') + ' -> ' +
+          (secs[i + 1].getAttribute('data-secao') || '?') + ': colados (' + vao + 'px)'
+        );
+      }
+    }
+  }
+
+  /*
+    ALTURA DESPROPORCIONAL.
+    "O scroll desce muito lento" e altura: a pagina e muito mais alta do que o
+    conteudo pede. Medida sem palpite — quanto da altura total e ocupado por
+    TEXTO e MIDIA de verdade. Abaixo de um terco, a pessoa rola por vazio.
+  */
+  let alturaTotal = 0;
+  let alturaUtil = 0;
+  {
+    alturaTotal = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    let soma = 0;
+    for (const el of document.querySelectorAll('[data-secao] p, [data-secao] h1, [data-secao] h2, [data-secao] h3, [data-secao] h4, [data-secao] li, [data-secao] img, [data-secao] video, [data-secao] button, [data-secao] input')) {
+      const r = el.getBoundingClientRect();
+      if (r.height > 0 && r.width > 0) soma += r.height;
+    }
+    alturaUtil = Math.round(soma);
+  }
+
+  return {
+    contrastes,
+    apagados,
+    vazios,
+    fora,
+    colapsadas,
+    alvosPequenos,
+    textoMiudo,
+    imagensMinusculas,
+    rolagemAninhada,
+    respiroMorto,
+    alturaTotal,
+    alturaUtil,
+  };
 }`;
 
 /** As marcas do bloco: reescrever entre elas em vez de acumular retoque sobre retoque. */
