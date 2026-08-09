@@ -41,6 +41,26 @@ import { executadoDireto } from './executado-direto.js';
 const LARGURAS = [1440, 390] as const;
 
 /**
+ * O perfil de cada largura — e em 390 ele é de CELULAR de verdade, não de
+ * janela estreita.
+ *
+ * A diferença não é cosmética. Sem `isMobile`/`hasTouch`, o Chromium continua
+ * sendo desktop com a janela apertada, e duas media queries que os sites usam o
+ * tempo todo respondem ERRADO: `@media (hover: hover)` diz que há mouse, e
+ * `(pointer: coarse)` diz que o ponteiro é fino. Conteúdo que a origem escondeu
+ * atrás de hover — menu, legenda, botão que só aparece ao passar o mouse — some
+ * num telefone real e a medição jurava que estava tudo certo.
+ *
+ * A altura também é do aparelho: 844 é a de um telefone corrente, e medir
+ * transbordo e seção colapsada numa janela de 900 de altura descreve uma tela
+ * que ninguém tem. `deviceScaleFactor: 3` é a densidade da tela dele.
+ */
+const PERFIL: Record<number, { height: number; isMobile: boolean; deviceScaleFactor: number }> = {
+  1440: { height: 900, isMobile: false, deviceScaleFactor: 1 },
+  390: { height: 844, isMobile: true, deviceScaleFactor: 3 },
+};
+
+/**
  * A medição roda DENTRO da página, porque é lá que as cores estão resolvidas.
  *
  * O texto é comparado com o primeiro ancestral que tem fundo opaco — é o que o
@@ -164,6 +184,59 @@ const MEDIR = `() => {
     return c && c.a >= 0.95 ? { cor: c } : { imagem: true };
   };
 
+  /**
+   * QUEM apagou: o elemento da cadeia que zera, e a regra CSS responsavel.
+   *
+   * A conferencia dizia QUE texto estava apagado e nunca QUEM o apagou, e essa
+   * lacuna custou tres tentativas de conserto no motor, todas deduzidas do CSS
+   * e todas erradas: a primeira mexeu na limpeza da classe de revelacao, a
+   * segunda procurou o par opacity 0 / opacity 1, e o mecanismo real era uma
+   * ANIMACAO PAUSADA que um ancestral despausa. Deduzir a causa de um sintoma
+   * medido e o mesmo erro que a regra alimentada por constante: parece
+   * informacao e nao e.
+   *
+   * Aqui a resposta vem do proprio navegador, que sabe exatamente qual regra
+   * casou com qual elemento.
+   */
+  const quemApagou = (el) => {
+    let n = el;
+    while (n && n !== document.documentElement) {
+      const e = getComputedStyle(n);
+      const zerado = Number.parseFloat(e.opacity) < 0.35;
+      const parado = e.animationPlayState === 'paused';
+      if (zerado || parado) {
+        const classes = (n.getAttribute('class') || '').trim().split(/\\s+/).filter(Boolean);
+        let regra = null;
+        for (const folha of document.styleSheets) {
+          let lista;
+          try { lista = folha.cssRules; } catch (err) { continue; }
+          const anda = (rs) => {
+            for (const r of rs) {
+              if (regra) return;
+              if (r.cssRules) { anda(r.cssRules); continue; }
+              if (!r.selectorText || !r.style) continue;
+              const zera = r.style.getPropertyValue('opacity');
+              const pausa = r.style.getPropertyValue('animation-play-state');
+              if (zera !== '0' && pausa !== 'paused') continue;
+              let casa = false;
+              try { casa = n.matches(r.selectorText); } catch (err2) { casa = false; }
+              if (casa) regra = r.selectorText.slice(0, 120);
+            }
+          };
+          anda(lista);
+          if (regra) break;
+        }
+        const motivo = parado && !zerado ? 'animacao pausada' : 'opacidade zero';
+        return n.tagName.toLowerCase()
+          + (classes.length ? '.' + classes.slice(0, 3).join('.') : '')
+          + ' (' + motivo + ')'
+          + (regra ? ' por: ' + regra : ' sem regra de folha (estilo inline?)');
+      }
+      n = n.parentElement;
+    }
+    return null;
+  };
+
   // A opacidade MULTIPLICA pela cadeia: um pai a 0.05 apaga o filho a 1.
   const opacidadeEfetiva = (el) => {
     let o = 1;
@@ -216,11 +289,34 @@ const MEDIR = `() => {
      * ocupa espaço, e ninguém lê.
      */
     const oef = opacidadeEfetiva(el) * frente.a;
-    if (oef < 0.35) {
+    /**
+     * A MARCA D'AGUA e a excecao, e ela e reconhecivel pelo tamanho.
+     *
+     * Medido num kit do banco de prova: o rodape trazia o nome da marca em
+     * text-[20vw] com text-white/5 — letra de 20% da largura da tela, a 5% de
+     * opacidade. Isso e desenho deliberado, e a regra reprovava por "conteudo
+     * que nao apareceu". (Sem crase: este bloco e um template literal, e crase
+     * aqui FECHA o template — o aviso esta no topo do arquivo.)
+     *
+     * Ninguem escreve 20vw a 5% por acidente. Texto de LEITURA nunca tem esse
+     * tamanho, entao letra gigante com alfa baixo e decoracao por construcao —
+     * e a distincao precisa das DUAS coisas juntas: um titulo grande e opaco
+     * continua sendo titulo, e um texto pequeno e apagado continua sendo
+     * defeito.
+     */
+    const corpoDaLetra = Number.parseFloat(getComputedStyle(el).fontSize) || 0;
+    const marcaDagua = corpoDaLetra >= 100 && opacidadeEfetiva(el) >= 0.95;
+    if (oef < 0.35 && !marcaDagua) {
       const chaveA = texto.slice(0, 20) + '|' + onde(el);
       if (!vistos.has(chaveA)) {
         vistos.add(chaveA);
-        apagados.push({ texto, opacidade: oef, onde: onde(el), seletor: seletorDe(el) });
+        apagados.push({
+          texto,
+          opacidade: oef,
+          onde: onde(el),
+          seletor: seletorDe(el),
+          culpado: quemApagou(el),
+        });
       }
       continue;
     }
@@ -295,7 +391,72 @@ const MEDIR = `() => {
     );
   }
 
-  return { contrastes, apagados, vazios, fora, colapsadas };
+  /**
+   * ALVO DE TOQUE pequeno demais — so no celular, porque so la o dedo e a mira.
+   *
+   * O CSS responsivo do proprio compositor ja escreve \`min-height: 44px\` para
+   * link, botao e campo, e a intencao esta documentada la. So que ela nao e
+   * \`!important\` e nunca foi CONFERIDA: qualquer regra mais especifica da peca
+   * capturada, ou um \`style\` inline, a sobrepoe em silencio. E ela define so
+   * altura, entao um botao de icone pode sair alto e estreito.
+   *
+   * 44px e a medida da Apple e a mesma que o Google usa em 48dp. Abaixo disso,
+   * errar o toque deixa de ser acidente e vira regra.
+   */
+  const alvosPequenos = [];
+  if (larguraVisivel <= 500) {
+    const vistosAlvo = new Set();
+    for (const el of document.querySelectorAll('a, button, input, select, textarea, [role="button"], [role="tab"]')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const e = getComputedStyle(el);
+      if (e.visibility === 'hidden' || e.display === 'none') continue;
+      // Link DENTRO de um paragrafo e texto, nao botao: cobrar 44px dele
+      // obrigaria a espacar a leitura inteira.
+      const pai = el.parentElement;
+      const dentroDeTexto = el.tagName === 'A' && pai
+        && ['P', 'LI', 'SPAN', 'H1', 'H2', 'H3', 'H4'].indexOf(pai.tagName) >= 0;
+      if (dentroDeTexto) continue;
+      if (r.height >= 44 && r.width >= 44) continue;
+      const chave = onde(el) + '|' + (el.textContent || '').trim().slice(0, 14);
+      if (vistosAlvo.has(chave)) continue;
+      vistosAlvo.add(chave);
+      alvosPequenos.push(
+        onde(el) + ' "' + (el.textContent || '').trim().slice(0, 18) + '" ('
+        + Math.round(r.width) + 'x' + Math.round(r.height) + 'px)'
+      );
+    }
+  }
+
+  /**
+   * TEXTO MIUDO — nenhuma regra lia tamanho de letra.
+   *
+   * S4 compara cores e S13 mede opacidade; as duas dao verde para um texto de
+   * 8px com contraste perfeito. No celular isso e ilegivel na pratica, e nao
+   * aparece em nenhuma outra medicao.
+   *
+   * O piso e 12px, e nao 16: rotulo em caixa alta, credito de foto e nota de
+   * rodape vivem legitimamente entre 12 e 14. Abaixo de 12 nao ha uso honesto.
+   */
+  const textoMiudo = [];
+  if (larguraVisivel <= 500) {
+    const vistosMiudo = new Set();
+    for (const el of document.querySelectorAll('[data-secao] *')) {
+      if (el.children.length > 0) continue;
+      const t = (el.textContent || '').trim();
+      if (t.length < 6) continue;
+      const e = getComputedStyle(el);
+      if (e.visibility === 'hidden' || e.display === 'none') continue;
+      const tam = Number.parseFloat(e.fontSize) || 16;
+      if (tam >= 12) continue;
+      const chave = onde(el) + '|' + t.slice(0, 14);
+      if (vistosMiudo.has(chave)) continue;
+      vistosMiudo.add(chave);
+      textoMiudo.push(onde(el) + ' "' + t.slice(0, 22) + '" (' + tam.toFixed(1) + 'px)');
+    }
+  }
+
+  return { contrastes, apagados, vazios, fora, colapsadas, alvosPequenos, textoMiudo };
 }`;
 
 /** As marcas do bloco: reescrever entre elas em vez de acumular retoque sobre retoque. */
@@ -416,11 +577,53 @@ export const conferirNoNavegador = async (
   const saida: { largura: number; aceite: ResultadoDeAceite; medida: SiteNoNavegador }[] = [];
   try {
     for (const largura of LARGURAS) {
-      const pagina = await navegador.newPage({ viewport: { width: largura, height: 900 } });
+      const perfil = PERFIL[largura] ?? { height: 900, isMobile: false, deviceScaleFactor: 1 };
+      const pagina = await navegador.newPage({
+        viewport: { width: largura, height: perfil.height },
+        isMobile: perfil.isMobile,
+        hasTouch: perfil.isMobile,
+        deviceScaleFactor: perfil.deviceScaleFactor,
+      });
       await pagina.goto(pathToFileURL(indice).href, { waitUntil: 'load' });
-      // As revelações por rolagem só resolvem depois de a página assentar; sem
-      // esta espera, metade do texto ainda está com opacidade 0 e a medição
-      // acusaria contraste onde não há defeito.
+      /**
+       * A página é PERCORRIDA antes de medir, como um visitante percorre.
+       *
+       * Esperar não bastava, e a diferença é a mecânica do `IntersectionObserver`:
+       * ele só dispara para quem ENTRA na viewport. Seção abaixo da dobra nunca
+       * entra se ninguém rolar — então ela seguia no estado inicial da revelação
+       * (`opacity: 0`) e a regra S13 acusava 51 trechos "apagados" num site que,
+       * para quem usa, aparece inteiro. Medir sem rolar é medir uma página que
+       * ninguém vê.
+       *
+       * Desce de meia tela em meia tela (passo menor que a viewport, para não
+       * pular nenhum gatilho), respira a cada parada, e VOLTA AO TOPO: as regras
+       * de transbordo e de seção colapsada medem geometria, e geometria depende
+       * de onde a rolagem parou.
+       */
+      /**
+       * A altura é RELIDA a cada parada, e não medida uma vez no começo.
+       *
+       * Medir uma vez foi um defeito meu, e ele produziu falso positivo: em
+       * 390px a página é bem mais alta, as imagens ainda estavam carregando
+       * quando a varredura começou, e o limite do laço ficou velho. As últimas
+       * seções nunca entraram na tela, a revelação delas não disparou, e a
+       * regra S13 acusou cinco trechos "apagados" num site inteiro e correto.
+       *
+       * O teto de voltas existe para página que cresce a cada rolagem (rolagem
+       * infinita) não virar laço eterno.
+       */
+      let y = 0;
+      for (let volta = 0; volta < 200; volta++) {
+        await pagina.evaluate(`window.scrollTo(0, ${y})`);
+        await pagina.waitForTimeout(120);
+        const altura = await pagina.evaluate('document.body.scrollHeight');
+        const total = typeof altura === 'number' ? altura : 0;
+        if (y >= total) break;
+        y += 450;
+      }
+      await pagina.evaluate('window.scrollTo(0, 0)');
+      // A espera final continua valendo: a última revelação ainda está em
+      // transição quando a rolagem volta, e medir no meio dela dá número falso.
       await pagina.waitForTimeout(700);
       // Texto passado ao `evaluate` é avaliado como EXPRESSÃO: sem os
       // parênteses de chamada, o que volta é a própria função, e o resultado
@@ -433,10 +636,18 @@ export const conferirNoNavegador = async (
           seletor: string | null;
           tinta: string | null;
         }[];
-        apagados: { texto: string; opacidade: number; onde: string; seletor: string | null }[];
+        apagados: {
+          texto: string;
+          opacidade: number;
+          onde: string;
+          seletor: string | null;
+          culpado: string | null;
+        }[];
         vazios: string[];
         fora: string[];
         colapsadas: string[];
+        alvosPequenos: string[];
+        textoMiudo: string[];
       };
       await pagina.close();
       const medida: SiteNoNavegador = {
@@ -446,6 +657,8 @@ export const conferirNoNavegador = async (
         slotsDeMidiaVazios: bruto.vazios,
         transbordam: bruto.fora,
         secoesColapsadas: bruto.colapsadas,
+        alvosDeToquePequenos: bruto.alvosPequenos,
+        textoMiudo: bruto.textoMiudo,
       };
       saida.push({ largura, medida, aceite: conferirSiteNoNavegador(medida) });
     }
