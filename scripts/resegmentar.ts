@@ -40,6 +40,7 @@ import {
   vaultSegmentValidation,
 } from '@ds/shared';
 import { executadoDireto } from './executado-direto.js';
+import { religarBibliotecaAosSegmentos } from './religar-biblioteca.js';
 import { segmentarEIndexar } from './segmentar.js';
 
 type Relato = {
@@ -218,6 +219,21 @@ export const resegmentar = (dsId: DesignSystemId, seco: boolean): Relato => {
     evidencia: ev,
   });
   segmentarEIndexar(dsId);
+  /**
+   * Religa a Biblioteca ao segmento NOVO, aqui mesmo.
+   *
+   * A recriação dos segmentos orfana toda linha desta origem
+   * (`segment_id` é `on delete set null`), e linha órfã é invisível para as
+   * regras de aceite da Galeria e para o `curar`. Religar no mesmo passo é o
+   * que impede o acervo de se desmontar a cada refinamento.
+   */
+  const religou = religarBibliotecaAosSegmentos(dsId);
+  if (religou.religadas > 0 || religou.aindaOrfas > 0) {
+    console.log(
+      `    Biblioteca religada: ${religou.religadas} (${religou.porNome} por nome, ` +
+        `${religou.porTrecho} pelo trecho)${religou.aindaOrfas > 0 ? `, ${religou.aindaOrfas} ainda sem vínculo` : ''}`,
+    );
+  }
   // A validação em navegador era da geração anterior de segmentos.
   rmSync(vaultSegmentValidation(dsId), { force: true });
 
