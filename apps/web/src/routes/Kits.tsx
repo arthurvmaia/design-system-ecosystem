@@ -99,6 +99,35 @@ export function KitsPage() {
   const [confirmaLote, setConfirmaLote] = useState(false);
   const [emUsoPendente, setEmUsoPendente] = useState<KitEmUso[] | null>(null);
 
+  /**
+   * As faixas de nicho abertas — e a tela NASCE fechada de propósito.
+   *
+   * O dono pediu depois da primeira versão: a lista corrida ficou "muito
+   * extensa" e o texto da categoria "pouco destacado". Fechada, a tela mostra
+   * dez faixas e cabe numa dobra; abrir é um clique, e a escolha fica guardada
+   * no navegador para a volta não recomeçar do zero.
+   */
+  const [nichosAbertos, setNichosAbertos] = useState<Set<string>>(() => {
+    try {
+      const salvo = localStorage.getItem('ds-kits-nichos-abertos');
+      return new Set(salvo === null ? [] : (JSON.parse(salvo) as string[]));
+    } catch {
+      return new Set();
+    }
+  });
+  const alternarNicho = (slug: string): void =>
+    setNichosAbertos((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(slug)) novo.delete(slug);
+      else novo.add(slug);
+      try {
+        localStorage.setItem('ds-kits-nichos-abertos', JSON.stringify([...novo]));
+      } catch {
+        /* navegador sem storage segue funcionando, só não lembra */
+      }
+      return novo;
+    });
+
   const items = kits.data?.items ?? [];
   useReveal([items.length]);
 
@@ -195,41 +224,88 @@ export function KitsPage() {
             </label>
           </div>
           {/*
-            As faixas seguem a ordem dos nichos que MAIS VENDEM no Brasil —
-            pedido do dono nesta tela. Quem escolhe um kit pensa no mercado do
-            cliente, e a pergunta que a grade responde de uma olhada é "tenho
-            kit para o nicho que me paga?". A lista e a ordem moram em
-            `nichos-do-brasil.ts` (@ds/shared), fonte única como a taxonomia.
+            As faixas seguem a ordem dos nichos que MAIS VENDEM no Brasil e são
+            SANFONA: fechadas, a tela é dez linhas e cabe numa dobra; um clique
+            abre a categoria, outro fecha. Pedido do dono em duas rodadas nesta
+            tela — a segmentação, e depois "quero algo mais visível... clico
+            nela e expande, clico de novo e minimiza". A lista e a ordem moram
+            em `nichos-do-brasil.ts` (@ds/shared), fonte única como a taxonomia.
           */}
-          {agruparKitsPorNicho(items).map(({ categoria, kits: doNicho }) => (
-            <section key={categoria.slug} className="mt-8" aria-label={categoria.rotulo}>
-              <div className="flex items-baseline gap-3">
-                <h2
-                  className="ds-label text-[12px] tracking-widest uppercase"
-                  style={{ color: 'var(--acento)' }}
+          {agruparKitsPorNicho(items).map(({ categoria, kits: doNicho }) => {
+            const aberta = nichosAbertos.has(categoria.slug);
+            const selecionadosAqui = doNicho.filter((k) => sel.has(k.id)).length;
+            return (
+              <section key={categoria.slug} className="mt-3" aria-label={categoria.rotulo}>
+                <button
+                  type="button"
+                  onClick={() => alternarNicho(categoria.slug)}
+                  aria-expanded={aberta}
+                  aria-controls={`nicho-${categoria.slug}`}
+                  className="ds-card group flex w-full items-center gap-4 rounded-none px-5 py-4 text-left"
+                  style={aberta ? { borderColor: 'var(--color-border-strong)' } : undefined}
                 >
-                  {categoria.rotulo}
-                </h2>
-                <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-                  {conta(doNicho.length, 'kit', 'kits')}
-                </span>
-              </div>
-              <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-                {categoria.porQueVende}
-              </p>
-              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                {doNicho.map((kit) => (
-                  <KitCard
-                    key={kit.id}
-                    kit={kit}
-                    onEdit={() => setEditing(kit)}
-                    selected={sel.has(kit.id)}
-                    onToggle={() => setSel((s) => toggleSel(s, kit.id))}
+                  <ChevronDown
+                    size={18}
+                    aria-hidden
+                    className="shrink-0 transition-transform"
+                    style={{
+                      color: 'var(--color-primary)',
+                      transform: aberta ? 'rotate(0deg)' : 'rotate(-90deg)',
+                      transitionDuration: 'var(--duracao-media)',
+                    }}
                   />
-                ))}
-              </div>
-            </section>
-          ))}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <h2
+                        className="text-[15px] font-semibold tracking-tight"
+                        style={{ color: 'var(--color-fg)' }}
+                      >
+                        {categoria.rotulo}
+                      </h2>
+                      <span
+                        className="rounded-none border px-2 py-0.5 text-[11px] tabular-nums"
+                        style={{
+                          color: 'var(--color-primary)',
+                          borderColor: 'var(--color-border-strong)',
+                        }}
+                      >
+                        {conta(doNicho.length, 'kit', 'kits')}
+                      </span>
+                      {/* Seleção escondida numa faixa fechada confundiria a
+                          barra de lote lá embaixo — então a faixa CONTA. */}
+                      {selecionadosAqui > 0 && (
+                        <span className="text-[11px]" style={{ color: 'var(--color-fg-muted)' }}>
+                          {selecionadosAqui} na seleção
+                        </span>
+                      )}
+                    </div>
+                    <p
+                      className="mt-1 truncate text-[13px]"
+                      style={{ color: 'var(--color-fg-muted)' }}
+                    >
+                      {categoria.porQueVende}
+                    </p>
+                  </div>
+                </button>
+                {aberta && (
+                  <div
+                    id={`nicho-${categoria.slug}`}
+                    className="mt-3 mb-5 grid grid-cols-1 gap-4 md:grid-cols-2"
+                  >
+                    {doNicho.map((kit) => (
+                      <KitCard
+                        key={kit.id}
+                        kit={kit}
+                        onEdit={() => setEditing(kit)}
+                        selected={sel.has(kit.id)}
+                        onToggle={() => setSel((s) => toggleSel(s, kit.id))}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </>
       )}
 
