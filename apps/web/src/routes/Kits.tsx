@@ -129,7 +129,19 @@ export function KitsPage() {
     });
 
   const items = kits.data?.items ?? [];
-  useReveal([items.length]);
+  /**
+   * O `nichosAbertos` nas deps é o que faz o kit APARECER ao abrir a faixa.
+   *
+   * Os cartões nascem com `.ds-reveal` (opacidade zero até o observador
+   * acender), e o gancho só reobserva quando as deps mudam. Abrir a sanfona
+   * monta cartões novos SEM mudar `items.length` — o dono clicou, a faixa
+   * abriu, e os kits ficaram lá, invisíveis: "ta... mas cade os kits kkkk".
+   *
+   * É a mesma doença dos sites gerados que este repo passou a semana
+   * consertando: elemento esperando um revelador que nunca vem. Aqui o
+   * revelador existe; só não tinha sido avisado da mudança.
+   */
+  useReveal([items.length, nichosAbertos]);
 
   useEffect(() => {
     setSel((s) =>
