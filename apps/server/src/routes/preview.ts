@@ -252,6 +252,75 @@ try{if(window.ResizeObserver&&document.body)new ResizeObserver(medir).observe(do
 setTimeout(medir,150);setTimeout(medir,700);setTimeout(medir,2000);
 })()</script>`;
 
+/**
+ * A ROLAGEM DA PRÉVIA NÃO SOBE PARA A PÁGINA DO APP.
+ *
+ * ## O defeito, como o dono o descreveu
+ *
+ * *"quando eu clico aqui e scrollo para baixo para ver os kits o scroll fica se
+ * mexendo sozinho para baixo e não deixa subir mais"*. A tela dos Kits é uma
+ * grade de cartões, e cada cartão traz uma prévia viva do kit num `<iframe>`.
+ *
+ * ## Por que a prévia consegue mexer na página de fora
+ *
+ * O iframe é `sandbox="allow-scripts allow-same-origin"` — e o `allow-same-origin`
+ * não é descuido, é o que faz o cookie do portão acompanhar os pedidos de CSS e
+ * JS da prévia. O preço é que os scripts de dentro alcançam os ancestrais: um
+ * `scrollIntoView()` chamado LÁ DENTRO rola todos os contêineres de rolagem
+ * acima dele, e o de cima é a página do app.
+ *
+ * E a captura é fiel de propósito, então os motores de rolagem do site de origem
+ * viajam junto. Medido nos 276 bundles da Biblioteca:
+ *
+ * | o que o bundle traz | em quantos |
+ * |---|---|
+ * | `scrollTo` | 101 |
+ * | `scrollIntoView` | 96 |
+ * | `scrollTop` | 91 |
+ * | `ScrollSmoother` (GSAP) | 54 |
+ * | `lenis` | 18 |
+ * | `locomotive` | 5 |
+ *
+ * `ScrollSmoother`, `lenis` e `locomotive` são justamente bibliotecas que TOMAM
+ * a rolagem para si e a dirigem quadro a quadro. Com uma dessas rodando numa
+ * prévia, a página do app é puxada para baixo continuamente — e subir vira uma
+ * queda de braço que a pessoa perde.
+ *
+ * ## O conserto, e por que ele é este e não outro
+ *
+ * Tirar o `allow-same-origin` quebraria a prévia inteira. Matar os scripts
+ * mataria a animação, que é o que a prévia existe para mostrar.
+ *
+ * Então neutraliza-se só a TRAVESSIA: `scrollIntoView` passa a rolar apenas a
+ * janela da própria prévia, e `focus()` ganha `preventScroll` (focar também
+ * arrasta os ancestrais). Tudo o que acontece dentro do documento continua
+ * acontecendo — inclusive a rolagem dele, quando ele é o palco no modal.
+ *
+ * Entra ANTES do `head` da origem: um guarda que chega depois do script que ele
+ * deveria conter não guarda nada.
+ */
+const ROLAGEM_CONTIDA = `<script>(function(){
+try{
+  var siv=Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView=function(arg){
+    try{
+      var r=this.getBoundingClientRect();
+      var suave=arg&&typeof arg==='object'&&arg.behavior==='smooth';
+      // A janela AQUI e a da propria previa: chamar scrollTo nela nunca alcanca
+      // a pagina de fora, e no cartao (que tem a altura do documento) e inocuo.
+      window.scrollTo({top:(window.scrollY||0)+r.top,left:(window.scrollX||0)+r.left,behavior:suave?'smooth':'auto'});
+    }catch(e){}
+  };
+  // Guarda o original para quem precisar depurar; nao e usado no caminho normal.
+  Element.prototype.scrollIntoView.__original=siv;
+  var foc=HTMLElement.prototype.focus;
+  HTMLElement.prototype.focus=function(opts){
+    var o=opts&&typeof opts==='object'?opts:{};
+    return foc.call(this,{focusVisible:o.focusVisible,preventScroll:true});
+  };
+}catch(e){}
+})()</script>`;
+
 const compor = (opts: {
   titulo: string;
   head: string;
@@ -269,6 +338,7 @@ const compor = (opts: {
 <meta charset="utf-8"/>
 ${opts.base ? `<base href="${opts.base}"/>` : ''}
 <style>${ESTILO_BASE}</style>
+${ROLAGEM_CONTIDA}
 ${opts.head}
 </head>
 <body${opts.bodyAttrs}${override}>
