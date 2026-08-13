@@ -192,7 +192,12 @@ test('a rede de seguranca acende o que ENTROU na tela e nao acendeu', () => {
   assert.match(s, /unobserve/, 'cada elemento e julgado uma vez so');
   // As tres guardas que ja custaram regressao nesta frente.
   assert.match(s, /pointerEvents==='none'/, 'hover-revelado nao e defeito');
-  assert.match(s, /nodeType===3/, 'so quem tem TEXTO proprio');
+  assert.match(s, /nodeType===3/, 'observa quem tem TEXTO proprio — e o que a regua mede');
+  // Mas ACENDE o ancestral que zerou: quem carrega a opacidade e o container, e
+  // o texto esta nos filhos. Observar e acender o mesmo elemento nao acendeu
+  // nada — medido: zero marcas em seis sites com 111 trechos apagados.
+  assert.match(s, /function culpado/, 'sobe ate quem zerou');
+  assert.match(s, /var alvo=culpado\(el\)/, 'o conserto pousa no culpado, nao na folha');
   assert.match(s, /PISO=0\.35/, 'o mesmo piso da regua');
   // E o conserto tem de VENCER o inline que a biblioteca escreveu.
   assert.match(s, /setProperty\('opacity','1','important'\)/);

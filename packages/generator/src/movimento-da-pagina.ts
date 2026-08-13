@@ -361,28 +361,51 @@ export const ESPERA_DA_REDE_MS = 900;
 
 export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
   var PISO=0.35;
-  function efetiva(el){
-    var o=1,n=el;
-    while(n&&n!==document.documentElement){
-      var c=getComputedStyle(n);
-      o*=parseFloat(c.opacity);
-      if(c.pointerEvents==='none'&&parseFloat(c.opacity)===0){return -1;}
-      n=n.parentElement;
-    }
-    return o;
-  }
-  function acender(el){
-    if(efetiva(el)>=PISO)return;
-    el.style.setProperty('opacity','1','important');
-    el.style.setProperty('transform','none','important');
-    el.setAttribute('data-orbis-acendido','');
-  }
-  function texto(el){
+  /* Quem tem TEXTO PROPRIO: e o que a regua mede, e e a folha da arvore. */
+  function temTexto(el){
     for(var i=0;i<el.childNodes.length;i++){
       var n=el.childNodes[i];
       if(n.nodeType===3&&n.nodeValue&&n.nodeValue.trim().length>2)return true;
     }
     return false;
+  }
+  /*
+    QUEM apagou nao e quem tem o texto — e um ancestral.
+
+    A primeira versao observava e acendia o MESMO elemento, e nao acendeu nada:
+    quem carrega a opacidade e o container (div.gsap-fade-up), e o texto esta
+    nos filhos dele. A opacidade nao e herdada como valor, mas o efeito e
+    cumulativo, entao a folha aparece apagada sem ter uma gota de opacidade
+    propria.
+
+    Sobe-se ate achar quem zerou. Acender ali traz os irmaos junto, que e o que
+    a animacao faria.
+  */
+  function culpado(el){
+    var n=el;
+    while(n&&n!==document.body){
+      var c=getComputedStyle(n);
+      /* Conteudo revelado no HOVER: quem nao recebe clique espera o ponteiro,
+         nao um observador. Acender isso mostraria tudo de uma vez. */
+      if(c.pointerEvents==='none'&&parseFloat(c.opacity)===0)return null;
+      if(parseFloat(c.opacity)<PISO)return n;
+      n=n.parentElement;
+    }
+    return null;
+  }
+  function efetiva(el){
+    var o=1,n=el;
+    while(n&&n!==document.documentElement){o*=parseFloat(getComputedStyle(n).opacity);n=n.parentElement;}
+    return o;
+  }
+  function acender(el){
+    if(efetiva(el)>=PISO)return;
+    var alvo=culpado(el);
+    if(!alvo)return;
+    alvo.style.setProperty('opacity','1','important');
+    var t=getComputedStyle(alvo).transform;
+    if(t&&t!=='none')alvo.style.setProperty('transform','none','important');
+    alvo.setAttribute('data-orbis-acendido','');
   }
   var io=new IntersectionObserver(function(entradas){
     for(var i=0;i<entradas.length;i++){
@@ -396,7 +419,7 @@ export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
   function ligar(){
     var alvos=document.querySelectorAll('[data-secao] *');
     for(var i=0;i<alvos.length;i++){
-      if(!texto(alvos[i]))continue;
+      if(!temTexto(alvos[i]))continue;
       io.observe(alvos[i]);
     }
   }
