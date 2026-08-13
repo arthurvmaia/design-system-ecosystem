@@ -1,5 +1,31 @@
 # HANDOFF — onde o trabalho está
 
+> ## 🔄 RETOMADA — trabalho em voo (2026-08-13, ~14h50)
+>
+> **Se os subagentes caírem por limite de sessão, é DAQUI que se volta.**
+> Regra do dono: gravar isto antes do teto; ao voltar os tokens, retomar de
+> onde parou. Na MESMA sessão: `Workflow({scriptPath, resumeFromRunId})` —
+> agente completo volta do cache. Sessão NOVA: relançar fresh pelo scriptPath.
+>
+> | workflow | runId | script | o que fazer com o resultado |
+> |---|---|---|---|
+> | Diagnóstico R2 dos kits (S4, S13, S15+S16, S12, S20) | `wf_e1cbe92c-09c` | `~/.claude/projects/C--Users-arthur-maia-Desktop-orbis-suite/a32b4c6e-5880-4aa3-a38d-8512e83af91e/workflows/scripts/fechar-pendencias-kits-r2-wf_e1cbe92c-09c.js` (args: bench=kits-provar-4pVuiY) | aplicar só as causas `confirmadas` (que passaram pelos 2 céticos), uma a uma, com teste; reprovar com `pnpm kits:provar --manter`; repetir |
+> | MVP Criativos passos 1–2 (tela dos 4 passos) | `wf_a4f27a4f-7b2` | idem diretório, `frente-criativos-mvp-passos-1-2-wf_a4f27a4f-7b2.js` | contrato JÁ commitado (939baf9); conferir a tela, rodar biome/typecheck/testes, commitar; NÃO ligar o ConviteOrbisCriativos (passo 6 da espec) |
+>
+> **Estado dos kits no último placar (prova17, bench `kits-provar-4pVuiY`):**
+> 19 de 20 reprovam · S4 259 achados (12 kits) · S13 86 (7 kits) · S15 12 (9) ·
+> S16 12 (1) · S12 3 kits · S20 2 kits · S2/S14/S17/S18/S19 ZERADAS.
+>
+> **Depois dos kits 100% (ordem combinada com o dono):** fila de 11 jobs
+> `generate` — SJDR primeiro COM NAVEGADOR VISÍVEL, depois AVDSGN (portfólio
+> real), depois Meridiano/Voltz/expressos (Café da Estação, asteric, Navalha,
+> Ourivés — processar UM de cada duplicata). Geração completa: copy no tom da
+> marca, Magnific (assistente completo = consentido; expresso pergunta),
+> vídeo onde couber, contraste medido + animações presentes.
+>
+> **Pendências fora dos kits:** varredura UI/UX autorizada ("qualquer melhoria
+> principalmente ui/ux") — lançar depois que o MVP sair do ar em apps/web.
+
 > ## 📍 ESTADO EM 2026-08-13 — o portão dos kits
 >
 > A ordem do dono continua valendo: **kit/template 100% antes de gerar site**.

@@ -2,6 +2,7 @@ import { Intro } from '@/components/Intro';
 import { PortaoOrbis } from '@/components/PortaoOrbis';
 import { Shell } from '@/components/Shell';
 import { aplicarMovimento, usePreferencias } from '@/lib/preferencias';
+import { CriativosPage } from '@/routes/Criativos';
 import { ExtractPage } from '@/routes/Extract';
 import { GalleryPage } from '@/routes/Gallery';
 import { KitsPage } from '@/routes/Kits';
@@ -64,6 +65,10 @@ export function App() {
                 <Route index element={<Navigate to="/inicio" replace />} />
                 <Route path="inicio" element={<HomePage />} />
                 <Route path="/expresso" element={<ExpressoPage />} />
+                {/* A ala de criativos ainda em ensaio: acessível só por URL.
+                    Ligar o ConviteOrbisCriativos aqui é o passo 6 da espec —
+                    porta aberta antes do motor seria porta para lugar nenhum. */}
+                <Route path="/criativos" element={<CriativosPage />} />
                 <Route path="/extract" element={<ExtractPage />} />
                 <Route path="/gallery" element={<GalleryPage />} />
                 <Route path="/revisao" element={<RevisaoPage />} />
