@@ -22,6 +22,14 @@ import { type ModeloDeCopy, executarPlano, montarPlanoEditorial } from './editor
 import { montarPaginaDoKit } from './pagina.js';
 
 export { cssResponsivoBase } from './responsivo.js';
+/**
+ * A espera da rede de segurança sai daqui para quem MEDE a página.
+ *
+ * A conferência precisa esperar mais que ela; medir antes é medir um estado que
+ * nenhum visitante vê, e foi o que fez o número do S13 balançar (132 → 74 →
+ * 130) sem nenhuma mudança relacionada entre as medições.
+ */
+export { ESPERA_DA_REDE_MS } from './movimento-da-pagina.js';
 export { lerCssDoBundle, type LeituraDeCss } from './cascata.js';
 export { removerScriptsQueCompilamCss } from './pecas.js';
 export { type PecaDoKit, consolidarDesignSystemDoKit } from './design-system-do-kit.js';

@@ -29,6 +29,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { ESPERA_DA_REDE_MS } from '@ds/generator';
 import {
   PISO_DE_CONTRASTE,
   type ResultadoDeAceite,
@@ -852,9 +853,23 @@ export const conferirNoNavegador = async (
         y += 450;
       }
       await pagina.evaluate('window.scrollTo(0, 0)');
-      // A espera final continua valendo: a última revelação ainda está em
-      // transição quando a rolagem volta, e medir no meio dela dá número falso.
-      await pagina.waitForTimeout(700);
+      /**
+       * A espera final tem de ser MAIOR que a rede de segurança da página.
+       *
+       * Ela era de 700ms, e a rede acende o que falhou 900ms depois de o
+       * elemento entrar na tela — então a medição corria com o conserto. O
+       * sintoma foi o número BALANÇAR sem motivo: S13 saiu de 132 para 74 e
+       * voltou para 130 em três medições seguidas, com uma mudança entre elas
+       * que não tinha nada a ver.
+       *
+       * Número que oscila não mede nada, e a conta certa é a do visitante: ele
+       * rola, para, e a revelação acontece. Esperar menos que a página é medir
+       * um estado que ninguém vê.
+       *
+       * Fica ancorado em `ESPERA_DA_REDE_MS` de propósito: mexer lá e esquecer
+       * aqui traria a oscilação de volta.
+       */
+      await pagina.waitForTimeout(ESPERA_DA_REDE_MS + 900);
       // Texto passado ao `evaluate` é avaliado como EXPRESSÃO: sem os
       // parênteses de chamada, o que volta é a própria função, e o resultado
       // chega `undefined`.
