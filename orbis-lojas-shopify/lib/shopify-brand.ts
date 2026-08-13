@@ -307,11 +307,18 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
             continue;
           }
           if (definicao.type === "collection" && colecoes.length) {
-            /* o handle que o tema trouxe é da loja de demonstração dele
-               ("moda-feminina" numa loja de pet); as seções recebem as coleções
-               do nicho, girando para não repetir a mesma em todas */
-            alvo.settings[definicao.id] = colecoes[proximaColecao++ % colecoes.length];
-            marcou(`${secao.type}.${definicao.id}`);
+            /**
+             * Coleção que o tema já aponta fica como está.
+             *
+             * O handle só resolve na loja onde a coleção existe, e quem sabe
+             * disso é o dono da loja, não nós. Trocar pelo nome do nicho fazia
+             * a seção apontar para uma coleção que ninguém criou — vitrine
+             * vazia na loja publicada. Só preenchemos o que veio em branco.
+             */
+            if (!atual) {
+              alvo.settings[definicao.id] = colecoes[proximaColecao++ % colecoes.length];
+              marcou(`${secao.type}.${definicao.id}`);
+            }
             continue;
           }
           if (definicao.type !== "text" && definicao.type !== "richtext" && definicao.type !== "inline_richtext") continue;

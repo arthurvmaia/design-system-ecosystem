@@ -144,12 +144,40 @@ function indexarLoja(produtos: ProdutoDaLoja[]): Loja {
 }
 
 const LOJA_PADRAO = indexarLoja(DEMO_PRODUCTS);
+/**
+ * Tema sem loja: nenhuma mercadoria injetada.
+ *
+ * Um tema importado que ainda não virou loja de ninguém tem de aparecer com o
+ * que ELE traz. Enchendo de catálogo, todo tema ficava igual ao lado — os
+ * mesmos produtos e, pior, a mesma foto repetida em cada cartão de coleção. E
+ * era mentira: na loja de verdade quem preenche isso é o estoque do dono.
+ */
+const LOJA_VAZIA = indexarLoja([]);
+
+/**
+ * O produto de uma loja sem mercadoria.
+ *
+ * A página de produto de um tema cru precisa de um objeto com a forma certa, ou
+ * o Liquid estoura no primeiro `product.variants[0]`. Este tem a forma e nada
+ * dentro: preço zero, sem imagem, sem título inventado.
+ */
+const PRODUTO_VAZIO: ProdutoDaLoja = produtoDoCatalogo({
+  id: 0, handle: "", title: "", vendor: "", type: "", tags: [],
+  publishedAt: new Date().toISOString(), descriptionHtml: "",
+  options: [{ name: "Título", position: 1, values: ["Padrão"] }],
+  images: [],
+  variants: [{
+    id: 0, title: "Padrão", option1: "Padrão", option2: null, option3: null, sku: "",
+    price: 0, compareAtPrice: null, available: false, imageSrc: null,
+  }],
+});
 /* o catálogo de um nicho é montado uma vez e reaproveitado entre renderizações */
 const LOJAS_POR_NICHO = new Map<string, Loja>();
 
 export function lojaDoNicho(nicheId: string | undefined): Loja {
   const chave = String(nicheId ?? "").trim();
-  if (!chave) return LOJA_PADRAO;
+  /* só a loja gerada por nicho recebe vitrine; tema cru fica com a dele */
+  if (!chave) return LOJA_VAZIA;
   const pronta = LOJAS_POR_NICHO.get(chave);
   if (pronta) return pronta;
   const fonte = PRODUTOS_POR_NICHO[chave];
@@ -227,12 +255,18 @@ function catalogoPorVariante(loja: Loja) {
   return mapa;
 }
 
+/**
+ * O produto de um handle. Com a loja vazia (tema cru), devolve um produto SEM
+ * conteúdo: a página de produto precisa de um objeto para não estourar, mas
+ * inventar mercadoria faria todo tema parecer a mesma loja.
+ */
 function demoProduct(loja: Loja, handle: string, index = 0): ProdutoDaLoja {
   const alvo = handle.trim().toLowerCase();
   if (alvo) {
     const exato = loja.produtos.find((produto) => produto.handle === alvo);
     if (exato) return exato;
   }
+  if (!loja.produtos.length) return PRODUTO_VAZIO;
   return loja.produtos[index % loja.produtos.length];
 }
 
@@ -244,7 +278,7 @@ function demoProduct(loja: Loja, handle: string, index = 0): ProdutoDaLoja {
 function buildCart(loja: Loja, items: PreviewCartItem[] | undefined) {
   const linhas = (items ?? [])
     .map((item, index) => {
-      const produto = loja.porVariante.get(item.variantId) ?? loja.produtos[index % loja.produtos.length];
+      const produto = loja.porVariante.get(item.variantId) ?? loja.produtos[index % loja.produtos.length] ?? PRODUTO_VAZIO;
       const quantidade = Math.max(1, Math.min(99, Math.floor(item.quantity) || 1));
       const variante = produto.variants.find((candidate) => candidate.id === item.variantId) ?? produto.variants[0];
       const preco = variante.price;
@@ -282,7 +316,9 @@ function demoCollection(loja: Loja, handle: string) {
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
     products: loja.produtos, products_count: loja.produtos.length, all_products_count: loja.produtos.length,
-    image: loja.produtos[0].featured_image, featured_image: loja.produtos[0].featured_image,
+    /* coleção não empresta a foto de um produto qualquer: era isso que punha a
+       MESMA imagem nos sete cartões de "Nossas Coleções" */
+    image: null, featured_image: null,
     all_tags: [...new Set(loja.produtos.flatMap((produto) => produto.tags))],
     all_types: [...new Set(loja.produtos.map((produto) => produto.type).filter(Boolean))],
     all_vendors: [...new Set(loja.produtos.map((produto) => produto.vendor))],
