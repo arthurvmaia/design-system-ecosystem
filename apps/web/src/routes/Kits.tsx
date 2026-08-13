@@ -22,6 +22,7 @@ import {
   CONFIANCA_MINIMA_PARA_RECOLORIR,
   OBJETIVOS,
   type ObjetivoDoSite,
+  agruparKitsPorNicho,
   rotuloDaCategoria,
 } from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -193,17 +194,42 @@ export function KitsPage() {
               Selecionar todos os kits
             </label>
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-            {items.map((kit) => (
-              <KitCard
-                key={kit.id}
-                kit={kit}
-                onEdit={() => setEditing(kit)}
-                selected={sel.has(kit.id)}
-                onToggle={() => setSel((s) => toggleSel(s, kit.id))}
-              />
-            ))}
-          </div>
+          {/*
+            As faixas seguem a ordem dos nichos que MAIS VENDEM no Brasil —
+            pedido do dono nesta tela. Quem escolhe um kit pensa no mercado do
+            cliente, e a pergunta que a grade responde de uma olhada é "tenho
+            kit para o nicho que me paga?". A lista e a ordem moram em
+            `nichos-do-brasil.ts` (@ds/shared), fonte única como a taxonomia.
+          */}
+          {agruparKitsPorNicho(items).map(({ categoria, kits: doNicho }) => (
+            <section key={categoria.slug} className="mt-8" aria-label={categoria.rotulo}>
+              <div className="flex items-baseline gap-3">
+                <h2
+                  className="ds-label text-[12px] tracking-widest uppercase"
+                  style={{ color: 'var(--acento)' }}
+                >
+                  {categoria.rotulo}
+                </h2>
+                <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+                  {conta(doNicho.length, 'kit', 'kits')}
+                </span>
+              </div>
+              <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+                {categoria.porQueVende}
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                {doNicho.map((kit) => (
+                  <KitCard
+                    key={kit.id}
+                    kit={kit}
+                    onEdit={() => setEditing(kit)}
+                    selected={sel.has(kit.id)}
+                    onToggle={() => setSel((s) => toggleSel(s, kit.id))}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </>
       )}
 

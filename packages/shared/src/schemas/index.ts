@@ -22,4 +22,5 @@ export * from './layout.js';
 export * from './midia-sugerida.js';
 export * from './project.js';
 export * from './queue.js';
+export * from './nichos-do-brasil.js';
 export * from './task.js';
