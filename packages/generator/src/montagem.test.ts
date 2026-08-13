@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  REGRA_DA_LISTA_SUSPENSA,
   REGRA_QUE_ABRE_PASSAGEM,
   acenderLetraMiuda,
   acenderOpacidadeCongelada,
@@ -672,4 +673,16 @@ test('acenderLetraMiuda: sem letra miuda, nao emite regra', () => {
   const r = acenderLetraMiuda('.a{font-size:16px}.b{color:red}');
   assert.equal(r.css, '');
   assert.deepEqual(r.classes, []);
+});
+
+test('REGRA_DA_LISTA_SUSPENSA: o <option> pinta o proprio fundo, e nao vem de CSS', () => {
+  // O option de um select e desenhado pelo sistema: nenhuma folha do site
+  // declara o fundo dele, entao ele nasce quase branco enquanto a tinta desce
+  // por heranca do select — que recebeu a tinta clara da marca. Foi o maior
+  // aglomerado de S4 que restava: 52 ocorrencias, todas em <option>, e nenhuma
+  // alcancavel pela conferencia do par, que le CSS e aqui nao ha CSS que ler.
+  assert.match(REGRA_DA_LISTA_SUSPENSA, /\[data-secao\] option/);
+  assert.match(REGRA_DA_LISTA_SUSPENSA, /optgroup/, 'o grupo tambem e desenhado pelo sistema');
+  assert.match(REGRA_DA_LISTA_SUSPENSA, /var\(--pagina-fundo\)!important/);
+  assert.match(REGRA_DA_LISTA_SUSPENSA, /var\(--marca-heading/);
 });

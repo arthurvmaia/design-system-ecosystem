@@ -621,6 +621,25 @@ export const envolverCamadaDePagina = (
  * quem ganha passa a depender da ordem em que o CSS foi concatenado. Empate
  * decidido por acaso é defeito que volta sozinho.
  */
+/**
+ * A LISTA SUSPENSA pinta o próprio fundo, e ele não vem de CSS nenhum.
+ *
+ * O `<option>` de um `<select>` é desenhado pelo sistema: em nenhuma folha do
+ * site existe uma regra que declare o fundo dele, e por isso ele nasce quase
+ * branco enquanto a tinta desce por herança do `<select>` — que recebeu a tinta
+ * clara da marca. Claro sobre claro, e a lista abre ilegível.
+ *
+ * Foi o maior aglomerado de S4 que restava: **52 ocorrências** de
+ * `rgb(250,250,249)` sobre `rgb(250,250,250)`, todas em `<option>`, e nenhuma
+ * alcançável pela conferência do par — que lê o CSS, e aqui não há CSS que ler.
+ *
+ * O par sai da BASE da página, onde `--pagina-fundo` e a tinta da marca já são
+ * um par conferido. `!important` porque o padrão do agente de usuário para
+ * `option` é teimoso e a folha da origem raramente diz alguma coisa.
+ */
+export const REGRA_DA_LISTA_SUSPENSA =
+  '[data-secao] option,[data-secao] optgroup{background-color:var(--pagina-fundo)!important;color:var(--marca-heading,inherit)!important}';
+
 export const REGRA_QUE_ABRE_PASSAGEM =
   '[data-secao],[data-secao]>[data-ds-raiz],[data-secao] [data-ds-corpo],[data-ds-criado]{background-color:transparent!important;background-image:none!important}';
 

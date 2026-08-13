@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   aplicarAjuste,
+  comporSobre,
   contrasteEntre,
   corrigirParesDeCor,
   lerAjusteRelativo,
+  lerAlfa,
   mapearClassesPorPapel,
   tintaQueSeLeSobre,
 } from './par-de-cores.js';
@@ -345,4 +347,29 @@ test('tinta herdada que JA se le sobre a superficie nova nao e tocada', () => {
     TOKENS,
   );
   assert.equal(r.corrigidos.length, 0);
+});
+
+test('superficie TRANSLUCIDA e composta: 5% do dourado sobre a pagina e quase preto', () => {
+  // Foi a MINHA correcao que criou este caso: um selo com `bg-primary/5` sobre
+  // pagina escura recebeu `--marca-primary-foreground` (#111110, escura),
+  // porque eu comparei com o dourado OPACO. Na tela, escuro sobre escuro:
+  // 1,00:1. A correcao piorava o que ia consertar.
+  assert.equal(lerAlfa('rgb(from var(--marca-primary) r g b / 0.05)'), 0.05);
+  assert.equal(lerAlfa('rgba(0, 0, 0, 0.4)'), null, 'rgba com virgula nao e a forma emitida');
+  assert.equal(lerAlfa('var(--marca-primary)'), null, 'sem alfa, nada a ler');
+  assert.equal(comporSobre('#ffffff', '#000000', 0.5), '#808080');
+
+  const css =
+    ':where([data-ds-corpo="d"]):is(.selo){background-color:rgb(from var(--marca-primary, #b8863b) r g b / 0.05)}' +
+    ':where([data-ds-corpo="d"]):is(.rotulo){color:var(--marca-primary-foreground, #111)}';
+  const r = corrigirParesDeCor(
+    '<div data-ds-corpo="d"><span class="selo rotulo">SOC 2</span></div>',
+    css,
+    { ...TOKENS, 'primary-foreground': '#111110' },
+  );
+  // 5% de #b8863b sobre a pagina #1a1210 e quase preto: a tinta escura NAO
+  // pode ficar, e a escolhida tem de se ler sobre o composto.
+  assert.equal(r.corrigidos.length, 1, `nao viu o alfa: ${r.html}`);
+  const escolhido = /color:var\(--marca-([a-z-]+)\)/.exec(r.html)?.[1];
+  assert.ok(escolhido !== undefined && escolhido !== 'primary-foreground', r.html);
 });

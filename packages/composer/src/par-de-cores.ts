@@ -110,6 +110,45 @@ export const lerAjusteRelativo = (valor: string): AjusteDeCor | null => {
   };
 };
 
+/**
+ * O ALFA de uma superfície translúcida, quando ela declara um.
+ *
+ * Reconhece as três formas que aparecem no CSS composto: a sintaxe relativa que
+ * a recoloração emite (`rgb(from var(--marca-x) r g b / .05)`), o `rgba()` da
+ * origem e o `color-mix` com porcentagem de transparente.
+ */
+export const lerAlfa = (valor: string): number | null => {
+  const m = /\/\s*([\d.]+%?)\s*\)/.exec(valor);
+  if (m !== null) {
+    const bruto = m[1] ?? '';
+    const n = Number.parseFloat(bruto);
+    if (!Number.isFinite(n)) return null;
+    const a = bruto.endsWith('%') ? n / 100 : n;
+    return a >= 0 && a < 1 ? a : null;
+  }
+  const mix = /color-mix\([^)]*transparent\s+([\d.]+)%/i.exec(valor);
+  if (mix !== null) {
+    const n = Number.parseFloat(mix[1] ?? '');
+    return Number.isFinite(n) && n > 0 && n <= 100 ? 1 - n / 100 : null;
+  }
+  return null;
+};
+
+/** Compõe uma cor com alfa sobre a que está atrás. */
+export const comporSobre = (frente: string, atras: string, alfa: number): string | null => {
+  const f = hexOpaco(frente);
+  const a = hexOpaco(atras);
+  if (f === null || a === null) return null;
+  const canal = (i: number): string => {
+    const cf = Number.parseInt(f.slice(1 + i * 2, 3 + i * 2), 16);
+    const ca = Number.parseInt(a.slice(1 + i * 2, 3 + i * 2), 16);
+    return Math.round(cf * alfa + ca * (1 - alfa))
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${canal(0)}${canal(1)}${canal(2)}`;
+};
+
 const paraLinear = (x: number): number => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
 const deLinear = (x: number): number =>
   x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055;
@@ -220,6 +259,20 @@ export const mapearClassesPorPapel = (
   /** `classe → ajuste` quando a recoloração escreveu cor DERIVADA (ver `lerAjusteRelativo`). */
   ajusteDaTinta: Map<string, AjusteDeCor>;
   ajusteDoFundo: Map<string, AjusteDeCor>;
+  /**
+   * `classe → alfa` da superfície TRANSLÚCIDA.
+   *
+   * A recoloração preserva o alfa da origem: `bg-primary/5` sai como
+   * `rgb(from var(--marca-primary) r g b / 0.05)`. Ler só o token era julgar
+   * pela cor opaca enquanto a tela pinta 5% dela sobre o que está atrás —
+   * exatamente o mesmo erro do ajuste em OKLCH, com outra roupa.
+   *
+   * Medido: um selo com `bg-primary/5` sobre página escura recebeu de MIM a
+   * tinta `--marca-primary-foreground` (#111110, escura), porque eu comparei
+   * com o dourado opaco. Na tela, escuro sobre escuro: 1,00:1. A correção
+   * piorava o que ia consertar.
+   */
+  alfaDoFundo: Map<string, number>;
 } => {
   const tinta = new Map<string, string>();
   const fundo = new Map<string, string>();
@@ -227,6 +280,7 @@ export const mapearClassesPorPapel = (
   const fundoLiteral = new Map<string, string>();
   const ajusteDaTinta = new Map<string, AjusteDeCor>();
   const ajusteDoFundo = new Map<string, AjusteDeCor>();
+  const alfaDoFundo = new Map<string, number>();
 
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const seletor = m[1] ?? '';
@@ -279,6 +333,7 @@ export const mapearClassesPorPapel = (
     const lFundo = pFundo === null ? literalDe(/background(?:-color)?/) : null;
     const aTinta = lerAjusteRelativo(valorDe(/(?:^|[;\s])color/));
     const aFundo = lerAjusteRelativo(valorDe(/background(?:-color)?/));
+    const alfa = lerAlfa(valorDe(/background(?:-color)?/));
     for (const c of classes) {
       if (pTinta !== null && !tinta.has(c)) tinta.set(c, pTinta);
       if (pFundo !== null && !fundo.has(c)) fundo.set(c, pFundo);
@@ -286,9 +341,18 @@ export const mapearClassesPorPapel = (
       if (lFundo !== null && !fundoLiteral.has(c)) fundoLiteral.set(c, lFundo);
       if (aTinta !== null && !ajusteDaTinta.has(c)) ajusteDaTinta.set(c, aTinta);
       if (aFundo !== null && !ajusteDoFundo.has(c)) ajusteDoFundo.set(c, aFundo);
+      if (alfa !== null && !alfaDoFundo.has(c)) alfaDoFundo.set(c, alfa);
     }
   }
-  return { tinta, fundo, tintaLiteral, fundoLiteral, ajusteDaTinta, ajusteDoFundo };
+  return {
+    tinta,
+    fundo,
+    tintaLiteral,
+    fundoLiteral,
+    ajusteDaTinta,
+    ajusteDoFundo,
+    alfaDoFundo,
+  };
 };
 
 /**
@@ -317,7 +381,17 @@ export const tintaQueSeLeSobre = (
    */
   hexDoFundo?: string,
 ): string | null => {
-  const fundo = papelDoFundo === null ? hexDoFundo : tokens[papelDoFundo];
+  /**
+   * Quando o hex vem, é ELE que decide — mesmo havendo papel.
+   *
+   * O papel continua servindo para a PREFERÊNCIA (`${papel}-foreground` é o par
+   * que a paleta pretende), mas a comparação tem de ser contra a cor pintada. A
+   * primeira versão só olhava o hex quando não havia papel, e por isso uma
+   * superfície `bg-primary/5` — 5% do dourado sobre uma página escura — era
+   * julgada contra o dourado OPACO: a tinta escolhida se lia no dourado e
+   * sumia na tela.
+   */
+  const fundo = hexDoFundo ?? (papelDoFundo === null ? undefined : tokens[papelDoFundo]);
   if (fundo === undefined) return null;
   /**
    * Papéis de TEXTO primeiro; `background` e `surface` só no fim.
@@ -432,6 +506,8 @@ export const corrigirParesDeCor = (
     /** O fundo LITERAL, quando a superfície não pertence a papel nenhum. */
     hex: string | null;
     ajuste: AjusteDeCor | undefined;
+    /** O alfa da superfície, quando ela é translúcida (ver `alfaDoFundo`). */
+    alfa: number | undefined;
     /**
      * A TINTA vigente, que desce por herança — e cuja falta era o maior buraco.
      *
@@ -450,6 +526,7 @@ export const corrigirParesDeCor = (
   /** O ajuste e o hex do fundo VIGENTE, para pintar a mesma cor que a tela pinta. */
   let ajusteVigente: AjusteDeCor | undefined;
   let hexVigente: string | null = null;
+  let alfaVigente: number | undefined;
   const fundoVigente = (): string | null => {
     for (let i = pilha.length - 1; i >= 0; i--) {
       const n = pilha[i];
@@ -457,6 +534,7 @@ export const corrigirParesDeCor = (
       if (n.fundo == null && n.hex == null) continue;
       ajusteVigente = n.ajuste;
       hexVigente = n.hex;
+      alfaVigente = n.alfa;
       return n.fundo;
     }
     return null;
@@ -515,12 +593,14 @@ export const corrigirParesDeCor = (
     let fundoProprio: string | null = ehProxy ? 'background' : null;
     let hexDoFundoProprio: string | null = null;
     let ajusteDoFundoProprio: AjusteDeCor | undefined;
+    let alfaDoFundoProprio: number | undefined;
     if (!ehProxy) {
       for (const c of listaDoEl) {
         const f = mapa.fundo.get(c);
         if (f !== undefined) {
           fundoProprio = f;
           ajusteDoFundoProprio = mapa.ajusteDoFundo.get(c);
+          alfaDoFundoProprio = mapa.alfaDoFundo.get(c);
           break;
         }
         const h = mapa.fundoLiteral.get(c);
@@ -553,6 +633,7 @@ export const corrigirParesDeCor = (
       fundoProprio,
       hexDoFundoProprio,
       ajusteDoFundoProprio,
+      alfaDoFundoProprio,
     );
     if (!autoFechada) {
       pilha.push({
@@ -560,6 +641,7 @@ export const corrigirParesDeCor = (
         fundo: fundoProprio,
         hex: hexDoFundoProprio,
         ajuste: ajusteDoFundoProprio,
+        alfa: alfaDoFundoProprio,
         tintaPapel: tintaPropriaPapel,
         tintaHex: tintaPropriaHex,
       });
@@ -575,6 +657,7 @@ export const corrigirParesDeCor = (
     fundoProprio: string | null,
     hexDoFundoProprio: string | null,
     ajusteDoFundoProprio: AjusteDeCor | undefined,
+    alfaDoFundoProprio: number | undefined,
   ): string {
     if (classes === '') return tudo;
     /**
@@ -637,10 +720,12 @@ export const corrigirParesDeCor = (
     // próximo que declara. É onde o texto realmente senta.
     ajusteVigente = undefined;
     hexVigente = null;
+    alfaVigente = undefined;
     const proprio = fundoProprio !== null || hexDoFundoProprio !== null;
     const papelDoFundo = proprio ? fundoProprio : fundoVigente();
     const ajusteDoFundoUsado = proprio ? ajusteDoFundoProprio : ajusteVigente;
     const hexDoFundoUsado = proprio ? hexDoFundoProprio : hexVigente;
+    const alfaDoFundoUsado = proprio ? alfaDoFundoProprio : alfaVigente;
     if (
       (papelDoFundo === null && hexDoFundoUsado === null) ||
       (papelDaTinta === null && hexDaTintaLiteral === null)
@@ -660,10 +745,37 @@ export const corrigirParesDeCor = (
       if (base === undefined || ajuste === undefined) return base;
       return aplicarAjuste(base, ajuste) ?? base;
     };
-    const hexFundo =
+    /**
+     * A superfície TRANSLÚCIDA é composta sobre o que está atrás dela.
+     *
+     * `bg-primary/5` não é a primária: é 5% dela sobre a página. Julgar pela cor
+     * opaca me fez pintar um selo com `--marca-primary-foreground` (escura)
+     * sobre uma superfície que, na tela, é quase preta — 1,00:1. A correção
+     * piorava o que ia consertar, e o erro é o mesmo de ler o token cru em vez
+     * da cor derivada: julgar pela cor que não está na tela.
+     *
+     * O que está atrás é a superfície do ANCESTRAL mais próximo; na falta de
+     * um, a página. A composição para no primeiro fundo opaco, que é o que o
+     * navegador também faz.
+     */
+    const opaco =
       papelDoFundo === null
         ? (hexDoFundoUsado ?? undefined)
         : pintado(papelDoFundo, ajusteDoFundoUsado);
+    const atrasDele = (() => {
+      if (alfaDoFundoUsado === undefined || opaco === undefined) return undefined;
+      for (let i = pilha.length - 1; i >= 0; i--) {
+        const n = pilha[i];
+        if (n === undefined || n.alfa !== undefined) continue;
+        if (n.fundo != null) return pintado(n.fundo, n.ajuste);
+        if (n.hex != null) return n.hex;
+      }
+      return tokens.background;
+    })();
+    const hexFundo =
+      alfaDoFundoUsado !== undefined && opaco !== undefined && atrasDele !== undefined
+        ? (comporSobre(opaco, atrasDele, alfaDoFundoUsado) ?? opaco)
+        : opaco;
     const hexTinta =
       papelDaTinta === null
         ? hexDaTintaLiteral
