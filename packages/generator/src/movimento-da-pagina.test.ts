@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MOVIMENTO_PADRAO, tokensDeMovimento } from '@ds/composer';
 import {
+  ESPERA_DA_REDE_MS,
+  SCRIPT_DA_REDE_DE_SEGURANCA,
   SCRIPT_DA_REVELACAO,
   cssDaRevelacao,
   destravarRevelacaoSemGatilho,
@@ -177,4 +179,21 @@ test('decisão é POR CLASSE: a que tem seu revelador na página não é tocada'
   const html = '<div class="in-view"><span class="viva">a</span></div><span class="presa">b</span>';
   const r = destravarRevelacaoSemGatilho(css, html);
   assert.deepEqual(r.classes, ['presa'], 'só a que ficou sem revelador');
+});
+
+test('a rede de seguranca acende o que ENTROU na tela e nao acendeu', () => {
+  // CSS nao alcanca este caso: `gsap.from(alvo,{opacity:0})` escreve no style em
+  // tempo de execucao, e nao ha regra para a analise estatica achar. Medido: dos
+  // 54 trechos apagados que restavam, 52 eram a mesma classe de uma origem so.
+  const s = SCRIPT_DA_REDE_DE_SEGURANCA;
+  assert.match(s, /IntersectionObserver/, 'o gatilho e a entrada na tela');
+  assert.match(s, /threshold:0\.5/, 'metade visivel, para nao disparar de raspao');
+  assert.match(s, new RegExp(String(ESPERA_DA_REDE_MS)), 'espera a animacao de entrada');
+  assert.match(s, /unobserve/, 'cada elemento e julgado uma vez so');
+  // As tres guardas que ja custaram regressao nesta frente.
+  assert.match(s, /pointerEvents==='none'/, 'hover-revelado nao e defeito');
+  assert.match(s, /nodeType===3/, 'so quem tem TEXTO proprio');
+  assert.match(s, /PISO=0\.35/, 'o mesmo piso da regua');
+  // E o conserto tem de VENCER o inline que a biblioteca escreveu.
+  assert.match(s, /setProperty\('opacity','1','important'\)/);
 });

@@ -88,6 +88,7 @@ import {
   trocarMonogramaDaOrigem,
 } from './montagem.js';
 import {
+  SCRIPT_DA_REDE_DE_SEGURANCA,
   SCRIPT_DA_REVELACAO,
   cssDaRevelacao,
   destravarRevelacaoSemGatilho,
@@ -2995,7 +2996,7 @@ ${linkDoMovimento}${linkDosEstados}${linkDasSecoesCriadas}${linkDasAbas}${linkDo
 <link rel="stylesheet" href="assets/ajustes.css"/>
 </head>
 <body>${corpoDaPagina}${comportamentoHtml}
-${scriptsHtml}${scriptDoMovimento}${scriptDosEstados}${scriptDasAbas}
+${scriptsHtml}${scriptDoMovimento}${scriptDosEstados}${scriptDasAbas}${SCRIPT_DA_REDE_DE_SEGURANCA}
 </body>
 </html>`;
   // Agora sim: nada mais cresce em `concatCss`. Ver o bloco onde esta função

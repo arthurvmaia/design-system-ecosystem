@@ -322,3 +322,83 @@ ${regra}{animation-play-state:running!important;opacity:1!important;transform:no
     classes: presos,
   };
 };
+
+/**
+ * A REDE DE SEGURANÇA da revelação: o que entrou na tela e não acendeu, acende.
+ *
+ * ## Por que CSS não resolve este caso
+ *
+ * `destravarOpacidadeSemRevelador` e `destravarRevelacaoSemGatilho` leem o CSS,
+ * e por isso alcançam só quem se esconde POR CSS. A biblioteca de animação não
+ * faz isso: `gsap.from(alvo,{opacity:0})` escreve no `style` do elemento em
+ * tempo de execução, e não existe regra nenhuma para a análise estática achar.
+ *
+ * Medido no banco de prova depois da curadoria: dos 54 trechos apagados que
+ * restavam, **52 eram a mesma classe** (`.gsap-fade-up`) de uma origem só — e o
+ * HTML entregue trazia `opacity: 1` no atributo, porque o congelamento da
+ * captura já tinha sido consertado. Quem zerava era o script, rodando.
+ *
+ * ## Por que o gatilho é a ENTRADA na tela, e não um relógio
+ *
+ * Acender tudo depois de um tempo fixo destruiria toda revelação legítima: uma
+ * seção abaixo da dobra COMEÇA invisível de propósito, e deve continuar assim
+ * até a pessoa chegar nela. O relógio não distingue "falhou" de "ainda não é a
+ * hora".
+ *
+ * A entrada na tela distingue. Quando o elemento aparece e, passado o tempo de
+ * uma animação de entrada, ele continua apagado, a revelação não vai mais vir —
+ * e é exatamente esse o caso que a régua S13 acusa.
+ *
+ * ## O que fica de fora, e por quê
+ *
+ * - **Sem texto**: decoração apagada é desenho, e acendê-la não devolve leitura.
+ * - **`pointer-events: none`**: é a assinatura de conteúdo que aparece no hover
+ *   (o cartão de preço que abre as vantagens). Acender isso mostraria tudo de
+ *   uma vez e quebraria o desenho — já custou uma regressão nesta mesma frente.
+ * - **Quem já se lê**: o piso é o mesmo da régua, e nada é tocado acima dele.
+ */
+export const ESPERA_DA_REDE_MS = 900;
+
+export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
+  var PISO=0.35;
+  function efetiva(el){
+    var o=1,n=el;
+    while(n&&n!==document.documentElement){
+      var c=getComputedStyle(n);
+      o*=parseFloat(c.opacity);
+      if(c.pointerEvents==='none'&&parseFloat(c.opacity)===0){return -1;}
+      n=n.parentElement;
+    }
+    return o;
+  }
+  function acender(el){
+    if(efetiva(el)>=PISO)return;
+    el.style.setProperty('opacity','1','important');
+    el.style.setProperty('transform','none','important');
+    el.setAttribute('data-orbis-acendido','');
+  }
+  function texto(el){
+    for(var i=0;i<el.childNodes.length;i++){
+      var n=el.childNodes[i];
+      if(n.nodeType===3&&n.nodeValue&&n.nodeValue.trim().length>2)return true;
+    }
+    return false;
+  }
+  var io=new IntersectionObserver(function(entradas){
+    for(var i=0;i<entradas.length;i++){
+      (function(e){
+        if(!e.isIntersecting)return;
+        io.unobserve(e.target);
+        setTimeout(function(){acender(e.target);},${ESPERA_DA_REDE_MS});
+      })(entradas[i]);
+    }
+  },{threshold:0.5});
+  function ligar(){
+    var alvos=document.querySelectorAll('[data-secao] *');
+    for(var i=0;i<alvos.length;i++){
+      if(!texto(alvos[i]))continue;
+      io.observe(alvos[i]);
+    }
+  }
+  if(document.readyState==='loading')addEventListener('DOMContentLoaded',ligar);else ligar();
+})()</script>`;
