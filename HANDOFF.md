@@ -1,5 +1,74 @@
 # HANDOFF — onde o trabalho está
 
+> ## 📍 ESTADO EM 2026-08-13 — o portão dos kits
+>
+> A ordem do dono continua valendo: **kit/template 100% antes de gerar site**.
+> Ele vende KITS (o cliente monta o site com o kit), então o kit é o produto —
+> não o site de um cliente.
+>
+> ### O que mudou de patamar nesta rodada
+>
+> **A descoberta que destravou tudo:** quatro correções seguidas não mudaram
+> número nenhum porque `escrever('assets/styles.css', concatCss)` estava NO MEIO
+> de `montarPaginaDoKit`, e `concatCss` continuava crescendo depois. Tudo o que
+> era acrescentado abaixo virava string descartada. Nenhum erro, nenhum aviso:
+> só a medida parada. **Regra que fica: escrever arquivo é o último ato.**
+>
+> **O que descreve o DOCUMENTO chegava ao proxy por TRÊS caminhos** — o `style`
+> inline, a CLASSE (`overflow-y-auto` 168×, `fixed` 20×, `hidden` 12×) e a REGRA
+> de folha (`body{display:none!important}` apagava a seção inteira). Consertar um
+> só deixava os outros dois passando.
+>
+> ### Placar do banco de prova (20 kits × 2 larguras)
+>
+> | regra | antes | agora |
+> |---|---|---|
+> | S18 rolagem aninhada | 17/40 | **0** ✅ |
+> | S12 fora da borda | 4/40 | **0** ✅ |
+> | S16 letra miúda | 9/40 | **2** |
+> | S19 emenda entre seções | 40/40 | 8 |
+> | S14 seção colapsada | 22/40 | 20 |
+> | S13 texto apagado | 33/40 | 27 |
+> | S4 contraste | 29/40 | 29 (achados por site 23 → 6) |
+> | S15 toque · S17 mídia | — | 16 · 13 |
+>
+> ### A Biblioteca ficou limpa
+>
+> | | antes | agora |
+> |---|---|---|
+> | linhas | 861 → 776 | **317** |
+> | órfãs | 553 | **0** |
+> | referências de kit quebradas | — | **0** |
+> | flag `in_library` coerente | 9 de 1396 | reconciliada (308) |
+>
+> A causa estava no `segmentar`, que cunhava id novo a cada rodada e o
+> `on delete set null` desligava a Biblioteca inteira daquela origem. Consertado
+> na origem (diff por conteúdo) e reparado (`biblioteca:religar` por
+> `bundle_hash`, `biblioteca:deduplicar`).
+>
+> ### O que falta, em ordem
+>
+> 1. **Retirar as peças que não sobrevivem ao recorte** — `pnpm
+>    biblioteca:conferir --retirar` grava `conferencia-de-pecas.json` e tira do
+>    acervo. Na primeira passagem (776 peças) foram 107: 56 colapsam, 44 apagam
+>    o texto, 4 rolam por dentro.
+> 2. **Remontar os kits** (`pnpm kits`) — as vagas que ficaram vazias precisam de
+>    outra peça — e **reprovar** (`pnpm kits:provar --manter`).
+> 3. **S15 (alvo de toque) e S17 (mídia pequena)** continuam sem conserto. Antes
+>    de mexer em S17, MEDIR: a régua já isenta ícone/logo/avatar, e pode estar
+>    acusando desenho legítimo.
+> 4. Depois dos kits: site do clube SJDR com navegador visível, a landing AVDSGN
+>    a partir do portfólio real, e Meridiano / Voltz / Sorriso Vivo.
+>
+> ### Decisão registrada: Motion (motion.so) — CANCELADA
+>
+> Chegou a ser construída (vídeo de lançamento do site pronto) e foi desfeita
+> inteira, sem crédito gasto: o dono não vende site pronto, vende kit. O que
+> venderia kit é a **vitrine do kit** — e o material já existe de graça, porque
+> o `kits:provar` gera um site real por kit e o Playwright grava a rolagem. A
+> Motion é paga ($5 Flex / $29 Pro / $99 Max, sem plano grátis) e fechada; não
+> confundir com `motion.dev`, que é a biblioteca open source de animação.
+
 > ## 🔎 O QUE O DONO VIU NOS 20 SITES DE PROVA — 2026-08-09
 >
 > Ele abriu os 20 sites e apontou defeito por defeito. **Nenhum era do site**:
