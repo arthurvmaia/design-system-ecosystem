@@ -109,7 +109,7 @@ export function KitsPage() {
    */
   const [nichosAbertos, setNichosAbertos] = useState<Set<string>>(() => {
     try {
-      const salvo = localStorage.getItem('ds-kits-nichos-abertos');
+      const salvo = localStorage.getItem('orbis.kits.nichos-abertos');
       return new Set(salvo === null ? [] : (JSON.parse(salvo) as string[]));
     } catch {
       return new Set();
@@ -121,7 +121,7 @@ export function KitsPage() {
       if (novo.has(slug)) novo.delete(slug);
       else novo.add(slug);
       try {
-        localStorage.setItem('ds-kits-nichos-abertos', JSON.stringify([...novo]));
+        localStorage.setItem('orbis.kits.nichos-abertos', JSON.stringify([...novo]));
       } catch {
         /* navegador sem storage segue funcionando, só não lembra */
       }
