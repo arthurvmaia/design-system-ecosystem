@@ -523,11 +523,30 @@ const MEDIR = `() => {
         /icon|logo|avatar|badge|selo|marca|bandeira|flag/.test(cls + ' ' + alt) ||
         el.closest('nav, header, footer, [role="navigation"], button, a[aria-label]') !== null;
       if (ehEnfeite) continue;
-      // Midia de CONTEUDO: a que a peca reservou area para. Se a caixa em volta
-      // e larga e a imagem e um selo, o slot esta subaproveitado.
+      /*
+        A VAGA e a caixa RESERVADA para a imagem — e o pai nem sempre e ela.
+
+        A versao anterior tomava a largura do pai como a vaga, e isso acusava
+        desenho correto duas vezes:
+
+        1. numa LINHA (\`flex items-center gap-4\`) com icone e texto lado a lado,
+           a largura do pai e a da linha inteira. Medido: um icone de 43px num
+           pai de 247px virava "43px em vaga de 247px" — mas 204 daqueles pixels
+           sao do texto ao lado, e nunca foram da imagem;
+        2. uma faixa que PREENCHE a propria caixa (262x64 num pai de 262x64)
+           saia acusada so porque 64 e menor que 96.
+
+        A pergunta certa e se a imagem esta pequena DENTRO de uma area que era
+        dela. Entao a vaga so vale quando a imagem e filha unica, e so conta
+        quando ela deixa a area sobrando.
+      */
       const pai = el.parentElement;
-      const larguraDoPai = pai ? pai.getBoundingClientRect().width : 0;
+      if (!pai || pai.childElementCount !== 1) continue;
+      const cxPai = pai.getBoundingClientRect();
+      const larguraDoPai = cxPai.width;
       if (larguraDoPai < 200) continue;
+      // Preencheu a vaga: pequena e o desenho, nao o encaixe.
+      if (r.width >= cxPai.width * 0.9 && r.height >= cxPai.height * 0.9) continue;
       const chave = onde(el) + '|' + (el.getAttribute('src') || '').slice(-24);
       if (vistosImg.has(chave)) continue;
       vistosImg.add(chave);
