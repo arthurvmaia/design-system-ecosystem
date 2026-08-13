@@ -81,6 +81,23 @@ export const OrigemDaImagem = z
         message: 'Origem "upload" exige o caminho do arquivo enviado.',
       });
     }
+    /**
+     * O espelho ambíguo também reprova — achado do revisor do MVP.
+     *
+     * A regra "inviolável por construção" só vale se valer nos DOIS sentidos:
+     * `gerar` com arquivo já reprovava, mas `upload` com descrição de geração
+     * passava — e um payload montado fora da tela (o payload é a fonte da
+     * verdade, não a UI) chegaria ao motor deixando ao handler a interpretação
+     * que o schema existe para eliminar.
+     */
+    if (v.origem === 'upload' && v.descricaoParaGerar !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['descricaoParaGerar'],
+        message:
+          'Há um arquivo enviado: a descrição de geração não vale aqui — o upload nunca passa por geração.',
+      });
+    }
     if (v.origem === 'gerar') {
       if (v.caminhoDoUpload !== null) {
         ctx.addIssue({

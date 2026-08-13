@@ -165,3 +165,19 @@ test('PROVA: o resultado carrega a conta — custo gasto nunca negativo', () => 
   assert.equal(ok.success, true);
   assert.equal(ResultadoCriativo.safeParse({ variacoes: [], custoGasto: -1 }).success, false);
 });
+
+test('PROVA: upload com descricao de geracao e o espelho ambiguo, e reprova', () => {
+  // A regra "so gera quando nao houver imagem" so e inviolavel se valer nos
+  // DOIS sentidos. Payload montado fora da tela pode chegar com upload E
+  // descricao — e o handler nao pode ser quem decide qual vale.
+  const r = OrigemDaImagem.safeParse({
+    origem: 'upload',
+    caminhoDoUpload: 'media/foto.jpg',
+    descricaoParaGerar: 'um estudio moderno',
+  });
+  assert.equal(r.success, false);
+  assert.ok(
+    !r.success && r.error.issues.some((i) => i.path.join('.') === 'descricaoParaGerar'),
+    'a issue aponta o campo ambiguo',
+  );
+});

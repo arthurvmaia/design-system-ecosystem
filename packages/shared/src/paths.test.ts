@@ -3,12 +3,14 @@ import { join, sep } from 'node:path';
 import { test } from 'node:test';
 import {
   criativosDir,
+  criativosRootDir,
   ehChaveDeSegmento,
   ehDesignSystemId,
   ehNomeDeVersao,
   ehProjectId,
   podeApagarDesignSystem,
   projectDir,
+  topLevelDirs,
   vaultDsDir,
   vaultSegmentBundleDir,
 } from './paths.js';
@@ -115,4 +117,12 @@ test('nome de versão gerada: só nome simples de pasta', () => {
   assert.equal(ehNomeDeVersao('..'), false);
   assert.equal(ehNomeDeVersao('a/b'), false);
   assert.equal(ehNomeDeVersao('.oculto'), false);
+});
+
+test('PROVA: a raiz dos criativos nasce no bootstrap', () => {
+  // Sem ela em topLevelDirs, a rota de download le de uma pasta que o
+  // bootstrap nunca criou — e quem lista jobs redigita o caminho fora da
+  // camada, que e o que este arquivo proibe.
+  assert.ok(topLevelDirs().includes(criativosRootDir()));
+  assert.ok(criativosDir('job_abc123').startsWith(criativosRootDir()));
 });

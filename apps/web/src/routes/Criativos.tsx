@@ -101,7 +101,7 @@ const VOZ_POR_CAMPO: Record<string, string> = {
   cta: 'O CTA passou de 80 caracteres. Botão é uma ordem curta.',
   descricaoParaGerar: 'A descrição passou de 2000 caracteres. Me diga o essencial da cena.',
   restricoes: 'As restrições passaram de 2000 caracteres.',
-  marca: 'O nome da marca passa de 80 caracteres — na peça ele não cabe assim.',
+  marca: 'O nome da marca passa de 80 caracteres: na peça ele não cabe assim.',
 };
 
 const vozDaIssue = (issue: { code: string; message: string; path: (string | number)[] }): string =>
@@ -246,7 +246,7 @@ export function CriativosPage() {
     const m: string[] = [];
     if (p === 0) {
       if (!PedidoCriativo.shape.tipo.safeParse(tipo).success)
-        m.push('Escolha entre imagem e vídeo — essa escolha muda todo o resto do pedido.');
+        m.push('Escolha entre imagem e vídeo: essa escolha muda todo o resto do pedido.');
     }
     if (p === 1) {
       const nome = PedidoCriativo.shape.marca.safeParse(marcaNome.trim());
@@ -328,7 +328,7 @@ export function CriativosPage() {
     if (pedidoConferido === null) return;
     const d = DIMENSAO_DO_FORMATO[pedidoConferido.formato];
     toast.ok(
-      `Conferi o pedido: ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} (${d.largura}×${d.altura}) para "${pedidoConferido.marca}" entrariam na fila agora. Não enfileirei nada — esta tela ainda ensaia com dados falsos.`,
+      `Conferi o pedido: ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} (${d.largura}×${d.altura}) para "${pedidoConferido.marca}" entrariam na fila agora. Não enfileirei nada: esta tela ainda ensaia com dados falsos.`,
     );
   };
 
@@ -472,7 +472,7 @@ export function CriativosPage() {
           <div className="mt-6">
             <span className="ds-label">objetivo da peça</span>
             <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              Sem escolha, assumo "{OBJETIVO_ASSUMIDO}" — e o resumo registra que fui eu.
+              Sem escolha, assumo "{OBJETIVO_ASSUMIDO}", e o resumo registra que fui eu.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {OBJETIVOS_DA_PECA.map((o) => (
@@ -524,7 +524,7 @@ export function CriativosPage() {
                     className="mt-0.5 block text-[12px]"
                     style={{ color: 'var(--color-fg-muted)' }}
                   >
-                    Trouxe do projeto "{marcaDoProjeto.projetoNome}" — a paleta e a tipografia vêm
+                    Trouxe do projeto "{marcaDoProjeto.projetoNome}": a paleta e a tipografia vêm
                     junto.
                   </span>
                 </div>
@@ -693,7 +693,7 @@ export function CriativosPage() {
             >
               <Upload size={14} />
               <span className="text-[12.5px]">
-                {arquivoNome ?? 'Escolher o arquivo — nesta fase ele fica só aqui na tela'}
+                {arquivoNome ?? 'Escolher o arquivo. Nesta fase ele fica só aqui na tela'}
               </span>
               <input
                 type="file"
@@ -731,7 +731,7 @@ export function CriativosPage() {
               sem texto
             </button>
             <span className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              Ou o texto literal, ou "sem texto" — vazio o contrato recusa.
+              Ou o texto literal, ou "sem texto": vazio o contrato recusa.
             </span>
           </div>
           {!semTexto && (
@@ -796,18 +796,18 @@ export function CriativosPage() {
             {(
               [
                 ['peça', tipo === 'video' ? 'vídeo' : 'imagem'],
-                ['objetivo', objetivo ?? `${OBJETIVO_ASSUMIDO} — assumi, porque ficou sem escolha`],
+                ['objetivo', objetivo ?? `${OBJETIVO_ASSUMIDO} (assumi, porque ficou sem escolha)`],
                 ['marca', marcaNome.trim()],
                 [
                   'formato',
                   formato !== null
                     ? `${ROTULO_DO_FORMATO[formato]} · ${DIMENSAO_DO_FORMATO[formato].largura}×${DIMENSAO_DO_FORMATO[formato].altura}`
-                    : '—',
+                    : 'sem escolha',
                 ],
                 [
                   'imagem',
                   origem === 'upload'
-                    ? `a foto enviada (${arquivoNome ?? 'sem arquivo'}) — eu não gero por cima de material real`
+                    ? `a foto enviada (${arquivoNome ?? 'sem arquivo'}): eu não gero por cima de material real`
                     : 'eu crio, a partir da descrição',
                 ],
                 [
@@ -820,17 +820,14 @@ export function CriativosPage() {
                   'não pode aparecer',
                   restricoes.trim() === '' ? 'nada declarado' : restricoes.trim(),
                 ],
-                ['variações', `${VARIACOES_PADRAO} — o padrão do contrato`],
+                ['variações', `${VARIACOES_PADRAO} (o padrão do contrato)`],
                 [
                   'paleta e tipografia',
                   marcaDoProjeto !== null && !editandoMarca
                     ? `herdadas do projeto "${marcaDoProjeto.projetoNome}"; cor principal ${corPrincipal}`
-                    : `cor principal ${corValida ? corPrincipal : '—'}; tipografia segura do sistema`,
+                    : `cor principal ${corValida ? corPrincipal : 'sem escolha'}; tipografia segura do sistema`,
                 ],
-                [
-                  'claims',
-                  'nenhum autorizado — a peça não afirma preço, desconto, prazo nem frete',
-                ],
+                ['claims', 'nenhum autorizado: a peça não afirma preço, desconto, prazo nem frete'],
               ] as Array<[string, string]>
             ).map(([k, v]) => (
               <div
@@ -936,7 +933,7 @@ export function CriativosPage() {
         aberto={confirmando}
         oQueVaiFazer={
           pedidoConferido !== null
-            ? `Produzir ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} para "${pedidoConferido.marca}" — estimativa de ensaio: ${custoEstimado} créditos.`
+            ? `Produzir ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} para "${pedidoConferido.marca}". Estimativa de ensaio: ${custoEstimado} créditos.`
             : ''
         }
         ocupado={false}

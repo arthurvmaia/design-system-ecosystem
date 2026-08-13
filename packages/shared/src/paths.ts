@@ -191,8 +191,15 @@ export const projectGeneratedVersionDir = (id: ProjectId, isoTimestamp: string):
  * O id passa pela mesma guarda dos vizinhos porque também vira caminho de
  * disco: um `jobId` vindo de URL com `..` dentro não pode subir de pasta.
  */
+/**
+ * A RAIZ dos criativos existe como função porque o bootstrap e a rota de
+ * download precisam dela SEM job na mão — e sem a função, quem lista os jobs
+ * produzidos redigita `join(getRoot(), 'criativos')` fora desta camada,
+ * exatamente o que o contrato do arquivo proíbe. Achado do revisor do MVP.
+ */
+export const criativosRootDir = (): string => join(getRoot(), 'criativos');
 export const criativosDir = (jobId: string): string =>
-  join(getRoot(), 'criativos', conferido(jobId, ehJobId(jobId)));
+  join(criativosRootDir(), conferido(jobId, ehJobId(jobId)));
 
 // ── Cache ──────────────────────────────────────────────────────────────────
 export const cacheDir = (): string => join(getRoot(), 'cache');
@@ -246,4 +253,6 @@ export const topLevelDirs = (): readonly string[] => [
   queueDir(),
   queuePendingDir(),
   queueDoneDir(),
+  // Sem ela no bootstrap, a rota de download lê de uma pasta que nunca nasceu.
+  criativosRootDir(),
 ];
