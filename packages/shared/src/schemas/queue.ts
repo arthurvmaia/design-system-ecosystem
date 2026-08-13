@@ -39,26 +39,7 @@ import { z } from 'zod';
  * um de 'faca-me aprender', que seria onde vc iria tentar outras abordagens para
  * tentar interpretar esse componente".
  */
-/**
- * `video` é o pedido de um VÍDEO DE LANÇAMENTO sobre um site já entregue.
- *
- * É tipo próprio pelo mesmo motivo que `ajustar` é: não se regera nada. O site
- * está pronto e o que se pede é OUTRA peça, sobre ele — 30 segundos com roteiro,
- * locução e a paleta da marca, para o cliente anunciar o que acabou de nascer.
- *
- * E é um pedido, não uma execução, pela mesma razão da trava de imagem: quem
- * renderiza é a Motion, por MCP, e **o servidor não alcança MCP nenhum**. Ele
- * registra o pedido; o agente atende. Fingir que o servidor gera seria a mesma
- * promessa vazia que a trava existe para impedir.
- */
-export const QueueJobType = z.enum([
-  'extract',
-  'classify',
-  'generate',
-  'ajustar',
-  'aprender',
-  'video',
-]);
+export const QueueJobType = z.enum(['extract', 'classify', 'generate', 'ajustar', 'aprender']);
 export type QueueJobType = z.infer<typeof QueueJobType>;
 
 /**
@@ -133,47 +114,3 @@ export const AjustesDoSite = z.object({
   ajustes: z.array(AjusteDoSite).default([]),
 });
 export type AjustesDoSite = z.infer<typeof AjustesDoSite>;
-
-/**
- * Um pedido de vídeo de lançamento, e o que ele produziu.
- *
- * Mora em `generated/<versao>/videos.json`, ao lado do site — a mesma decisão do
- * `ajustes.json` e pelo mesmo motivo: baixar o `.zip` leva o histórico junto, e
- * apagar a versão não deixa órfão em lugar nenhum.
- *
- * O vídeo é DAQUELA versão. Um site que mudou depois de gravado é outro site, e
- * um vídeo que anuncia o anterior mente sem avisar.
- */
-export const VideoDoSite = z.object({
-  id: z.string().min(1),
-  /** O que a pessoa escreveu por cima do briefing automático. Pode ser vazio. */
-  pedido: z.string().max(2000).default(''),
-  pedidoEm: z.number().int().positive(),
-  /**
-   * A proporção. `16:9` para YouTube e site, `9:16` para Reels e Stories,
-   * `1:1` para o feed. É a primeira pergunta de qualquer peça de vídeo, e sem
-   * ela o render sai no formato errado e o crédito vai junto.
-   */
-  formato: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
-  /** Segundos. Curto de propósito: vídeo de lançamento longo ninguém assiste. */
-  duracao: z.number().int().min(10).max(90).default(30),
-  estado: z.enum(['pendente', 'pronto', 'recusado']).default('pendente'),
-  concluidoEm: z.number().int().positive().nullable().default(null),
-  /** Caminho relativo à pasta da versão. Vazio enquanto pendente. */
-  arquivo: z.string().default(''),
-  /**
-   * O que foi feito, em uma frase — ou por que não deu.
-   *
-   * "Pronto" sozinho não informa: quem pediu precisa saber que roteiro saiu, e
-   * quem recebeu um "recusado" precisa saber se falta crédito, se a Motion não
-   * está conectada ou se o site não tinha texto que desse filme.
-   */
-  resposta: z.string().default(''),
-});
-export type VideoDoSite = z.infer<typeof VideoDoSite>;
-
-export const VideosDoSite = z.object({
-  formato: z.literal(1).default(1),
-  videos: z.array(VideoDoSite).default([]),
-});
-export type VideosDoSite = z.infer<typeof VideosDoSite>;
