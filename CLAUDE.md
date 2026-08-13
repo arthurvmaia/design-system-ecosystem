@@ -148,8 +148,10 @@ CRIATIVO, entregue como dado:
 2. **Respeite as permissões.** Sem `criarSecoesFaltantes`, não invente seção
    que o usuário não pediu (nem nav, nem rodapé — apenas avise no resumo). Sem
    `criarArteDeApoio`, seção sem mídia fica sem mídia. Com as permissões
-   ligadas, crie no estilo do kit: arte de apoio é SVG/CSS na paleta da marca
-   ou reuso das mídias gerais, nunca imagem inventada por IA.
+   ligadas, crie no estilo do kit — e toda peça visual segue o motor
+   `orbis-suite` (ver Regras): mídia do usuário vence sempre; faltando imagem
+   para aquele lugar, a rota vetor/determinística vem primeiro e a generativa
+   entra sob teto declarado, nunca em silêncio.
 3. **Rode `pnpm pagina <caminho do entrada-geracao.json>`.** Ele monta tudo,
    imprime o destino, a contagem da recoloração e os avisos. Leia os avisos:
    substituição que não casou e peça sem bundle aparecem ali, e é mais barato
@@ -273,6 +275,29 @@ Isso valida o schema, registra no SQLite e move o job para `concluido/`. Se o sc
 - **Nunca crie um watcher, cron, daemon ou qualquer coisa que processe a fila sem uma pessoa mandar.** O único gatilho válido é alguém abrir o `PROCESSAR.bat` e escolher os jobs na janela. A partir daí o processamento corre sozinho até o fim — mas só sobre os ids escolhidos, e a janela encerra quando acaba. Agendar, disparar em background ou ficar de olho na pasta descaracteriza o modo e coloca a conta do usuário em risco.
 - Não chame a API da Anthropic a partir do código no modo `queue` — o trabalho é seu.
 - Não invente conteúdo que não esteja no material do usuário.
+- **Toda peça visual passa pelo motor `orbis-suite`.** Qualquer processo do app
+  que crie imagem, vídeo ou peça de design — nas três frentes — segue a skill
+  `orbis-suite`: briefing separando fato de direção, rota de produção declarada,
+  mestre editável mais derivados, e verificação MEDIDA antes de dizer que
+  terminou. Não afirme que usou Photoshop, gerador ou MCP sem ter executado e
+  conferido a ação real.
+- **Imagem gerada por IA só quando não houver imagem.** Se o admin ou o cliente
+  forneceu o arquivo, ele é usado: gerar ali seria trocar material real por
+  material inventado, e ninguém pediu isso. Não havendo imagem para aquele
+  lugar, gerar é permitido. E quando a peça **é**, por definição, conteúdo
+  gerado — a frente Criativos —, não há restrição.
+- **Determinístico antes de generativo.** Cor, geometria, recorte, máscara,
+  escala e exportação são calculados, nunca gerados. Gerar o que se resolve por
+  conta introduz variação onde havia certeza e volta como retrabalho.
+- **Orçamento generativo é declarado e contado.** Estimar o custo antes (a
+  estimativa é read-only e não cobra), declarar custo e saldo, debitar do teto do
+  job, e parar ao zerar em vez de estourar em silêncio.
+- **Todo entregável final ao cliente passa pelo mesmo contrato**, nas três
+  frentes e seja ele um ZIP de site, um tema de loja ou um lote de criativos:
+  verificação medida; mestre editável junto; fonte e licença comprováveis;
+  resumo de decisões com pendências e orçamento gasto; nada inventado —
+  preço, prazo, material, medida, depoimento e certificação só existem se o
+  cliente os forneceu.
 
 ## Comandos
 
