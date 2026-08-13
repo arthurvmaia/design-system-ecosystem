@@ -1,6 +1,6 @@
 # HANDOFF — onde o trabalho está
 
-> ## 🔄 RETOMADA — trabalho em voo (2026-08-13, ~14h50)
+> ## 🔄 RETOMADA — trabalho em voo (2026-08-13, ~20h)
 >
 > **Se os subagentes caírem por limite de sessão, é DAQUI que se volta.**
 > Regra do dono: gravar isto antes do teto; ao voltar os tokens, retomar de
@@ -22,6 +22,17 @@
 > Ourivés — processar UM de cada duplicata). Geração completa: copy no tom da
 > marca, Magnific (assistente completo = consentido; expresso pergunta),
 > vídeo onde couber, contraste medido + animações presentes.
+>
+> **Feito desde as 14h50:** tela do MVP Criativos commitada (e2104e6) com os 2
+> consertos do revisor; sanfona de nichos na tela de Kits (+ reveal consertado);
+> S2 fechada (regra de caixa da página); rede de segurança v4 commitada
+> (283a23c — prazo máximo contra página com ScrollSmoother). Diagnóstico R2
+> RELANÇADO ~19h30 e em curso (12 agentes; hipótese S13 confirmada por mim
+> inline: carrossel empilhado é desenho, a régua real já o poupa).
+>
+> **Ao chegar o R2:** aplicar só `confirmadas`, reprovar (`pnpm kits:provar
+> --manter`), atualizar aqui. Depois: bench novo (o atual 4pVuiY ainda tem a
+> rede v2 nos sites).
 >
 > **Pendências fora dos kits:** varredura UI/UX autorizada ("qualquer melhoria
 > principalmente ui/ux") — lançar depois que o MVP sair do ar em apps/web.
