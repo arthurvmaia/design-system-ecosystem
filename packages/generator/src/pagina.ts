@@ -1143,6 +1143,35 @@ const trocarNomeDaOrigem = (
 ): { html: string; trocas: number } => {
   if (nomes.length === 0 || marca.trim() === '') return { html, trocas: 0 };
   let trocas = 0;
+  /**
+   * Quem decide se a MINÚSCULA é marca é a PÁGINA, não a ocorrência.
+   *
+   * Dois casos reais, nos dois sentidos:
+   *
+   * - `canvas-visual` → o rodapé tinha "CANVAS", "Canvas Systems" E "Sobre a
+   *   canvas". A página usa o token como marca, então a minúscula também é a
+   *   marca — deixá-la seria entregar o nome da outra empresa em caixa baixa.
+   * - `luxury-real-estate-22` → "real" só existe em "métricas em tempo real".
+   *   Nenhuma ocorrência capitalizada em lugar nenhum: é a palavra da língua, e
+   *   trocá-la escreveu "tempo vila" no meio da frase do cliente (medido).
+   *
+   * Então: capitalizada troca sempre; minúscula troca só quando o MESMO token
+   * aparece capitalizado em algum lugar do trecho recebido — a prova de que a
+   * página o trata como nome próprio.
+   */
+  const usadoComoMarca = new Set<string>();
+  percorrerTextoVisivel(html, (trecho) => {
+    for (const nome of nomes) {
+      if (usadoComoMarca.has(nome)) continue;
+      for (const oc of trecho.matchAll(new RegExp(`\\b${nome}\\b`, 'gi'))) {
+        if (oc[0] !== oc[0].toLowerCase()) {
+          usadoComoMarca.add(nome);
+          break;
+        }
+      }
+    }
+    return trecho;
+  });
   const naCaixaDe = (original: string): string => {
     if (original === original.toUpperCase()) return marca.toUpperCase();
     if (original[0] === original[0]?.toUpperCase()) return marca;
@@ -1168,6 +1197,21 @@ const trocarNomeDaOrigem = (
     let t = trecho;
     for (const nome of nomes) {
       t = t.replace(new RegExp(`\\b${nome}\\b`, 'gi'), (m) => {
+        /**
+         * Só a ocorrência com CARA DE MARCA é trocada — e a caixa é a cara.
+         *
+         * O token vem do domínio, sempre minúsculo, e alguns são palavra comum
+         * da língua: `luxury-real-estate-22` solta "real", e a página tem
+         * "métricas em tempo real" — português legítimo. Trocar isso escreveria
+         * "tempo MARCA" no meio da frase do cliente, que é pior que o defeito
+         * (medido: saiu "tempo vila" num site de prova antes desta guarda).
+         *
+         * Marca em copy é NOME PRÓPRIO, e nome próprio se escreve com
+         * maiúscula: "© CANVAS SYSTEMS" (o caso que o dono fotografou),
+         * "Engine de Orquestração Nexus". A ocorrência toda em minúsculas só
+         * troca quando a página usa o token como marca (ver `usadoComoMarca`).
+         */
+        if (m === m.toLowerCase() && !usadoComoMarca.has(nome)) return m;
         trocas += 1;
         return naCaixaDe(m);
       });
@@ -1190,7 +1234,17 @@ const nomesQueSobraram = (html: string, nomes: readonly string[]): string[] => {
   const achados = new Set<string>();
   percorrerTextoVisivel(html, (trecho) => {
     for (const nome of nomes) {
-      if (new RegExp(`\\b${nome}\\b`, 'i').test(trecho)) achados.add(nome);
+      // A MESMA régua da troca: só a ocorrência com maiúscula é uso de marca.
+      // Acusar "tempo real" por causa do domínio `luxury-real-estate` é acusar
+      // o português do cliente — e uma régua que acusa texto legítimo ensina a
+      // ignorá-la. Troca e conferência precisam concordar, senão a conferência
+      // cobra o que a troca decidiu de propósito não fazer.
+      for (const oc of trecho.matchAll(new RegExp(`\\b${nome}\\b`, 'gi'))) {
+        if (oc[0] !== oc[0].toLowerCase()) {
+          achados.add(nome);
+          break;
+        }
+      }
     }
     return trecho;
   });
@@ -2727,6 +2781,35 @@ ${criada.html}
    * reaplica a classe pode ter vindo de outra peça da mesma origem, e no
    * momento em que a peça foi processada ele ainda não tinha sido coletado.
    */
+  /**
+   * A passada FINAL da troca de nome, com a UNIÃO das origens.
+   *
+   * A troca por peça conhece só a própria origem — e numa página de seis
+   * origens o nome de UMA aparece na copy de OUTRA. Medido no banco de prova:
+   * "Engine de Orquestração Nexus" vivia numa peça da `axion-ai`, com a
+   * `nexus-architecture` presente na mesma página; a troca da peça nunca
+   * tentou "nexus", e a conferência final (que sempre varreu a união) acusou.
+   *
+   * Troca e régua usam a MESMA lista e a MESMA regra de caixa: só a ocorrência
+   * com maiúscula é uso de marca — "métricas em tempo real" fica em paz quando
+   * uma das origens se chama `luxury-real-estate`.
+   *
+   * ANTES da revelação, e a posição é o conserto: `limparEstadoRevelado` tira o
+   * snapshot de `bodyHtml` que vira `corpoDaPagina`, e uma troca depois dele é
+   * trabalho descartado — a primeira versão rodou exatamente aí, contou a troca
+   * no aviso, e o nome continuou na página. String que ainda vai crescer não
+   * vira snapshot no meio da função.
+   */
+  const trocaFinal = trocarNomeDaOrigem(
+    bodyHtml,
+    [...nomesDeOrigemVistos],
+    entrada.branding.brandName?.trim() ?? '',
+  );
+  if (trocaFinal.trocas > 0) {
+    bodyHtml = trocaFinal.html;
+    nomesTrocados += trocaFinal.trocas;
+  }
+
   const revelacao = limparEstadoRevelado(`${camadasHtml}${bodyHtml}`, corpoDosScriptsLocais);
   if (revelacao.limpas > 0) {
     avisos.push(

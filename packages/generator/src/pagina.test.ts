@@ -2384,3 +2384,84 @@ test('a folha composta sai com as correcoes que nascem DEPOIS dela', () => {
     rmSync(raiz, { recursive: true, force: true });
   }
 });
+
+test('nome de origem: a caixa decide, e a uniao alcanca a copy de outra peca', () => {
+  /**
+   * Dois defeitos do banco de prova, no mesmo mecanismo.
+   *
+   * 1. `luxury-real-estate-22` solta o token "real", e a pagina tem "metricas
+   *    em tempo real" — portugues legitimo. Trocar isso escreveria "tempo
+   *    MARCA" no meio da frase do cliente; acusar isso ensina a ignorar a
+   *    regua. So a ocorrencia com MAIUSCULA e uso de marca.
+   * 2. "Engine de Orquestracao Nexus" vivia numa peca da axion-ai com a
+   *    nexus-architecture na mesma pagina: a troca por peca nunca tentou
+   *    "nexus". A passada final usa a UNIAO das origens.
+   */
+  const raiz = mkdtempSync(join(tmpdir(), 'nome-origem-'));
+  try {
+    const a = bundle(
+      raiz,
+      'axion',
+      '<section class="a"><h3>Engine de Orquestracao Nexus</h3><p>metricas em tempo real</p></section>',
+      '.a{color:#111}',
+    );
+    // O manifesto e quem da o nome da origem — escreva um para a peca "nexus".
+    const b = bundle(raiz, 'nexus', '<section class="b">outra peca</section>', '.b{color:#222}');
+    writeFileSync(
+      join(b, 'manifest.json'),
+      JSON.stringify({
+        source: { url: 'https://ds.catalogo.x/nexus-architecture.aura.build/design-system' },
+      }),
+      'utf8',
+    );
+    writeFileSync(
+      join(a, 'manifest.json'),
+      JSON.stringify({
+        source: { url: 'https://ds.catalogo.x/luxury-real-estate-22.aura.build/design-system' },
+      }),
+      'utf8',
+    );
+    const out = join(raiz, 'saida');
+    montarPaginaDoKit({
+      projectId: 'prj_teste',
+      titulo: 'Nomes',
+      kit: {
+        id: 'kit_n',
+        components: [
+          {
+            id: 'cmp_a',
+            name: 'A',
+            category: 'hero',
+            kind: 'component',
+            bundlePath: a,
+            designSystemId: 'ds_a',
+          },
+          {
+            id: 'cmp_b',
+            name: 'B',
+            category: 'cta',
+            kind: 'component',
+            bundlePath: b,
+            designSystemId: 'ds_b',
+          },
+        ],
+      },
+      layout: ProjectLayout.parse({
+        preferDesignSystemId: 'ds_a',
+        secoes: [
+          { id: 's1', nome: 'Hero', papel: 'hero', componentIds: ['cmp_a'] },
+          { id: 's2', nome: 'CTA', papel: 'cta', componentIds: ['cmp_b'] },
+        ],
+      }),
+      branding: { ...DEFAULT_PROJECT_BRANDING, brandName: 'Vila Forte' },
+      outputDir: out,
+    });
+    const html = readFileSync(join(out, 'index.html'), 'utf8');
+    assert.ok(!/Orquestracao Nexus/.test(html), 'o Nexus maiusculo (marca de outra origem) sai');
+    assert.match(html, /Orquestracao Vila Forte/, 'trocado pela marca do cliente');
+    assert.match(html, /tempo real/, 'o "real" minusculo do portugues fica em paz');
+    assert.ok(!/tempo Vila Forte/.test(html), 'a troca nao corrompe a frase do cliente');
+  } finally {
+    rmSync(raiz, { recursive: true, force: true });
+  }
+});
