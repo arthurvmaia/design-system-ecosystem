@@ -360,6 +360,7 @@ ${regra}{animation-play-state:running!important;opacity:1!important;transform:no
 export const ESPERA_DA_REDE_MS = 900;
 
 export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
+  var ESPERA=${ESPERA_DA_REDE_MS};
   var PISO=0.35;
   function temTexto(el){
     for(var i=0;i<el.childNodes.length;i++){
@@ -368,14 +369,8 @@ export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
     }
     return false;
   }
-  /*
-    QUEM apagou nao e quem tem o texto — e um ancestral.
-
-    Quem carrega a opacidade e o container; o texto esta nos filhos dele. A
-    opacidade nao e herdada como valor, mas o efeito e cumulativo, entao a folha
-    aparece apagada sem ter uma gota de opacidade propria. Acender ali traz os
-    irmaos junto, que e o que a animacao faria.
-  */
+  /* QUEM apagou e um ancestral: o container carrega a opacidade, o texto esta
+     nos filhos, e o efeito e cumulativo. Acender o culpado traz os irmaos. */
   function culpado(el){
     var n=el;
     while(n&&n!==document.body){
@@ -392,43 +387,76 @@ export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
     while(n&&n!==document.documentElement){o*=parseFloat(getComputedStyle(n).opacity);n=n.parentElement;}
     return o;
   }
-  function naTela(el){
-    var r=el.getBoundingClientRect();
-    return r.bottom>0&&r.top<innerHeight&&r.width>0&&r.height>0;
-  }
   /*
-    VARREDURA ao parar de rolar, e nao um relogio por elemento.
+    A quarta versao, e cada uma pagou uma licao MEDIDA:
 
-    A primeira versao marcava cada elemento na primeira vez que ele aparecia e
-    conferia 900ms depois, uma vez so. Medido: dos 123 candidatos de uma pagina,
-    48 chegaram a aparecer e TODOS os 48 ja estavam legiveis na hora da
-    conferencia — os que ficam apagados sao justamente os que nao chegaram
-    aquele instante, ou que a biblioteca zerou depois dele. Zero acendimentos.
+    v1 conferia cada elemento uma vez, 900ms depois de aparecer — todos os
+    conferidos ja estavam legiveis e os apagados nunca chegavam a conferencia.
+    v2 varria ao parar de rolar, so o que estava NA TELA — quem rola sem parar
+    visitava tudo sem dar ociosidade, e so a primeira dobra acendia.
+    v3 lembrou os VISITADOS — e mediu zero varreduras: paginas com
+    ScrollSmoother/lenis emitem scroll continuamente, o debounce re-armava
+    para sempre, e "esperar a ociosidade" era esperar o nunca (contadores:
+    241 observados, 119 intersecoes, 0 varreduras).
 
-    Parar de rolar e o momento certo: e quando o visitante esta olhando, e e o
-    estado que a regua mede. Varre-se o que esta na tela AGORA, quantas vezes for
-    preciso, em vez de apostar num unico instante por elemento.
+    v4: debounce para a pagina quieta, PRAZO MAXIMO para a barulhenta. Cada
+    visitado carrega a hora em que entrou; a varredura so decide sobre quem ja
+    tem ESPERA de idade (animacao de entrada legitima termina antes disso), e
+    enquanto houver pendencia um prazo re-armado forca a varredura mesmo sem
+    ociosidade nenhuma. Quem nunca foi visitado segue escuro: secao que a
+    pessoa nao alcancou comeca invisivel de proposito.
   */
-  function varrer(){
-    var alvos=document.querySelectorAll('[data-secao] *');
-    for(var i=0;i<alvos.length;i++){
-      var el=alvos[i];
-      if(!temTexto(el)||!naTela(el))continue;
-      if(efetiva(el)>=PISO)continue;
-      var alvo=culpado(el);
-      if(!alvo)continue;
-      alvo.style.setProperty('opacity','1','important');
-      var t=getComputedStyle(alvo).transform;
-      if(t&&t!=='none')alvo.style.setProperty('transform','none','important');
-      alvo.setAttribute('data-orbis-acendido','');
+  var pendentes=[];
+  var io=new IntersectionObserver(function(entradas){
+    for(var i=0;i<entradas.length;i++){
+      if(!entradas[i].isIntersecting)continue;
+      pendentes.push({el:entradas[i].target,em:Date.now()});
+      io.unobserve(entradas[i].target);
     }
+    if(pendentes.length)agendar();
+  },{threshold:0.15});
+  function resolver(el){
+    if(efetiva(el)>=PISO)return;
+    var alvo=culpado(el);
+    if(!alvo)return;
+    alvo.style.setProperty('opacity','1','important');
+    var t=getComputedStyle(alvo).transform;
+    if(t&&t!=='none')alvo.style.setProperty('transform','none','important');
+    alvo.setAttribute('data-orbis-acendido','');
   }
-  var tarefa=null;
+  function varrer(){
+    if(curto){clearTimeout(curto);curto=null;}
+    if(prazo){clearTimeout(prazo);prazo=null;}
+    var agora=Date.now(),restam=[];
+    for(var i=0;i<pendentes.length;i++){
+      var p=pendentes[i];
+      /* Novo demais: a animacao de entrada dele ainda esta no curso dela. */
+      if(agora-p.em<ESPERA){restam.push(p);continue;}
+      resolver(p.el);
+    }
+    pendentes=restam;
+    if(pendentes.length)armarPrazo();
+  }
+  var curto=null,prazo=null;
   function agendar(){
-    if(tarefa)clearTimeout(tarefa);
-    tarefa=setTimeout(varrer,${ESPERA_DA_REDE_MS});
+    if(curto)clearTimeout(curto);
+    curto=setTimeout(varrer,ESPERA);
+    armarPrazo();
+  }
+  /* O prazo NAO e re-armado pelo scroll — e isso que o torna um teto. */
+  function armarPrazo(){
+    if(prazo||!pendentes.length)return;
+    prazo=setTimeout(varrer,ESPERA*1.5);
   }
   addEventListener('scroll',agendar,{passive:true});
   addEventListener('resize',agendar,{passive:true});
-  agendar();
+  function ligar(){
+    var alvos=document.querySelectorAll('[data-secao] *');
+    for(var i=0;i<alvos.length;i++){
+      if(!temTexto(alvos[i]))continue;
+      io.observe(alvos[i]);
+    }
+    agendar();
+  }
+  if(document.readyState==='loading')addEventListener('DOMContentLoaded',ligar);else ligar();
 })()</script>`;

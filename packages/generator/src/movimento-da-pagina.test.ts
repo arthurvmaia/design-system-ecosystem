@@ -187,9 +187,21 @@ test('a rede de seguranca acende o que ENTROU na tela e nao acendeu', () => {
   // 54 trechos apagados que restavam, 52 eram a mesma classe de uma origem so.
   const s = SCRIPT_DA_REDE_DE_SEGURANCA;
   assert.match(s, /addEventListener\('scroll',agendar/, 'o gatilho e PARAR de rolar');
-  assert.match(s, /function naTela/, 'so o que esta na tela agora');
+  // A MEMORIA dos visitados e a v3: a v2 so acendia o que estava na tela no
+  // instante da varredura, e quem rola sem parar (a conferencia; gente
+  // apressada) visitava tudo sem nunca dar ociosidade no meio — 86 trechos
+  // apagados com a v2 instalada. Visitado apagado acende ONDE ESTIVER; quem
+  // nunca foi visitado segue escuro de proposito.
+  assert.match(s, /var pendentes=\[\]/, 'a rede lembra quem entrou na tela');
+  // O PRAZO nao e re-armado pelo scroll — e isso que o torna um teto. Sem ele,
+  // pagina com ScrollSmoother/lenis emite scroll continuamente, o debounce
+  // re-arma para sempre e a varredura nunca roda (medido: 241 observados, 119
+  // intersecoes, 0 varreduras).
+  assert.match(s, /function armarPrazo/, 'o teto contra a pagina barulhenta');
+  assert.match(s, /agora-p\.em<ESPERA/, 'idade minima: nao atropelar animacao de entrada');
+  assert.match(s, /IntersectionObserver/, 'o observador so MARCA — quem acende e a ociosidade');
   assert.match(s, new RegExp(String(ESPERA_DA_REDE_MS)), 'espera a animacao de entrada');
-  assert.match(s, /clearTimeout\(tarefa\)/, 'rolagem em curso adia a varredura');
+  assert.match(s, /clearTimeout\(curto\)/, 'rolagem em curso adia a varredura curta');
   // As tres guardas que ja custaram regressao nesta frente.
   assert.match(s, /pointerEvents==='none'/, 'hover-revelado nao e defeito');
   assert.match(s, /nodeType===3/, 'observa quem tem TEXTO proprio — e o que a regua mede');
