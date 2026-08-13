@@ -313,3 +313,36 @@ test('fundo LITERAL: bg-white/95 nao tem papel, e a tinta ia parar sobre ele', (
   const razao = contrasteEntre((TOKENS as Record<string, string>)[escolhido] ?? '', '#ffffff');
   assert.ok(razao !== null && razao >= 3, `${escolhido} da ${razao?.toFixed(2)}:1 sobre branco`);
 });
+
+test('a tinta HERDADA conta: o elemento que traz a superficie nova e corrigido', () => {
+  // `color` desce por heranca; `background` nao. Um conteiner externo declara a
+  // tinta clara, um conteiner INTERNO declara a superficie clara, e o texto la
+  // no fundo nasce claro sobre claro — sem classe nenhuma no atributo.
+  //
+  // Conferir so quem tem classe de TINTA deixava esse caso passar inteiro:
+  // medido no banco de prova, 52 ocorrencias de rgb(250,250,249) sobre
+  // rgb(250,250,250), 1,00:1, e era o maior aglomerado de S4 que restava.
+  const css =
+    ':where([data-ds-corpo="d"]):is(.tinta-clara){color:var(--marca-heading, #fafaf9)}' +
+    ':where([data-ds-corpo="d"]):is(.cartao-claro){background-color:#fafafa}';
+  const r = corrigirParesDeCor(
+    '<div class="tinta-clara"><div class="cartao-claro"><p>texto sem classe nenhuma</p></div></div>',
+    css,
+    TOKENS,
+  );
+  assert.equal(r.corrigidos.length, 1, `nao viu o par herdado: ${r.html}`);
+  // O conserto pousa em QUEM TRAZ A SUPERFICIE — tudo dentro herda a tinta boa.
+  assert.match(r.html, /class="cartao-claro" style="color:var\(--marca-/, r.html);
+});
+
+test('tinta herdada que JA se le sobre a superficie nova nao e tocada', () => {
+  const css =
+    ':where([data-ds-corpo="d"]):is(.tinta-clara){color:var(--marca-heading, #fff)}' +
+    ':where([data-ds-corpo="d"]):is(.cartao-escuro){background-color:#000000}';
+  const r = corrigirParesDeCor(
+    '<div class="tinta-clara"><div class="cartao-escuro"><p>oi</p></div></div>',
+    css,
+    TOKENS,
+  );
+  assert.equal(r.corrigidos.length, 0);
+});

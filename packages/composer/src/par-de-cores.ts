@@ -432,6 +432,20 @@ export const corrigirParesDeCor = (
     /** O fundo LITERAL, quando a superfície não pertence a papel nenhum. */
     hex: string | null;
     ajuste: AjusteDeCor | undefined;
+    /**
+     * A TINTA vigente, que desce por herança — e cuja falta era o maior buraco.
+     *
+     * `color` é herdada; `background` não. Um contêiner externo declara a tinta
+     * clara, um contêiner INTERNO declara a superfície clara, e o texto lá no
+     * fundo nasce claro sobre claro sem ter classe nenhuma.
+     *
+     * A conferência só olhava elemento COM classe de tinta, e o elemento que
+     * colapsa não tem classe nenhuma. Medido no banco de prova: **52
+     * ocorrências** de `rgb(250,250,249)` sobre `rgb(250,250,250)` — 1,00:1,
+     * sem uma classe no atributo. Era o maior aglomerado de S4 que restava.
+     */
+    tintaPapel: string | null;
+    tintaHex: string | null;
   }[] = [];
   /** O ajuste e o hex do fundo VIGENTE, para pintar a mesma cor que a tela pinta. */
   let ajusteVigente: AjusteDeCor | undefined;
@@ -446,6 +460,16 @@ export const corrigirParesDeCor = (
       return n.fundo;
     }
     return null;
+  };
+  /** A tinta que o elemento HERDA, quando ele não declara nenhuma. */
+  const tintaVigente = (): { papel: string | null; hex: string | null } => {
+    for (let i = pilha.length - 1; i >= 0; i--) {
+      const n = pilha[i];
+      if (n === undefined) continue;
+      if (n.tintaPapel == null && n.tintaHex == null) continue;
+      return { papel: n.tintaPapel, hex: n.tintaHex };
+    }
+    return { papel: null, hex: null };
   };
 
   const saida = html.replace(
@@ -506,6 +530,21 @@ export const corrigirParesDeCor = (
         }
       }
     }
+    // A tinta que ESTE elemento declara — vira a vigente para os filhos.
+    let tintaPropriaPapel: string | null = null;
+    let tintaPropriaHex: string | null = null;
+    for (const c of listaDoEl) {
+      const t = mapa.tinta.get(c);
+      if (t !== undefined) {
+        tintaPropriaPapel = t;
+        break;
+      }
+      const h = mapa.tintaLiteral.get(c);
+      if (h !== undefined) {
+        tintaPropriaHex = h;
+        break;
+      }
+    }
     const resultado = conferir(
       tudo,
       attrs,
@@ -521,6 +560,8 @@ export const corrigirParesDeCor = (
         fundo: fundoProprio,
         hex: hexDoFundoProprio,
         ajuste: ajusteDoFundoProprio,
+        tintaPapel: tintaPropriaPapel,
+        tintaHex: tintaPropriaHex,
       });
     }
     return resultado;
@@ -572,6 +613,25 @@ export const corrigirParesDeCor = (
           break;
         }
       }
+    }
+    /**
+     * A tinta HERDADA, quando este elemento não declara nenhuma.
+     *
+     * `color` desce por herança; `background` não. Um contêiner externo declara
+     * a tinta clara, um contêiner INTERNO declara a superfície clara, e o texto
+     * lá no fundo nasce claro sobre claro — sem classe nenhuma no atributo.
+     *
+     * Conferir só quem tem classe de TINTA deixava esse caso passar inteiro:
+     * medido no banco de prova, **52 ocorrências** de `rgb(250,250,249)` sobre
+     * `rgb(250,250,250)`, 1,00:1, e era o maior aglomerado de S4 que restava.
+     *
+     * Quem recebe o conserto é ESTE elemento — o que traz a superfície nova —,
+     * e tudo o que estiver dentro dele herda a tinta corrigida.
+     */
+    if (papelDaTinta === null && hexDaTintaLiteral === null) {
+      const herdada = tintaVigente();
+      papelDaTinta = herdada.papel;
+      hexDaTintaLiteral = herdada.hex;
     }
     // O fundo é o próprio, quando ele declara um; senão, o do ancestral mais
     // próximo que declara. É onde o texto realmente senta.

@@ -99,8 +99,22 @@ img, video, iframe, canvas, svg, picture {
   nav a, [data-secao="nav"] a, footer a, [data-secao="footer"] a, li > a {
     display: inline-flex;
     align-items: center;
-    min-width: 44px !important;
     justify-content: center;
+  }
+  /*
+    A LARGURA minima vale para TODO link e botao da secao, nao so os de menu.
+
+    A versao anterior prendia \`min-width\` ao mesmo seletor do \`inline-flex\`, e
+    com isso alcancava so nav, rodape e item de lista. Medido em 390px: vinte e
+    cinco links de icone saiam com 40 a 43px de largura — a um pixel de passar —
+    porque estavam soltos no meio da secao, fora daqueles tres contextos.
+
+    Alargar aqui e seguro justamente onde o \`inline-flex\` nao seria: \`min-width\`
+    NAO se aplica a elemento inline nao substituido, entao o link no meio de um
+    paragrafo continua exatamente como esta, e so o que ja e bloco engorda.
+  */
+  [data-secao] a, [data-secao] button, [data-secao] [role="button"] {
+    min-width: 44px !important;
   }
   /* Navegação horizontal densa vira lista rolável suave, sem estourar. */
   [data-secao="nav"] nav,

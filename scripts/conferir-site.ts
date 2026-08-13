@@ -442,6 +442,26 @@ const MEDIR = `() => {
         && ['P', 'LI', 'SPAN', 'H1', 'H2', 'H3', 'H4'].indexOf(pai.tagName) >= 0
         && textoDoPai.length > textoDoLink.length + 10;
       if (dentroDeTexto) continue;
+      /*
+        CAMPO ESCONDIDO com rotulo clicavel: o alvo e o ROTULO, nao o campo.
+
+        E o desenho mais comum de radio e caixa de marcar: o controle nativo fica
+        de 1 a 16px (as vezes so 1px, fora de vista) e quem recebe o dedo e o
+        <label> em volta, que desenha o circulo e o texto. Medido em 390px: onze
+        acusacoes de input[radio] e input[checkbox] com 1 a 16px de largura, e
+        todas eram desenho correto.
+
+        Cobrar 44px do campo obrigaria a inchar um controle que ninguem toca. A
+        pergunta certa e se existe rotulo, e se ELE tem tamanho.
+      */
+      if (el.tagName === 'INPUT' && ['radio','checkbox'].indexOf((el.getAttribute('type')||'').toLowerCase()) >= 0) {
+        var rotulo = el.closest('label');
+        if (!rotulo && el.id) { try { rotulo = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); } catch (err) { rotulo = null; } }
+        if (rotulo) {
+          var rr = rotulo.getBoundingClientRect();
+          if (rr.width >= 44 && rr.height >= 44) continue;
+        }
+      }
       if (r.height >= 44 && r.width >= 44) continue;
       const chave = onde(el) + '|' + (el.textContent || '').trim().slice(0, 14);
       if (vistosAlvo.has(chave)) continue;
