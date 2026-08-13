@@ -186,10 +186,10 @@ test('a rede de seguranca acende o que ENTROU na tela e nao acendeu', () => {
   // tempo de execucao, e nao ha regra para a analise estatica achar. Medido: dos
   // 54 trechos apagados que restavam, 52 eram a mesma classe de uma origem so.
   const s = SCRIPT_DA_REDE_DE_SEGURANCA;
-  assert.match(s, /IntersectionObserver/, 'o gatilho e a entrada na tela');
-  assert.match(s, /threshold:0\.5/, 'metade visivel, para nao disparar de raspao');
+  assert.match(s, /addEventListener\('scroll',agendar/, 'o gatilho e PARAR de rolar');
+  assert.match(s, /function naTela/, 'so o que esta na tela agora');
   assert.match(s, new RegExp(String(ESPERA_DA_REDE_MS)), 'espera a animacao de entrada');
-  assert.match(s, /unobserve/, 'cada elemento e julgado uma vez so');
+  assert.match(s, /clearTimeout\(tarefa\)/, 'rolagem em curso adia a varredura');
   // As tres guardas que ja custaram regressao nesta frente.
   assert.match(s, /pointerEvents==='none'/, 'hover-revelado nao e defeito');
   assert.match(s, /nodeType===3/, 'observa quem tem TEXTO proprio — e o que a regua mede');

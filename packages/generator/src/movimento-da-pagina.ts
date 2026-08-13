@@ -361,7 +361,6 @@ export const ESPERA_DA_REDE_MS = 900;
 
 export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
   var PISO=0.35;
-  /* Quem tem TEXTO PROPRIO: e o que a regua mede, e e a folha da arvore. */
   function temTexto(el){
     for(var i=0;i<el.childNodes.length;i++){
       var n=el.childNodes[i];
@@ -372,21 +371,16 @@ export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
   /*
     QUEM apagou nao e quem tem o texto — e um ancestral.
 
-    A primeira versao observava e acendia o MESMO elemento, e nao acendeu nada:
-    quem carrega a opacidade e o container (div.gsap-fade-up), e o texto esta
-    nos filhos dele. A opacidade nao e herdada como valor, mas o efeito e
-    cumulativo, entao a folha aparece apagada sem ter uma gota de opacidade
-    propria.
-
-    Sobe-se ate achar quem zerou. Acender ali traz os irmaos junto, que e o que
-    a animacao faria.
+    Quem carrega a opacidade e o container; o texto esta nos filhos dele. A
+    opacidade nao e herdada como valor, mas o efeito e cumulativo, entao a folha
+    aparece apagada sem ter uma gota de opacidade propria. Acender ali traz os
+    irmaos junto, que e o que a animacao faria.
   */
   function culpado(el){
     var n=el;
     while(n&&n!==document.body){
       var c=getComputedStyle(n);
-      /* Conteudo revelado no HOVER: quem nao recebe clique espera o ponteiro,
-         nao um observador. Acender isso mostraria tudo de uma vez. */
+      /* Revelado no HOVER: quem nao recebe clique espera o ponteiro. */
       if(c.pointerEvents==='none'&&parseFloat(c.opacity)===0)return null;
       if(parseFloat(c.opacity)<PISO)return n;
       n=n.parentElement;
@@ -398,30 +392,43 @@ export const SCRIPT_DA_REDE_DE_SEGURANCA = `<script>(function(){
     while(n&&n!==document.documentElement){o*=parseFloat(getComputedStyle(n).opacity);n=n.parentElement;}
     return o;
   }
-  function acender(el){
-    if(efetiva(el)>=PISO)return;
-    var alvo=culpado(el);
-    if(!alvo)return;
-    alvo.style.setProperty('opacity','1','important');
-    var t=getComputedStyle(alvo).transform;
-    if(t&&t!=='none')alvo.style.setProperty('transform','none','important');
-    alvo.setAttribute('data-orbis-acendido','');
+  function naTela(el){
+    var r=el.getBoundingClientRect();
+    return r.bottom>0&&r.top<innerHeight&&r.width>0&&r.height>0;
   }
-  var io=new IntersectionObserver(function(entradas){
-    for(var i=0;i<entradas.length;i++){
-      (function(e){
-        if(!e.isIntersecting)return;
-        io.unobserve(e.target);
-        setTimeout(function(){acender(e.target);},${ESPERA_DA_REDE_MS});
-      })(entradas[i]);
-    }
-  },{threshold:0.5});
-  function ligar(){
+  /*
+    VARREDURA ao parar de rolar, e nao um relogio por elemento.
+
+    A primeira versao marcava cada elemento na primeira vez que ele aparecia e
+    conferia 900ms depois, uma vez so. Medido: dos 123 candidatos de uma pagina,
+    48 chegaram a aparecer e TODOS os 48 ja estavam legiveis na hora da
+    conferencia — os que ficam apagados sao justamente os que nao chegaram
+    aquele instante, ou que a biblioteca zerou depois dele. Zero acendimentos.
+
+    Parar de rolar e o momento certo: e quando o visitante esta olhando, e e o
+    estado que a regua mede. Varre-se o que esta na tela AGORA, quantas vezes for
+    preciso, em vez de apostar num unico instante por elemento.
+  */
+  function varrer(){
     var alvos=document.querySelectorAll('[data-secao] *');
     for(var i=0;i<alvos.length;i++){
-      if(!temTexto(alvos[i]))continue;
-      io.observe(alvos[i]);
+      var el=alvos[i];
+      if(!temTexto(el)||!naTela(el))continue;
+      if(efetiva(el)>=PISO)continue;
+      var alvo=culpado(el);
+      if(!alvo)continue;
+      alvo.style.setProperty('opacity','1','important');
+      var t=getComputedStyle(alvo).transform;
+      if(t&&t!=='none')alvo.style.setProperty('transform','none','important');
+      alvo.setAttribute('data-orbis-acendido','');
     }
   }
-  if(document.readyState==='loading')addEventListener('DOMContentLoaded',ligar);else ligar();
+  var tarefa=null;
+  function agendar(){
+    if(tarefa)clearTimeout(tarefa);
+    tarefa=setTimeout(varrer,${ESPERA_DA_REDE_MS});
+  }
+  addEventListener('scroll',agendar,{passive:true});
+  addEventListener('resize',agendar,{passive:true});
+  agendar();
 })()</script>`;
