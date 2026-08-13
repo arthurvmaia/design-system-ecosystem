@@ -1,14 +1,16 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { montarPaginaDoKit } from '@ds/generator';
-import { getDb, tables } from '@ds/indexer';
+import { eq, getDb, tables } from '@ds/indexer';
 import {
   DEFAULT_PROJECT_BRANDING,
   ProjectLayout,
   ROLE_CATEGORIES,
   type SectionRole,
+  getRoot,
   libraryComponentBundleDir,
+  libraryComponentDir,
 } from '@ds/shared';
 import { conferirNoNavegador } from './conferir-site.js';
 import { executadoDireto } from './executado-direto.js';
@@ -168,9 +170,63 @@ export const conferirBiblioteca = async (opcoes: {
   return saida;
 };
 
+/**
+ * Retira da Biblioteca as peças que não sobrevivem ao recorte.
+ *
+ * Retirar é retirar de VERDADE — a mesma disciplina do `curar --limpar`: a
+ * linha sai, a citação nos kits sai, a flag do segmento apaga e o bundle sai do
+ * disco. Desligar só a flag deixaria a peça entrando em kit e o contador
+ * dizendo que ela saiu.
+ *
+ * O que ela NÃO faz é remontar os kits. Isso é outro comando (`pnpm kits`), e
+ * misturar os dois esconderia a conta: quantos kits ficaram com vaga vazia é
+ * informação que só aparece se a remontagem for um passo consciente.
+ */
+export const retirarPecas = (
+  ids: readonly string[],
+): { linhas: number; citacoes: number; pastas: number } => {
+  const db = getDb();
+  let linhas = 0;
+  let citacoes = 0;
+  let pastas = 0;
+  for (const id of ids) {
+    const comps = db
+      .select()
+      .from(tables.libraryComponents)
+      .where(eq(tables.libraryComponents.id, id))
+      .all();
+    for (const comp of comps) {
+      const citada = db
+        .select()
+        .from(tables.kitComponents)
+        .where(eq(tables.kitComponents.componentId, comp.id))
+        .all();
+      db.transaction((tx) => {
+        tx.delete(tables.kitComponents).where(eq(tables.kitComponents.componentId, comp.id)).run();
+        tx.delete(tables.libraryComponents).where(eq(tables.libraryComponents.id, comp.id)).run();
+        if (comp.segmentId !== null) {
+          tx.update(tables.segments)
+            .set({ inLibrary: false })
+            .where(eq(tables.segments.id, comp.segmentId))
+            .run();
+        }
+      });
+      citacoes += citada.length;
+      linhas += 1;
+      const dir = libraryComponentDir(comp.id as `cmp_${string}`);
+      if (existsSync(dir)) {
+        rmSync(dir, { recursive: true, force: true });
+        pastas += 1;
+      }
+    }
+  }
+  return { linhas, citacoes, pastas };
+};
+
 const principal = async (): Promise<void> => {
   const argv = process.argv.slice(2);
   const apenas = argv.filter((a) => a.startsWith('cmp_'));
+  const retirar = argv.includes('--retirar');
   console.log('\n  Conferindo a Biblioteca: cada peça é recortada e composta sozinha.\n');
   const rs = await conferirBiblioteca({
     apenas: apenas.length > 0 ? apenas : undefined,
@@ -185,17 +241,46 @@ const principal = async (): Promise<void> => {
   });
 
   const ruins = rs.filter((r) => r.reprovou.length > 0);
+  // O veredito GRAVADO, e não só impresso: sem arquivo, retirar depois obrigaria
+  // a reconferir o acervo inteiro só para reencontrar os ids.
+  const relatorio = join(getRoot(), 'conferencia-de-pecas.json');
+  writeFileSync(
+    relatorio,
+    JSON.stringify({ formato: 1, conferidoEm: Date.now(), pecas: rs }, null, 2),
+    'utf8',
+  );
+
   console.log(
     `\n  ── ${rs.length} peça(s) conferidas, ${ruins.length} não sobrevive(m) ao recorte ──\n`,
   );
+  const porRegra = new Map<string, number>();
   for (const r of ruins) {
+    for (const c of r.reprovou) porRegra.set(c, (porRegra.get(c) ?? 0) + 1);
     console.log(
       `  ${r.reprovou.join(',').padEnd(12)} ${r.category.padEnd(12)} ${r.nome.slice(0, 46)}`,
     );
-    console.log(`    ${r.motivo.slice(0, 150)}`);
   }
   console.log(
-    '\n  Peça que não sobrevive ao recorte é decisão de CURADORIA: ela não empresta forma.\n',
+    `\n  Por regra: ${[...porRegra.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([c, n]) => `${c} ${n}`)
+      .join(' · ')}`,
+  );
+  console.log(`  Veredito gravado em ${relatorio}`);
+
+  if (!retirar) {
+    console.log(
+      '\n  Peça que não sobrevive ao recorte é decisão de CURADORIA: ela não empresta forma.',
+    );
+    console.log('  Para tirá-las do acervo: `pnpm biblioteca:conferir --retirar`.\n');
+    return;
+  }
+  const r = retirarPecas(ruins.map((x) => x.cmpId));
+  console.log(
+    `\n  Retiradas: ${r.linhas} linha(s), ${r.citacoes} citação(ões) de kit, ${r.pastas} pasta(s) em disco.`,
+  );
+  console.log(
+    '  Remonte os kits (`pnpm kits`) — as vagas que ficaram vazias precisam de outra peça.\n',
   );
 };
 
