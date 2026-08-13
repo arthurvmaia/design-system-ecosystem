@@ -522,6 +522,16 @@ export const corrigirParesDeCor = (
      */
     tintaPapel: string | null;
     tintaHex: string | null;
+    /**
+     * O AJUSTE da tinta viaja com ela — e esquecê-lo foi a terceira aparição
+     * do mesmo erro.
+     *
+     * Quando a tinta é herdada, quem a declarou pode tê-la escrito como cor
+     * DERIVADA (`oklch(from var(--marca-x) calc(l - 0.62) …)`). Sem carregar o
+     * ajuste, a comparação volta a ser contra o token cru — exatamente o que já
+     * fazia o par passar aqui e a pessoa ver 1,49:1 na tela.
+     */
+    tintaAjuste: AjusteDeCor | undefined;
   }[] = [];
   /** O ajuste e o hex do fundo VIGENTE, para pintar a mesma cor que a tela pinta. */
   let ajusteVigente: AjusteDeCor | undefined;
@@ -540,14 +550,18 @@ export const corrigirParesDeCor = (
     return null;
   };
   /** A tinta que o elemento HERDA, quando ele não declara nenhuma. */
-  const tintaVigente = (): { papel: string | null; hex: string | null } => {
+  const tintaVigente = (): {
+    papel: string | null;
+    hex: string | null;
+    ajuste: AjusteDeCor | undefined;
+  } => {
     for (let i = pilha.length - 1; i >= 0; i--) {
       const n = pilha[i];
       if (n === undefined) continue;
       if (n.tintaPapel == null && n.tintaHex == null) continue;
-      return { papel: n.tintaPapel, hex: n.tintaHex };
+      return { papel: n.tintaPapel, hex: n.tintaHex, ajuste: n.tintaAjuste };
     }
-    return { papel: null, hex: null };
+    return { papel: null, hex: null, ajuste: undefined };
   };
 
   const saida = html.replace(
@@ -613,10 +627,12 @@ export const corrigirParesDeCor = (
     // A tinta que ESTE elemento declara — vira a vigente para os filhos.
     let tintaPropriaPapel: string | null = null;
     let tintaPropriaHex: string | null = null;
+    let tintaPropriaAjuste: AjusteDeCor | undefined;
     for (const c of listaDoEl) {
       const t = mapa.tinta.get(c);
       if (t !== undefined) {
         tintaPropriaPapel = t;
+        tintaPropriaAjuste = mapa.ajusteDaTinta.get(c);
         break;
       }
       const h = mapa.tintaLiteral.get(c);
@@ -644,6 +660,7 @@ export const corrigirParesDeCor = (
         alfa: alfaDoFundoProprio,
         tintaPapel: tintaPropriaPapel,
         tintaHex: tintaPropriaHex,
+        tintaAjuste: tintaPropriaAjuste,
       });
     }
     return resultado;
@@ -711,10 +728,13 @@ export const corrigirParesDeCor = (
      * Quem recebe o conserto é ESTE elemento — o que traz a superfície nova —,
      * e tudo o que estiver dentro dele herda a tinta corrigida.
      */
+    let ajusteDaTintaUsado =
+      classeDaTinta === null ? undefined : mapa.ajusteDaTinta.get(classeDaTinta);
     if (papelDaTinta === null && hexDaTintaLiteral === null) {
       const herdada = tintaVigente();
       papelDaTinta = herdada.papel;
       hexDaTintaLiteral = herdada.hex;
+      ajusteDaTintaUsado = herdada.ajuste;
     }
     // O fundo é o próprio, quando ele declara um; senão, o do ancestral mais
     // próximo que declara. É onde o texto realmente senta.
@@ -777,12 +797,7 @@ export const corrigirParesDeCor = (
         ? (comporSobre(opaco, atrasDele, alfaDoFundoUsado) ?? opaco)
         : opaco;
     const hexTinta =
-      papelDaTinta === null
-        ? hexDaTintaLiteral
-        : pintado(
-            papelDaTinta,
-            classeDaTinta === null ? undefined : mapa.ajusteDaTinta.get(classeDaTinta),
-          );
+      papelDaTinta === null ? hexDaTintaLiteral : pintado(papelDaTinta, ajusteDaTintaUsado);
     if (hexFundo === undefined || hexTinta === undefined || hexTinta === null) return tudo;
     const razao = contrasteEntre(hexTinta, hexFundo);
     if (razao === null || razao >= piso) return tudo;

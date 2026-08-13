@@ -373,3 +373,21 @@ test('superficie TRANSLUCIDA e composta: 5% do dourado sobre a pagina e quase pr
   const escolhido = /color:var\(--marca-([a-z-]+)\)/.exec(r.html)?.[1];
   assert.ok(escolhido !== undefined && escolhido !== 'primary-foreground', r.html);
 });
+
+test('o AJUSTE viaja com a tinta herdada — a terceira vez do mesmo erro', () => {
+  // Quem declarou a tinta pode te-la escrito como cor DERIVADA. Sem carregar o
+  // ajuste na heranca, a comparacao volta a ser contra o token cru — o mesmo
+  // defeito que ja fazia o par passar aqui e a pessoa ver 1,49:1 na tela.
+  const css =
+    ':where([data-ds-corpo="d"]):is(.tinta-derivada){color:oklch(from var(--marca-heading, #fff) calc(l - 0.75) calc(c * 0.3) h)}' +
+    ':where([data-ds-corpo="d"]):is(.cartao){background-color:var(--marca-surface, #241a16)}';
+  const r = corrigirParesDeCor(
+    '<div class="tinta-derivada"><div class="cartao"><p>texto sem classe</p></div></div>',
+    css,
+    TOKENS,
+  );
+  // heading e clarissimo e passaria sobre a surface escura; a DERIVADA dele
+  // (0,75 de luminancia a menos) e escura e colapsa. So se ve isso carregando
+  // o ajuste na heranca.
+  assert.equal(r.corrigidos.length, 1, `o ajuste nao viajou: ${r.html}`);
+});
