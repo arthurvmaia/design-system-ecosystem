@@ -39,7 +39,29 @@ import { z } from 'zod';
  * um de 'faca-me aprender', que seria onde vc iria tentar outras abordagens para
  * tentar interpretar esse componente".
  */
-export const QueueJobType = z.enum(['extract', 'classify', 'generate', 'ajustar', 'aprender']);
+/**
+ * `criativo` é o pedido de PEÇA para a marca do cliente — imagem ou vídeo que
+ * ele baixa na máquina. É a frente de criativos; a espec mora em
+ * `references/12-frente-criativos-mvp.md`.
+ *
+ * É um tipo próprio, e não um `generate`, porque não existe site nem kit aqui:
+ * a saída é um punhado de arquivos em `criativos/<job_id>/`, fora de qualquer
+ * projeto, e o custo é outro — cada variação gasta crédito de geração, então o
+ * pedido carrega um TETO de orçamento que os outros tipos não têm. Quem produz
+ * é o motor (skill `orbis-suite`), nunca o código do app chamando API de
+ * imagem, e o download só libera o que a verificação aprovou.
+ *
+ * O `payload` segue `PedidoCriativo` e o `result` segue `ResultadoCriativo`,
+ * os dois em `criativo.ts`.
+ */
+export const QueueJobType = z.enum([
+  'extract',
+  'classify',
+  'generate',
+  'ajustar',
+  'aprender',
+  'criativo',
+]);
 export type QueueJobType = z.infer<typeof QueueJobType>;
 
 /**

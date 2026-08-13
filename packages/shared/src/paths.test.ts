@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { join, sep } from 'node:path';
 import { test } from 'node:test';
 import {
+  criativosDir,
   ehChaveDeSegmento,
   ehDesignSystemId,
   ehNomeDeVersao,
@@ -99,6 +100,14 @@ test('as funções de caminho recusam id fora da regra', () => {
   assert.throws(() => vaultSegmentBundleDir('ds_A', 'seg_../fora'));
   // O caso bom continua passando, com o id no fim do caminho.
   assert.ok(vaultDsDir('ds_A').endsWith(`${sep}ds_A`));
+});
+
+test('criativos: o id do job vira pasta, e id torto não vira caminho', () => {
+  // A pasta de saída do job `criativo` é indexada pelo id do JOB, que chega
+  // por URL na rota de download — a mesma guarda dos vizinhos vale aqui.
+  assert.ok(criativosDir('job_abc123').endsWith(join('criativos', 'job_abc123')));
+  assert.throws(() => criativosDir('job_../../etc'));
+  assert.throws(() => criativosDir('ds_abc123'));
 });
 
 test('nome de versão gerada: só nome simples de pasta', () => {
