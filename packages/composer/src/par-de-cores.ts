@@ -207,6 +207,16 @@ export const mapearClassesPorPapel = (
   fundo: Map<string, string>;
   /** `classe → hex` da tinta que NÃO virou papel (ver `literalDe`). */
   tintaLiteral: Map<string, string>;
+  /**
+   * `classe → hex` do FUNDO que não virou papel — o outro lado do mesmo buraco.
+   *
+   * `bg-white/95` e `bg-slate-50` não pertencem a papel nenhum, então a
+   * recoloração não os toca e o mapa de papéis não os conhece. A conferência
+   * caía para o papel do ANCESTRAL — quase sempre o fundo escuro da página — e
+   * escolhia uma tinta clara que ia parar sobre a superfície branca. Medido: 14
+   * elementos com o conserto aplicado e ainda a 1,16:1, mais 13 a 1,04:1.
+   */
+  fundoLiteral: Map<string, string>;
   /** `classe → ajuste` quando a recoloração escreveu cor DERIVADA (ver `lerAjusteRelativo`). */
   ajusteDaTinta: Map<string, AjusteDeCor>;
   ajusteDoFundo: Map<string, AjusteDeCor>;
@@ -214,6 +224,7 @@ export const mapearClassesPorPapel = (
   const tinta = new Map<string, string>();
   const fundo = new Map<string, string>();
   const tintaLiteral = new Map<string, string>();
+  const fundoLiteral = new Map<string, string>();
   const ajusteDaTinta = new Map<string, AjusteDeCor>();
   const ajusteDoFundo = new Map<string, AjusteDeCor>();
 
@@ -265,17 +276,19 @@ export const mapearClassesPorPapel = (
     const pTinta = papelDe(/(?:^|[;\s])color/);
     const pFundo = papelDe(/background(?:-color)?/);
     const lTinta = pTinta === null ? literalDe(/(?:^|[;\s])color/) : null;
+    const lFundo = pFundo === null ? literalDe(/background(?:-color)?/) : null;
     const aTinta = lerAjusteRelativo(valorDe(/(?:^|[;\s])color/));
     const aFundo = lerAjusteRelativo(valorDe(/background(?:-color)?/));
     for (const c of classes) {
       if (pTinta !== null && !tinta.has(c)) tinta.set(c, pTinta);
       if (pFundo !== null && !fundo.has(c)) fundo.set(c, pFundo);
       if (lTinta !== null && !tintaLiteral.has(c)) tintaLiteral.set(c, lTinta);
+      if (lFundo !== null && !fundoLiteral.has(c)) fundoLiteral.set(c, lFundo);
       if (aTinta !== null && !ajusteDaTinta.has(c)) ajusteDaTinta.set(c, aTinta);
       if (aFundo !== null && !ajusteDoFundo.has(c)) ajusteDoFundo.set(c, aFundo);
     }
   }
-  return { tinta, fundo, tintaLiteral, ajusteDaTinta, ajusteDoFundo };
+  return { tinta, fundo, tintaLiteral, fundoLiteral, ajusteDaTinta, ajusteDoFundo };
 };
 
 /**
@@ -290,11 +303,21 @@ export const mapearClassesPorPapel = (
  * nenhuma escolha aqui pode piorar o que já estava ruim.
  */
 export const tintaQueSeLeSobre = (
-  papelDoFundo: string,
+  papelDoFundo: string | null,
   tokens: TokensDaMarca,
   piso = PISO_DO_PAR,
+  /**
+   * O hex do fundo, quando ele NÃO tem papel.
+   *
+   * `bg-white/95` e `bg-slate-50` não pertencem a papel nenhum, e a recoloração
+   * não os toca. Sem este caminho a escolha da tinta caía para o papel do
+   * ancestral — quase sempre o fundo escuro da página — e a tinta clara ia
+   * parar sobre a superfície branca. Medido: 14 elementos com o conserto
+   * aplicado e ainda a 1,16:1.
+   */
+  hexDoFundo?: string,
 ): string | null => {
-  const fundo = tokens[papelDoFundo];
+  const fundo = papelDoFundo === null ? hexDoFundo : tokens[papelDoFundo];
   if (fundo === undefined) return null;
   /**
    * Papéis de TEXTO primeiro; `background` e `surface` só no fim.
@@ -313,7 +336,7 @@ export const tintaQueSeLeSobre = (
    * A ordem importa: um papel de texto que sirva vence sempre um de superfície.
    */
   const candidatos = [
-    `${papelDoFundo}-foreground`,
+    ...(papelDoFundo === null ? [] : [`${papelDoFundo}-foreground`]),
     'primary-foreground',
     'heading',
     'body',
@@ -371,11 +394,18 @@ export const corrigirParesDeCor = (
   piso = PISO_DO_PAR,
 ): { html: string; corrigidos: ParCorrigido[] } => {
   const mapa = mapearClassesPorPapel(css);
-  // Fundo sem papel nenhum quer dizer que a recoloração não tocou nesta página.
-  // A tinta pode vir de qualquer um dos dois mapas (ver `tintaLiteral`).
-  if ((mapa.tinta.size === 0 && mapa.tintaLiteral.size === 0) || mapa.fundo.size === 0) {
-    return { html, corrigidos: [] };
-  }
+  /**
+   * O portão só fecha quando falta um LADO INTEIRO do par.
+   *
+   * A versão anterior exigia `mapa.fundo.size > 0`, isto é, ao menos uma
+   * superfície com PAPEL — e barrava na porta justamente a página cuja
+   * superfície é literal (`bg-white/95`, `bg-slate-50`), que é onde o defeito
+   * mora. Cada lado do par pode chegar por papel ou por literal, e basta um de
+   * cada.
+   */
+  const temFundo = mapa.fundo.size > 0 || mapa.fundoLiteral.size > 0;
+  const temTinta = mapa.tinta.size > 0 || mapa.tintaLiteral.size > 0;
+  if (!temFundo || !temTinta) return { html, corrigidos: [] };
 
   const corrigidos: ParCorrigido[] = [];
 
@@ -396,14 +426,24 @@ export const corrigirParesDeCor = (
    * mesmo incluído. Sem pilha, a regra só pegaria botão — que é justamente o
    * caso raro.
    */
-  const pilha: { tag: string; fundo: string | null; ajuste: AjusteDeCor | undefined }[] = [];
-  /** O ajuste do fundo VIGENTE, para pintar a mesma cor que a tela pinta. */
+  const pilha: {
+    tag: string;
+    fundo: string | null;
+    /** O fundo LITERAL, quando a superfície não pertence a papel nenhum. */
+    hex: string | null;
+    ajuste: AjusteDeCor | undefined;
+  }[] = [];
+  /** O ajuste e o hex do fundo VIGENTE, para pintar a mesma cor que a tela pinta. */
   let ajusteVigente: AjusteDeCor | undefined;
+  let hexVigente: string | null = null;
   const fundoVigente = (): string | null => {
     for (let i = pilha.length - 1; i >= 0; i--) {
-      ajusteVigente = pilha[i]?.ajuste;
-      const f = pilha[i]?.fundo;
-      if (f != null) return f;
+      const n = pilha[i];
+      if (n === undefined) continue;
+      if (n.fundo == null && n.hex == null) continue;
+      ajusteVigente = n.ajuste;
+      hexVigente = n.hex;
+      return n.fundo;
     }
     return null;
   };
@@ -449,6 +489,7 @@ export const corrigirParesDeCor = (
      */
     const ehProxy = /\bdata-ds-(?:raiz|corpo|criado)\b/i.test(attrs);
     let fundoProprio: string | null = ehProxy ? 'background' : null;
+    let hexDoFundoProprio: string | null = null;
     let ajusteDoFundoProprio: AjusteDeCor | undefined;
     if (!ehProxy) {
       for (const c of listaDoEl) {
@@ -456,6 +497,11 @@ export const corrigirParesDeCor = (
         if (f !== undefined) {
           fundoProprio = f;
           ajusteDoFundoProprio = mapa.ajusteDoFundo.get(c);
+          break;
+        }
+        const h = mapa.fundoLiteral.get(c);
+        if (h !== undefined) {
+          hexDoFundoProprio = h;
           break;
         }
       }
@@ -466,9 +512,17 @@ export const corrigirParesDeCor = (
       classesDoEl,
       listaDoEl,
       fundoProprio,
+      hexDoFundoProprio,
       ajusteDoFundoProprio,
     );
-    if (!autoFechada) pilha.push({ tag: nome, fundo: fundoProprio, ajuste: ajusteDoFundoProprio });
+    if (!autoFechada) {
+      pilha.push({
+        tag: nome,
+        fundo: fundoProprio,
+        hex: hexDoFundoProprio,
+        ajuste: ajusteDoFundoProprio,
+      });
+    }
     return resultado;
   }
 
@@ -478,6 +532,7 @@ export const corrigirParesDeCor = (
     classes: string,
     lista: readonly string[],
     fundoProprio: string | null,
+    hexDoFundoProprio: string | null,
     ajusteDoFundoProprio: AjusteDeCor | undefined,
   ): string {
     if (classes === '') return tudo;
@@ -521,9 +576,15 @@ export const corrigirParesDeCor = (
     // O fundo é o próprio, quando ele declara um; senão, o do ancestral mais
     // próximo que declara. É onde o texto realmente senta.
     ajusteVigente = undefined;
-    const papelDoFundo = fundoProprio ?? fundoVigente();
-    const ajusteDoFundoUsado = fundoProprio !== null ? ajusteDoFundoProprio : ajusteVigente;
-    if (papelDoFundo === null || (papelDaTinta === null && hexDaTintaLiteral === null)) {
+    hexVigente = null;
+    const proprio = fundoProprio !== null || hexDoFundoProprio !== null;
+    const papelDoFundo = proprio ? fundoProprio : fundoVigente();
+    const ajusteDoFundoUsado = proprio ? ajusteDoFundoProprio : ajusteVigente;
+    const hexDoFundoUsado = proprio ? hexDoFundoProprio : hexVigente;
+    if (
+      (papelDoFundo === null && hexDoFundoUsado === null) ||
+      (papelDaTinta === null && hexDaTintaLiteral === null)
+    ) {
       return tudo;
     }
 
@@ -539,7 +600,10 @@ export const corrigirParesDeCor = (
       if (base === undefined || ajuste === undefined) return base;
       return aplicarAjuste(base, ajuste) ?? base;
     };
-    const hexFundo = pintado(papelDoFundo, ajusteDoFundoUsado);
+    const hexFundo =
+      papelDoFundo === null
+        ? (hexDoFundoUsado ?? undefined)
+        : pintado(papelDoFundo, ajusteDoFundoUsado);
     const hexTinta =
       papelDaTinta === null
         ? hexDaTintaLiteral
@@ -551,12 +615,12 @@ export const corrigirParesDeCor = (
     const razao = contrasteEntre(hexTinta, hexFundo);
     if (razao === null || razao >= piso) return tudo;
 
-    const nova = tintaQueSeLeSobre(papelDoFundo, tokens, piso);
+    const nova = tintaQueSeLeSobre(papelDoFundo, tokens, piso, hexFundo);
     if (nova === null || nova === papelDaTinta) return tudo;
 
     corrigidos.push({
       classes,
-      papelDoFundo,
+      papelDoFundo: papelDoFundo ?? `literal ${hexFundo}`,
       papelAntes: papelDaTinta ?? `literal ${hexDaTintaLiteral ?? ''}`,
       papelDepois: nova,
       razaoAntes: razao,

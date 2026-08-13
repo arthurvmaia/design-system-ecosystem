@@ -287,3 +287,29 @@ test('o par com fundo DERIVADO e corrigido pela cor pintada', () => {
   const r = corrigirParesDeCor('<div class="caixa"><p class="tinta">oi</p></div>', css, tokens);
   assert.equal(r.corrigidos.length, 1, `o par derivado tem de ser visto: ${r.html}`);
 });
+
+test('fundo LITERAL: bg-white/95 nao tem papel, e a tinta ia parar sobre ele', () => {
+  // O outro lado do mesmo buraco do par meio recolorido. `bg-white/95` e
+  // `bg-slate-50` nao pertencem a papel nenhum, entao a recoloracao nao os toca.
+  // A conferencia caia para o papel do ANCESTRAL — quase sempre o fundo escuro
+  // da pagina — e escolhia tinta CLARA, que ia parar sobre a superficie branca.
+  // Medido: 14 elementos com o conserto aplicado e ainda a 1,16:1.
+  const css =
+    ':where([data-ds-corpo="d"]):is(.painel){background-color:#ffffff}' +
+    ':where([data-ds-corpo="d"]):is(.titulo){color:var(--marca-heading, #fff)}';
+  const mapa = mapearClassesPorPapel(css);
+  assert.equal(mapa.fundo.get('painel'), undefined, 'branco nao tem papel');
+  assert.equal(mapa.fundoLiteral.get('painel'), '#ffffff', 'mas tem hex');
+
+  const r = corrigirParesDeCor(
+    '<div data-ds-corpo="d"><div class="painel"><h2 class="titulo">Oi</h2></div></div>',
+    css,
+    TOKENS,
+  );
+  assert.equal(r.corrigidos.length, 1, `o fundo literal tem de ser visto: ${r.html}`);
+  // A tinta escolhida precisa se ler sobre BRANCO, nao sobre a pagina escura.
+  const escolhido = /color:var\(--marca-([a-z-]+)\)/.exec(r.html)?.[1];
+  assert.ok(escolhido !== undefined, r.html);
+  const razao = contrasteEntre((TOKENS as Record<string, string>)[escolhido] ?? '', '#ffffff');
+  assert.ok(razao !== null && razao >= 3, `${escolhido} da ${razao?.toFixed(2)}:1 sobre branco`);
+});
