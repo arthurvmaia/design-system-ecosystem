@@ -8,6 +8,7 @@ import {
   primaryNav,
   secondaryNav,
 } from '@/lib/nav';
+import { ROTAS_DO_CLIENTE, perfilAtual } from '@/lib/perfil';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, X } from 'lucide-react';
 import type React from 'react';
@@ -49,6 +50,19 @@ const ITEM_ATIVO = 'ds-glass-static text-[var(--color-fg)]';
  * que a pessoa acabou de pedir é a falha clássica desse padrão.
  */
 export function Sidebar({ aberta, aoFechar }: { aberta: boolean; aoFechar: () => void }) {
+  /**
+   * O CLIENTE vê da parte de kits em diante — pedido do dono na escolha de
+   * perfil do portal. A fábrica (extrair, galeria, biblioteca, pendências,
+   * configurações) é do admin; mostrar tudo a quem veio escolher kit é ruído.
+   * Perfil é recorte de navegação: a credencial continua no portão.
+   */
+  const perfil = perfilAtual();
+  const itensDoFluxo =
+    perfil === 'cliente'
+      ? primaryNav.filter((i) => (ROTAS_DO_CLIENTE as readonly string[]).includes(i.to))
+      : primaryNav;
+  const itensAuxiliares = perfil === 'cliente' ? [] : secondaryNav;
+
   return (
     <>
       {/* O véu só existe na gaveta. Fora dela seria um clique morto na tela. */}
@@ -93,7 +107,7 @@ export function Sidebar({ aberta, aoFechar }: { aberta: boolean; aoFechar: () =>
           <div className="px-3">
             <SectionLabel>Fluxo</SectionLabel>
             <ul className="mt-3 flex flex-col gap-1">
-              {primaryNav.map((item, i) => (
+              {itensDoFluxo.map((item, i) => (
                 <li key={item.to}>
                   <NavItem item={item} passo={i + 1} aoEscolher={aoFechar} />
                 </li>
@@ -107,7 +121,7 @@ export function Sidebar({ aberta, aoFechar }: { aberta: boolean; aoFechar: () =>
           <div className="mx-3 mb-2 border-t" style={{ borderColor: 'var(--color-border)' }} />
           <SectionLabel>Auxiliar</SectionLabel>
           <ul className="mt-2 flex flex-col gap-1">
-            {secondaryNav.map((item) => (
+            {itensAuxiliares.map((item) => (
               <li key={item.to}>
                 {item.to === PENDENCIAS_ROUTE ? (
                   <PendenciasNavItem item={item} aoEscolher={aoFechar} />
@@ -119,9 +133,13 @@ export function Sidebar({ aberta, aoFechar }: { aberta: boolean; aoFechar: () =>
             <li>
               <VoltarAoPortal />
             </li>
-            <li>
-              <DesligarOrbis />
-            </li>
+            {/* Desligar a suíte inteira é operação de admin: o cliente volta
+                ao portal, não derruba a casa. */}
+            {perfil === 'admin' && (
+              <li>
+                <DesligarOrbis />
+              </li>
+            )}
           </ul>
         </div>
       </aside>

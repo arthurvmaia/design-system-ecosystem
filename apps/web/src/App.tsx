@@ -2,6 +2,7 @@ import { CriativosShell } from '@/components/CriativosShell';
 import { Intro } from '@/components/Intro';
 import { PortaoOrbis } from '@/components/PortaoOrbis';
 import { Shell } from '@/components/Shell';
+import { ROTA_INICIAL_DO_CLIENTE, capturarPerfilDaUrl, perfilAtual } from '@/lib/perfil';
 import { aplicarMovimento, usePreferencias } from '@/lib/preferencias';
 import { CriativosPage } from '@/routes/Criativos';
 import { ExtractPage } from '@/routes/Extract';
@@ -30,6 +31,11 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// O perfil chega na URL de ENTRADA (o portal pergunta antes de abrir) e tem de
+// ser capturado antes do primeiro render — o Router limpa a query na primeira
+// navegação e a escolha se perderia.
+capturarPerfilDaUrl();
 
 export function App() {
   const movimento = usePreferencias((s) => s.movimento);
@@ -71,7 +77,15 @@ export function App() {
                 <Route path="/criativos" element={<CriativosPage />} />
               </Route>
               <Route element={<Shell />}>
-                <Route index element={<Navigate to="/inicio" replace />} />
+                <Route
+                  index
+                  element={
+                    <Navigate
+                      to={perfilAtual() === 'cliente' ? ROTA_INICIAL_DO_CLIENTE : '/inicio'}
+                      replace
+                    />
+                  }
+                />
                 <Route path="inicio" element={<HomePage />} />
                 <Route path="/expresso" element={<ExpressoPage />} />
                 <Route path="/extract" element={<ExtractPage />} />

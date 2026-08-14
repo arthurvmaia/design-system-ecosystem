@@ -97,6 +97,15 @@ export function Portal() {
   const [sessao, setSessao] = useState<Sessao | null>(null);
   const [falhaDeServidor, setFalhaDeServidor] = useState(false);
   const [emConstrucao, setEmConstrucao] = useState<Porta | null>(null);
+  /**
+   * A SEGUNDA tela da frente de design system: cliente ou admin?
+   *
+   * Pedido do dono: quem clica no cartão não cai direto no app — escolhe o
+   * perfil antes. Admin entra no app inteiro; cliente entra "da parte de kits
+   * em diante": escolher kit, gerar site, acompanhar os sites dele. O app de
+   * design system lê o `?perfil=cliente` da URL e enxuga a navegação.
+   */
+  const [escolhendoPerfil, setEscolhendoPerfil] = useState<Porta | null>(null);
   // Publicado por túnel, cada frente tem endereço próprio. Sem túnel isto vem
   // vazio e os cartões usam as portas locais, que é o certo na máquina.
   const [publicos, setPublicos] = useState<EnderecosPublicos | null>(null);
@@ -153,6 +162,9 @@ export function Portal() {
               porta={porta}
               publicos={publicos}
               aoPedirEmBreve={() => setEmConstrucao(porta)}
+              aoPedirPerfil={
+                porta.id === 'design-system' ? () => setEscolhendoPerfil(porta) : undefined
+              }
             />
           ))}
         </div>
@@ -167,6 +179,13 @@ export function Portal() {
 
       {emConstrucao !== null && (
         <EmConstrucao porta={emConstrucao} aoFechar={() => setEmConstrucao(null)} />
+      )}
+      {escolhendoPerfil !== null && (
+        <EscolhaDePerfil
+          porta={escolhendoPerfil}
+          publicos={publicos}
+          aoFechar={() => setEscolhendoPerfil(null)}
+        />
       )}
     </main>
   );
@@ -236,7 +255,13 @@ function Cartao({
   porta,
   publicos,
   aoPedirEmBreve,
-}: { porta: Porta; publicos: EnderecosPublicos | null; aoPedirEmBreve: () => void }) {
+  aoPedirPerfil,
+}: {
+  porta: Porta;
+  publicos: EnderecosPublicos | null;
+  aoPedirEmBreve: () => void;
+  aoPedirPerfil?: () => void;
+}) {
   const indisponivel = porta.destino === null;
   return (
     <button
@@ -245,6 +270,11 @@ function Cartao({
       onClick={() => {
         if (porta.destino === null) {
           aoPedirEmBreve();
+          return;
+        }
+        // A frente com PERFIS pergunta antes de abrir: admin ou cliente.
+        if (aoPedirPerfil !== undefined) {
+          aoPedirPerfil();
           return;
         }
         // Mesma aba: o Voltar do navegador traz a pessoa de volta para cá.
@@ -365,6 +395,68 @@ function Portao({ sessao, aoEntrar }: { sessao: Sessao; aoEntrar: () => void }) 
  * já traz armadilha de foco, fechamento no Esc e inércia do resto da página —
  * três coisas que uma div só simula, e mal.
  */
+/**
+ * A segunda tela da frente de design system: quem está entrando?
+ *
+ * Pedido do dono, com a divisão dele: **admin** é quem opera a fábrica — o app
+ * inteiro, da captura à entrega. **Cliente** é quem veio escolher: só a parte
+ * de kits em diante (o kit, o site gerado, os sites dele). A escolha viaja na
+ * URL (`?perfil=cliente`) e quem enxuga a navegação é o próprio app — o portal
+ * continua sem saber nada dos apps, como o contrato dele manda.
+ *
+ * Isto é PERFIL, não credencial: a segurança continua no portão do servidor.
+ */
+function EscolhaDePerfil({
+  porta,
+  publicos,
+  aoFechar,
+}: { porta: Porta; publicos: EnderecosPublicos | null; aoFechar: () => void }) {
+  const dialogo = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const elemento = dialogo.current;
+    if (elemento !== null && !elemento.open) elemento.showModal();
+  }, []);
+
+  const entrar = (perfil: 'admin' | 'cliente') => {
+    if (porta.destino === null) return;
+    const base = enderecoDe(porta.destino, publicos);
+    window.location.href = perfil === 'cliente' ? `${base}/?perfil=cliente` : base;
+  };
+
+  return (
+    <dialog
+      ref={dialogo}
+      className="modal"
+      aria-labelledby="perfil-titulo"
+      onClose={aoFechar}
+      onMouseDown={(evento) => {
+        if (evento.target === dialogo.current) aoFechar();
+      }}
+    >
+      <div className="modal-caixa">
+        <Mascote tamanho={56} alt="" />
+        <span className="porta-marca">{porta.marca}</span>
+        <h2 className="modal-titulo" id="perfil-titulo">
+          Quem está entrando, senhor?
+        </h2>
+        <p className="portal-fala">
+          O admin opera a fábrica inteira. O cliente entra direto na parte dele: escolher o kit,
+          gerar o site e acompanhar o que já saiu.
+        </p>
+        <div className="perfil-opcoes">
+          <button type="button" className="portao-btn" onClick={() => entrar('admin')}>
+            Admin
+          </button>
+          <button type="button" className="portao-btn" onClick={() => entrar('cliente')}>
+            Cliente
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 function EmConstrucao({ porta, aoFechar }: { porta: Porta; aoFechar: () => void }) {
   const dialogo = useRef<HTMLDialogElement>(null);
 
