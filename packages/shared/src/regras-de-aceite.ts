@@ -838,6 +838,28 @@ export const conferirSiteNoNavegador = (m: SiteNoNavegador): ResultadoDeAceite =
    */
   const total = m.alturaTotal;
   const util = m.alturaUtil;
+  /**
+   * "Não verifiquei" é DITO, e não omitido — a abstenção calada era um buraco.
+   *
+   * A medida devolve `alturaTotal: 0` quando a página não tem seção nenhuma
+   * para medir (é o caso de qualquer página que não seja site composto por
+   * este motor). A regra se abstinha corretamente, mas em SILÊNCIO: sem
+   * veredito, a lista da conferência saía com uma regra a menos e quem lia não
+   * tinha como distinguir "passou" de "ninguém mediu".
+   *
+   * É o mesmo defeito que o portão de fidelidade evita ao sair 2 em vez de 0
+   * quando não dá para verificar. Dizer que não mediu custa uma linha; deixar
+   * de dizer custa a confiança na lista inteira.
+   */
+  if (total !== undefined && util !== undefined && total <= 0) {
+    v.push({
+      codigo: 'S20',
+      titulo: 'A página não é mais alta que o conteúdo dela',
+      estado: 'pendente',
+      motivo:
+        'não verifiquei: esta página não tem seção para medir — a regra vale para site composto por este motor.',
+    });
+  }
   if (total !== undefined && util !== undefined && total > 0) {
     const fracao = util / total;
     v.push(

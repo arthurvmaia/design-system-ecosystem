@@ -335,6 +335,16 @@ body {
 .portao-campo {
   flex: 1;
   min-width: 0;
+  /*
+   * `min-height` porque `height` NAO segura quando o eixo vira vertical.
+   *
+   * No celular o formulario do portao empilha, e aí `flex: 1` (que e
+   * `flex-basis: 0%`) passa a mandar no eixo principal — que agora e a altura —
+   * e atropela o `height`. O campo chegava com 21px, e a regra S15 da nossa
+   * propria regua reprovou o campo de entrada do portal. `min-height` e piso
+   * nos dois eixos, e nao depende de qual deles e o principal.
+   */
+  min-height: 44px;
   height: 44px;
   padding: 0 14px;
   border: 1px solid var(--borda-viva);

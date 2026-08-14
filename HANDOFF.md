@@ -43,6 +43,23 @@
 >   a opacidade: classe presa em `translateY(40px) scale(.95)` deixava um botão
 >   com 42px onde o CSS mandava 44, e a S15 reprovava o alvo errado.
 >
+> ### ⏸ GATE EM VOO — os três auditores morreram no limite (volta 15h)
+>
+> Auditando o diff NÃO COMMITADO de `apps/portal/src/portal.css` e
+> `scripts/conferir-site.ts`. Preflight passou (typecheck, lint, sem padrão de
+> credencial; suíte com a única falha pré-existente do acervo). As três lentes
+> — adversarial, usuário-zero e convenção — caíram por limite de sessão antes
+> de emitir parecer.
+>
+> **Ao voltar:** ou relançar as três (prompts na seção 5 do skill `gate`, faixa
+> VAI SAIR, lente extra CONVENÇÃO porque a peça entra em sistema existente), ou
+> aceitar o parecer degradado que eu emiti em sequência — ele está em
+> `scripts/_auditoria/` e declara o isolamento degradado no cabeçalho.
+> O diff auditado está em `%TEMP%/gate-diff.txt`.
+>
+> Servidor (8787) e portal (4000) precisam estar no ar para a lente
+> usuário-zero: `pnpm --filter @ds/server dev` e `pnpm --filter @ds/portal dev`.
+>
 > ### A fila TRAVOU nos quatro últimos, e não é defeito
 >
 > Café da Estação, asteric, Navalha & Cia e Ourivés (cada um duplicado) são

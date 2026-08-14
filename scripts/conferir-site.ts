@@ -660,7 +660,23 @@ const MEDIR = `() => {
   let alturaTotal = 0;
   let alturaUtil = 0;
   {
-    alturaTotal = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    /*
+      Pagina SEM secao nao da para verificar, e dizer 0% seria mentir.
+
+      Tudo o que esta medida conta vive dentro de [data-secao] — e a marcacao
+      dos sites que este motor compoe. Apontada para uma pagina que nao nasceu
+      aqui (o portal, o proprio app), ela nao acha no de texto nenhum e devolve
+      0%: a regra reprovava por vazio uma tela cheia. Numero identico nos dois
+      apps foi o que denunciou o metodo.
+
+      alturaTotal em zero e como esta medida diz "nao verifiquei": a regra ja
+      se abstem nesse caso, em vez de reprovar. Reprovar o que nao se mediu e o
+      mesmo defeito da regra alimentada por constante, do avesso.
+    */
+    const temSecao = document.querySelectorAll('[data-secao]').length > 0;
+    alturaTotal = temSecao
+      ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+      : 0;
     /*
       Somar a altura de cada elemento CONTA DUAS VEZES quem esta dentro de quem:
       um <li> dentro de um <p> dentro de um cartao soma tres. A primeira versao
