@@ -1,10 +1,104 @@
 # HANDOFF — Orbis · Criação de lojas Shopify
 
-> Documento de passagem de trabalho. Última atualização: **2026-08-07
-> (programa de fases 0-10: navegação, previews, catálogo Google Fonts,
-> inspetor visual e edição de cores)**. Mora em `orbis-lojas-shopify/`,
-> dentro do repositório `design-system-ecosystem`. Sessões conduzidas com
-> Claude no Claude Code.
+> Documento de passagem de trabalho. Última atualização: **2026-08-14
+> (limpeza do catálogo, interação da prévia e cópia atualizada do
+> repositório)**. Mora em `orbis-lojas-shopify/`, dentro do repositório
+> `design-system-ecosystem`. Sessões conduzidas com Claude no Claude Code.
+
+---
+
+## 🔄 RETOMADA — 2026-08-14
+
+### Onde abrir a próxima sessão
+
+**`C:\Users\rick3\Desktop\design-system-ecosystem-atualizado`** — é a cópia
+feita hoje, já em dia com o GitHub. A pasta antiga
+(`Desktop\design-system-ecosystem`) continua no disco, intacta, mas **está 171
+commits atrás**: não trabalhe nela.
+
+Estado do Git na cópia:
+
+| | |
+|---|---|
+| `origin` | `github.com/arthurvmaia/design-system-ecosystem` |
+| commits do GitHub que faltam | **0** (sincronizada) |
+| commits locais nunca enviados | **46** — toda a frente Shopify |
+| árvore de `orbis-lojas-shopify` | `13e9c6fd…` (idêntica antes e depois do merge) |
+
+**Nada foi enviado para o GitHub.** O `push` é decisão do dono, porque publica
+o código.
+
+### O que foi FEITO nesta rodada (três commits)
+
+1. **`e521030` — tema importado não recebe produto nem coleção inventados.**
+   Todo tema aparecia com os mesmos produtos e as mesmas coleções, porque o
+   render injetava um catálogo fixo em qualquer tema. Agora a vitrine só
+   existe quando há nicho: `lojaDoNicho(nicheId)` devolve `LOJA_VAZIA` sem
+   nicho, e `demoCollection` deixou de emprestar a foto do primeiro produto
+   (era ela que repetia a mesma imagem em todos os cartões de coleção).
+
+2. **`48c6f76` — catálogo dos nichos vira a única fonte de mercadoria.**
+   `lib/catalogo-loja.ts` (os 10 produtos da Fiordi) foi apagado; sobrou
+   `lib/catalogo-nichos.ts` (10 nichos × 10 produtos reais da AliExpress).
+   Com o array vazio, a simulação de reserva ainda desreferenciava
+   `PRODUCTS[0]` e quebrava a página de produto — `Runtime.product` passou a
+   aceitar nulo e a seção diz o vazio por extenso.
+   Teste novo: `tests/preview-sem-catalogo.test.mjs` **renderiza** o
+   componente (é o único jeito de pegar essa classe de quebra; reprova com o
+   código anterior).
+
+3. **`f754957` — menu, busca e carrinho respondem na prévia.** Duas causas:
+   - o modo `selecionar` engolia todo clique e só abria exceção para uma lista
+     curta (fechar, comprar, carrinho). Menu de três barras, busca, accordion
+     e qualquer `summary` morriam ali. Agora o modo de seleção **avisa** o
+     editor e deixa o clique seguir; continua travado só o que sai do lugar
+     (link externo e envio de formulário).
+   - `alvosDaGaveta()` exigia que a gaveta estivesse dentro de uma seção. No
+     Dawn ela vem de um snippet do layout, filha direta do `body` — como na
+     loja real —, então a lista saía vazia e nada abria. A exigência caiu, e o
+     interceptador do ícone só engole o clique quando há gaveta para abrir.
+
+Conferido no editor, com o Dawn: menu abre, busca abre, gaveta abre com a
+seção atualizada, comprar enche o carrinho e a árvore ainda acompanha o clique
+de seleção. **Lint limpo, 87/87 testes.**
+
+### O que está EM VOO
+
+Nada em execução. A rodada fechou com tudo commitado e verde.
+
+### O que vem A SEGUIR (na ordem)
+
+1. **Subir um tema gerado para a Shopify e publicar.** É o único elo que ainda
+   não foi verificado ponta a ponta depois das correções de rejeição
+   (data URI em `image_picker`, `richtext` sem tag de bloco, template de
+   mercado). Gerar uma loja pela área do cliente, importar o `.zip`, publicar
+   e conferir em *Editar código → templates* que o `templates/index.json`
+   está lá. **Isso é do dono: eu não entro na conta da Shopify.**
+2. **Conferir na tela os três controles corrigidos** (menu, busca, carrinho).
+   O painel de navegador que eu uso não desenha quadros, e transição de CSS
+   fica congelada nele — verifiquei o estado (classe `active`, corpo travado,
+   conteúdo chegando, X fechando), não a animação.
+3. **Decidir o `push`** dos 46 commits.
+
+### Armadilhas conhecidas (custaram tempo)
+
+- **Crase dentro de template literal.** O bridge do preview é uma string com
+  crases em `lib/theme-render.ts`. Escrever `` `<summary>` `` num comentário
+  ali fecha a string e o endpoint passa a devolver 500 com o próprio script
+  como mensagem de erro. Aconteceu duas vezes hoje.
+- **O painel de navegador não compõe quadros.** `IntersectionObserver`,
+  `loading="lazy"` e transições de CSS não avançam. Teste estado, não
+  aparência; se precisar ver, desligue a transição.
+- **Tema arquivado some da lista.** O botão de remover tema do estúdio marca
+  `status='archived'` e o `bootstrap` só devolve `published`. Uma área de
+  Temas vazia pode ser isso, e não defeito de render.
+- **4 testes do monorepo reprovam** (`scripts/acervo-regressao.test.ts`):
+  é **dado**, não código. O acervo desta máquina (8 sites em
+  `~/design-system-ecosystem/vault`) foi capturado pelo pipeline antigo e não
+  tem bundles nem `.orig.css`. Resolveria com `pnpm reextrair --todos`, que é
+  demorado e mexe no acervo — decisão do dono.
+
+---
 
 ## 🛟 Recuperação 2026-08-07 — navegação e miniatura da home real
 
