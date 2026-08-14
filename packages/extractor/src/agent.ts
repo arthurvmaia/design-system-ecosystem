@@ -77,12 +77,13 @@ ${opts.html}
 
   const totalUsage: AgentUsage = { inputTokens: 0, outputTokens: 0 };
 
-  // O Fable 5 pensa DENTRO do max_tokens e, em effort max, 16k truncava a
+  // O modelo pensa DENTRO do max_tokens e, em effort max, 16k truncava a
   // resposta no meio; 64k dá o respiro que a Anthropic recomenda para esse
-  // nível (o SDK estende o timeout sozinho em requisições grandes).
-  // Os classificadores de segurança do Fable 5 podem recusar uma requisição
-  // legítima (stop_reason 'refusal') — nesse caso a MESMA conversa cai para o
-  // modelo de fallback e fica nele até o fim do loop.
+  // nível (o SDK estende o timeout sozinho em requisições grandes). O padrão
+  // da extração é o Opus 5 em effort max (ver `getModels` no servidor).
+  // Os classificadores de segurança podem recusar uma requisição legítima
+  // (stop_reason 'refusal') — nesse caso a MESMA conversa cai para o modelo de
+  // fallback e fica nele até o fim do loop.
   const MODELO_FALLBACK = 'claude-opus-4-8';
   let model = opts.model;
   const chamar = () =>

@@ -322,3 +322,47 @@ test('os outros runtimes que desenham continuam pesando', () => {
   );
   assert.notEqual(d.type, 'componente-portatil');
 });
+
+test('movimento que é da PÁGINA não condena a peça a virar foto', () => {
+  // O caso medido: o cartão de gráfico do cogni. Oito observações temporais,
+  // todas com `domStable: true` e "pintura fora do DOM" — era o canvas de
+  // página inteira pintando ATRÁS. A observação foi atribuída à seção porque
+  // ela ocupa 60% da dobra. O cartão virou PNG por causa do fundo de outro, e o
+  // bundle anterior da mesma seção era portátil e trazia o gráfico inteiro.
+  const comum = {
+    movimentoMedido: true,
+    movimentoPorCss: false,
+    dependeDeJs: true,
+    estadosCapturados: 0,
+  } as const;
+
+  const semDistincao = classificarRepresentacao(ev(comum));
+  assert.equal(
+    semDistincao.type,
+    'referencia-visual',
+    'sem a distinção, congela — e deve congelar',
+  );
+
+  const comDistincao = classificarRepresentacao(ev({ ...comum, movimentoEhDaPagina: true }));
+  assert.equal(comDistincao.type, 'componente-portatil', 'o DOM e o CSS reproduzem a peça');
+  assert.ok(comDistincao.editable, 'e ela volta a ser editável');
+});
+
+test('movimento PRÓPRIO e inexplicado continua virando referência visual', () => {
+  // O outro lado da régua: a regra existe para o caso honesto, e ele continua
+  // valendo. Aqui o DOM se mexeu de verdade e ninguém sabe reproduzir.
+  const r = classificarRepresentacao(
+    ev({
+      movimentoMedido: true,
+      movimentoPorCss: false,
+      movimentoEhDaPagina: false,
+      dependeDeJs: true,
+      estadosCapturados: 0,
+    }),
+  );
+  assert.equal(r.type, 'referencia-visual');
+  assert.ok(
+    r.reasons.some((x) => x.includes('a reprodução não é garantida')),
+    'e o motivo continua dito',
+  );
+});

@@ -155,6 +155,55 @@ export const diffPng = (
   }
 };
 
+/** Recorta uma janela de uma imagem RGBA já decodificada. Coordenadas em px. */
+export const recortarImagem = (
+  img: ImagemRaw,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): ImagemRaw => {
+  const out = new Uint8Array(w * h * 4);
+  for (let linha = 0; linha < h; linha++) {
+    const origem = ((y + linha) * img.width + x) * 4;
+    out.set(img.data.subarray(origem, origem + w * 4), linha * w * 4);
+  }
+  return { width: w, height: h, channels: 4, data: out };
+};
+
+/**
+ * Procura o deslocamento em que a diferença é MENOR.
+ *
+ * Comparação pixel a pixel sem alinhamento não separa "o bundle está errado"
+ * de "o bundle está 3 px mais abaixo" — e em tira fina (frames de 80 px de
+ * altura no acervo) um deslocamento de nada altera quase todas as linhas.
+ * Aqui a base desliza sobre a imagem expandida e o deslocamento encontrado
+ * vira DADO ("a peça está 6 px mais baixa"), não ruído no delta.
+ *
+ * `origemX/origemY` é onde a janela sem deslocamento começa dentro de
+ * `expandida`. Pura: quem chama decide os offsets e paga o custo por eles.
+ */
+export const melhorJanela = (
+  base: ImagemRaw,
+  expandida: ImagemRaw,
+  origemX: number,
+  origemY: number,
+  offsets: ReadonlyArray<{ dx: number; dy: number }>,
+  opts: OpcoesDiff = {},
+): { delta: number; dx: number; dy: number } => {
+  let melhor = { delta: Number.POSITIVE_INFINITY, dx: 0, dy: 0 };
+  for (const { dx, dy } of offsets) {
+    const sx = origemX + dx;
+    const sy = origemY + dy;
+    if (sx < 0 || sy < 0) continue;
+    if (sx + base.width > expandida.width || sy + base.height > expandida.height) continue;
+    const janela = recortarImagem(expandida, sx, sy, base.width, base.height);
+    const d = diffImagens(base, janela, opts);
+    if (d.delta < melhor.delta) melhor = { delta: d.delta, dx, dy };
+  }
+  return melhor.delta === Number.POSITIVE_INFINITY ? { delta: 1, dx: 0, dy: 0 } : melhor;
+};
+
 /** Hash de bytes — dedup de frames equivalentes, sem guardar o frame duas vezes. */
 export const hashBytes = (bytes: Uint8Array): string =>
   createHash('sha256').update(bytes).digest('hex').slice(0, 20);

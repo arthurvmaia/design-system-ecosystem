@@ -582,6 +582,18 @@ export const PointerResponse = z.object({
   region: NormalizedBox.optional(),
   /** Elemento sob o ponteiro, quando havia um identificável. */
   fingerprint: ElementFingerprint.optional(),
+  /**
+   * O endereço (`data-dsx2`) do elemento no momento da sonda. Os endereços são
+   * estáveis dentro da captura, então é por ele que o motor preenche o
+   * fingerprint depois do mapa final. Ausente em capturas antigas.
+   */
+  ref: z.number().int().nonnegative().optional(),
+  /**
+   * O scroll da parada em que a resposta foi medida. `region` é relativa à
+   * viewport; sem o scroll, a intersecção com coordenadas de página atribuía
+   * TODO comportamento aos segmentos do topo (medido: 100% em 3 de 3 sites).
+   */
+  scrollY: z.number().nonnegative().optional(),
   /** Não há DOM interno (cena em canvas/WebGL). */
   domless: z.boolean().default(false),
   reactions: z.array(PointerReaction).default([]),
@@ -1049,6 +1061,19 @@ export type ValidationReport = z.infer<typeof ValidationReport>;
 export const VisualComparison = z.object({
   a: z.enum(['original', 'captura', 'bundle', 'preview']),
   b: z.enum(['original', 'captura', 'bundle', 'preview']),
+  /**
+   * O DONO da comparação: o hash do segmento comparado e a posição dele (o
+   * bundle mora em `seg_<position>`).
+   *
+   * Sem estes campos, a associação era pela ordem do array e exigia
+   * `comparações == segmentos com print` — condição medida FALSA em 7 de 7
+   * capturas do acervo (itens pulados por orçamento não deixam marca na
+   * lista). O resultado: 8 de 10 reprovações gravadas no manifesto e nenhuma
+   * chegando à tela. Opcionais porque o acervo antigo não os tem; captura nova
+   * sempre escreve os dois.
+   */
+  segmentHash: z.string().optional(),
+  position: z.number().int().nonnegative().optional(),
   /** Região comparada. Ausente = viewport inteira. */
   region: NormalizedBox.optional(),
   /** Natureza da região — decide o limiar. */
@@ -1060,6 +1085,12 @@ export const VisualComparison = z.object({
   ok: z.boolean(),
   /** Máscaras aplicadas. */
   masked: z.array(NormalizedBox).default([]),
+  /**
+   * Deslocamento (px) em que a MENOR diferença foi encontrada, quando a busca
+   * de alinhamento rodou e achou algo melhor que a posição crua. "A peça está
+   * 4 px mais baixa" é dado de enquadramento, não infidelidade.
+   */
+  offset: z.object({ x: z.number().int(), y: z.number().int() }).optional(),
 });
 export type VisualComparison = z.infer<typeof VisualComparison>;
 

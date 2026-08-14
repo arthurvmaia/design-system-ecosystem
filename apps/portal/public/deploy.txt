@@ -1,0 +1,4 @@
+deploy: 2026-08-11 12:09 -03
+
+Marcador do PB0.3 do runbook 9: prova que o push dispara deploy novo
+sozinho. Serve uma vez, e pode ser apagado depois sem efeito nenhum.

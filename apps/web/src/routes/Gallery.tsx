@@ -56,6 +56,7 @@ import {
   Play,
   Smartphone,
   Sparkles,
+  Square,
   Sun,
   Trash2,
   X,
@@ -184,6 +185,68 @@ function MarcaBadge({ marca }: { marca?: Recolorabilidade }) {
     >
       <Palette size={9} />
       {fixas ? 'cores fixas' : `marca ${pct(marca.taxa)}`}
+    </span>
+  );
+}
+
+/**
+ * O selo de MOVIMENTO: esta peça se mexe.
+ *
+ * A miniatura do card é um retrato parado, e é nele que a pessoa decide curtir.
+ * Uma peça com fade por scroll, parallax ou reveal chegava a essa decisão com a
+ * mesma cara de uma peça estática — o dono só descobria o movimento depois, no
+ * site gerado, e pediu para ver a animação ANTES de dar like.
+ *
+ * A medida vem do que a captura observou NESTA peça: comportamentos de rolagem
+ * associados a ela (`fidelity.scroll`) e interação de hover no pipeline.
+ *
+ * Uma tentativa anterior usou as flags do contrato do bundle
+ * (`temAnimacoes`/`temInteracoes`) e foi medida antes de virar tela: elas dão
+ * positivo em 65 de 65 peças, porque são calculadas sobre o CSS do SITE inteiro
+ * (todo site tem um `:hover` e um `animations.css`). Selo que aparece em tudo
+ * não informa nada. A evidência por segmento discrimina de verdade: 29 com
+ * rolagem e 46 com hover, de 154.
+ *
+ * Clicar no card abre o modal, que já demonstra o movimento sozinho — o selo é
+ * o convite que faltava.
+ */
+/**
+ * Que demonstração esta peça pede — ou nenhuma.
+ *
+ * A rolagem vem antes do hover quando a peça tem as duas: ela é o movimento que
+ * se vê sem fazer nada, e é o que a pessoa está tentando decidir se quer.
+ */
+type ModoDeDemo = 'scroll' | 'hover' | null;
+const demoDaPeca = (fidelity?: SegmentFidelity | null): ModoDeDemo => {
+  if ((fidelity?.scroll?.length ?? 0) > 0) return 'scroll';
+  const hover =
+    fidelity?.interactions?.some((i) => i.kind === 'hover') === true ||
+    fidelity?.pipeline?.some((p) => p.kind === 'hover') === true;
+  return hover ? 'hover' : null;
+};
+
+function MovimentoBadge({ fidelity }: { fidelity?: SegmentFidelity | null }) {
+  const modo = demoDaPeca(fidelity);
+  const rola = modo === 'scroll';
+  const hover = modo === 'hover';
+  if (!rola && !hover) return null;
+  const cor = 'var(--color-ion-3)';
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-none px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+      style={{
+        backgroundColor: 'color-mix(in srgb, var(--color-ion-3) 14%, transparent)',
+        color: cor,
+        border: '1px solid color-mix(in srgb, var(--color-ion-3) 36%, transparent)',
+      }}
+      title={
+        rola
+          ? 'Esta peça se move com a rolagem (fade, parallax ou reveal). Toque no play da miniatura para ver.'
+          : 'Esta peça reage ao mouse. Toque no play da miniatura para ver.'
+      }
+    >
+      <Play size={9} />
+      {rola ? 'animação' : 'interativa'}
     </span>
   );
 }
@@ -824,6 +887,26 @@ function SegmentsView({
   const rejeitados = useQuery({ queryKey: ['rejeitados'], queryFn: api.listRejeitados });
   const rejDoDs = rejeitados.data?.grupos.find((g) => g.designSystemId === dsId)?.itens.length ?? 0;
 
+  // A stack detectada, sem os palpites: confiança baixa é "vi o script", não
+  // "medi o comportamento". Nomes deduplicados porque o detector às vezes
+  // escreve a mesma tecnologia por dois caminhos (medida e provável).
+  const stackDoDs = useMemo(() => {
+    const cru = dsInfo.data?.item.stackJson;
+    if (cru == null || cru === '') return [];
+    try {
+      const lista = JSON.parse(cru) as Array<{ name?: string; confidence?: string }>;
+      return [
+        ...new Set(
+          lista
+            .filter((s) => typeof s.name === 'string' && s.confidence !== 'baixa')
+            .map((s) => (s.name as string).replace(/ \(provável\)$/, '')),
+        ),
+      ].slice(0, 6);
+    } catch {
+      return [];
+    }
+  }, [dsInfo.data?.item.stackJson]);
+
   const qc = useQueryClient();
   const classify = useMutation({
     mutationFn: () => api.classify(dsId),
@@ -1034,6 +1117,24 @@ function SegmentsView({
           >
             {dsInfo.data?.item.name ?? '...'}
           </h1>
+          {/* A stack que a captura detectou por comportamento observado. O dado
+              sempre existiu no manifesto; o que faltava era o fio até o banco e
+              daqui até a tela. Só as detecções com confiança de verdade: as de
+              confiança baixa são palpite de script visto, não medição. */}
+          {stackDoDs.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {stackDoDs.map((nome) => (
+                <span
+                  key={nome}
+                  className="ds-data rounded-sm border px-1.5 py-0.5 text-[9px]"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+                  title="Tecnologia detectada na captura, por comportamento observado"
+                >
+                  {nome}
+                </span>
+              ))}
+            </div>
+          )}
           {/* Leitura de instrumento: os números em mono, com o denominador à
               vista. "12 de 35" diz muito mais que "12 peças" quando um filtro
               está ligado. As de dentro contam à parte porque são de outra
@@ -1061,6 +1162,20 @@ function SegmentsView({
           {segments.data?.capturaParcial && (
             <Aviso resumo="Não terminei esta captura dentro do tempo">
               <CapturaParcial parcial={segments.data.capturaParcial} dsId={dsId} />
+            </Aviso>
+          )}
+          {(segments.data?.limitacoesDaCaptura?.length ?? 0) > 0 && (
+            <Aviso
+              resumo={`O que não consegui medir nesta captura (${segments.data?.limitacoesDaCaptura?.length})`}
+            >
+              {/* O diagnóstico vem do motor, já escrito em português, com número
+                  e causa. Escondê-lo faria uma captura pela metade parecer
+                  inteira, que é exatamente a impressão que este bloco evita. */}
+              <ul className="flex list-disc flex-col gap-1.5 pl-4">
+                {(segments.data?.limitacoesDaCaptura ?? []).map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
             </Aviso>
           )}
           {(dsInfo.data?.assetsFaltando.length ?? 0) > 0 && (
@@ -1424,6 +1539,7 @@ function SegmentsView({
                       </span>
                       <FidelityBadge fidelity={s.fidelity} comparacao={s.comparacaoVisual} />
                       <MarcaBadge marca={s.marca} />
+                      <MovimentoBadge fidelity={s.fidelity} />
                     </div>
                   </div>
                 </div>
@@ -1502,6 +1618,9 @@ function SegmentCard({
   });
 
   const delay = index < 6 ? `ds-d${index + 1}` : '';
+  /** Que demo esta peça oferece, e se ela está rodando agora neste card. */
+  const modoDeDemo = demoDaPeca(segment.fidelity);
+  const [demoLigada, setDemoLigada] = useState<ModoDeDemo>(null);
 
   return (
     // `h-full` + coluna: todos os cards da linha terminam na mesma altura, e o
@@ -1558,13 +1677,66 @@ function SegmentCard({
                 </div>
               ) : (
                 <PreviewFrame
-                  src={previewSegmentUrl(segment.id)}
+                  src={
+                    demoLigada === 'scroll'
+                      ? previewSegmentScrollUrl(segment.id)
+                      : demoLigada === 'hover'
+                        ? previewSegmentHoverUrl(segment.id)
+                        : previewSegmentUrl(segment.id)
+                  }
                   title={segment.name}
                   ajuste="conter"
                 />
               )}
             </div>
           </button>
+          {/**
+           * O PLAY na miniatura — a demo onde a decisão acontece.
+           *
+           * O dono pediu "uma demo só para eu entender a animação para ver se
+           * vou dar like", e o selo de movimento já prometia isso. Só que a
+           * demonstração morava no modal: para saber se a peça se mexe era
+           * preciso abrir uma a uma. Curtir 50 peças assim é 50 idas e voltas.
+           *
+           * Fica DESLIGADA por padrão, e isso é decisão, não economia: a grade
+           * mostra dezenas de cards ao mesmo tempo, e dezenas de iframes
+           * animando juntos derrubam o navegador. Cada peça anima quando a
+           * pessoa pede, e uma de cada vez basta para decidir.
+           *
+           * Só aparece em peça que TEM movimento medido — botão de play em
+           * peça parada seria promessa falsa.
+           */}
+          {modoDeDemo !== null && !mostraRetrato && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDemoLigada((atual) => (atual === null ? modoDeDemo : null));
+              }}
+              title={
+                demoLigada !== null
+                  ? 'Parar a demonstração'
+                  : modoDeDemo === 'scroll'
+                    ? 'Ver o movimento na rolagem'
+                    : 'Ver a reação ao mouse'
+              }
+              aria-label={
+                demoLigada !== null
+                  ? `Parar a demonstração de ${segment.name}`
+                  : `Ver a demonstração de ${segment.name}`
+              }
+              className={cn(
+                'absolute top-2.5 right-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-md transition-opacity duration-200',
+                demoLigada !== null ? 'opacity-100' : 'opacity-70 group-hover:opacity-100',
+              )}
+              style={{
+                backgroundColor: demoLigada !== null ? 'var(--color-ion-3)' : 'rgba(0,0,0,0.55)',
+                color: demoLigada !== null ? 'var(--color-ink-0)' : 'var(--color-fg)',
+              }}
+            >
+              {demoLigada !== null ? <Square size={11} /> : <Play size={11} />}
+            </button>
+          )}
           {/* Altura reservada: a linha de peças é opcional, e sem reservar o
               espaço os títulos de uma mesma linha da grade ficavam em alturas
               diferentes. */}
@@ -1600,6 +1772,7 @@ function SegmentCard({
                 <span className="truncate">{CATEGORY_LABEL(segment.category)}</span>
                 <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
                 <MarcaBadge marca={segment.marca} />
+                <MovimentoBadge fidelity={segment.fidelity} />
                 <RolagemBadge ancoras={segment.ancoras} />
               </div>
               {subcomponentes > 0 && onAbrirPecas !== undefined && (
@@ -1895,6 +2068,7 @@ function SegmentCardFilho({
             <span className="shrink-0">{CATEGORY_LABEL(segment.category)}</span>
             <FidelityBadge fidelity={segment.fidelity} comparacao={segment.comparacaoVisual} />
             <MarcaBadge marca={segment.marca} />
+            <MovimentoBadge fidelity={segment.fidelity} />
             <RolagemBadge ancoras={segment.ancoras} />
             {nomeDoPai !== undefined && (
               <span
@@ -1988,8 +2162,15 @@ function SegmentDetail({
   const abreNoPrint =
     print !== undefined &&
     (segment.fidelity?.support === 'visual' || segment.category === 'background');
+  // Peça cuja NATUREZA é o movimento abre DEMONSTRANDO. "Aparecer conforme
+  // rola" no modo plano é o estado pré-reveal: uma caixa preta que parecia
+  // defeito. O mesmo princípio da referência visual, que já abre no replay.
+  const ehAnimacao =
+    (segment.kind === 'animation' || segment.category === 'interaction') &&
+    segment.fidelity?.support !== 'visual' &&
+    (segment.fidelity?.scroll?.length ?? 0) > 0;
   const [modo, setModo] = useState<'plano' | 'estados' | 'scroll' | 'print' | 'hover'>(
-    abreNoPrint ? 'print' : 'plano',
+    abreNoPrint ? 'print' : ehAnimacao ? 'scroll' : 'plano',
   );
   const temEstados = (segment.fidelity?.states?.length ?? 0) > 0;
   // Hover medido na captura: é o que justifica oferecer a demonstração.

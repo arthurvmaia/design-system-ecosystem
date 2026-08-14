@@ -156,3 +156,76 @@ test('protocol-relative (//host) resolve pelo protocolo da base', async () => {
   );
   assert.match(css('https://cdn.test/m.css', r, arquivos), /url\(\.\.\/image\//);
 });
+
+// ── O que a fase de assets pagava sem precisar ───────────────────────────────
+//
+// Medido no acervo real: 21 folhas declaravam 374 url() com 99 URLs únicas
+// (275 downloads redundantes da MESMA URL, um por vez), e 365 de 400 downloads
+// saíam por fallback HTTP. A fase gastava 38 s de um teto de 45 s baixando
+// subconjuntos de fonte que o render nunca pediu.
+
+test('a mesma URL citada em várias folhas é buscada UMA vez', async () => {
+  const { sink } = coletor();
+  let buscas = 0;
+  const base = fakeFetcher({
+    'https://cdn.test/a.css': { mime: 'text/css', body: '.a{background:url(img.png)}' },
+    'https://cdn.test/b.css': { mime: 'text/css', body: '.b{background:url(img.png)}' },
+    'https://cdn.test/img.png': { mime: 'image/png', body: 'PNG' },
+  });
+  const contando: AssetFetcher = async (url) => {
+    if (url.endsWith('img.png')) buscas++;
+    return base(url);
+  };
+  const r = await localizeCss(
+    ['https://cdn.test/a.css', 'https://cdn.test/b.css'],
+    contando,
+    sink,
+    LIMITS,
+  );
+  assert.equal(buscas, 1, 'o memo por URL segura a repetição ANTES do download');
+  assert.equal(r.cssMap.size, 2);
+});
+
+test('fonte que o navegador nunca pediu fica de fora, e o corte é CONTADO', async () => {
+  const { sink } = coletor();
+  const fetcher = fakeFetcher({
+    'https://cdn.test/f.css': {
+      mime: 'text/css',
+      body: '@font-face{src:url(usada.woff2)}@font-face{src:url(latin-ext.woff2)}',
+    },
+    'https://cdn.test/usada.woff2': { mime: 'font/woff2', body: 'F1' },
+    'https://cdn.test/latin-ext.woff2': { mime: 'font/woff2', body: 'F2' },
+  });
+  const r = await localizeCss(['https://cdn.test/f.css'], fetcher, sink, LIMITS, undefined, {
+    fonteFoiUsada: (u) => u.endsWith('usada.woff2'),
+  });
+  assert.equal(r.fontesPuladas, 1, 'o subconjunto não pedido é declarado, não escondido');
+  assert.ok(r.assets.some((a) => a.originalUrl.endsWith('usada.woff2')));
+  assert.ok(!r.assets.some((a) => a.originalUrl.endsWith('latin-ext.woff2')));
+});
+
+test('sem o predicado de uso, TODA fonte continua sendo baixada: compatibilidade', async () => {
+  const { sink } = coletor();
+  const fetcher = fakeFetcher({
+    'https://cdn.test/f.css': { mime: 'text/css', body: '@font-face{src:url(x.woff2)}' },
+    'https://cdn.test/x.woff2': { mime: 'font/woff2', body: 'F' },
+  });
+  const r = await localizeCss(['https://cdn.test/f.css'], fetcher, sink, LIMITS);
+  assert.equal(r.fontesPuladas, 0);
+  assert.ok(r.assets.some((a) => a.originalUrl.endsWith('x.woff2')));
+});
+
+test('imagem NÃO passa pelo filtro de fonte: background de estado não pedido continua vindo', async () => {
+  const { sink } = coletor();
+  const fetcher = fakeFetcher({
+    'https://cdn.test/i.css': { mime: 'text/css', body: '.hover{background:url(hover.png)}' },
+    'https://cdn.test/hover.png': { mime: 'image/png', body: 'P' },
+  });
+  const r = await localizeCss(['https://cdn.test/i.css'], fetcher, sink, LIMITS, undefined, {
+    fonteFoiUsada: () => false,
+  });
+  assert.ok(
+    r.assets.some((a) => a.originalUrl.endsWith('hover.png')),
+    'o filtro é de FONTE; imagem de outro estado pode nunca ter sido pedida e ainda ser necessária',
+  );
+});

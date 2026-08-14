@@ -52,6 +52,7 @@ import {
   vaultSegmentBundlesDir,
   vaultSourceDir,
 } from '@ds/shared';
+import { historicoDeFasesDoAcervo } from './historico-de-fases.js';
 
 /**
  * Relatório agregado da telemetria (regra 15): duração por fase, contadores e —
@@ -122,6 +123,10 @@ const capturarV2 = async (jobId: string, url: string): Promise<CapturaV2 | null>
     const captura = await capturarComV2(url, {
       dirCaptura,
       dirBundles,
+      // A reserva de orçamento das fases vem do CUSTO MEDIDO nas capturas que
+      // já estão no acervo (p95 por fase). Sem acervo, o motor cai na fração
+      // fixa. Medido: a diferença é de 150 a 210 s devolvidos ao percurso.
+      historicoDeFases: historicoDeFasesDoAcervo(),
       // A conferência de pixel de cada bundle contra o print da dobra. É aqui
       // que ela vale — uma extração por vez, com alguém olhando o resultado.
       // `DS_SEM_VERIFICACAO=1` desliga, para quem vai processar uma fila longa
@@ -131,8 +136,13 @@ const capturarV2 = async (jobId: string, url: string): Promise<CapturaV2 | null>
     });
     return { captura, dirCaptura, dirBundles, tmpBase };
   } catch (err) {
-    rmSync(tmpBase, { recursive: true, force: true });
+    // A coleta NÃO é apagada na falha: frames, assets e o que mais já desceu
+    // ficam em .tmp para autópsia (a proxima extração do mesmo job sobrescreve
+    // sozinha). Apagar transformava qualquer erro tardio em perda total de
+    // minutos de navegador — era o "tudo ou nada" da auditoria.
+    console.log(`  A coleta parcial ficou em ${tmpBase} para inspeção.`);
     if (err instanceof PlaywrightIndisponivel) {
+      rmSync(tmpBase, { recursive: true, force: true });
       console.log('  Playwright indisponível — caindo para o motor V1 (fetch estático).');
       console.log('  Para a captura completa, instale uma vez:');
       console.log('    pnpm --filter @ds/explorer exec playwright install chromium');

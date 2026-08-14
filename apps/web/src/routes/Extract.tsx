@@ -5,6 +5,7 @@ import { PrecisaDaSenhaDeAcao, type QueueJobRef, type TaskRecord, api } from '@/
 import { cn } from '@/lib/cn';
 import { TRABALHANDO, saudacaoCompleta } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
+import { useTrabalho } from '@/lib/trabalho';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Link as LinkIcon, MousePointerClick, UploadCloud } from 'lucide-react';
 import { type ChangeEvent, useState } from 'react';
@@ -39,6 +40,7 @@ export function ExtractPage() {
   const [url, setUrl] = useState('');
   const [urlName, setUrlName] = useState('');
   const [htmlFile, setHtmlFile] = useState<{ name: string; content: string } | null>(null);
+  const { acompanhar } = useTrabalho();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [queuedJob, setQueuedJob] = useState<QueueJobRef | null>(null);
 
@@ -104,6 +106,7 @@ export function ExtractPage() {
       if ('task' in res) {
         setQueuedJob(null);
         setActiveTaskId(res.task.id);
+        acompanhar(res.task.id, 'Capturando o site');
         qc.invalidateQueries({ queryKey: ['tasks'] });
         return;
       }
@@ -270,7 +273,7 @@ export function ExtractPage() {
 
       {isQueueMode && (
         <div className="mt-8">
-          <QueuePanel />
+          <QueuePanel escopo="extracao" />
         </div>
       )}
 

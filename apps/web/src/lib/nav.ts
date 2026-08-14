@@ -9,6 +9,7 @@ import {
   Settings,
   UploadCloud,
   Wand2,
+  Zap,
 } from 'lucide-react';
 
 /**
@@ -34,6 +35,12 @@ export type NavItemDef = {
  */
 export const primaryNav: NavItemDef[] = [
   { to: '/inicio', label: 'Início', icon: Home, description: 'O que este app faz' },
+  {
+    to: '/expresso',
+    label: 'Via expressa',
+    icon: Zap,
+    description: 'Um clique: kit, marca e site',
+  },
   { to: '/extract', label: 'Extrair', icon: UploadCloud, description: 'Nova extração' },
   { to: '/gallery', label: 'Galeria', icon: Compass, description: 'Triagem das capturas' },
   { to: '/library', label: 'Biblioteca', icon: Library, description: 'As peças que você curtiu' },

@@ -30,6 +30,7 @@ const fp = (over: {
   classes?: string[];
   text?: string;
   siblingIndex?: number;
+  cursor?: string;
 }) =>
   montarFingerprint({
     tag: over.tag ?? 'div',
@@ -43,6 +44,7 @@ const fp = (over: {
     siblingIndex: over.siblingIndex ?? 0,
     structuralSignature: '',
     listeners: [],
+    ...(over.cursor !== undefined ? { cursor: over.cursor } : {}),
   });
 
 const node = (
@@ -232,6 +234,98 @@ test('vocabulário de id/classe é o ÚLTIMO recurso, não o primeiro', () => {
 test('papel semântico vence tudo', () => {
   const n = node({ fingerprint: fp({ tag: 'footer', id: 'pricing' }), role: 'footer' });
   assert.equal(inferirCategoria(n, contarSinais(''), [], false).categoria, 'footer');
+});
+
+// ── Os quatro papéis que nasciam mortos no pega-tudo ────────────────────────
+
+/**
+ * Depoimento, faixa de números, nuvem de logos e linha do tempo SÃO itens
+ * repetidos: os quatro batiam em `itensRepetidos >= 2 → card` antes de qualquer
+ * regra própria existir. Medido no acervo: as quatro categorias em ZERO entre
+ * 1389 segmentos, enquanto `card+gallery+feature` somavam 683.
+ *
+ * O HTML de cada caso é o mínimo que o acervo mostrou. Sem os ramos novos,
+ * cada um destes testes devolve a categoria citada no `assert` de regressão.
+ */
+
+/** Um nó neutro: sem id nem classe que sirvam de pista. */
+const neutro = () => node({ fingerprint: fp({ tag: 'div', id: 'section-3' }) });
+
+const repetir = (item: string, n: number): string => `<div>${item.repeat(n)}</div>`;
+
+test('grade de cartões com citação é DEPOIMENTO, não card', () => {
+  const html = repetir(
+    '<div class="depo rounded-xl p-6"><blockquote>Mudou o nosso jeito de trabalhar.</blockquote><p>Ana</p></div>',
+    3,
+  );
+  const s = contarSinais(html);
+  assert.equal(s.citacoes, 3);
+  const r = inferirCategoria(neutro(), s, [], false);
+  assert.equal(r.categoria, 'testimonial', 'o pega-tudo devolvia "card"');
+  assert.ok(r.evidencia.includes('citações'));
+});
+
+test('itens cujo título é um número com unidade são FAIXA DE NÚMEROS, não feature', () => {
+  const html = repetir('<div class="num flex flex-col"><h3>+250%</h3><p>de aumento</p></div>', 4);
+  const s = contarSinais(html);
+  assert.equal(s.numerosDestacados, 4);
+  const r = inferirCategoria(neutro(), s, [], false);
+  assert.equal(r.categoria, 'stats', 'com 4 títulos o ramo de "feature" vencia');
+  assert.ok(r.evidencia.includes('números com unidade'));
+});
+
+test('imagens repetidas sem rótulo nenhum são NUVEM DE LOGOS, não galeria', () => {
+  const html = repetir(
+    '<div class="logo grayscale opacity-60"><img src="a.svg" alt="Cliente"></div>',
+    6,
+  );
+  const s = contarSinais(html);
+  assert.equal(s.imagensSemTexto, 6, 'o `alt` não é rótulo lido na página');
+  const r = inferirCategoria(neutro(), s, [], false);
+  assert.equal(r.categoria, 'logo-cloud', 'o ramo de "gallery" pegava antes');
+});
+
+test('itens marcados com etapa são LINHA DO TEMPO, não feature', () => {
+  const html = repetir(
+    '<div class="timeline-step relative"><h4>Descoberta</h4><p>Entendemos o problema.</p></div>',
+    4,
+  );
+  const s = contarSinais(html);
+  assert.equal(s.marcosDeEtapa, 4);
+  assert.equal(inferirCategoria(neutro(), s, [], false).categoria, 'timeline');
+});
+
+/**
+ * O par de não-regressão. Sem ele o conserto acima vira o defeito oposto: uma
+ * grade de recursos virando "faixa de números" porque tem um "3" no título, ou
+ * uma galeria com legenda virando nuvem de logos.
+ */
+test('grade com título e parágrafo continua FEATURE', () => {
+  const html = repetir(
+    '<div class="card rounded-xl p-6"><h3>Rápido</h3><p>Entrega em minutos, sem espera.</p></div>',
+    3,
+  );
+  assert.equal(inferirCategoria(neutro(), contarSinais(html), [], false).categoria, 'feature');
+});
+
+test('grade de imagem COM legenda continua GALERIA', () => {
+  const html = repetir(
+    '<div class="foto overflow-hidden rounded"><img src="a.jpg"><p>Casa Ipê</p></div>',
+    4,
+  );
+  const s = contarSinais(html);
+  assert.equal(s.imagensSemTexto, 0, 'cada imagem tem legenda logo abaixo');
+  assert.equal(inferirCategoria(neutro(), s, [], false).categoria, 'gallery');
+});
+
+test('o vocabulário do id é consultado ANTES do pega-tudo "card"', () => {
+  // Quatro itens repetidos sem sinal de conteúdo nenhum: o pega-tudo devolvia
+  // `card` e a pista `faq` do id jamais era alcançada.
+  const html = repetir('<div class="item border-b py-4">Como funciona</div>', 4);
+  const n = node({ fingerprint: fp({ tag: 'div', id: 'faq-lista' }) });
+  const r = inferirCategoria(n, contarSinais(html), [], false);
+  assert.equal(r.categoria, 'faq');
+  assert.equal(r.evidencia, 'vocabulário:faq');
 });
 
 // ── Validação: o antídoto do card preto ─────────────────────────────────────
@@ -932,14 +1026,27 @@ test('camada absoluta que não encosta na dobra fica de fora', () => {
   assert.deepEqual(atras, [], 'levar um blob que fica 2km acima seria ruído, não fidelidade');
 });
 
-test('camada absoluta que intersecta a dobra entra', () => {
-  const atras = camadasQuePassamAtras({
+test('camada absoluta entra quando a dobra está CONTIDA nela, não quando só encosta', () => {
+  // A semântica antiga (interseção > 0) colava o fundo do hero atrás do nav:
+  // medido no acervo, o nav recebia camada 7 a 58x mais alta em 7 de 7 sites.
+  // Agora a dobra precisa estar dentro da camada (contido >= 0,72).
+  const dentro = camadasQuePassamAtras({
     no: dobraEm(800),
     camadas: { comRuntime: [], soCss: ['blob'] },
+    // A camada cobre a dobra inteira (400..4400 numa dobra 800..1700).
+    visualLayers: [camadaCom('blob', { pageBox: { x: 0, y: 400, w: 1440, h: 4000 } })],
+    htmlPorHash: new Map([['blob', '<div class="blob"></div>']]),
+  });
+  assert.deepEqual(dentro, ['blob']);
+
+  const soEncosta = camadasQuePassamAtras({
+    no: dobraEm(800),
+    camadas: { comRuntime: [], soCss: ['blob'] },
+    // Termina em 1300: pega só a metade de cima da dobra. Encostar não basta.
     visualLayers: [camadaCom('blob', { pageBox: { x: 0, y: 400, w: 1440, h: 900 } })],
     htmlPorHash: new Map([['blob', '<div class="blob"></div>']]),
   });
-  assert.deepEqual(atras, ['blob']);
+  assert.deepEqual(soEncosta, []);
 });
 
 test('camada sem HTML capturado não entra: não há o que materializar', () => {
@@ -1163,5 +1270,199 @@ test('quando o CSS compilado NÃO veio, o fundo também diz isso', () => {
   assert.ok(fundo);
   assert.ok(
     fundo.representation.limitations.some((l) => l.includes('o CSS resultante não foi capturado')),
+  );
+});
+
+// ── Fase 3: o corte que apagava heros e duplicava cabeçalhos ────────────────
+
+test('o embrulho é PROPORCIONAL: um hero com texto próprio pequeno mas relevante fica', () => {
+  // O caso real: o <header> de 900 px do luxury-real-estate, com a foto e o
+  // h1, tinha textoProprio 22 e o corte absoluto de 24 o apagou calado — o
+  // site ficou sem hero. Com 22 de 180 (12%), ele contribui de verdade.
+  const header = fp({ tag: 'header', id: 'hero' });
+  const navDentro = fp({ tag: 'nav' });
+  const secoes = escolherSecoes([
+    node({
+      fingerprint: header,
+      role: 'header',
+      ownText: 'Viva o extraordinário',
+      subtreeTextLength: 180,
+    }),
+    node({
+      fingerprint: navDentro,
+      role: 'nav',
+      parent: header.hash,
+      subtreeTextLength: 158,
+      areaShare: 0.014,
+      pageBox: { x: 0, y: 0, w: 1440, h: 80 },
+    }),
+  ]);
+  assert.ok(
+    secoes.some((s) => s.hash === header.hash),
+    'o hero de 900 px não pode sumir por uma constante de 24 caracteres',
+  );
+});
+
+test('cabeçalho que é SÓ a caixa do nav é descartado, e o descarte é REGISTRADO', () => {
+  // O outro lado do mesmo defeito: em antigravity, 98 dos 118 caracteres do
+  // header viajavam DUAS vezes (header + nav) porque o nav pequeno não contava
+  // como descendente. Agora landmark conta, o header vira embrulho, e o
+  // descarte sai com motivo em vez de sumir mudo.
+  const header = fp({ tag: 'header' });
+  const navDentro = fp({ tag: 'nav' });
+  const descartes: Array<{ node: StructuralNode; motivo: string }> = [];
+  const secoes = escolherSecoes(
+    [
+      node({ fingerprint: header, role: 'header', ownText: '', subtreeTextLength: 118 }),
+      node({
+        fingerprint: navDentro,
+        role: 'nav',
+        parent: header.hash,
+        subtreeTextLength: 116,
+        areaShare: 0.014,
+        pageBox: { x: 0, y: 0, w: 1440, h: 80 },
+      }),
+    ],
+    descartes,
+  );
+  assert.deepEqual(
+    secoes.map((s) => s.hash),
+    [navDentro.hash],
+    'só o nav: o header era a caixa dele',
+  );
+  assert.equal(descartes.length, 1);
+  assert.equal(descartes[0]?.node.fingerprint.hash, header.hash);
+  assert.ok(descartes[0]?.motivo.includes('caixa'), 'o motivo explica, não só carimba');
+});
+
+test('o <body> com texto solto NÃO vira peça: proporção pega o sentido inverso', () => {
+  // Medido no acervo: o <body> inteiro (23,8 KB, nav + 8 seções + footer) foi
+  // apresentado como "pricing: Planos com hover magnético" porque o texto
+  // solto fora das filhas passava do corte absoluto.
+  const body = fp({ tag: 'div', classes: ['page'] });
+  const filha1 = fp({ tag: 'section', id: 's1' });
+  const filha2 = fp({ tag: 'section', id: 's2' });
+  const descartes: Array<{ node: StructuralNode; motivo: string }> = [];
+  const secoes = escolherSecoes(
+    [
+      node({ fingerprint: body, role: 'section', ownText: '', subtreeTextLength: 8000 }),
+      node({
+        fingerprint: filha1,
+        role: 'section',
+        parent: body.hash,
+        subtreeTextLength: 4000,
+        pageBox: { x: 0, y: 0, w: 1440, h: 2000 },
+      }),
+      node({
+        fingerprint: filha2,
+        role: 'section',
+        parent: body.hash,
+        subtreeTextLength: 3900,
+        pageBox: { x: 0, y: 2000, w: 1440, h: 2000 },
+      }),
+    ],
+    descartes,
+  );
+  // 100 caracteres soltos de 8000 (1,25%): é a caixa, não uma peça.
+  assert.ok(!secoes.some((s) => s.hash === body.hash));
+  assert.equal(descartes.length, 1);
+});
+
+test('o texto VISÍVEL não classifica: rodapé com "Sobre" não é equipe', () => {
+  // O bloco de links do rodapé do Google virou "team: Equipe" porque a pista
+  // /sobre|about/ casava com o TEXTO. Palavra que o usuário lê é conteúdo.
+  const rodape = node({
+    fingerprint: fp({ tag: 'div', classes: ['footer-links'], text: 'Sobre o Google Produtos' }),
+    role: 'unknown',
+  });
+  const sinais = {
+    ...contarSinais(''),
+    texto: 'Sobre o Google Produtos Privacidade Termos',
+    acoes: 1,
+  };
+  const r = inferirCategoria(rodape, sinais, [], false);
+  assert.notEqual(r.categoria, 'team');
+  // Mas classe de estrutura continua valendo.
+  const comClasse = node({
+    fingerprint: fp({ tag: 'div', classes: ['team-grid'] }),
+    role: 'unknown',
+  });
+  assert.equal(inferirCategoria(comClasse, sinais, [], false).categoria, 'team');
+});
+
+test('ponteiro personalizado vira peça própria quando a página esconde o nativo', () => {
+  // O dono pediu esta categoria por nome. A prova sai de graça, porque o
+  // `cursor` computado de cada nó já era coletado: um site com ponteiro próprio
+  // esconde o nativo em `cursor:none`. Nenhum site faz isso por acidente.
+  const corpoFp = fp({ tag: 'body', cursor: 'none' });
+  const pontFp = fp({ tag: 'div', classes: ['cursor-dot', 'fixed'] });
+  const html = new Map([[pontFp.hash, '<div class="cursor-dot fixed"></div>']]);
+
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      structuralMap: [
+        node({ fingerprint: corpoFp, role: 'section', pageBox: { x: 0, y: 0, w: 1440, h: 3600 } }),
+        node({
+          fingerprint: pontFp,
+          role: 'unknown',
+          parent: corpoFp.hash,
+          pageBox: { x: 0, y: 0, w: 24, h: 24 },
+        }),
+      ],
+      htmlPorHash: html,
+    }),
+  );
+
+  const cursor = r.segmentos.find((s) => s.category === 'cursor');
+  assert.ok(cursor !== undefined, 'a peça do ponteiro foi emitida');
+  assert.equal(cursor?.name, 'Ponteiro personalizado');
+  // Não pode virar foto: ele se move porque um script o move, e isso é o
+  // mecanismo, não uma falta. Congelar um elemento de 24 pixels não serve.
+  assert.notEqual(cursor?.representation.type, 'referencia-visual');
+});
+
+test('elemento GRANDE com classe cursor-* não é ponteiro', () => {
+  // Medido: `cursor-glow` é classe de brilho no hover de um cartão, e a regra
+  // pelo nome promoveu o artigo inteiro a ponteiro — um cartão de 400px foi
+  // parar fixo por cima da página. Ponteiro tem dezenas de pixels, não centenas.
+  const corpoFp = fp({ tag: 'body', cursor: 'none' });
+  const cardFp = fp({ tag: 'article', classes: ['cursor-glow', 'rounded-3xl'] });
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      structuralMap: [
+        node({ fingerprint: corpoFp, role: 'section', pageBox: { x: 0, y: 0, w: 1440, h: 3600 } }),
+        node({
+          fingerprint: cardFp,
+          role: 'unknown',
+          parent: corpoFp.hash,
+          pageBox: { x: 0, y: 0, w: 420, h: 380 },
+        }),
+      ],
+      htmlPorHash: new Map([
+        [cardFp.hash, '<article class="cursor-glow">um cartão inteiro</article>'],
+      ]),
+    }),
+  );
+  assert.equal(r.segmentos.filter((s) => s.category === 'cursor').length, 0);
+});
+
+test('sem `cursor:none` no corpo, nenhuma peça de ponteiro é inventada', () => {
+  // Uma classe chamada "cursor" sozinha não prova nada: `cursor-pointer` é
+  // utilitária de Tailwind e aparece em todo botão do acervo.
+  const corpoFp = fp({ tag: 'body' });
+  const botaoFp = fp({ tag: 'button', classes: ['cursor-pointer'] });
+  const r = segmentarPorEvidencia(
+    entradaVazia({
+      structuralMap: [
+        node({ fingerprint: corpoFp, role: 'section', pageBox: { x: 0, y: 0, w: 1440, h: 3600 } }),
+        node({ fingerprint: botaoFp, role: 'unknown', parent: corpoFp.hash }),
+      ],
+      htmlPorHash: new Map([[botaoFp.hash, '<button class="cursor-pointer">ok</button>']]),
+    }),
+  );
+  assert.equal(
+    r.segmentos.filter((s) => s.category === 'cursor').length,
+    0,
+    'nenhum ponteiro inventado',
   );
 });

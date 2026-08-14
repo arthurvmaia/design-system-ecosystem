@@ -20,13 +20,16 @@ import {
   SegmentStatesFile,
   SegmentsManifest,
   type StoredState,
+  alvosPerdidosDoBundle,
   ancorarContratoDoBundle,
   coletarAssetRefs,
+  conferirPecaDaGaleria,
   construirIndiceAssets,
   libraryComponentBundleDir,
   libraryComponentDir,
   libraryComponentMetadata,
   newComponentId,
+  rastreamentoDoBundle,
   reescreverParaLocal,
   vaultCaptureAssetsDir,
   vaultCaptureManifest,
@@ -403,7 +406,15 @@ const ancorarContratoDoComponente = (
   }
 };
 
-const montarComponente = (seg: SegmentRow, midiasPorExtracao: MidiasPorExtracao = new Map()) => {
+// Exportada para `scripts/biblioteca-atualizar-bundles.ts`: o refresh de uma
+// peça promovida reusa a promoção INTEIRA (bundle, estados, contrato, insight)
+// e depois troca o resultado para dentro do componente existente — duplicar
+// esta lógica num script seria a segunda implementação que a seção acima do
+// arquivo `pecas.ts` do generator já enterrou uma vez.
+export const montarComponente = (
+  seg: SegmentRow,
+  midiasPorExtracao: MidiasPorExtracao = new Map(),
+) => {
   const componentId = newComponentId();
   const bundleHash = createHash('sha256').update(seg.htmlSnippet).digest('hex');
 
@@ -412,6 +423,24 @@ const montarComponente = (seg: SegmentRow, midiasPorExtracao: MidiasPorExtracao 
 
   const dsId = seg.designSystemId as `ds_${string}`;
   const insight = lerInsightDoSegmento(dsId, seg.id);
+  /**
+   * A URL DE ORIGEM viaja com a peça — e não viajava.
+   *
+   * `sourceUrl` era gravado como `null` desde sempre, e o motivo é
+   * compreensível: a peça precisa sobreviver à exclusão da extração, então a
+   * promoção corta os laços com o vault de propósito.
+   *
+   * Só que cortar o ENDEREÇO foi longe demais. Sem ele não há como revisitar o
+   * site para tentar de novo quando a peça sai ruim — que é exatamente o que o
+   * botão "faça-me aprender" precisa fazer. O endereço é uma string: ele não
+   * cria dependência de disco nenhuma, e é a única pista de volta.
+   */
+  const urlDeOrigem =
+    getDb()
+      .select({ u: tables.designSystems.sourceUrl })
+      .from(tables.designSystems)
+      .where(eq(tables.designSystems.id, dsId))
+      .get()?.u ?? null;
   // Estados V2 referenciam blobs em `capture-v2/` — resolvidos AQUI, na
   // promoção: o componente da Biblioteca precisa sobreviver à exclusão da
   // extração, então o HTML entra inline e a referência ao vault morre.
@@ -578,7 +607,7 @@ const montarComponente = (seg: SegmentRow, midiasPorExtracao: MidiasPorExtracao 
         name: seg.name,
         category: seg.category,
         kind: seg.kind,
-        origin: { designSystemId: seg.designSystemId, segmentId: seg.id, sourceUrl: null },
+        origin: { designSystemId: seg.designSystemId, segmentId: seg.id, sourceUrl: urlDeOrigem },
         addedAt: Date.now(),
         tags: [],
         notes: null,
@@ -627,16 +656,60 @@ libraryRoute.post('/', zValidator('json', AddInput), (c) => {
   const seg = db.select().from(tables.segments).where(eq(tables.segments.id, segmentId)).get();
   if (!seg) return c.json({ error: 'segment_not_found' }, 404);
 
-  // Gate de qualidade: um bloco que a captura NÃO consegue reproduzir fora do
-  // site de origem não entra na Biblioteca — entraria quebrado e apareceria
-  // quebrado no site gerado. A recusa explica, não esconde.
+  /**
+   * A REGRA DE ACEITE DA GALERIA (`docs/regras-de-aceite.md`).
+   *
+   * É a conferência que o dono pediu, "antes de você realmente colocar isso na
+   * galeria". Ela morava só no script de curadoria, e o botão de curtir do app
+   * tinha um portão próprio, mais frouxo — dois critérios para a mesma decisão,
+   * e o mais frouxo venceria sempre que alguém clicasse em vez de rodar o
+   * script.
+   *
+   * Reprovação BARRA, porque é defeito e defeito tem conserto. Pendência
+   * DEIXA PASSAR e fica declarada: uma cena que depende de runtime remoto
+   * proprietário não reproduz sozinha, e barrá-la só esconderia o acervo de
+   * quem poderia decidir usá-la mesmo assim.
+   */
   const insight = lerInsightDoSegmento(seg.designSystemId as `ds_${string}`, seg.id);
+  const bundle = lerBundleInfo(seg.designSystemId as `ds_${string}`, { position: seg.position });
+  const aceite = conferirPecaDaGaleria({
+    categoria: seg.category,
+    kind: seg.kind,
+    htmlSnippet: seg.htmlSnippet,
+    // A representação mora no manifesto do BUNDLE, não no insight — foi assim
+    // que ela apareceu aqui: `insight.representation` não existe, e um `as`
+    // escondia isso do compilador enquanto o valor chegava `undefined`.
+    representacao: bundle?.representation ?? null,
+    // O bundle está em disco NESTE momento, então G8 é conferível aqui: o botão
+    // de curtir e o script de curadoria têm de aplicar a mesma régua, senão o
+    // mais frouxo vence sempre que alguém clicar em vez de rodar o script.
+    rastreamento: bundle === null ? null : rastreamentoDoBundle(bundle.dir).estado,
+    // A mesma regua do script de curadoria: senao o mais frouxo vence.
+    alvosPerdidos: bundle === null ? [] : alvosPerdidosDoBundle(bundle.dir),
+    runtimes: [],
+    movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
+    classesDeRevelacao: [],
+    temObservadorDeRolagem: false,
+    refsQuebradas: [],
+    assetsNaOrigem: [],
+  });
+  const reprovacao = aceite.vereditos.find((v) => v.estado === 'reprovou');
   if (insight?.support === 'nao-suportado') {
     return c.json(
       {
         error: 'sem_suporte',
         message:
           'Este bloco não se sustenta fora do site de origem — a captura não conseguiu reproduzi-lo. Por isso ele não pode entrar na Biblioteca.',
+      },
+      422,
+    );
+  }
+  if (reprovacao !== undefined) {
+    return c.json(
+      {
+        error: 'reprovado_no_aceite',
+        codigo: reprovacao.codigo,
+        message: `${reprovacao.titulo}: ${reprovacao.motivo}`,
       },
       422,
     );

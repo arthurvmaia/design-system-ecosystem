@@ -11,7 +11,7 @@ export { ensureDataTree, getDb, getSqlite, schema } from './db.js';
  *
  * Quem declara o ORM é este pacote. Passar por ele torna a dependência real.
  */
-export { and, desc, eq, inArray } from 'drizzle-orm';
+export { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 export { runMigrations } from './migrate.js';
 export type { DrizzleDb } from './db.js';
 export * as tables from './schema.js';

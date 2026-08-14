@@ -1,5 +1,6 @@
 import { ConfirmPop } from '@/components/ConfirmPop';
 import { Mascote } from '@/components/Mascote';
+import { PendenciasDeSites } from '@/components/PendenciasDeSites';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import { type RejectedSegment, api, previewRejeitadoUrl } from '@/lib/api';
 import { TRATAMENTO } from '@/lib/orbis';
@@ -61,6 +62,13 @@ export function RevisaoPage() {
         à vista: use aproveitar mesmo assim e o bloco vai para a Galeria, ou descarte e ele sai da
         lista.
       </p>
+
+      {/* Os sites que subiram devendo alguma coisa. Vêm ANTES dos blocos
+          rejeitados porque site entregue com pendência já está na mão de
+          alguém, e bloco rejeitado ainda não saiu daqui. */}
+      <div className="mt-10">
+        <PendenciasDeSites />
+      </div>
 
       {total === 0 ? (
         <div className="ds-glass-static ds-slide-up ds-d3 mt-10 rounded-xl p-10 text-center">

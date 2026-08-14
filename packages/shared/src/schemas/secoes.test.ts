@@ -50,10 +50,26 @@ test('kit vazio ainda propõe a página inteira, toda criada no estilo', () => {
   // espinha técnica (nav, hero, logos, features…), virou uma ordem de
   // argumentação (promessa → problema → como funciona → prova → objeção →
   // pedido). Ver `estrutura-marketing.ts`.
+  // E ela ALONGOU de novo em 2026-08-08: o dono achava os sites curtos, e a
+  // medição deu razão a ele — a sequência tinha 6 seções de conteúdo, e uma
+  // página que percorre AIDA inteiro pede 9 ou 10. Entraram prova social com
+  // rosto, números e uma chamada antes do contato.
   const secoes = sugerirSecoes([], contador());
   assert.deepEqual(
     secoes.map((s) => s.papel),
-    ['nav', 'hero', 'features', 'showcase', 'logos', 'faq', 'contact', 'footer'],
+    [
+      'nav',
+      'hero',
+      'features',
+      'showcase',
+      'logos',
+      'testimonials',
+      'stats',
+      'faq',
+      'cta',
+      'contact',
+      'footer',
+    ],
   );
   assert.ok(
     secoes.every((s) => s.componentIds.length === 0),

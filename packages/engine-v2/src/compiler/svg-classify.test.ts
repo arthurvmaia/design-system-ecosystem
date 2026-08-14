@@ -113,3 +113,50 @@ test('isolarIdsSvg não mexe em SVG sem ids', () => {
   const svg = '<svg><path d="M0 0h1v1H0z"/></svg>';
   assert.equal(isolarIdsSvg(svg, 'x'), svg);
 });
+
+test('id que ninguém referencia fica INTOCADO: é por ele que o script acha o elemento', () => {
+  const svg = '<svg id="pipeline-svg"><path id="pipeline-path-glow"/></svg>';
+  const out = isolarIdsSvg(svg, 'seg6-svg1');
+  assert.ok(out.includes('id="pipeline-svg"'), 'o id do svg não participa de url(#) e não colide');
+  assert.ok(out.includes('id="pipeline-path-glow"'));
+  assert.ok(!out.includes('seg6-svg1-'), 'nada a prefixar quando nada é referenciado');
+});
+
+test('mistura: prefixa o gradiente e deixa o alvo do script em paz', () => {
+  const svg =
+    '<svg id="pipeline-svg"><defs><linearGradient id="glow-grad"/></defs>' +
+    '<path id="pipeline-path-glow" stroke="url(#glow-grad)"/></svg>';
+  const out = isolarIdsSvg(svg, 'seg6-svg1');
+  assert.ok(out.includes('id="seg6-svg1-glow-grad"'), 'o gradiente colide e continua isolado');
+  assert.ok(out.includes('stroke="url(#seg6-svg1-glow-grad)"'), 'o par não pode quebrar');
+  assert.ok(out.includes('id="pipeline-svg"'));
+  assert.ok(out.includes('id="pipeline-path-glow"'));
+});
+
+test('o caso medido: dos cinco ids da linha do tempo, só os dois referenciados mudam', () => {
+  const svg =
+    '<svg id="pipeline-svg">' +
+    '<defs><filter id="glow-line"/><linearGradient id="glow-grad"/></defs>' +
+    '<path id="pipeline-path-base"/>' +
+    '<path id="pipeline-path-glow" stroke="url(#glow-grad)" filter="url(#glow-line)"/>' +
+    '</svg>';
+  const out = isolarIdsSvg(svg, 'seg6-svg1');
+  for (const alvoDoScript of ['pipeline-svg', 'pipeline-path-base', 'pipeline-path-glow']) {
+    assert.ok(
+      out.includes(`id="${alvoDoScript}"`),
+      `${alvoDoScript} é procurado por getElementById e não pode ser renomeado`,
+    );
+  }
+  for (const colide of ['glow-line', 'glow-grad']) {
+    assert.ok(out.includes(`id="seg6-svg1-${colide}"`), `${colide} colide entre segmentos`);
+    assert.ok(out.includes(`url(#seg6-svg1-${colide})`));
+  }
+});
+
+test('sprite por href também conta como referência e continua isolado', () => {
+  const svg = '<svg><symbol id="icone"/><use href="#icone"/><g id="camada-do-script"/></svg>';
+  const out = isolarIdsSvg(svg, 'seg2');
+  assert.ok(out.includes('id="seg2-icone"'));
+  assert.ok(out.includes('href="#seg2-icone"'));
+  assert.ok(out.includes('id="camada-do-script"'));
+});

@@ -133,6 +133,22 @@ export type EvidenciaRepresentacao = {
   movimentoMedido: boolean;
   /** O movimento é explicado por CSS/SMIL puro (sem JS)? */
   movimentoPorCss: boolean;
+  /**
+   * Todo o movimento medido veio de pintura FORA do DOM, com uma camada de
+   * fundo da página atrás do item?
+   *
+   * Isto separa "a peça se mexe" de "algo passa atrás da peça". A observação
+   * temporal é atribuída ao segmento por área de tela: uma seção que ocupa 60%
+   * da dobra herda o movimento do canvas de página inteira que pinta atrás
+   * dela, mesmo com o DOM dela parado o tempo todo. Sem a distinção, o item era
+   * condenado a foto por um movimento que nunca foi dele — e foi o que
+   * aconteceu com um cartão de gráfico cujo HTML e CSS reproduzem tudo.
+   *
+   * Opcional porque nem toda evidência é montada com observação temporal em
+   * mão (as sintéticas, os testes). Ausente = não sabemos, e aí a regra antiga
+   * vale — quem não mediu não pode alegar que o movimento era de outro.
+   */
+  movimentoEhDaPagina?: boolean;
   /** Reage ao ponteiro (medido pela varredura). */
   reageAoPonteiro: boolean;
   /** Há região reativa SEM DOM interno (cena em canvas). */
@@ -473,7 +489,24 @@ export const classificarRepresentacao = (ev: EvidenciaRepresentacao): Representa
     };
   }
 
-  if (ev.movimentoMedido && !ev.movimentoPorCss && ev.dependeDeJs && ev.estadosCapturados === 0) {
+  if (
+    ev.movimentoMedido &&
+    // O movimento que é da PÁGINA não condena a peça.
+    //
+    // A regra abaixo existe para o caso honesto: a peça se mexe, não sabemos
+    // por quê, então gravamos uma foto em vez de prometer o que não entregamos.
+    // Só que a observação temporal é atribuída ao segmento por ÁREA DE TELA, e
+    // uma seção que ocupa 60% da dobra herda o movimento do canvas de página
+    // inteira que pinta atrás dela. Medido: as oito observações do cartão de
+    // gráfico do cogni tinham `domStable: true` e "pintura fora do DOM" — o DOM
+    // dele não se mexeu uma vez sequer. O cartão virou PNG por causa do fundo,
+    // e o bundle anterior da MESMA seção era portátil e trazia o gráfico
+    // inteiro. Congelar aqui não é honestidade, é erro de atribuição.
+    ev.movimentoEhDaPagina !== true &&
+    !ev.movimentoPorCss &&
+    ev.dependeDeJs &&
+    ev.estadosCapturados === 0
+  ) {
     // Move-se, o movimento não é de CSS, depende de JS e não capturamos nenhum
     // estado: não sabemos reproduzir. Honestidade acima de aparência.
     reasons.push(

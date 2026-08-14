@@ -1,13 +1,41 @@
 # HANDOFF — onde o trabalho está
 
-*Atualizado em 2026-08-03. CI verde, 1.290 testes rápidos e 79 de navegador
-passando, portão de fidelidade aprovado.*
-
-Este arquivo é para quem senta amanhã: o que está pronto, o que ficou pelo
-caminho e **por que** cada coisa que falta foi deixada para depois. O registro
-histórico da reforma de julho continua em `docs/HANDOFF.md`.
-
----
+> ## 🔄 RETOMADA — trabalho em voo (2026-08-14)
+>
+> **OS 20 KITS PASSARAM.** Prova22 (`kits-provar-GxInuO`): S4, S12, S13, S14,
+> S15, S16, S17, S18, S19 — todas ZERO, 20 de 20 aprovados. A ordem que
+> segurava a fila ("site nenhum antes dos kits 100%") está cumprida.
+>
+> **O que fechou o S4 (216 → 30 → 0), tudo medido:**
+> 1. *Alfa por variável do Tailwind.* `literalDe` rejeitava qualquer valor com
+>    `var(`, e o Tailwind escreve TODA cor como
+>    `rgb(5 5 5 / var(--tw-bg-opacity, 1))`. Quase toda cor literal do site era
+>    invisível: no pior projeto, 2 correções viraram 61.
+> 2. *Tinta declarada por TAG.* O compositor escreve no `marca.css`
+>    `a{color:var(--marca-link)}` e `h1..h6{color:var(--marca-heading)}` — e
+>    esse arquivo nem chegava à conferência.
+> 3. *Tinta padrão da seção.* `REGRA_DA_TINTA_DA_MARCA` põe `--marca-body` no
+>    proxy; a conferência passou a modelar isso.
+> 4. *Chave por ORIGEM.* `.bg-white` existe em quase toda origem: numa virou
+>    `--marca-surface` (escuro), noutra ficou branca. O mapa por nome de classe
+>    respondia com a errada.
+> 5. *Variável da origem.* `color:var(--c-bg)` com `--c-bg` recolorido na
+>    DEFINIÇÃO — resolvida quando há uma definição só.
+>
+> **E o S13 (83 → 0):** a régua nunca chegava ao fim da página, porque o
+> `scroll-behavior:smooth` da origem fazia cada `scrollTo` virar animação que o
+> passo seguinte reiniciava.
+>
+> **AGORA: a fila de 11 jobs `generate`** — SJDR primeiro COM NAVEGADOR
+> VISÍVEL, depois AVDSGN (portfólio real), depois Meridiano/Voltz/expressos
+> (Café da Estação, asteric, Navalha, Ourivés — processar UM de cada
+> duplicata). Geração completa: copy no tom da marca, Magnific, vídeo onde
+> couber, contraste medido + animações presentes, 390px bloqueante.
+>
+> **Em aberto, pedido pelo dono nesta sessão:** entregável deixa de ser zip
+> cru e passa a ser PROJETO pronto para deploy (README de publicação,
+> package.json, configs), mantendo o botão de visualizar. Depois: varredura de
+> UI/UX e os passos 3–6 do MVP Criativos.
 
 ## 1. Onde o produto está
 

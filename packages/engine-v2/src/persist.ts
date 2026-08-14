@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   type CaptureManifestV2,
   type Confidence,
@@ -219,6 +220,18 @@ export const persistirCapturaV2 = (
   const manifestoV2Path = vaultCaptureV2Manifest(dsId);
   writeFileSync(manifestoV2Path, `${JSON.stringify(m, null, 2)}\n`, 'utf8');
 
+  // A evidência da Refinaria, ao lado do manifesto. Sem ela, toda mudança de
+  // critério de corte exigia recapturar o site inteiro (35 a 40 minutos de
+  // navegador para exercitar funções de milissegundos). Sem indentação: é
+  // insumo de máquina, e o manifesto indentado já custa o dobro do necessário.
+  if (captura.evidencia !== undefined) {
+    writeFileSync(
+      join(vaultCaptureV2Dir(dsId), 'evidencia.json'),
+      JSON.stringify(captura.evidencia),
+      'utf8',
+    );
+  }
+
   const segments: SegmentRecord[] = [];
   const insights: SegmentInsight[] = [];
   /** Filhos de cada seção, esperando o id do pai já gerado para serem gravados. */
@@ -390,6 +403,25 @@ export const persistirCapturaV2 = (
   };
   const manifestPath = vaultSegmentsManifest(dsId);
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+
+  // Gerações MORTAS de scroll/states saem junto com a gravação da nova. Medido
+  // no acervo: 141 arquivos de scroll com só 44 válidos — qualquer leitor que
+  // listasse o diretório (em vez de resolver por id) lia comportamento de uma
+  // captura que não existe mais.
+  const idsVivos = new Set<string>(segments.map((s) => s.id));
+  for (const dirGeracoes of [statesDir, scrollDir]) {
+    if (!existsSync(dirGeracoes)) continue;
+    try {
+      for (const nome of readdirSync(dirGeracoes)) {
+        const semExtensao = nome.replace(/\.json$/i, '');
+        const idDoArquivo = semExtensao.split('-')[0] ?? '';
+        if (!idDoArquivo.startsWith('seg_')) continue;
+        if (!idsVivos.has(idDoArquivo)) rmSync(join(dirGeracoes, nome), { force: true });
+      }
+    } catch {
+      // limpeza é cortesia: falhar aqui não pode derrubar a persistência
+    }
+  }
 
   // Os reprovados vão para a Revisão COM o motivo — nunca somem calados. A
   // categoria e o HTML são os REAIS: a tela de Revisão mostra a prévia do bloco

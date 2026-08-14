@@ -39,6 +39,33 @@ const TAGS_IGNORADAS = [
  *
  * Assinatura: `(opts) => Coleta`.
  */
+/**
+ * Quem está visível na viewport AGORA — a sonda leve do percurso.
+ *
+ * O percurso precisa de `visible`/`appeared` (é o que identifica reveal e
+ * lazy-load), mas a coleta COMPLETA por parada custava um percurso inteiro do
+ * DOM com 3 a 4 getComputedStyle por elemento, para produzir um array que
+ * nenhuma outra linha lia. Aqui: só os elementos já endereçados, só o rect.
+ *
+ * Assinatura: `() => string[]` (refs no formato `ref:N`).
+ */
+export const VISIVEIS_FN = `
+() => {
+  var out = [];
+  var lista;
+  try { lista = document.querySelectorAll('[${ATTR_REF}]'); } catch (e) { return out; }
+  var vh = window.innerHeight || 1;
+  for (var i = 0; i < lista.length; i++) {
+    var r;
+    try { r = lista[i].getBoundingClientRect(); } catch (e) { continue; }
+    if (r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < vh) {
+      out.push('ref:' + lista[i].getAttribute('${ATTR_REF}'));
+    }
+  }
+  return out;
+}
+`;
+
 export const COLETAR_MAPA_FN = `
 (opts) => {
   var IGNORADAS = ${JSON.stringify(TAGS_IGNORADAS)};
@@ -321,10 +348,19 @@ export const COLETAR_MAPA_FN = `
 
   // ── Percurso ─────────────────────────────────────────────────────────────
   var nos = [];
-  var refs = [];
   var backgrounds = [];
   var midias = [];
-  var idx = 0;
+
+  // Endereços ESTÁVEIS entre coletas. O endereçamento antigo recomeçava em 0 a
+  // cada chamada e nunca removia o atributo antigo: refs de coletas passadas
+  // ficavam pendurados no DOM (medido: até 357 numa página cujo mapa final ia
+  // a 345), e a reatividade do ponteiro era atribuída a números de OUTRA
+  // numeração — ao elemento errado. Agora quem já tem número mantém, quem não
+  // tem recebe o próximo do registro, que sobrevive entre coletas — então o
+  // ref que a sonda viu durante o percurso é o ref do mapa final.
+  if (typeof R.proximoRef !== 'number') R.proximoRef = 0;
+  if (!R.els) { try { R.els = []; } catch (e) {} }
+  var els = R.els || [];
 
   // Comprimento computado em numero de px. O computado sempre volta em px
   // ("16px", "0px"), entao parseFloat basta; o que nao for numero vira 0, que
@@ -401,8 +437,15 @@ export const COLETAR_MAPA_FN = `
         !!el.shadowRoot;
       if (!interessa) continue;
 
-      el.setAttribute('${ATTR_REF}', String(idx));
-      refs.push(el);
+      var refAtual = el.getAttribute('${ATTR_REF}');
+      var meuRef = refAtual === null ? NaN : parseInt(refAtual, 10);
+      if (isNaN(meuRef)) {
+        meuRef = R.proximoRef++;
+        el.setAttribute('${ATTR_REF}', String(meuRef));
+      } else if (meuRef >= R.proximoRef) {
+        R.proximoRef = meuRef + 1;
+      }
+      els[meuRef] = el;
 
       var attrs = atributosDe(el);
       var classes = (el.getAttribute('class') || '').split(/\\s+/).filter(Boolean);
@@ -425,7 +468,7 @@ export const COLETAR_MAPA_FN = `
       } catch (e) {}
 
       nos.push({
-        ref: idx,
+        ref: meuRef,
         realm: realm,
         parentRef: null, // resolvido abaixo, por ref do ancestral
         tag: tag,
@@ -536,7 +579,7 @@ export const COLETAR_MAPA_FN = `
         var c = camadasFundo[cf];
         var animacaoDoFundo = c.animation || cs.animationName;
         backgrounds.push({
-          ref: idx,
+          ref: meuRef,
           source: c.source,
           cssValue: c.valor,
           assetUrls: c.urls,
@@ -550,7 +593,7 @@ export const COLETAR_MAPA_FN = `
 
       // ── Mídia deste elemento ────────────────────────────────────────────
       if (temMidiaTag) {
-        var m = { ref: idx, tag: tag, asBackground: camada === 'background' };
+        var m = { ref: meuRef, tag: tag, asBackground: camada === 'background' };
         if (tag === 'video') {
           var fontes = [];
           try {
@@ -620,10 +663,6 @@ export const COLETAR_MAPA_FN = `
         midias.push(m);
       }
 
-      // O endereço do PRÓXIMO nó. Sem este incremento, todo elemento recebe
-      // \`data-dsx2="0"\`, o mapa ref→nó colapsa num único par e a busca de HTML
-      // por ref devolve sempre o mesmo elemento.
-      idx++;
     }
   };
 
@@ -631,7 +670,7 @@ export const COLETAR_MAPA_FN = `
 
   // Resolve o pai de cada nó pelo ref do ancestral mais próximo já marcado.
   for (var n = 0; n < nos.length; n++) {
-    var el2 = refs[nos[n].ref];
+    var el2 = els[nos[n].ref];
     var p = el2 ? el2.parentElement : null;
     var hops = 0;
     while (p && hops < 60) {
@@ -652,8 +691,9 @@ export const COLETAR_MAPA_FN = `
     nos[i3].depth = d2;
   }
 
-  // Guarda o array de endereçamento para as fases seguintes.
-  try { R.els = refs; } catch (e) {}
+  // O array de endereçamento já mora no registro (R.els) e é ACUMULATIVO:
+  // zerá-lo aqui invalidaria os refs das coletas anteriores que a sonda de
+  // ponteiro registrou.
 
   return {
     nos: nos,
@@ -793,6 +833,25 @@ export const COLETAR_INSTRUMENTACAO_FN = `
     registrar(ctxs['webgl2'] ? 'webgl-cru' : 'webgl-cru', 'WebGL', 'contexto ' + (ctxs['webgl2'] ? 'webgl2' : 'webgl') + ' criado');
   }
   if (ctxs['2d']) registrar('canvas-2d', 'canvas 2D', 'contexto 2d criado');
+  // E o script que CRIOU o contexto vira o bootstrap da cena.
+  //
+  // A ligacao runtime-script so existia por padrao de nome, e cena em WebGL cru
+  // nao casa com nome nenhum: o runtime saia sem script nenhum, o motor concluia
+  // que a inicializacao nao foi identificada e entregava um PNG. A pilha de
+  // chamada de getContext diz quem foi, e e a mesma evidencia direta.
+  var deContexto = R.scriptsDeContexto || [];
+  if (deContexto.length > 0) {
+    for (var rc = 0; rc < runtimes.length; rc++) {
+      var k = runtimes[rc].kind;
+      if (k !== 'webgl-cru' && k !== 'canvas-2d') continue;
+      for (var dc = 0; dc < deContexto.length; dc++) {
+        if (runtimes[rc].scripts.indexOf(deContexto[dc]) === -1) {
+          runtimes[rc].scripts.push(deContexto[dc]);
+        }
+      }
+      runtimes[rc].evidence.push('contexto criado por ' + deContexto[0]);
+    }
+  }
 
   // Lottie sem global: elemento próprio ou JSON de animação carregado.
   try {
@@ -858,6 +917,8 @@ export const COLETAR_INSTRUMENTACAO_FN = `
     observers: R.observers || { intersection: 0, mutation: 0, resize: 0 },
     animationApis: apis,
     graphicsContexts: mapaSimples(R.contextosPorTipo),
+    contextosRecusados: mapaSimples(R.contextosRecusados),
+    contextosNormalizados: mapaSimples(R.contextosNormalizados),
     shadowRoots: R.shadowRoots || { open: 0, closed: 0 },
     shadowFechados: (R.shadowFechados || []).length,
     dynamicInserts: mapaSimples(R.dynamicInserts),
@@ -1451,6 +1512,39 @@ export const ROLAR_ATE_REF_FN = `
  *
  * Assinatura: `(ref, tetoMs) => { total, desenhados, pendentes }`.
  */
+/**
+ * Desliga o modo preguiçoso dos ícones de um escopo ANTES da leitura.
+ *
+ * O iconify-icon REMOVE o SVG do shadow root quando sai da viewport (um
+ * IntersectionObserver por ícone, confirmado nos bytes do runtime no acervo), e
+ * esperar não faz um ícone fora da tela renderizar: o teto de 1500 ms era gasto
+ * inteiro, por nó, e a casca vazia virava conteúdo definitivo da peça — 7 de 14
+ * ícones do pricing do luxury-desert, inclusive numa peça já promovida. A
+ * biblioteca oferece a saída (`noobserver` + render forçado); aqui ela é usada.
+ *
+ * Assinatura: `(ref) => number` (quantos ícones foram destravados).
+ */
+export const FORCAR_ICONES_FN = `
+(ref) => {
+  var R = window['${REGISTRO_GLOBAL}'] || {};
+  var raiz = (R.els || [])[ref] || document.querySelector('[${ATTR_REF}="' + ref + '"]');
+  if (!raiz) return 0;
+  var lista;
+  try { lista = raiz.querySelectorAll('iconify-icon, ion-icon, lord-icon'); } catch (e) { return 0; }
+  var n = 0;
+  for (var i = 0; i < lista.length && i < 400; i++) {
+    var el = lista[i];
+    try {
+      el.setAttribute('noobserver', '');
+      if (typeof el.stopObserver === 'function') el.stopObserver();
+      if (typeof el._forceRender === 'function') el._forceRender();
+      n++;
+    } catch (e) {}
+  }
+  return n;
+}
+`;
+
 export const ESPERAR_ICONES_FN = `
 async (ref, tetoMs) => {
   var TAGS = ['iconify-icon', 'ion-icon', 'lord-icon'];

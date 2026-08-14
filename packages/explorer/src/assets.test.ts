@@ -4,6 +4,7 @@ import {
   type AssetFetcher,
   absolutizeRefs,
   classifyByUrl,
+  extPara,
   extractAssetRefs,
   localizeAssets,
   parseSrcset,
@@ -133,4 +134,47 @@ test('localizeAssets: pula o que passa do teto de tamanho', async () => {
   });
   assert.equal(res.stats.saved, 0);
   assert.equal(res.stats.skipped, 1);
+});
+
+// ── Fase 2: extensão que o navegador aceita executar ────────────────────────
+
+test('URL terminando em VERSÃO não vira extensão: o conteúdo decide', () => {
+  // O runtime do Tailwind (`…/3.4.17`) chegava com octet-stream, ganhava ext
+  // "17" e era servido com nosniff: o navegador RECUSAVA executar o bundle
+  // principal do site em 23 bundles do acervo.
+  const js = new TextEncoder().encode('(()=>{var a=Object.create(null)})()');
+  assert.equal(
+    extPara('https://cdn.jsdelivr.net/npm/tailwindcss/3.4.17', 'application/octet-stream', js),
+    'js',
+  );
+  // Binário desconhecido continua honesto: bin, nunca um palpite executável.
+  assert.equal(
+    extPara('https://cdn.test/coisa/9.9.9', 'application/octet-stream', new Uint8Array([0, 1, 2])),
+    'bin',
+  );
+});
+
+test('extensão CONHECIDA na URL continua valendo; MIME continua mandando', () => {
+  assert.equal(extPara('https://f/x.woff2', 'application/octet-stream'), 'woff2');
+  assert.equal(extPara('https://f/x.17', 'text/css'), 'css');
+});
+
+test('url() com aspa HTML-escapada nao carrega a entidade para o endereco', () => {
+  // Num style="..." a aspa interna E OBRIGATORIAMENTE escapada, e o padrao de
+  // extracao aceitava qualquer coisa que nao fosse ' " ou ) — e &quot; nao e
+  // nenhum dos tres. A entidade ia parar no caminho do arquivo e a referencia
+  // nunca resolvia. Medido: 28 bundles da Biblioteca e 12 ocorrencias nos 20
+  // sites de prova, uma delas o fundo de uma secao inteira.
+  const html =
+    '<section style="background: url(&quot;assets/bg.jpg&quot;) center / cover"></section>';
+  const refs = extractAssetRefs(html, '', 'https://exemplo.com/pagina');
+  const bg = refs.find((r) => r.raw.includes('bg.jpg'));
+  assert.ok(bg, 'a referencia foi encontrada');
+  assert.equal(bg?.raw, 'assets/bg.jpg', 'sem a entidade grudada');
+  assert.equal(bg?.absolute, 'https://exemplo.com/assets/bg.jpg');
+});
+
+test('url() com aspa normal continua funcionando', () => {
+  const refs = extractAssetRefs('<div style="background:url(\'bg/hero.webp\')"></div>', '', null);
+  assert.ok(refs.some((r) => r.raw === 'bg/hero.webp'));
 });

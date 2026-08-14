@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { join, sep } from 'node:path';
 import { test } from 'node:test';
 import {
+  criativosDir,
+  criativosRootDir,
   ehChaveDeSegmento,
   ehDesignSystemId,
   ehNomeDeVersao,
   ehProjectId,
   podeApagarDesignSystem,
   projectDir,
+  topLevelDirs,
   vaultDsDir,
   vaultSegmentBundleDir,
 } from './paths.js';
@@ -101,9 +104,25 @@ test('as funções de caminho recusam id fora da regra', () => {
   assert.ok(vaultDsDir('ds_A').endsWith(`${sep}ds_A`));
 });
 
+test('criativos: o id do job vira pasta, e id torto não vira caminho', () => {
+  // A pasta de saída do job `criativo` é indexada pelo id do JOB, que chega
+  // por URL na rota de download — a mesma guarda dos vizinhos vale aqui.
+  assert.ok(criativosDir('job_abc123').endsWith(join('criativos', 'job_abc123')));
+  assert.throws(() => criativosDir('job_../../etc'));
+  assert.throws(() => criativosDir('ds_abc123'));
+});
+
 test('nome de versão gerada: só nome simples de pasta', () => {
   assert.equal(ehNomeDeVersao('2026-07-29T02-16-11-833Z'), true);
   assert.equal(ehNomeDeVersao('..'), false);
   assert.equal(ehNomeDeVersao('a/b'), false);
   assert.equal(ehNomeDeVersao('.oculto'), false);
+});
+
+test('PROVA: a raiz dos criativos nasce no bootstrap', () => {
+  // Sem ela em topLevelDirs, a rota de download le de uma pasta que o
+  // bootstrap nunca criou — e quem lista jobs redigita o caminho fora da
+  // camada, que e o que este arquivo proibe.
+  assert.ok(topLevelDirs().includes(criativosRootDir()));
+  assert.ok(criativosDir('job_abc123').startsWith(criativosRootDir()));
 });

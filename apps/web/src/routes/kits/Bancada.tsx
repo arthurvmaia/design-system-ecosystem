@@ -1,9 +1,9 @@
 import { Mascote } from '@/components/Mascote';
-import { api, previewKitUrl } from '@/lib/api';
+import { api, kitPreviewAvisos, previewKitUrl } from '@/lib/api';
 import { TRATAMENTO, conta } from '@/lib/orbis';
 import { useNomeDaOrigem } from '@/lib/origem';
 import { useQuery } from '@tanstack/react-query';
-import { Monitor, RefreshCw, Smartphone } from 'lucide-react';
+import { ChevronDown, ChevronRight, Monitor, RefreshCw, Smartphone } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 /**
@@ -92,6 +92,18 @@ export function Bancada({
   // responde pelo proxy do Vite), então dá para ler direto; se um dia deixar de
   // ser, o `catch` mantém a altura padrão e a prévia rola por dentro.
   const [alturaConteudo, setAlturaConteudo] = useState(900);
+
+  // O que a montagem declarou: peça sem pacote em disco, seção vazia, fundo que
+  // não anima, substituição que não casou. O montador sempre escreveu isso e a
+  // tela jogava fora; sem os avisos, o senhor julgava o kit sem saber o que
+  // ficou de fora. A busca acontece DEPOIS de o iframe carregar, porque é a
+  // navegação dele que dispara a montagem que grava os avisos.
+  const [ressalvas, setRessalvas] = useState<{ avisos: string[]; faltando: string[] }>({
+    avisos: [],
+    faltando: [],
+  });
+  const [ressalvasAbertas, setRessalvasAbertas] = useState(false);
+  const quantasRessalvas = ressalvas.avisos.length + ressalvas.faltando.length;
   const medir = (el: HTMLIFrameElement | null) => {
     try {
       const doc = el?.contentDocument;
@@ -99,6 +111,9 @@ export function Bancada({
     } catch {
       /* origem diferente: fica com a altura padrão */
     }
+    kitPreviewAvisos(kitId)
+      .then(setRessalvas)
+      .catch(() => setRessalvas({ avisos: [], faltando: [] }));
   };
 
   // Quantas origens entram. É a informação que decide se vale olhar com
@@ -176,6 +191,66 @@ export function Bancada({
           </button>
         </div>
       </div>
+
+      {/*
+        As ressalvas ficam RECOLHIDAS, e isso é o conserto de um defeito real.
+
+        Elas moram na mesma coluna da prévia, e a lista não tinha teto: quanto
+        melhor a conferência ficou — os vereditos de aceite entraram nela —, mais
+        alto o painel, até espremer a prévia contra o `min-h` e sobrar uma tira
+        do site. O dono não conseguia ver como o kit ia ficar, que é a única
+        coisa que esta tela existe para responder.
+
+        Recolhido, o número já dá o aviso; aberto, a lista rola DENTRO do próprio
+        teto. Nenhum dos dois estados tira a prévia da tela, e vale para uma
+        ressalva ou para quarenta.
+      */}
+      {quantasRessalvas > 0 && (
+        <div
+          className="flex shrink-0 flex-col border-t"
+          style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(255,180,60,0.04)' }}
+        >
+          <button
+            type="button"
+            onClick={() => setRessalvasAbertas((v) => !v)}
+            aria-expanded={ressalvasAbertas}
+            title="O que a montagem declarou que não conseguiu entregar inteiro"
+            className="flex w-full items-center gap-1.5 px-5 py-2 text-left"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            {ressalvasAbertas ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+            <span
+              className="text-[10px] uppercase tracking-[0.2em]"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              {conta(quantasRessalvas, 'ressalva', 'ressalvas')}: o que esta montagem não conseguiu
+              entregar inteiro
+            </span>
+          </button>
+          {ressalvasAbertas && (
+            <ul className="flex max-h-36 list-disc flex-col gap-1 overflow-y-auto pb-2.5 pl-10 pr-5">
+              {ressalvas.faltando.map((f) => (
+                <li
+                  key={`faltando-${f}`}
+                  className="text-[11px] leading-relaxed"
+                  style={{ color: 'var(--color-fg-muted)' }}
+                >
+                  {f}
+                </li>
+              ))}
+              {ressalvas.avisos.map((a) => (
+                <li
+                  key={`aviso-${a}`}
+                  className="text-[11px] leading-relaxed"
+                  style={{ color: 'var(--color-fg-muted)' }}
+                >
+                  {a}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div
         ref={areaRef}

@@ -181,6 +181,26 @@ export const projectGeneratedDir = (id: ProjectId): string => join(projectDir(id
 export const projectGeneratedVersionDir = (id: ProjectId, isoTimestamp: string): string =>
   join(projectGeneratedDir(id), conferido(isoTimestamp, ehNomeDeVersao(isoTimestamp)));
 
+// ── Criativos ──────────────────────────────────────────────────────────────
+/**
+ * Saída de um job `criativo`: as variações de imagem/vídeo que o cliente
+ * baixa. Fica fora do repo, ao lado dos outros dados, indexada pelo id do
+ * JOB — não há projeto nem banco no MVP, e o job é a única identidade que o
+ * pedido tem. A rota de download do servidor lê daqui.
+ *
+ * O id passa pela mesma guarda dos vizinhos porque também vira caminho de
+ * disco: um `jobId` vindo de URL com `..` dentro não pode subir de pasta.
+ */
+/**
+ * A RAIZ dos criativos existe como função porque o bootstrap e a rota de
+ * download precisam dela SEM job na mão — e sem a função, quem lista os jobs
+ * produzidos redigita `join(getRoot(), 'criativos')` fora desta camada,
+ * exatamente o que o contrato do arquivo proíbe. Achado do revisor do MVP.
+ */
+export const criativosRootDir = (): string => join(getRoot(), 'criativos');
+export const criativosDir = (jobId: string): string =>
+  join(criativosRootDir(), conferido(jobId, ehJobId(jobId)));
+
 // ── Cache ──────────────────────────────────────────────────────────────────
 export const cacheDir = (): string => join(getRoot(), 'cache');
 export const cacheThumbnailsDir = (): string => join(cacheDir(), 'thumbnails');
@@ -233,4 +253,6 @@ export const topLevelDirs = (): readonly string[] => [
   queueDir(),
   queuePendingDir(),
   queueDoneDir(),
+  // Sem ela no bootstrap, a rota de download lê de uma pasta que nunca nasceu.
+  criativosRootDir(),
 ];

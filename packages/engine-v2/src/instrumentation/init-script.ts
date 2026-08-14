@@ -140,6 +140,10 @@ export const INIT_SCRIPT = `
     /** Contextos gráficos: canvas → tipo. */
     contextos: new WeakMap(),
     contextosPorTipo: Object.create(null),
+    /** URLs de script na pilha de quem criou um contexto grafico. */
+    scriptsDeContexto: [],
+    contextosRecusados: Object.create(null),
+    contextosNormalizados: Object.create(null),
     canvases: [],
     shadowRoots: { open: 0, closed: 0 },
     /** Hosts com shadow root aberto (percorríveis). */
@@ -289,28 +293,74 @@ export const INIT_SCRIPT = `
   try {
     var origGetContext = HTMLCanvasElement.prototype.getContext;
     HTMLCanvasElement.prototype.getContext = function (tipo, attrs) {
+      var t = String(tipo || '').toLowerCase();
+      var normal =
+        t === 'webgl' || t === 'experimental-webgl'
+          ? 'webgl'
+          : t === 'webgl2'
+            ? 'webgl2'
+            : t === '2d'
+              ? '2d'
+              : t === 'bitmaprenderer'
+                ? 'bitmaprenderer'
+                : t;
+      // failIfMajorPerformanceCaveat normalizado: em headless por software o
+      // navegador RECUSA o contexto quando a flag esta ligada, e o
+      // unicorn.studio/curtains a liga por padrao — a cena nunca desenhava na
+      // captura, o fundo saia morto e a comparacao acusava 100% sem causa.
+      // Mesma familia de intervencao do reducedMotion: capturar exige ver.
+      var attrsUsados = attrs;
       try {
-        var t = String(tipo || '').toLowerCase();
-        var normal =
-          t === 'webgl' || t === 'experimental-webgl'
-            ? 'webgl'
-            : t === 'webgl2'
-              ? 'webgl2'
-              : t === '2d'
-                ? '2d'
-                : t === 'bitmaprenderer'
-                  ? 'bitmaprenderer'
-                  : t;
-        var anterior = R.contextos.get(this);
-        if (!anterior) {
-          R.contextos.set(this, normal);
-          if (R.canvases.length < 200) R.canvases.push(this);
-          conta(R.contextosPorTipo, normal);
+        if (attrs && attrs.failIfMajorPerformanceCaveat === true) {
+          attrsUsados = {};
+          for (var k in attrs) attrsUsados[k] = attrs[k];
+          attrsUsados.failIfMajorPerformanceCaveat = false;
+          conta(R.contextosNormalizados, normal);
+        }
+      } catch (e) { attrsUsados = attrs; }
+      var ctx = origGetContext.call(this, tipo, attrsUsados);
+      try {
+        // So o SUCESSO conta como contexto criado. A contagem antiga registrava
+        // a TENTATIVA: um getContext('webgl2') que devolvia null entrava como
+        // "contexto webgl2 criado, confianca alta" e contaminava stack e
+        // atribuicao de movimento (medido: 14 de 14 fundos de uma captura com
+        // causa "WebGL" que nao existia).
+        if (ctx) {
+          var anterior = R.contextos.get(this);
+          if (!anterior) {
+            R.contextos.set(this, normal);
+            if (R.canvases.length < 200) R.canvases.push(this);
+            conta(R.contextosPorTipo, normal);
+            // QUEM pediu o contexto — a pergunta que decide entre "cena
+            // reproduzivel" e "foto congelada".
+            //
+            // O detector achava a cena pela criacao do contexto e gravava
+            // \`scripts: []\`, porque ligar runtime a script so acontecia por
+            // PADRAO DE NOME (three.js, lottie...) e uma cena em WebGL cru nao
+            // casa com nome nenhum. Sem script atribuido, o motor conclui que a
+            // inicializacao nao foi identificada, recusa a capsula e entrega um
+            // PNG — mesmo com o bootstrap inteiro no acervo. Aconteceu: um hero
+            // cuja cena era inicializada por 604 bytes auto-documentados ao lado
+            // do runtime de 407 KB, os dois baixados, os dois inuteis.
+            //
+            // A pilha de chamada responde de graca: o frame de quem chamou
+            // \`getContext\` carrega a URL do script.
+            try {
+              var pilha = String((new Error()).stack || '');
+              var urls = pilha.match(/https?:\\/\\/[^\\s)'"]+\\.js/g) || [];
+              for (var u = 0; u < urls.length && R.scriptsDeContexto.length < 20; u++) {
+                var lu = sanitizar(urls[u]);
+                if (lu && R.scriptsDeContexto.indexOf(lu) === -1) R.scriptsDeContexto.push(lu);
+              }
+            } catch (e) {}
+          }
+        } else {
+          conta(R.contextosRecusados, normal);
         }
       } catch (e) {
         registrarFalha('getContext', e);
       }
-      return origGetContext.call(this, tipo, attrs);
+      return ctx;
     };
   } catch (e) {
     registrarFalha('patch:getContext', e);

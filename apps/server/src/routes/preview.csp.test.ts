@@ -86,7 +86,15 @@ test('a prévia não sai com `sandbox` na CSP — sandbox + portão = prévia se
       /\bsandbox\b/,
       `${url} voltou a declarar sandbox: com o portão ligado isso deixa a prévia sem CSS`,
     );
-    // O que de fato segura a exfiltração continua de pé.
-    assert.match(csp, /connect-src 'none'/, `${url} precisa manter connect-src 'none'`);
+    // O que de fato segura a exfiltração continua de pé: connect-src FECHADO,
+    // com a única exceção sendo a lista curta de hosts de DADOS de runtime
+    // (a cena do UnicornStudio vem por fetch; sem isso a prévia nunca podia
+    // mostrar o que promete). Nada de 'self', nada de '*'.
+    assert.match(
+      csp,
+      /connect-src https:\/\/assets\.unicorn\.studio;/,
+      `${url} precisa manter connect-src fechado na lista declarada`,
+    );
+    assert.doesNotMatch(csp, /connect-src[^;]*(\*|'self')/, `${url} abriu o connect-src demais`);
   }
 });

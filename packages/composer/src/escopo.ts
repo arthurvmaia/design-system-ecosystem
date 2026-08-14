@@ -1,5 +1,6 @@
-import postcss, { type AtRule, type Rule } from 'postcss';
+import type { AtRule, Rule } from 'postcss';
 import selectorParser from 'postcss-selector-parser';
+import { analisarCss, avisoDeReparo } from './analisar-css.js';
 
 /**
  * Escopar o CSS de uma origem sem mexer na cascata dela.
@@ -278,10 +279,8 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
   const renomeados: ResultadoEscopo['renomeados'] = [];
   let reescritas = 0;
 
-  let raizAst: postcss.Root;
-  try {
-    raizAst = postcss.parse(css);
-  } catch (err) {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     // CSS que não faz parse não é escopado, e isso é dito. Devolver a folha
     // crua mantém o site funcionando (com o risco de colisão declarado) em vez
     // de descartar todo o estilo de uma origem por um caractere.
@@ -290,12 +289,29 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       reescritas: 0,
       renomeados: [],
       avisos: [
-        `CSS não pôde ser analisado e seguiu SEM escopo: ${err instanceof Error ? err.message : String(err)}. Estilos desta origem podem colidir com os de outra.`,
+        `CSS não pôde ser analisado, nem depois de equilibrar as chaves, e seguiu SEM escopo: ${analise.erro}. Os utilitários desta origem valem para o DOCUMENTO TODO e vão colidir com os das outras — layout de três colunas virando uma, elemento sumindo por um \`.hidden\` alheio. Conserte a folha na origem.`,
       ],
     };
   }
+  const raizAst = analise.raiz;
+  if (analise.reparo !== null) avisos.push(avisoDeReparo(analise.reparo));
 
   // ── Nomes globais: renomear só o que colide ──────────────────────────────
+  /**
+   * O sufixo virado IDENTIFICADOR CSS.
+   *
+   * O mesmo texto serve para duas coisas de gramáticas diferentes: valor de
+   * atributo (`[data-ds-corpo="…"]`), onde quase tudo passa, e nome global
+   * (`@keyframes girar--<sufixo>`), que é `<custom-ident>` e só aceita letra,
+   * dígito, hífen, sublinhado e escape.
+   *
+   * Um apelido de origem com dois-pontos (`ds_a::original`) produzia
+   * `@keyframes girar--ds_a::original`: o navegador não parseia o nome,
+   * DESCARTA a at-rule inteira, e a animação da peça some sem erro nenhum
+   * visível. O saneamento fica aqui, e não em quem chama, porque é aqui que se
+   * sabe que o texto vai virar identificador.
+   */
+  const sufixoIdent = opts.sufixo.replace(/[^\w-]/g, '_');
   const mapaKeyframes = new Map<string, string>();
   /** Chave em minúsculas: nome de fonte não diferencia caixa em CSS. */
   const mapaFontes = new Map<string, string>();
@@ -321,7 +337,7 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       if (decl === undefined || decl.type !== 'decl') return;
       const nome = decl.value.trim().replace(/^["']|["']$/g, '');
       if (nome.length === 0 || !usadosFonte.has(nome.toLowerCase())) return;
-      const novo = `${nome}--${opts.sufixo}`;
+      const novo = `${nome}--${sufixoIdent}`;
       mapaFontes.set(nome.toLowerCase(), novo);
       decl.value = `"${novo}"`;
       renomeados.push({ tipo: 'font-face', de: nome, para: novo });
@@ -330,7 +346,7 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
     if (/^(-\w+-)?keyframes$/i.test(at.name)) {
       const nome = at.params.trim();
       if (nome.length === 0 || !usadosKf.has(nome)) return;
-      const novo = `${nome}--${opts.sufixo}`;
+      const novo = `${nome}--${sufixoIdent}`;
       mapaKeyframes.set(nome, novo);
       at.params = novo;
       renomeados.push({ tipo: 'keyframes', de: nome, para: novo });
@@ -344,7 +360,7 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       if (nomes.length === 0) return;
       const trocados = nomes.map((n) => {
         if (!usadosLayer.has(n)) return n;
-        const novo = `${n}--${opts.sufixo}`;
+        const novo = `${n}--${sufixoIdent}`;
         renomeados.push({ tipo: 'layer', de: n, para: novo });
         return novo;
       });
@@ -381,6 +397,7 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
   }
 
   // ── Seletores ────────────────────────────────────────────────────────────
+  const documentoPodado: string[] = [];
   raizAst.walkRules((regra: Rule) => {
     // Passos de `@keyframes` (`from`, `to`, `40%`) não são seletores.
     const pai = regra.parent;
@@ -398,9 +415,103 @@ export const escoparCss = (css: string, opts: OpcoesEscopo): ResultadoEscopo => 
       regra.selector = depois;
       reescritas++;
     }
+    if (miraODocumento(regra.selector, opts)) {
+      for (const prop of tirarODocumentoDe(regra)) documentoPodado.push(prop);
+    }
   });
 
+  if (documentoPodado.length > 0) {
+    const conta = new Map<string, number>();
+    for (const p of documentoPodado) conta.set(p, (conta.get(p) ?? 0) + 1);
+    const lista = [...conta.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([p, n]) => `${p} (${n}×)`)
+      .join(', ');
+    avisos.push(
+      `${documentoPodado.length} declaração(ões) que descreviam o DOCUMENTO saíram da regra do <html>/<body>: ${lista}. No documento de origem elas eram a página; num div no meio de uma página composta viram uma seção invisível, uma segunda barra de rolagem ou uma caixa de 20px.`,
+    );
+  }
   return { css: raizAst.toString(), reescritas, renomeados, avisos };
+};
+
+/**
+ * A regra mira o PROXY nu, isto é, ela era do `<html>` ou do `<body>`.
+ *
+ * `ANCORA_DE` reescreve `body{…}` para `:where([data-ds-corpo="x"]){…}` e
+ * `html{…}` para `:where([data-ds-raiz="x"]){…}`. Depois do escopo, esse é o
+ * seletor que termina no fecha-parênteses da âncora e não tem mais nada
+ * pendurado — nem descendente, nem classe, nem `:is(...)`.
+ *
+ * `body.carregando` também conta: o estado do documento é do documento.
+ */
+const miraODocumento = (seletor: string, opts: { raiz: string; corpo: string }): boolean =>
+  seletor
+    .split(',')
+    .map((s) => s.trim())
+    .some(
+      (s) =>
+        (s.startsWith(`:where([${opts.corpo}])`) || s.startsWith(`:where([${opts.raiz}])`)) &&
+        /^:where\(\[[^\]]+\]\)(?:[.#][\w-]+|\[[^\]]*\]|:[\w-]+(?:\([^)]*\))?)*$/.test(s),
+    );
+
+/**
+ * O que era do DOCUMENTO e não pode virar propriedade de um `div`.
+ *
+ * ## O defeito, medido
+ *
+ * O `<body>` de uma das origens do acervo trazia `display:none!important` — um
+ * estado de carregamento congelado pela captura. `escoparCss` o reescreveu
+ * fielmente para `:where([data-ds-corpo="ds_x"]){display:none!important}`, e a
+ * SEÇÃO INTEIRA da página gerada desapareceu: 212 caracteres de conteúdo,
+ * altura zero, sem erro nenhum no console. Outra origem dava
+ * `position:fixed;height:20px` no corpo, e uma seção de 913px saía dentro de
+ * uma caixa de 20px, rolando por dentro.
+ *
+ * ## Por que a poda é aqui, e é certa
+ *
+ * Esta é a terceira irmã da mesma família, e as três já foram vistas na tela:
+ *
+ * 1. o `style` inline do `<body>` (tratado em `envolverEmProxies`);
+ * 2. a CLASSE do `<body>` — `overflow-y-auto`, `fixed`, `hidden`, `h-0`
+ *    (`DESCREVE_O_DOCUMENTO`, no mesmo arquivo);
+ * 3. a REGRA de folha do `<body>`, que é esta.
+ *
+ * No documento de origem cada uma delas descrevia a PÁGINA: `overflow` era a
+ * rolagem que ninguém vê como barra separada, `height` era o quanto o site
+ * ocupava, `position:fixed` era a moldura de um app. Copiadas para um `div` no
+ * meio de uma página composta, viram uma segunda barra de rolagem, uma caixa
+ * que corta o conteúdo e uma seção fora do fluxo.
+ *
+ * ## O que NÃO sai
+ *
+ * Tudo o que é aparência: `background`, `color`, `font`, `letter-spacing`,
+ * `--variáveis`. É delas que a peça tira a cara que tinha na origem, e é por
+ * isso que os proxies existem.
+ */
+const DO_DOCUMENTO =
+  /^(display|position|overflow(-[xy])?|(min-|max-)?(height|width)|top|right|bottom|left|inset(-.+)?|z-index)$/i;
+
+const tirarODocumentoDe = (regra: Rule): string[] => {
+  const tirados: string[] = [];
+  regra.each((no) => {
+    if (no.type !== 'decl') return;
+    const prop = no.prop.trim();
+    if (!DO_DOCUMENTO.test(prop)) return;
+    // `display` só sai quando ESCONDE. Um `<body>` em flex ou grid está
+    // descrevendo a moldura que a peça espera ter em volta, e tirá-la mudaria
+    // o desenho de quem nunca teve defeito nenhum.
+    if (/^display$/i.test(prop) && !/^\s*none\s*(!important)?\s*$/i.test(no.value)) return;
+    // `position` só sai quando TIRA DO FLUXO. `relative` é contexto de
+    // posicionamento e a peça de dentro costuma contar com ele.
+    if (/^position$/i.test(prop) && !/^\s*(fixed|absolute)\s*(!important)?\s*$/i.test(no.value)) {
+      return;
+    }
+    // Rolagem visível é o padrão; declarar `visible` não cria barra nenhuma.
+    if (/^overflow/i.test(prop) && /^\s*visible\s*(!important)?\s*$/i.test(no.value)) return;
+    tirados.push(prop.toLowerCase());
+    no.remove();
+  });
+  return tirados;
 };
 
 /**
@@ -413,12 +524,12 @@ export const nomesGlobaisDe = (
   const keyframes = new Set<string>();
   const fontFace = new Set<string>();
   const layer = new Set<string>();
-  let raizAst: postcss.Root;
-  try {
-    raizAst = postcss.parse(css);
-  } catch {
-    return { keyframes, fontFace, layer };
-  }
+  // Pelo mesmo equilíbrio de chaves: uma folha que não analisa devolveria
+  // conjuntos vazios, e aí as colisões de `@keyframes` e `@font-face` dela
+  // deixariam de ser detectadas para TODAS as origens seguintes.
+  const analise = analisarCss(css);
+  if ('erro' in analise) return { keyframes, fontFace, layer };
+  const raizAst = analise.raiz;
   raizAst.walkAtRules((at) => {
     if (/^(-\w+-)?keyframes$/i.test(at.name)) {
       const n = at.params.trim();

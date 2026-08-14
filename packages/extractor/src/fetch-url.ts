@@ -25,7 +25,11 @@ export const fetchUrl = async (url: string): Promise<FetchResult> => {
 
 const tryLoadPlaywright = async (): Promise<PlaywrightApi | null> => {
   try {
-    // @ts-expect-error playwright é opcional; se não estiver instalado, cai no fetch
+    // O `playwright` passou a ser dependência declarada na raiz (o `pnpm
+    // conferir` abre o site gerado com ele), então o import agora tem tipo e o
+    // `@ts-expect-error` que morava aqui virou diretiva inútil. O `try/catch`
+    // continua valendo pelo motivo de sempre: o pacote existe, o BINÁRIO do
+    // navegador pode não estar instalado.
     const mod = await import('playwright');
     return mod as unknown as PlaywrightApi;
   } catch {

@@ -1,4 +1,5 @@
 import { ConviteOrbisCriativos } from '@/components/ConviteOrbisCriativos';
+import { api } from '@/lib/api';
 import {
   type MarcaSubId,
   STATUS_LABEL,
@@ -6,7 +7,9 @@ import {
   type SecaoStatus,
   marcaSectionStatus,
 } from '@/lib/generator-sections';
-import { ChevronRight, X } from 'lucide-react';
+import { toast } from '@/lib/toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ChevronRight, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import type { WizardBranding } from '../partes';
 import { PainelContato } from './marca/PainelContato';
@@ -59,6 +62,29 @@ export function StepMarca({
 }) {
   const status = marcaSectionStatus(branding);
   const [aberto, setAberto] = useState<MarcaSubId | null>(null);
+  const [nicho, setNicho] = useState('');
+  const qc = useQueryClient();
+
+  // Marca automática para TESTES de geração: o servidor cria a identidade
+  // inteira (receita curada, dirigida pelo nicho quando informado) e as mídias
+  // dela: logos + imagens POR SEÇÃO, na conta que cada seção aceita. O patch
+  // entra pelo mesmo setB dos painéis, e o autosave grava como se a pessoa
+  // tivesse preenchido.
+  const marcaAutomatica = useMutation({
+    mutationFn: () => {
+      if (projectId === null)
+        throw new Error('Salve o projeto primeiro: a mídia precisa de um lugar.');
+      return api.criarMarcaAutomatica(projectId, nicho.trim() === '' ? undefined : nicho.trim());
+    },
+    onSuccess: ({ branding: b, media }) => {
+      setB(b);
+      qc.invalidateQueries({ queryKey: ['project', projectId] });
+      toast.ok(
+        `Criei a marca "${b.brandName}" com ${media.length} mídia(s), incluindo as das seções. Revise os painéis.`,
+      );
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui criar a marca.'),
+  });
 
   const painel = (id: MarcaSubId) => {
     switch (id) {
@@ -109,6 +135,39 @@ export function StepMarca({
   return (
     <div className="ds-fade-in mx-auto max-w-[760px]">
       <ConviteOrbisCriativos />
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={marcaAutomatica.isPending || projectId === null}
+          onClick={() => marcaAutomatica.mutate()}
+          className="flex items-center gap-2 rounded-none border px-3.5 py-2 text-[12px] uppercase tracking-wide transition-colors hover:border-[var(--color-signal)] disabled:opacity-50"
+          style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg)' }}
+          title={
+            projectId === null
+              ? 'Salve o projeto primeiro: a mídia precisa de um lugar.'
+              : 'Preencho a bancada inteira com uma marca de teste e crio os logos e as imagens por seção.'
+          }
+        >
+          <Sparkles size={12} />
+          {marcaAutomatica.isPending ? 'Criando a marca…' : 'Criar uma marca para mim'}
+        </button>
+        <input
+          type="text"
+          value={nicho}
+          onChange={(e) => setNicho(e.target.value)}
+          placeholder="nicho do produto (opcional)"
+          className="rounded-none border px-3 py-2 text-[12px] outline-none focus:border-[var(--color-signal)]"
+          style={{
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-fg)',
+            background: 'transparent',
+          }}
+          title="Ex.: barbearia, cafeteria, app de treino. Dirige o nome, o logo e as mídias."
+        />
+        <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+          Identidade completa + mídias por seção, na conta que cada seção aceita.
+        </span>
+      </div>
       <p className="mb-4 text-[13px]" style={{ color: 'var(--color-fg-muted)' }}>
         Abra um de cada vez. O que o senhor deixar em branco eu resolvo com o kit, e a lista diz o
         que já está definido.

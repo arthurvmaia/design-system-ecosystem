@@ -153,17 +153,94 @@ export type ReguaAlinhada = {
  * fica como está — a mesma regra de "na dúvida, não mexe" que a recoloração
  * segue com cluster sem papel.
  */
+/**
+ * Corta o RABO da régua: degrau que saltou longe demais do anterior.
+ *
+ * Uma régua de espaço cresce por degraus vizinhos — `4, 8, 12, 16, 24, 32, 48`.
+ * Quando o último salta muito além do anterior, aquilo não é degrau: é a medida
+ * de um embrulho de página que entrou na amostragem como se fosse respiro.
+ *
+ * O limiar é 4×, e ele foi CALIBRADO nos dois lados. A régua real que motivou
+ * isto é `[6, 10, 16, 20, 24, 32, 40, 100, 160, 470, 2520]`: o salto de 470 para
+ * 2520 é 5,4× e cai; o de 160 para 470 é 2,9× e fica. Do outro lado, uma régua
+ * grossa e legítima como `[4, 12, 48]` tem um salto de 4,0× — e um limiar de 3
+ * a decapitava.
+ *
+ * Medido no acervo: uma régua termina em **2520px** e outra em 470px, contra
+ * uma mediana de 96px para o maior degrau. A causa foi corrigida na FONTE
+ * (`engine-v2/mapper/rampas.ts` passou a recusar respiro maior que meia página),
+ * mas a evidência gravada não guarda os nós — então as réguas do acervo de hoje
+ * só se limpam recapturando os 57 sites, o que custa horas. Este corte é o que
+ * as limpa agora, e continua valendo como rede depois.
+ *
+ * Por que o rabo e não o meio: o salto absurdo aparece sempre no fim, porque a
+ * régua vem ordenada. Cortar no meio removeria degrau legítimo e deslocaria
+ * todos os vizinhos — e é o deslocamento que faz o que era destaque continuar
+ * destaque.
+ */
+const SALTO_MAXIMO = 4;
+const semRaboAbsurdo = (degraus: readonly number[]): number[] => {
+  const fora: number[] = [];
+  for (let i = degraus.length - 1; i > 0; i--) {
+    const atual = degraus[i];
+    const anterior = degraus[i - 1];
+    if (atual === undefined || anterior === undefined || anterior <= 0) break;
+    if (atual / anterior <= SALTO_MAXIMO) break;
+    fora.push(i);
+  }
+  // Nunca esvazia a régua: sem degrau não há reescala, e ficar com a régua
+  // torta é melhor que ficar sem régua nenhuma.
+  if (fora.length >= degraus.length - 1) return [...degraus];
+  return degraus.filter((_, i) => !fora.includes(i));
+};
+
+/**
+ * A distorção máxima que um degrau da referência pode impor ao valor da origem.
+ *
+ * O alinhamento é POSICIONAL, e no topo da régua ele deforma: a referência de
+ * um kit publicava `--marca-espaco-8: 100px` e `-9: 160px`, e o `sm:p-8` de
+ * 32px da origem caiu no 100px (3,1×), o `gap-10` de 40px caiu no 160px (4×).
+ * Num grid de 12 colunas e 1040px, 11 gaps de 160px somam 1760px: as tracks
+ * colapsam a zero e o terceiro cartão termina 520px além da borda — foi o S12
+ * de dois kits, medido.
+ *
+ * Harmonizar não é deformar. Medido nos pares legítimos do acervo, a razão
+ * chega a 1,67× (24→40); os que estouram começam em 3,1×. Acima de 2×, o
+ * literal da origem vale mais que o degrau — a mesma degradação que o
+ * `reescalar` já promete: não reescrever nunca é melhor que reescrever errado.
+ */
+export const DISTORCAO_MAXIMA_DA_REGUA = 2;
+
+/**
+ * A razão sozinha condenaria o desenho deliberado: "pontas nas pontas" leva
+ * 12px→32px (2,7×) e o canto quase vivo 2px→12px (6×) — deltas de 20px e 10px,
+ * inofensivos e INTENCIONAIS. O dano que o S12 mediu escala com o delta
+ * absoluto: 40px→160px são 120px a mais em CADA gap de um grid. A guarda só
+ * age quando as DUAS coisas passam do limite.
+ */
+export const FOLGA_DA_DISTORCAO_PX = 32;
+
 export const reguaDaOrigem = (
-  origem: readonly number[],
-  referencia: readonly number[],
+  origemBruta: readonly number[],
+  referenciaBruta: readonly number[],
   nome: (i: number) => string,
   ancoras?: { origem: number | null; referencia: number | null },
 ): ReguaAlinhada => {
+  const origem = semRaboAbsurdo(origemBruta);
+  const referencia = semRaboAbsurdo(referenciaBruta);
   const destinos = alinharDegraus(origem, referencia, ancoras);
   const porValor = new Map<number, string>();
   origem.forEach((valor, i) => {
     const j = destinos[i];
-    if (j !== undefined) porValor.set(valor, nome(j));
+    if (j === undefined) return;
+    const destino = referencia[j];
+    if (destino !== undefined && valor > 0 && destino > 0) {
+      const razao = destino > valor ? destino / valor : valor / destino;
+      if (razao > DISTORCAO_MAXIMA_DA_REGUA && Math.abs(destino - valor) > FOLGA_DA_DISTORCAO_PX) {
+        return;
+      }
+    }
+    porValor.set(valor, nome(j));
   });
   return { porValor };
 };

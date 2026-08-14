@@ -284,10 +284,19 @@ test('régua vazia devolve o CSS igual', () => {
 });
 
 test('CSS ilegível não derruba nada', () => {
-  const css = 'h1{font-size:';
+  // Colchete sem fechar é o que sobra depois de equilibrar as chaves: aqui a
+  // folha segue como veio, sem reescala e sem exceção.
+  const css = 'h1[x{font-size:48px}';
   const r = reescalarCss(css, REGUAS);
   assert.equal(r.css, css);
   assert.equal(r.reescritas, 0);
+});
+
+test('folha só desequilibrada É reescalada, em vez de ficar de fora', () => {
+  // Antes, um bloco sem fechar fazia a origem inteira perder a reescala em
+  // silêncio. O navegador fecha o bloco e desenha; aqui a régua passa a valer.
+  const r = reescalarCss('h1{font-size:48px', REGUAS);
+  assert.ok(r.reescritas > 0, 'a régua alcançou a declaração');
 });
 
 test('o que não casa não é reformatado de passagem', () => {
@@ -324,4 +333,20 @@ test('entre dois degraus próximos ganha o mais perto, sempre o mesmo', () => {
   };
   const r = reescalarCss('p{font-size:16px}', proximas);
   assert.match(r.css, /var\(--marca-passo-2, 16px\)/);
+});
+
+test('dentro de @keyframes nada é reescalado: passo é amplitude, não tamanho', () => {
+  // O risco não é estético, é a animação PARAR. A régua da marca é grossa de
+  // propósito; dois passos vizinhos de um movimento podem cair no mesmo degrau,
+  // e aí o começo e o fim ficam iguais — o elemento não sai do lugar. E o CSS
+  // continua perfeitamente válido, então nada denuncia.
+  const r = reescalarCss(
+    '@keyframes desliza{from{padding-left:12px}to{padding-left:24px}}.t{padding-left:12px}',
+    REGUAS,
+  );
+  // Os dois passos continuam DIFERENTES entre si — que é o movimento.
+  assert.match(r.css, /from\{padding-left:12px\}/, 'o passo inicial fica no valor de origem');
+  assert.match(r.css, /to\{padding-left:24px\}/, 'e o final também');
+  // Fora da at-rule a reescala segue valendo: o guarda é cirúrgico.
+  assert.match(r.css, /\.t\{padding-left:var\(--marca-espaco-2/, 'o ponto de uso é reescalado');
 });

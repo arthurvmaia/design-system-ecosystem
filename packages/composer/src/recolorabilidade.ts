@@ -1,5 +1,5 @@
 import { ALCANCE_DA_MARCA } from '@ds/shared';
-import postcss from 'postcss';
+import { analisarCss } from './analisar-css.js';
 import { coresDoValor } from './inventario.js';
 
 /**
@@ -131,12 +131,11 @@ const VAR_COMO_COR = /\bvar\s*\(\s*--[\w-]+/gi;
  * do resto do pipeline — quem não conseguiu medir não acusa a peça.
  */
 export const medirRecolorabilidade = (css: string): Recolorabilidade => {
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     return { total: 0, alcancavel: 0, taxa: 1, fora: {} };
   }
+  const raiz = analise.raiz;
 
   let alcancavel = 0;
   const fora: Record<MotivoInalcancavel, number> = {

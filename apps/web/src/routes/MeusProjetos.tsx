@@ -6,7 +6,16 @@ import { TRABALHANDO, VAZIO, conta } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
 import { useReveal } from '@/lib/use-reveal';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, ExternalLink, FolderOpen, Package, Pencil, Trash2 } from 'lucide-react';
+import {
+  Copy,
+  Download,
+  ExternalLink,
+  FolderOpen,
+  Package,
+  Pencil,
+  Trash2,
+  Wand2,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -52,8 +61,9 @@ export function MeusProjetosPage() {
         className="ds-slide-up ds-d2 mt-3 max-w-[62ch] text-[14px] leading-[1.6]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        Cada versão é um site completo: veja a prévia, abra numa aba ou baixe o .zip para subir num
-        host. Se quiser mudar alguma coisa, edite o projeto e eu gero de novo.
+        Cada versão é um site completo: veja a prévia, abra numa aba ou baixe o projeto inteiro, com
+        o leia-me de publicação, o servidor para rodar na sua máquina e as configurações prontas dos
+        hosts. Se quiser mudar alguma coisa, edite o projeto e eu gero de novo.
       </p>
 
       {items.length === 0 ? (
@@ -73,9 +83,47 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [confirmDel, setConfirmDel] = useState(false);
+  const [pedindoAjuste, setPedindoAjuste] = useState(false);
+  const [textoDoAjuste, setTextoDoAjuste] = useState('');
+
+  /**
+   * O pedido de retoque NÃO regera o site.
+   *
+   * Ele vira um job e pousa no `assets/ajustes.css` daquela versão — a folha que
+   * a montagem emite vazia e liga por último na cascata. A composição original
+   * fica intacta, e desfazer é apagar um bloco. Regerar refaria tudo o que já
+   * estava bom e o retoque sumiria na geração seguinte.
+   */
+  const ajustes = useQuery({
+    queryKey: ['ajustes', projeto.id],
+    queryFn: () => api.ajustesDoSite(projeto.id),
+    enabled: pedindoAjuste,
+  });
+  const pedirAjuste = useMutation({
+    mutationFn: (texto: string) => api.pedirAjuste(projeto.id, texto),
+    onSuccess: () => {
+      setTextoDoAjuste('');
+      toast.ok('Pedido registrado. Ele entra na fila e eu aplico no site.');
+      void qc.invalidateQueries({ queryKey: ['ajustes', projeto.id] });
+      void qc.invalidateQueries({ queryKey: ['queue'] });
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui registrar.'),
+  });
 
   const maisRecente = projeto.versoes[0];
-  const anteriores = projeto.versoes.slice(1);
+  /**
+   * A lista mostra as DUAS últimas anteriores, e não todas.
+   *
+   * Um projeto em ajuste acumula versão a cada geração — o do clube chegou a
+   * nove, e a lista virava uma coluna de datas que empurrava o resto da tela
+   * para baixo sem informar nada: ninguém volta para a sétima versão.
+   *
+   * As mais antigas continuam EM DISCO e continuam abríveis pela pasta; o que
+   * some é o ruído na tela, não o arquivo. A contagem total segue no cabeçalho,
+   * então quem tem nove versões continua sabendo que tem nove.
+   */
+  const anteriores = projeto.versoes.slice(1, 3);
+  const anterioresOcultas = Math.max(0, projeto.versoes.length - 1 - anteriores.length);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['meus-projetos'] });
@@ -112,22 +160,27 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
 
   return (
     <div className="ds-reveal ds-glass-static overflow-hidden rounded-xl">
-      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,340px)_1fr]">
-        {/* Prévia da versão mais recente. */}
+      {/*
+        A prévia ocupa a LARGURA INTEIRA, e os detalhes vêm embaixo.
+        Espremida numa coluna de 340px ela mostrava um site em miniatura, onde
+        nada do que se quer conferir — o hero, o jogo de cores, a foto — dá para
+        ver. Esta tela existe para OLHAR o site pronto; a largura é dela.
+      */}
+      <div className="grid grid-cols-1">
         {maisRecente && (
           <button
             type="button"
             onClick={() =>
               window.open(siteUrl(projeto.id, maisRecente.timestamp), '_blank', 'noopener')
             }
-            className="group block border-b md:border-r md:border-b-0"
+            className="group block border-b"
             style={{ borderColor: 'var(--color-border)' }}
             aria-label={`Abrir ${projeto.name} em nova aba`}
           >
             <PreviewFrame
               src={siteUrl(projeto.id, maisRecente.timestamp)}
               title={projeto.name}
-              aspect={16 / 10}
+              aspect={16 / 9}
             />
           </button>
         )}
@@ -180,8 +233,21 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                 style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
               >
                 <Download size={12} />
-                Baixar .zip
+                Baixar projeto
               </a>
+            )}
+            {maisRecente && (
+              <button
+                type="button"
+                onClick={() => setPedindoAjuste((v) => !v)}
+                className="flex items-center gap-1.5 rounded-none px-3 py-1.5 text-[12px] transition-colors hover:text-[var(--color-fg)]"
+                style={{
+                  color: pedindoAjuste ? 'var(--color-fg)' : 'var(--color-fg-muted)',
+                }}
+              >
+                <Wand2 size={12} />
+                Ajustar
+              </button>
             )}
             <button
               type="button"
@@ -254,13 +320,104 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                     <a
                       href={downloadUrl(projeto.id, versao.timestamp)}
                       className="opacity-50 transition-opacity hover:opacity-100"
-                      title="Baixar esta versão"
+                      title="Baixar o projeto desta versão"
                     >
                       <Download size={12} />
                     </a>
                   </div>
                 </div>
               ))}
+              {anterioresOcultas > 0 && (
+                <div
+                  className="px-2 pt-0.5 text-[11px]"
+                  style={{ color: 'var(--color-fg-subtle)' }}
+                >
+                  {conta(anterioresOcultas, 'versão mais antiga', 'versões mais antigas')} em disco,
+                  fora desta lista. Abra a pasta para chegar nelas.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* O campo de retoque: texto livre, na língua de quem pede. Um seletor
+              de propriedade CSS aqui seria mais preciso e inútil — quem olha o
+              site diz "esse azul não é o meu azul", não "background-color". */}
+          {pedindoAjuste && maisRecente && (
+            <div
+              className="mt-4 border-t pt-4"
+              style={{ borderColor: 'rgba(255, 255, 255, 0.06)' }}
+            >
+              <label
+                htmlFor={`ajuste-${projeto.id}`}
+                className="mb-2 block text-[11px]"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                O que você quer diferente neste site? Escreva do seu jeito.
+              </label>
+              <textarea
+                id={`ajuste-${projeto.id}`}
+                value={textoDoAjuste}
+                onChange={(e) => setTextoDoAjuste(e.target.value)}
+                rows={3}
+                maxLength={2000}
+                placeholder="Ex.: o título da abertura está pequeno demais, e o azul dos botões não é o meu azul."
+                className="w-full resize-y rounded-none border p-2.5 text-[12px] outline-none"
+                style={{
+                  borderColor: 'rgba(255,255,255,0.12)',
+                  backgroundColor: 'rgba(0,0,0,0.25)',
+                  color: 'var(--color-fg)',
+                }}
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={textoDoAjuste.trim().length < 3 || pedirAjuste.isPending}
+                  onClick={() => pedirAjuste.mutate(textoDoAjuste.trim())}
+                  className="ds-btn ds-glow rounded-none px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-40"
+                  style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
+                >
+                  {pedirAjuste.isPending ? 'Registrando…' : 'Pedir ajuste'}
+                </button>
+                <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                  Entra na fila. O site não é regerado: o ajuste é aplicado nele.
+                </span>
+              </div>
+
+              {(ajustes.data?.ajustes.length ?? 0) > 0 && (
+                <ul className="mt-3 space-y-1.5">
+                  {ajustes.data?.ajustes
+                    .slice()
+                    .reverse()
+                    .map((a) => (
+                      <li
+                        key={a.id}
+                        className="flex items-start gap-2 text-[11px]"
+                        style={{ color: 'var(--color-fg-muted)' }}
+                      >
+                        <span
+                          className="mt-px shrink-0 px-1.5 py-px text-[9px] uppercase tracking-[0.1em]"
+                          style={{
+                            color:
+                              a.estado === 'aplicado'
+                                ? 'var(--color-ion-3)'
+                                : a.estado === 'recusado'
+                                  ? 'var(--color-fg-subtle)'
+                                  : 'var(--color-signal)',
+                            border: '1px solid currentColor',
+                          }}
+                        >
+                          {a.estado}
+                        </span>
+                        <span className="min-w-0">
+                          {a.pedido}
+                          {a.resposta !== '' && (
+                            <span style={{ color: 'var(--color-fg-subtle)' }}>: {a.resposta}</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              )}
             </div>
           )}
         </div>

@@ -52,9 +52,11 @@ export const escolherCamadasDePagina = (opts: {
   camadas: readonly VisualLayer[];
   nos: readonly StructuralNode[];
   viewport: { width: number; height: number };
+  /** Altura TOTAL da página: é contra ela que "atravessa a página" se mede. */
+  pageHeight: number;
   hashesComRuntime: ReadonlySet<string>;
 }): CamadasDePagina => {
-  const { camadas, nos, viewport, hashesComRuntime } = opts;
+  const { camadas, nos, viewport, pageHeight, hashesComRuntime } = opts;
   const porHash = new Map(nos.map((n) => [n.fingerprint.hash, n]));
   const areaDaTela = Math.max(1, viewport.width * viewport.height);
   const larguraMinima = viewport.width * LADO_MINIMO;
@@ -79,6 +81,19 @@ export const escolherCamadasDePagina = (opts: {
     if (no !== undefined && (no.role === 'document' || no.parent === null)) continue;
     const tag = camada.fingerprint.tag.toLowerCase();
     if (tag === 'body' || tag === 'html') continue;
+
+    // "Camada de PÁGINA" precisa atravessar a página, e a régua é a ALTURA DA
+    // PÁGINA, não a da viewport. Medido no acervo: das 31 camadas escolhidas
+    // pela regra antiga, 22 cobriam menos de 30% da página — o fundo do hero
+    // (900 px numa página de 4795) era colado atrás de todas as dobras.
+    const fixa = camada.stacking.position === 'fixed';
+    const atravessa = pageHeight > 0 && caixa.h >= pageHeight * 0.7;
+    if (!fixa && !atravessa) continue;
+
+    // Fundo não tem texto. O header fixo do antigravity virou "Fundo da
+    // página" porque `fixed` entrava sem olhar conteúdo — uma barra cheia de
+    // links não é pano de fundo, é navegação.
+    if ((no?.subtreeTextLength ?? 0) > 40) continue;
 
     vistos.add(hash);
     const temRuntime =

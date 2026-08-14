@@ -34,6 +34,7 @@ import { type FolhaExternaBundle, escreverBundle } from './compiler/bundle.js';
 import { atributosDoDocumento, scriptsExternosDoDocumento } from './compiler/documento.js';
 import { decidirScripts, runtimesQueViajam } from './compiler/runtime-local.js';
 import { detectarFerramentas, montarStack } from './compiler/stack.js';
+import type { EvidenciaDaCaptura } from './evidencia.js';
 import { type Candidato, descobrirCandidatos } from './explore/candidates.js';
 import { TRAJETORIAS_COMPLEMENTARES, TRAJETORIA_COBERTURA } from './explore/pointer-paths.js';
 import {
@@ -52,11 +53,13 @@ import {
   COLETAR_MAPA_FN,
   DESTACAR_FUNDO_FN,
   ESPERAR_ICONES_FN,
+  FORCAR_ICONES_FN,
   HTML_DO_REF_FN,
   INIT_SCRIPT,
   LIMPAR_DESTAQUE_FN,
   ROLAR_ATE_REF_FN,
   ROLAR_PARA_FN,
+  VISIVEIS_FN,
   chamar,
   hrefsDasFolhas,
   limparInstrumentacao,
@@ -122,6 +125,7 @@ export const FASE_V2 = {
   estabilizar: 'v2-estabilizar',
   percurso: 'v2-percurso',
   scrollAmostra: FASE.scrollAmostra,
+  retratos: 'v2-retratos',
   candidatos: 'v2-candidatos',
   estados: 'v2-estados',
   assets: FASE.assetsRede,
@@ -144,9 +148,45 @@ export const FASE_V2 = {
  * As frações somam menos que 1 de propósito — o que sobra é a margem do
  * carregamento, da drenagem e do fechamento.
  */
+/**
+ * O SITE TÍPICO do acervo, medido — a régua com que o orçamento se ajusta.
+ *
+ * São as medianas de 58 capturas: 321 nós no mapa estrutural e 5756 px de
+ * altura. Números medidos, não escolhidos: um site nesses valores recebe
+ * exatamente o orçamento configurado, e é a partir daí que a proporção conta.
+ * Recalibrar é ler o acervo de novo, não discutir.
+ */
+const NOS_DO_SITE_TIPICO = 321;
+const ALTURA_DO_SITE_TIPICO = 5756;
+/**
+ * A contagem BRUTA de elementos, medida no HTML renderizado de 60 capturas:
+ * mediana 405. É outra régua que a do mapa estrutural (321), porque o mapa é
+ * filtrado — e é esta que serve antes do percurso, quando só existe o DOM.
+ */
+const ELEMENTOS_DO_SITE_TIPICO = 405;
+/**
+ * O teto da ampliação. O maior site do catálogo tem 1168 nós (3,6× a mediana) e
+ * 15412 px (2,7×), então 4× o cobre com folga — e impede que uma página de
+ * rolagem infinita segure a fila para sempre.
+ */
+const TETO_DE_AMPLIACAO = 4;
+/**
+ * O teto ABSOLUTO de uma captura. Orçamento sem fim é fila travada, e o limite
+ * fica declarado aqui em vez de esperar alguém descobri-lo numa madrugada. Doze
+ * minutos cobrem o site mais pesado do catálogo com folga.
+ */
+const TETO_ABSOLUTO_MS = 12 * 60_000;
+
 const FRACAO_DA_FASE: Record<string, number> = {
   [FASE_V2.percurso]: 0.34,
-  [FASE_V2.estados]: 0.22,
+  // O bloco de HTML por seção, espera de ícones, prints e retratos de fundo
+  // rodava FORA de qualquer fase: 12 a 46 s por captura (7% a 14% do total)
+  // invisíveis ao orçamento, enquanto o percurso era cortado no teto.
+  [FASE_V2.retratos]: 0.06,
+  // 0.16, não 0.22: medido nas 7 capturas do acervo, a fase usou de 16 a 93 s
+  // num teto de 92 s. A fração é piso (o teto expande com o livre), e cada
+  // ponto prometido aqui é tempo que o percurso não pode usar.
+  [FASE_V2.estados]: 0.16,
   [FASE_V2.candidatos]: 0.04,
   [FASE_V2.segmentar]: 0.06,
   [FASE_V2.compilar]: 0.1,
@@ -162,6 +202,7 @@ const FRACAO_DA_FASE: Record<string, number> = {
  */
 const ORDEM_DAS_FASES: string[] = [
   FASE_V2.percurso,
+  FASE_V2.retratos,
   FASE_V2.candidatos,
   FASE_V2.estados,
   FASE_V2.segmentar,
@@ -188,6 +229,7 @@ export const tetoDaFase = (
   nome: string,
   totalMs: number,
   restanteMs?: number,
+  medidoAdianteMs?: number,
 ): number | undefined => {
   const fracao = FRACAO_DA_FASE[nome];
   if (fracao === undefined) return undefined;
@@ -209,7 +251,24 @@ export const tetoDaFase = (
   // minutos para algo que leva dez segundos, e a redistribuição não faria nada
   // justamente onde ela mais serve.
   const margem = Math.min(totalMs * 0.18, 45_000);
-  const livre = Math.round(restanteMs - totalMs * prometidoAdiante - margem);
+  // A reserva MEDIDA vence a fração. As frações prometem ~48% do total às
+  // fases seguintes e, medido nas 7 capturas do acervo, elas usaram 15% a 20%
+  // disso: 150 a 210 s por captura prometidos a ninguém, enquanto a única fase
+  // que precisava deles era cortada. Com histórico (p95 real por fase), a
+  // promessa passa a ser o que as fases CUSTAM, com folga de metade e piso de
+  // 8% do total — a captura nova nunca fica sem reserva nenhuma.
+  // Piso de 8% e TETO na própria fração: o histórico serve para devolver
+  // tempo ao percurso, nunca para reservar MAIS que a regra antiga — sem o
+  // teto, o p95 dos sites pesados realimentava a reserva a cada rodada
+  // (medido: 125 s → 217 s num dia) e o percurso de todos passava fome.
+  const prometidoMs =
+    medidoAdianteMs !== undefined
+      ? Math.min(
+          Math.max(Math.round(medidoAdianteMs * 1.5), Math.round(totalMs * 0.08)),
+          Math.round(totalMs * prometidoAdiante),
+        )
+      : Math.round(totalMs * prometidoAdiante);
+  const livre = Math.round(restanteMs - prometidoMs - margem);
   return Math.max(daFracao, livre);
 };
 
@@ -246,6 +305,14 @@ export type OpcoesCaptura = {
    * vez. A escolha é de quem chama, não do motor.
    */
   verificarVisual?: boolean;
+  /**
+   * p95 do custo REAL de cada fase nas capturas anteriores (ms por fase), lido
+   * dos manifests do acervo. Com ele, a reserva de orçamento das fases
+   * seguintes ao percurso deixa de ser a fração fixa de 48% e passa a ser o
+   * que elas custam de verdade — medido no acervo, a diferença é de 150 a
+   * 210 s devolvidos à fase que era cortada. Sem histórico, vale a fração.
+   */
+  historicoDeFases?: Record<string, number>;
   signal?: AbortSignal;
 };
 
@@ -257,6 +324,11 @@ export type ResultadoCaptura = {
   segmentos: SegmentoV2[];
   /** Reprovados COM categoria e HTML — a Revisão mostra a prévia e os motivos. */
   rejeitados: RejeitadoV2[];
+  /**
+   * O insumo bruto que a Refinaria consome: com ele em disco, resegmentar e
+   * recompilar bundles NÃO exige navegador. Ausente só em capturas antigas.
+   */
+  evidencia?: EvidenciaDaCaptura;
 };
 
 const noop: LogV2 = () => {};
@@ -319,6 +391,43 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
   const limitacoes: string[] = [];
   const parciais: string[] = [];
 
+  // Reserva medida: o que as fases DEPOIS de `nome` custaram nas capturas
+  // anteriores (p95). Fase sem medição entra pela fração dela — histórico pela
+  // metade não pode zerar a reserva de uma fase que existe.
+  const medidoAdiante = (nome: string): number | undefined => {
+    const historico = opts.historicoDeFases;
+    if (historico === undefined) return undefined;
+    const i = ORDEM_DAS_FASES.indexOf(nome);
+    if (i === -1) return undefined;
+    let soma = 0;
+    for (const f of ORDEM_DAS_FASES.slice(i + 1)) {
+      const m = historico[f];
+      soma += m !== undefined ? m : Math.round(tel.totalAtual() * (FRACAO_DA_FASE[f] ?? 0));
+    }
+    return soma;
+  };
+  // `tel.totalAtual()`, e NÃO `limits.orcamentoTotalMs`: o total cresce quando o
+  // site se mostra maior que o típico, e o teto da fase tem de crescer junto.
+  // Ler da constante foi o que fez a primeira versão da ampliação não servir
+  // para nada — o total subia para 355 s e o percurso continuava cortado em
+  // 61,2 s, que é a fração de 180 s.
+  const tetoCom = (nome: string): number | undefined =>
+    tetoDaFase(nome, tel.totalAtual(), tel.restanteTotal(), medidoAdiante(nome));
+  // Registrado no manifesto: sem isto, ninguém sabe se o teto veio do
+  // histórico ou da fração, e a sugestão de orçamento da tela vira palpite.
+  const aposPercurso = medidoAdiante(FASE_V2.percurso);
+  const infoOrcamento = {
+    origem: (aposPercurso !== undefined ? 'historico' : 'fracao') as 'historico' | 'fracao',
+    reservaAposPercursoMs:
+      aposPercurso !== undefined
+        ? Math.max(Math.round(aposPercurso * 1.5), Math.round(limits.orcamentoTotalMs * 0.08))
+        : Math.round(
+            limits.orcamentoTotalMs *
+              ORDEM_DAS_FASES.slice(1).reduce((n, f) => n + (FRACAO_DA_FASE[f] ?? 0), 0),
+          ),
+  };
+  log('orcamento', infoOrcamento);
+
   let sessao: SessaoV2 | null = null;
   try {
     sessao = await tel.medir(FASE_V2.abrir, () =>
@@ -365,7 +474,6 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     const caminhos: PointerPath[] = [];
     const respostasPonteiro: PointerResponse[] = [];
     const refsReativos = new Map<number, number>();
-    const coletas: RawColeta[] = [];
     let viewportReativa = false;
 
     /**
@@ -392,17 +500,110 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
      * estoura a cota perde a varredura de ponteiro, não a observação temporal —
      * porque a temporal é barata e é o que responde "isto se move".
      */
-    const paradasPrevistas = opts.maxParadas ?? 10;
-    const tetoPercurso =
-      tetoDaFase(FASE_V2.percurso, limits.orcamentoTotalMs, tel.restanteTotal()) ?? 60_000;
-    const cotaPorParada = Math.max(3_000, Math.floor(tetoPercurso / (paradasPrevistas + 1)));
+    /**
+     * A PRIMEIRA ampliação do orçamento, antes do percurso.
+     *
+     * A ampliação pelo mapa estrutural (mais abaixo) chega tarde demais para a
+     * fase que mais sofre: o percurso roda ANTES de o mapa existir, e o teto
+     * dele já foi calculado quando aquela ampliação acontece. Medido no Sonic
+     * Link: o total subiu de 180 s para 334 s e o percurso continuou cortado em
+     * 61,2 s, que é a fração de 180 s.
+     *
+     * Aqui a página já carregou e assentou, então dá para medi-la com duas
+     * contas baratas — altura e número de elementos. É o suficiente: o custo do
+     * percurso é quantas paradas ele faz (altura) vezes quanto há para provocar
+     * em cada uma (elementos).
+     *
+     * As duas réguas são medianas do acervo: 5756 px e 405 elementos.
+     */
+    const medidaDaPagina = await page.evaluate<{ altura: number; nos: number }>(
+      '(function(){try{return {altura:document.documentElement.scrollHeight||0,nos:document.querySelectorAll("*").length||0}}catch(e){return {altura:0,nos:0}}})()',
+    );
+    const fatorInicial = Math.min(
+      TETO_DE_AMPLIACAO,
+      Math.max(
+        1,
+        medidaDaPagina.altura / ALTURA_DO_SITE_TIPICO,
+        medidaDaPagina.nos / ELEMENTOS_DO_SITE_TIPICO,
+      ),
+    );
+    /**
+     * O orçamento parte do que a captura CUSTA, medido — não de 180 s.
+     *
+     * O histórico do acervo entrega o número que faltava: o percurso custa 295 s
+     * de mediana e recebia 61; a soma de todas as fases medidas passa de 560 s.
+     * O orçamento configurado é TRÊS VEZES menor que o trabalho que o motor foi
+     * mandado fazer, e é por isso que 43 das 58 capturas saíam parciais — não
+     * por sites patológicos, mas por aritmética.
+     *
+     * A folga de 20% cobre o grão do corte: uma fase só é interrompida ENTRE
+     * passos, e um passo do percurso custa dezenas de segundos.
+     *
+     * Sem histórico — primeira captura da máquina — nada disto acontece e o
+     * configurado vale, como sempre valeu.
+     */
+    const somaMedida = Object.values(opts.historicoDeFases ?? {}).reduce((n, ms) => n + ms, 0);
+    const pelaHistoria = somaMedida > 0 ? somaMedida * 1.2 * fatorInicial : 0;
+    const alvoDoTotal = Math.min(
+      TETO_ABSOLUTO_MS,
+      Math.max(limits.orcamentoTotalMs * fatorInicial, pelaHistoria),
+    );
+    if (
+      tel.ampliarTotal(
+        alvoDoTotal,
+        `página ${fatorInicial.toFixed(1)}× a típica (${medidaDaPagina.nos} elementos, ${Math.round(medidaDaPagina.altura)}px)${somaMedida > 0 ? `; fases medidas somam ${Math.round(somaMedida / 1000)}s` : ''}`,
+      )
+    ) {
+      log('orcamento-ampliado', {
+        quando: 'antes-do-percurso',
+        fator: Number(fatorInicial.toFixed(2)),
+        nos: medidaDaPagina.nos,
+        altura: Math.round(medidaDaPagina.altura),
+        medidasMs: Math.round(somaMedida),
+        totalMs: Math.round(alvoDoTotal),
+      });
+    }
 
+    const paradasPrevistas = opts.maxParadas ?? 10;
+    const tetoPercurso = tetoCom(FASE_V2.percurso) ?? 60_000;
+    // A cota conta TODAS as paradas que vão acontecer, não só as da descida.
+    // Era daqui que vinha o corte de 3 das 5 capturas parciais do acervo: cota
+    // dimensionada para 11 paradas com até 16 acontecendo, e a subida
+    // repetindo o trabalho pesado inteiro. A subida agora é leve (só a
+    // observação temporal), então a reserva dela é pequena e explícita.
+    const paradasSubida = 6;
+    const reservaSubidaMs = paradasSubida * 3_000;
+    const cotaPorParada = Math.max(
+      3_000,
+      Math.floor(Math.max(0, tetoPercurso - reservaSubidaMs) / (paradasPrevistas + 1)),
+    );
+
+    // UMA coleta antes do percurso, pelo efeito colateral que importa aqui:
+    // endereçar os elementos (`data-dsx2`) para a sonda de ponteiro reconhecer
+    // o que toca. A coleta POR PARADA que existia dentro do percurso produzia
+    // um array que nenhuma linha lia — 6 a 16 percursos completos do DOM
+    // jogados fora, dentro da fase cortada em 5 de 7 capturas do acervo. E os
+    // endereços agora são estáveis: o coletor reaproveita o número de quem já
+    // tem, então o ref que a sonda vê é o ref do mapa final.
+    try {
+      await page.evaluate(chamar(COLETAR_MAPA_FN, { maxNos: 3_000 }));
+    } catch {
+      // Sem endereçamento inicial a sonda devolve refs nulos e a captura segue:
+      // perder a ligação ponteiro→elemento é melhor que perder a captura.
+    }
+
+    const inicioPercurso = Date.now();
     const passes: ScrollViewportPass[] = await tel.faseCooperativa(
       FASE_V2.percurso,
       (signal) =>
         percorrerComScroll(page, {
           signal,
           maxParadas: paradasPrevistas,
+          // A subida só COMEÇA o que cabe: uma parada dela custa uns 3 s, e
+          // começar sem espaço fazia a fase estourar o teto e a captura sair
+          // PARCIAL por causa de um bônus. O que ficar de fora vira limitação
+          // declarada logo abaixo, não carimbo de parcialidade.
+          deveContinuarSubida: () => Date.now() - inicioPercurso < tetoPercurso - 4_000,
           assentarMs: 220,
           trabalho: async (ctx) => {
             const inicioDaParada = Date.now();
@@ -410,13 +611,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             const temporalIds: string[] = [];
             const pathIds: string[] = [];
 
-            // 1. Mapa desta viewport (estrutura + camadas + fundos + mídias).
-            const coleta = await page.evaluate<RawColeta>(
-              chamar(COLETAR_MAPA_FN, { maxNos: 1_200 }),
-            );
-            coletas.push(coleta);
-
-            // 2. Observação temporal da viewport. Uma por parada: é o que diz se
+            // Observação temporal da viewport. Uma por parada: é o que diz se
             // ALGO se move aqui, e é barata comparada a observar cada elemento.
             const obs = await observarTemporal(page, {
               alvo: `viewport:${ctx.indice}`,
@@ -430,14 +625,23 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             temporais.push(obs);
             temporalIds.push(obs.id);
 
-            // 3. Varredura de ponteiro. A de cobertura sempre; as complementares
-            // só com evidência de reação — e só nas primeiras paradas, onde o
-            // custo se paga (o resto da página costuma repetir o padrão).
-            if (opts.semPonteiro !== true && signal.aborted === false && dentroDaCota()) {
+            // Varredura de ponteiro. A de cobertura sempre; as complementares
+            // só com evidência de reação. NUNCA na subida: a subida existe para
+            // pegar header que reaparece e reveal que reverte, coisas que a
+            // temporal mede — repetir a varredura ali custava ~15 s por parada
+            // para medir de novo o que a descida já mediu, e era o que cortava
+            // 3 das 5 capturas parciais do acervo depois de a descida TERMINAR.
+            if (
+              ctx.direcao !== 'subindo' &&
+              opts.semPonteiro !== true &&
+              signal.aborted === false &&
+              dentroDaCota()
+            ) {
               const cobertura = await varrerPonteiro(page, {
                 kind: TRAJETORIA_COBERTURA,
                 densidade: 3,
                 scrollProgress: ctx.progresso,
+                scrollY: ctx.scrollY,
                 idPrefixo: `vp${ctx.indice}`,
                 signal,
                 maxConfirmacoes: 6,
@@ -454,6 +658,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
                   const extra = await varrerPonteiro(page, {
                     kind,
                     scrollProgress: ctx.progresso,
+                    scrollY: ctx.scrollY,
                     idPrefixo: `vp${ctx.indice}-${kind}`,
                     signal,
                     maxConfirmacoes: 6,
@@ -471,6 +676,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
                     regiao,
                     densidade: 4,
                     scrollProgress: ctx.progresso,
+                    scrollY: ctx.scrollY,
                     idPrefixo: `vp${ctx.indice}-refino`,
                     signal,
                     maxConfirmacoes: 4,
@@ -481,10 +687,16 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
               }
             }
 
-            const visiveis = coleta.nos
-              .filter((n) => n.visivel && n.box.y + n.box.h > 0 && n.box.y < viewport.height)
-              .map((n) => `ref:${n.ref}`);
-
+            // A sonda LEVE de visibilidade: só os elementos já endereçados,
+            // só o rect. É o que alimenta `appeared` (reveal e lazy-load) sem
+            // pagar a coleta completa que rodava aqui — um percurso inteiro do
+            // DOM por parada para produzir um array que nada mais lia.
+            let visiveis: string[] = [];
+            try {
+              visiveis = await page.evaluate<string[]>(chamar(VISIVEIS_FN));
+            } catch {
+              // sem visibilidade nesta parada: appeared fica vazio, declarado
+            }
             return {
               visible: visiveis,
               appeared: [],
@@ -494,7 +706,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             };
           },
         }),
-      tetoDaFase(FASE_V2.percurso, limits.orcamentoTotalMs, tel.restanteTotal()),
+      tetoCom(FASE_V2.percurso),
     );
 
     log('percurso', {
@@ -502,6 +714,36 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       temporais: temporais.length,
       trajetorias: caminhos.length,
     });
+    // A subida encurtada é declarada, nunca escondida: efeito que só aparece
+    // subindo (header que reaparece, reveal que reverte) pode ter ficado de
+    // fora, e quem lê o manifesto precisa saber disso sem virar "parcial".
+    {
+      const descidas = passes.filter((p) => p.direction === 'descendo').length;
+      const subidas = passes.filter((p) => p.direction === 'subindo').length;
+      const esperadas = Math.min(paradasSubida, descidas);
+      if (subidas === 0 && descidas > 1) {
+        limitacoes.push(
+          'A passagem ascendente do scroll foi pulada pelo orçamento: efeitos que só aparecem ao rolar para CIMA podem não ter sido medidos.',
+        );
+      } else if (subidas > 0 && subidas < esperadas) {
+        limitacoes.push(
+          `A passagem ascendente do scroll parou em ${subidas} de ${esperadas} parada(s) pelo orçamento: parte dos efeitos de rolar para cima pode não ter sido medida.`,
+        );
+      }
+    }
+    // O corte que cai DENTRO da última parada da descida não custou cobertura:
+    // a página inteira foi percorrida e o que ficou de fora é o rabo da última
+    // varredura. É a simétrica do bônus da subida acima — em páginas que enchem
+    // qualquer teto por construção (WebGL varrendo mais a cada cota maior), o
+    // carimbo de parcial punia justamente o teto mais generoso. Fecho gracioso:
+    // perdoa o corte e declara o encurtamento como limitação.
+    if (passes.some((p) => p.direction === 'descendo' && p.progress >= 0.99)) {
+      if (tel.perdoarCorte(FASE_V2.percurso)) {
+        limitacoes.push(
+          'A varredura da última dobra foi encurtada pelo orçamento: a descida chegou ao fim da página, mas parte das trajetórias de ponteiro da última parada pode não ter sido medida.',
+        );
+      }
+    }
 
     // ── Volta ao topo e coleta o mapa AUTORITATIVO ────────────────────────
     // O percurso mediu comportamento; o mapa final é o que a segmentação usa, e
@@ -520,6 +762,18 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     const instrumentacao = await page.evaluate<RawInstrumentacao>(
       chamar(COLETAR_INSTRUMENTACAO_FN),
     );
+    // Contexto RECUSADO é causa raiz escrita, não 100% de diferença sem
+    // explicação: era assim que o fundo do unicorn.studio morria em silêncio.
+    for (const [tipo, n] of Object.entries(instrumentacao.contextosRecusados ?? {})) {
+      limitacoes.push(
+        `A página pediu ${n} contexto(s) ${tipo} e o navegador recusou: a cena desse canvas não desenhou na captura.`,
+      );
+    }
+    for (const [tipo, n] of Object.entries(instrumentacao.contextosNormalizados ?? {})) {
+      limitacoes.push(
+        `${n} pedido(s) de contexto ${tipo} vieram com failIfMajorPerformanceCaveat e foram normalizados para a captura conseguir ver a cena (headless desenha por software).`,
+      );
+    }
     const folhas = await page.evaluate<RawCss[]>(chamar(COLETAR_CSS_FN));
     const scriptsInline = await page.evaluate<RawJsInline[]>(chamar(COLETAR_JS_INLINE_FN));
     const htmlBruto = await s.pw.content();
@@ -544,6 +798,16 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
 
     // ── Mapas ─────────────────────────────────────────────────────────────
     const { nos: structuralMap, porRef } = construirMapaEstrutural(coletaFinal);
+    // A identidade que a varredura de ponteiro mediu, ligada ao mapa. Os
+    // endereços são estáveis (o coletor reaproveita números), então o ref que a
+    // sonda viu É o ref do mapa final. Sem isto, 344 de 344 respostas do acervo
+    // saíam sem fingerprint, e a fase mais cara da captura não deixava
+    // evidência que alguém conseguisse ligar a um elemento.
+    for (const resp of respostasPonteiro) {
+      if (resp.ref === undefined || resp.fingerprint !== undefined) continue;
+      const dono = porRef.get(resp.ref);
+      if (dono !== undefined) resp.fingerprint = dono.fingerprint;
+    }
     const visualLayers = construirCamadas(coletaFinal, porRef);
     let backgroundDetections = construirBackgrounds(coletaFinal, porRef, visualLayers);
     let mediaDetections = construirMidias(coletaFinal, porRef, visualLayers);
@@ -573,6 +837,46 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       midias: mediaDetections.length,
       runtimes: runtimeDetections.length,
     });
+
+    /**
+     * O ORÇAMENTO se ajusta ao tamanho do site — aqui, e não antes.
+     *
+     * Este é o primeiro momento em que se sabe o tamanho do trabalho: o mapa
+     * está pronto e a altura da página, medida. Tudo o que vem depois (estados,
+     * retratos, prints de seção, compilação, comparação) custa em proporção a
+     * esses dois números — e o total era uma CONSTANTE.
+     *
+     * O acervo mediu o preço: **43 das 58 capturas saíram PARCIAIS**, três em
+     * cada quatro. Não surpreende, olhando o que o número fixo tinha de cobrir:
+     * de 12 a 1168 nós (100×) e de 900 a 15412 px de altura (17×).
+     *
+     * O fator é a razão para o site TÍPICO do acervo, pelo eixo que estiver mais
+     * apertado. Site típico segue com o orçamento de sempre; o que é o dobro
+     * ganha o dobro. O teto existe porque uma página infinita não pode segurar a
+     * fila para sempre, e é generoso de propósito — cobre com folga o maior site
+     * do catálogo.
+     */
+    const fatorDoSite = Math.min(
+      TETO_DE_AMPLIACAO,
+      Math.max(
+        1,
+        structuralMap.length / NOS_DO_SITE_TIPICO,
+        coletaFinal.pageHeight / ALTURA_DO_SITE_TIPICO,
+      ),
+    );
+    if (
+      tel.ampliarTotal(
+        limits.orcamentoTotalMs * fatorDoSite,
+        `site ${fatorDoSite.toFixed(1)}× o típico (${structuralMap.length} nós, ${Math.round(coletaFinal.pageHeight)}px)`,
+      )
+    ) {
+      log('orcamento-ampliado', {
+        fator: Number(fatorDoSite.toFixed(2)),
+        nos: structuralMap.length,
+        altura: Math.round(coletaFinal.pageHeight),
+        totalMs: Math.round(limits.orcamentoTotalMs * fatorDoSite),
+      });
+    }
 
     // ── Atribuição do movimento ───────────────────────────────────────────
     // Aqui o `animated` deixa de ser `false` por padrão e passa a valer o que foi
@@ -676,6 +980,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       camadas: visualLayers,
       nos: structuralMap,
       viewport,
+      pageHeight: coletaFinal.pageHeight,
       // Mídia é o que liga uma camada a runtime: canvas/WebGL/vídeo têm
       // detecção com elemento. `RuntimeDetection` é por script, sem elemento.
       hashesComRuntime: new Set(mediaDetections.map((m) => m.fingerprint.hash)),
@@ -711,181 +1016,201 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
     let iconesEsperados = 0;
     let iconesPendentes = 0;
 
-    for (const n of coletaFinal.nos) {
-      const node = porRef.get(n.ref);
-      if (node === undefined) continue;
-      // Seções + as peças escolhidas: capturar o outerHTML de 3000 nós custaria
-      // mais que todo o resto do pipeline.
-      if (!PAPEIS_COM_HTML.has(node.role) && !hashesDePeca.has(node.fingerprint.hash)) continue;
-      try {
-        // Ler o elemento ENQUANTO ele está visível.
-        //
-        // Conteúdo preguiçoso não existe no DOM fora da viewport, e não é só
-        // imagem: o `iconify-icon` REMOVE o SVG do shadow root quando o ícone
-        // sai da tela (medido: 20 dos 22 ícones desta página têm SVG no topo,
-        // 3 depois de rolar de volta). Lendo com a página parada no topo, todo
-        // componente abaixo da primeira dobra vinha sem ícone.
-        const rolou = await page.evaluate<boolean>(chamar(ROLAR_ATE_REF_FN, n.ref));
-        if (rolou) await page.esperar(120);
-        // Esperar o ícone estar DESENHADO antes de ler.
-        //
-        // Os 120ms acima eram um chute, e a medição mostrou o preço: 128 dos
-        // 356 ícones do acervo chegaram como casca vazia. Entre a tag existir e
-        // o SVG existir há o script carregar, o elemento ser promovido a custom
-        // element e o traçado voltar de uma API. Aqui a espera é pelo FATO — e
-        // com teto, porque um ícone que a API não devolve não pode segurar a
-        // captura inteira. O que não vier é declarado, não escondido.
-        const icones = await page.evaluate<{ total: number; pendentes: number }>(
-          chamar(ESPERAR_ICONES_FN, n.ref, 1500),
-        );
-        if (icones.pendentes > 0) iconesPendentes += icones.pendentes;
-        iconesEsperados += icones.total;
-        const bruto = await page.evaluate<string>(chamar(HTML_DO_REF_FN, n.ref));
-        if (bruto.length > 0)
-          htmlPorHash.set(
-            node.fingerprint.hash,
-            absolutizeRefs(limparInstrumentacao(bruto), finalUrl),
-          );
-      } catch {
-        // nó saiu do DOM: a seção fica sem HTML e é reprovada na validação
-      }
-    }
-    for (const t of temporais) {
-      const primeiro = t.frames[0];
-      if (primeiro !== undefined) framePorHash.set(t.target, join('frames', primeiro));
-    }
-    log('html-secoes', { total: htmlPorHash.size, pecas: pecas.length });
-    if (iconesEsperados > 0) {
-      log('icones', { total: iconesEsperados, pendentes: iconesPendentes });
-      if (iconesPendentes > 0) {
-        limitacoes.push(
-          `${iconesPendentes} de ${iconesEsperados} ícone(s) não puderam ser lidos dentro do tempo: eles continuam dependendo do runtime da biblioteca para aparecer.`,
-        );
-      }
-    }
-
-    // ── Print de cada dobra ───────────────────────────────────────────────
-    // Duas necessidades, um mesmo screenshot.
-    //
-    // A antiga: toda seção que pode acabar como REFERÊNCIA VISUAL precisa de um
-    // frame, ou é reprovada — perder o item por falta de imagem seria perder por
-    // um detalhe que o motor resolve.
-    //
-    // A nova: o print é como a pessoa VÊ a dobra. O HTML conta a estrutura, o
-    // print conta o resultado — o que está ali, como se compõe, que efeito está
-    // em jogo. Por isso deixou de sair só das seções com cena e passa a sair de
-    // TODAS: uma dobra de texto sem print é uma dobra que ninguém consegue
-    // conferir sem abrir o site de origem.
-    // A lista de quem ganha print é a MESMA de quem ganha HTML.
-    //
-    // Eram duas listas diferentes, e a de print era mais curda: só os papéis de
-    // seção. Mas peças, camadas de fundo e comportamentos também viram segmento
-    // — e chegavam à Galeria sem imagem e à comparação de pixel sem nada contra
-    // o que conferir. Medido: 6 de 13 segmentos ficavam de fora por isso, e era
-    // a maior fonte de cobertura perdida de todo o pipeline.
-    //
-    // `hashesDePeca` já reúne peças, camadas e comportamentos, e já é o critério
-    // do laço de HTML logo acima. Usar o mesmo aqui elimina a divergência pela
-    // raiz, em vez de tentar mantê-las sincronizadas.
-    const secoesParaPrint = coletaFinal.nos.filter((n) => {
-      const node = porRef.get(n.ref);
-      if (node === undefined) return false;
-      return PAPEIS_COM_HTML.has(node.role) || hashesDePeca.has(node.fingerprint.hash);
-    });
-    // Por que uma dobra ficou sem print. A comparação de pixel expôs o buraco:
-    // ela conseguiu conferir 3 de 12 segmentos, e a causa não era dela — era a
-    // falta de print, aqui em cima. Sem estes contadores, o motivo continuaria
-    // invisível, porque cada caminho de saída era um `continue` calado.
-    const semPrint = { semCentro: 0, erro: 0, foraDoTeto: 0 };
-    const TETO_DE_PRINTS = 40;
-    semPrint.foraDoTeto = Math.max(0, secoesParaPrint.length - TETO_DE_PRINTS);
-
-    for (const n of secoesParaPrint.slice(0, TETO_DE_PRINTS)) {
-      const node = porRef.get(n.ref);
-      if (node === undefined) continue;
-      try {
-        const vp = page.viewport();
-        // A seção precisa estar NA VIEWPORT e com as animações de entrada
-        // assentadas antes do screenshot: uma seção com reveal por scroll
-        // fotografada fora de vista sai vazia — e o card na Galeria parece
-        // defeito, não referência. Rola até o ELEMENTO (não a uma coordenada:
-        // o pageBox nem sempre existe) e espera o reveal disparar.
-        const rolou = await page.evaluate<boolean>(chamar(ROLAR_ATE_REF_FN, n.ref));
-        if (rolou) await page.esperar(400);
-        const centro = await page.evaluate<{ box: BoxPx } | null>(chamar(CENTRO_DO_REF_FN, n.ref));
-        if (centro === null) {
-          semPrint.semCentro++;
-          continue;
+    // Fase própria para o que rodava fora de qualquer fase: HTML por seção,
+    // espera de ícones, prints e retratos de fundo somavam 12 a 46 s por
+    // captura (7% a 14% do total) invisíveis ao orçamento — o controlador não
+    // podia cortar nem redistribuir esse tempo enquanto o percurso morria no
+    // teto. Agora o bloco tem nome, teto e corte cooperativo.
+    await tel.faseCooperativa(
+      FASE_V2.retratos,
+      async (signal) => {
+        for (const n of coletaFinal.nos) {
+          if (signal.aborted) break;
+          const node = porRef.get(n.ref);
+          if (node === undefined) continue;
+          // Seções + as peças escolhidas: capturar o outerHTML de 3000 nós custaria
+          // mais que todo o resto do pipeline.
+          if (!PAPEIS_COM_HTML.has(node.role) && !hashesDePeca.has(node.fingerprint.hash)) continue;
+          try {
+            // Ler o elemento ENQUANTO ele está visível.
+            //
+            // Conteúdo preguiçoso não existe no DOM fora da viewport, e não é só
+            // imagem: o `iconify-icon` REMOVE o SVG do shadow root quando o ícone
+            // sai da tela (medido: 20 dos 22 ícones desta página têm SVG no topo,
+            // 3 depois de rolar de volta). Lendo com a página parada no topo, todo
+            // componente abaixo da primeira dobra vinha sem ícone.
+            const rolou = await page.evaluate<boolean>(chamar(ROLAR_ATE_REF_FN, n.ref));
+            if (rolou) await page.esperar(120);
+            // Esperar o ícone estar DESENHADO antes de ler.
+            //
+            // Os 120ms acima eram um chute, e a medição mostrou o preço: 128 dos
+            // 356 ícones do acervo chegaram como casca vazia. Entre a tag existir e
+            // o SVG existir há o script carregar, o elemento ser promovido a custom
+            // element e o traçado voltar de uma API. Aqui a espera é pelo FATO — e
+            // com teto, porque um ícone que a API não devolve não pode segurar a
+            // captura inteira. O que não vier é declarado, não escondido.
+            // Primeiro DESTRAVA (noobserver + render forçado), depois espera:
+            // o iconify apaga o SVG de quem sai da tela, e esperar por um
+            // ícone que o runtime removeu era queimar 1500 ms por nó.
+            await page.evaluate(chamar(FORCAR_ICONES_FN, n.ref));
+            const icones = await page.evaluate<{ total: number; pendentes: number }>(
+              chamar(ESPERAR_ICONES_FN, n.ref, 1500),
+            );
+            if (icones.pendentes > 0) iconesPendentes += icones.pendentes;
+            iconesEsperados += icones.total;
+            const bruto = await page.evaluate<string>(chamar(HTML_DO_REF_FN, n.ref));
+            if (bruto.length > 0)
+              htmlPorHash.set(
+                node.fingerprint.hash,
+                absolutizeRefs(limparInstrumentacao(bruto), finalUrl),
+              );
+          } catch {
+            // nó saiu do DOM: a seção fica sem HTML e é reprovada na validação
+          }
         }
-        const clip: BoxPx = {
-          x: Math.max(0, Math.min(vp.width - 2, centro.box.x)),
-          y: Math.max(0, Math.min(vp.height - 2, centro.box.y)),
-          w: Math.max(2, Math.min(vp.width - Math.max(0, centro.box.x), centro.box.w)),
-          h: Math.max(2, Math.min(vp.height - Math.max(0, centro.box.y), centro.box.h)),
-        };
-        const bytes = await page.screenshot({ clip });
-        const nome = `secao-${node.fingerprint.hash.slice(0, 10)}-${hashBytes(bytes).slice(0, 8)}.png`;
-        framePorHash.set(
-          node.fingerprint.hash,
-          gravar(opts.dirCaptura, join('frames', nome), bytes),
-        );
-      } catch {
-        // seção removida do DOM: fica sem frame e será reprovada com o motivo —
-        // que é melhor que entregar um card vazio.
-        semPrint.erro++;
-      }
-    }
-    log('prints-de-secao', {
-      candidatas: secoesParaPrint.length,
-      gravados: framePorHash.size,
-      ...semPrint,
-    });
-    // Devolve o scroll ao topo: as fases seguintes (candidatos, estados) medem
-    // a página a partir do estado inicial.
-    try {
-      await page.evaluate(chamar(ROLAR_PARA_FN, 0));
-      await page.esperar(200);
-    } catch {
-      // rolagem de volta é cortesia, não pré-condição
-    }
-
-    // ── Retrato das camadas de fundo ──────────────────────────────────────
-    // Uma camada que atravessa a página não tem retrato próprio: sozinha é um
-    // retângulo transparente, junto ela some no meio do conteúdo. O retrato é a
-    // tela com o CONTEÚDO ESMAECIDO — o fundo fica evidente e o contexto
-    // continua legível. Sem isto o componente de fundo abria vazio na Galeria.
-    const refPorHash = new Map<string, (typeof coletaFinal.nos)[number]['ref']>();
-    for (const n of coletaFinal.nos) {
-      const h = porRef.get(n.ref)?.fingerprint.hash;
-      if (h !== undefined && !refPorHash.has(h)) refPorHash.set(h, n.ref);
-    }
-    for (const grupo of [camadasDePagina.comRuntime, camadasDePagina.soCss]) {
-      if (grupo.length === 0) continue;
-      const refs = grupo.flatMap((h) => {
-        const r = refPorHash.get(h);
-        return r === undefined ? [] : [r];
-      });
-      if (refs.length === 0) continue;
-      try {
-        const preparou = await page.evaluate<boolean>(chamar(DESTACAR_FUNDO_FN, refs));
-        if (preparou) {
-          await page.esperar(220);
-          const bytes = await page.screenshot({});
-          const nome = `fundo-${(grupo[0] ?? '').slice(0, 10)}-${hashBytes(bytes).slice(0, 8)}.png`;
-          const caminho = gravar(opts.dirCaptura, join('frames', nome), bytes);
-          for (const h of grupo) framePorHash.set(h, caminho);
+        for (const t of temporais) {
+          const primeiro = t.frames[0];
+          if (primeiro !== undefined) framePorHash.set(t.target, join('frames', primeiro));
         }
-      } catch {
-        // sem retrato, a camada declara a limitação em vez de abrir vazia
-      } finally {
+        log('html-secoes', { total: htmlPorHash.size, pecas: pecas.length });
+        if (iconesEsperados > 0) {
+          log('icones', { total: iconesEsperados, pendentes: iconesPendentes });
+          if (iconesPendentes > 0) {
+            limitacoes.push(
+              `${iconesPendentes} de ${iconesEsperados} ícone(s) não puderam ser lidos dentro do tempo: eles continuam dependendo do runtime da biblioteca para aparecer.`,
+            );
+          }
+        }
+
+        // ── Print de cada dobra ───────────────────────────────────────────────
+        // Duas necessidades, um mesmo screenshot.
+        //
+        // A antiga: toda seção que pode acabar como REFERÊNCIA VISUAL precisa de um
+        // frame, ou é reprovada — perder o item por falta de imagem seria perder por
+        // um detalhe que o motor resolve.
+        //
+        // A nova: o print é como a pessoa VÊ a dobra. O HTML conta a estrutura, o
+        // print conta o resultado — o que está ali, como se compõe, que efeito está
+        // em jogo. Por isso deixou de sair só das seções com cena e passa a sair de
+        // TODAS: uma dobra de texto sem print é uma dobra que ninguém consegue
+        // conferir sem abrir o site de origem.
+        // A lista de quem ganha print é a MESMA de quem ganha HTML.
+        //
+        // Eram duas listas diferentes, e a de print era mais curda: só os papéis de
+        // seção. Mas peças, camadas de fundo e comportamentos também viram segmento
+        // — e chegavam à Galeria sem imagem e à comparação de pixel sem nada contra
+        // o que conferir. Medido: 6 de 13 segmentos ficavam de fora por isso, e era
+        // a maior fonte de cobertura perdida de todo o pipeline.
+        //
+        // `hashesDePeca` já reúne peças, camadas e comportamentos, e já é o critério
+        // do laço de HTML logo acima. Usar o mesmo aqui elimina a divergência pela
+        // raiz, em vez de tentar mantê-las sincronizadas.
+        const secoesParaPrint = coletaFinal.nos.filter((n) => {
+          const node = porRef.get(n.ref);
+          if (node === undefined) return false;
+          return PAPEIS_COM_HTML.has(node.role) || hashesDePeca.has(node.fingerprint.hash);
+        });
+        // Por que uma dobra ficou sem print. A comparação de pixel expôs o buraco:
+        // ela conseguiu conferir 3 de 12 segmentos, e a causa não era dela — era a
+        // falta de print, aqui em cima. Sem estes contadores, o motivo continuaria
+        // invisível, porque cada caminho de saída era um `continue` calado.
+        const semPrint = { semCentro: 0, erro: 0, foraDoTeto: 0 };
+        const TETO_DE_PRINTS = 40;
+        semPrint.foraDoTeto = Math.max(0, secoesParaPrint.length - TETO_DE_PRINTS);
+
+        for (const n of secoesParaPrint.slice(0, TETO_DE_PRINTS)) {
+          if (signal.aborted) break;
+          const node = porRef.get(n.ref);
+          if (node === undefined) continue;
+          try {
+            const vp = page.viewport();
+            // A seção precisa estar NA VIEWPORT e com as animações de entrada
+            // assentadas antes do screenshot: uma seção com reveal por scroll
+            // fotografada fora de vista sai vazia — e o card na Galeria parece
+            // defeito, não referência. Rola até o ELEMENTO (não a uma coordenada:
+            // o pageBox nem sempre existe) e espera o reveal disparar.
+            const rolou = await page.evaluate<boolean>(chamar(ROLAR_ATE_REF_FN, n.ref));
+            if (rolou) await page.esperar(400);
+            const centro = await page.evaluate<{ box: BoxPx } | null>(
+              chamar(CENTRO_DO_REF_FN, n.ref),
+            );
+            if (centro === null) {
+              semPrint.semCentro++;
+              continue;
+            }
+            const clip: BoxPx = {
+              x: Math.max(0, Math.min(vp.width - 2, centro.box.x)),
+              y: Math.max(0, Math.min(vp.height - 2, centro.box.y)),
+              w: Math.max(2, Math.min(vp.width - Math.max(0, centro.box.x), centro.box.w)),
+              h: Math.max(2, Math.min(vp.height - Math.max(0, centro.box.y), centro.box.h)),
+            };
+            const bytes = await page.screenshot({ clip });
+            const nome = `secao-${node.fingerprint.hash.slice(0, 10)}-${hashBytes(bytes).slice(0, 8)}.png`;
+            framePorHash.set(
+              node.fingerprint.hash,
+              gravar(opts.dirCaptura, join('frames', nome), bytes),
+            );
+          } catch {
+            // seção removida do DOM: fica sem frame e será reprovada com o motivo —
+            // que é melhor que entregar um card vazio.
+            semPrint.erro++;
+          }
+        }
+        log('prints-de-secao', {
+          candidatas: secoesParaPrint.length,
+          gravados: framePorHash.size,
+          ...semPrint,
+        });
+        // Devolve o scroll ao topo: as fases seguintes (candidatos, estados) medem
+        // a página a partir do estado inicial.
         try {
-          await page.evaluate(LIMPAR_DESTAQUE_FN);
+          await page.evaluate(chamar(ROLAR_PARA_FN, 0));
+          await page.esperar(200);
         } catch {
-          // a página já pode ter navegado; o destaque morre com ela
+          // rolagem de volta é cortesia, não pré-condição
         }
-      }
-    }
-    log('frames-secao', { total: framePorHash.size });
+
+        // ── Retrato das camadas de fundo ──────────────────────────────────────
+        // Uma camada que atravessa a página não tem retrato próprio: sozinha é um
+        // retângulo transparente, junto ela some no meio do conteúdo. O retrato é a
+        // tela com o CONTEÚDO ESMAECIDO — o fundo fica evidente e o contexto
+        // continua legível. Sem isto o componente de fundo abria vazio na Galeria.
+        const refPorHash = new Map<string, (typeof coletaFinal.nos)[number]['ref']>();
+        for (const n of coletaFinal.nos) {
+          const h = porRef.get(n.ref)?.fingerprint.hash;
+          if (h !== undefined && !refPorHash.has(h)) refPorHash.set(h, n.ref);
+        }
+        for (const grupo of [camadasDePagina.comRuntime, camadasDePagina.soCss]) {
+          if (signal.aborted) break;
+          if (grupo.length === 0) continue;
+          const refs = grupo.flatMap((h) => {
+            const r = refPorHash.get(h);
+            return r === undefined ? [] : [r];
+          });
+          if (refs.length === 0) continue;
+          try {
+            const preparou = await page.evaluate<boolean>(chamar(DESTACAR_FUNDO_FN, refs));
+            if (preparou) {
+              await page.esperar(220);
+              const bytes = await page.screenshot({});
+              const nome = `fundo-${(grupo[0] ?? '').slice(0, 10)}-${hashBytes(bytes).slice(0, 8)}.png`;
+              const caminho = gravar(opts.dirCaptura, join('frames', nome), bytes);
+              for (const h of grupo) framePorHash.set(h, caminho);
+            }
+          } catch {
+            // sem retrato, a camada declara a limitação em vez de abrir vazia
+          } finally {
+            try {
+              await page.evaluate(LIMPAR_DESTAQUE_FN);
+            } catch {
+              // a página já pode ter navegado; o destaque morre com ela
+            }
+          }
+        }
+        log('frames-secao', { total: framePorHash.size });
+      },
+      tetoCom(FASE_V2.retratos),
+    );
 
     // ── Candidatos ────────────────────────────────────────────────────────
     const candidatos: Candidato[] = await tel.faseCooperativa(
@@ -906,7 +1231,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         }));
         return descobrirCandidatos(sinais, finalUrl, 120);
       },
-      tetoDaFase(FASE_V2.candidatos, limits.orcamentoTotalMs, tel.restanteTotal()),
+      tetoCom(FASE_V2.candidatos),
     );
     tel.inc('candidatos', candidatos.length);
     log('candidatos', { total: candidatos.length });
@@ -939,7 +1264,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
                   }
                 },
               }),
-            tetoDaFase(FASE_V2.estados, limits.orcamentoTotalMs, tel.restanteTotal()),
+            tetoCom(FASE_V2.estados),
           );
     if (grafo !== null) {
       tel.inc('estados', grafo.grafo.nodes.length - 1);
@@ -992,9 +1317,20 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         gravar(opts.dirCaptura, join('assets', localPath), bytes);
       };
       const { cssUrls, outros } = particionarCss(refs, hrefsDeFolhas);
-      const resCss = await localizeCss(cssUrls, fetcher, sink, limits, signal);
+      const resCss = await localizeCss(cssUrls, fetcher, sink, limits, signal, {
+        // Só as fontes que o RENDER pediu. Medido no acervo: um site declarava
+        // 374 url() de fonte (99 únicas) e o Chromium pediu 37 — o resto era
+        // subconjunto de unicode-range que o texto da página nunca usou, e
+        // baixá-lo um a um comia 38 s dos 45 s da fase.
+        fonteFoiUsada: (u) => rede.mapa.has(u),
+      });
       cssMapExterno = resCss.cssMap;
       assetsDeCss = resCss.assets;
+      if (resCss.fontesPuladas > 0) {
+        limitacoes.push(
+          `${resCss.fontesPuladas} subconjunto(s) de fonte declarados no CSS ficaram de fora porque o navegador nunca os pediu ao renderizar; se algum texto raro aparecer com fonte de reserva, é isso.`,
+        );
+      }
       const res = await localizeAssets(outros, fetcher, sink, limits, signal);
       for (const a of [...res.assets, ...resCss.assets]) {
         assets.push(a);
@@ -1110,7 +1446,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
           viewport,
           pageHeight: coletaFinal.pageHeight,
         }),
-      tetoDaFase(FASE_V2.segmentar, limits.orcamentoTotalMs, tel.restanteTotal()),
+      tetoCom(FASE_V2.segmentar),
     );
     tel.inc('segmentos', segmentos.length);
     log('segmentos', { total: segmentos.length, rejeitados: rejeitados.length });
@@ -1198,7 +1534,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             });
           }
         },
-        tetoDaFase(FASE_V2.compilar, limits.orcamentoTotalMs, tel.restanteTotal()),
+        tetoCom(FASE_V2.compilar),
       );
 
       // ── O bundle PARECE com o original? ─────────────────────────────────
@@ -1255,11 +1591,59 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         await tel.faseCooperativa(
           FASE_V2.comparar,
           async (signal) => {
+            // As regiões dinâmicas MEDIDAS, convertidas do espaço da parada
+            // (viewport + scrollY) para o espaço do recorte de cada segmento.
+            // Elas sempre existiram no manifesto e `masked` saía [] em 58 de
+            // 58 comparações do acervo. Movimento medido também decide o
+            // limiar: um site aprovava 45% de diferença a 0,75 enquanto outro
+            // reprovava 3% a 0,02, porque a natureza era cega à medição.
+            const scrollDaParada = new Map(passes.map((p) => [p.index, p.scrollY]));
+            const regioesMoveisNaPagina = temporais.flatMap((t) => {
+              if (!t.moving) return [];
+              const idx = t.target.startsWith('viewport:')
+                ? Number(t.target.slice('viewport:'.length))
+                : Number.NaN;
+              const sy = scrollDaParada.get(idx);
+              if (sy === undefined) return [];
+              return t.dynamicRegions.map((reg) => ({
+                x: reg.x * viewport.width,
+                y: reg.y * viewport.height + sy,
+                w: reg.w * viewport.width,
+                h: reg.h * viewport.height,
+              }));
+            });
+            const nodePorHash = new Map(structuralMap.map((n) => [n.fingerprint.hash, n] as const));
             const entradas = segmentos.flatMap((seg) => {
               const framePath = framePorHash.get(seg.hash);
               if (framePath === undefined) return [];
+              const caixa = nodePorHash.get(seg.hash)?.pageBox;
+              const sobrepoe =
+                caixa === undefined
+                  ? []
+                  : regioesMoveisNaPagina.filter(
+                      (reg) =>
+                        reg.x < caixa.x + caixa.w &&
+                        reg.x + reg.w > caixa.x &&
+                        reg.y < caixa.y + caixa.h &&
+                        reg.y + reg.h > caixa.y,
+                    );
+              const mascaras =
+                caixa === undefined
+                  ? []
+                  : sobrepoe.slice(0, 8).map((reg) => ({
+                      x: Math.max(0, (reg.x - caixa.x) / Math.max(1, caixa.w)),
+                      y: Math.max(0, (reg.y - caixa.y) / Math.max(1, caixa.h)),
+                      w: Math.min(1, reg.w / Math.max(1, caixa.w)),
+                      h: Math.min(1, reg.h / Math.max(1, caixa.h)),
+                    }));
               return [
-                { segmento: seg, dirBundle: join(dirBundles, `seg_${seg.position}`), framePath },
+                {
+                  segmento: seg,
+                  dirBundle: join(dirBundles, `seg_${seg.position}`),
+                  framePath,
+                  mascaras,
+                  temMovimentoMedido: sobrepoe.length > 0,
+                },
               ];
             });
             // Sem print da dobra não há contra o que comparar, e isso é a maior
@@ -1275,7 +1659,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
             if (entradas.length === 0) return;
 
             const iniciouComparacao = Date.now();
-            const aba = await s.contexto.newPage();
+            // Contexto LIMPO: sem init script e sem interceptação de rotas. A
+            // comparação decide reprovação; medi-la com a instrumentação
+            // dentro era medir um ambiente que o usuário nunca terá.
+            const aba = await s.abaLimpa();
             try {
               await aba.setViewportSize(viewport);
               const resultado = await compararBundlesComOriginal({
@@ -1425,13 +1812,52 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       interactions: Object.fromEntries(segmentos.map((seg) => [seg.hash, seg.interactions])),
       validation: {},
       visualComparisons: comparacoes,
-      telemetry: tel.relatorio(),
-      confidence: viewportReativa || houveMovimento ? 'alta' : 'media',
+      telemetry: { ...tel.relatorio(), orcamento: infoOrcamento },
+      // A confiança da captura deriva do que deu ERRADO, não só do que se
+      // mexeu. Medido no acervo: a fórmula antiga (`reativa || movimento`)
+      // dava 'alta' em 7 de 7 capturas, inclusive nas 5 parciais e na que teve
+      // 8 de 10 bundles reprovados no pixel. Corte por tempo segura em
+      // 'media'; maioria das comparações reprovada rebaixa mais um degrau.
+      confidence: (() => {
+        const base = viewportReativa || houveMovimento ? 'alta' : 'media';
+        const medidas = comparacoes.length;
+        const reprovadas = comparacoes.filter((c) => !c.ok).length;
+        const maioriaReprovou = medidas > 0 && reprovadas * 2 > medidas;
+        if (tel.parcial && maioriaReprovou) return 'baixa';
+        if (tel.parcial || maioriaReprovou) return 'media';
+        return base;
+      })(),
       limitations: [
         ...new Set([...limitacoes, ...s.consoleErros.slice(0, 5).map((e) => `Console: ${e}`)]),
       ],
       partialReasons: parciais,
       compilerVersion: 1,
+    };
+
+    // A evidência que a Refinaria consome. Serializada AQUI porque é o único
+    // ponto onde tudo existe junto; o custo é um JSON do tamanho do manifesto.
+    const evidencia: EvidenciaDaCaptura = {
+      versao: 1,
+      htmlPorHash: Object.fromEntries(htmlPorHash),
+      framePorHash: Object.fromEntries(framePorHash),
+      tokensPorHash: Object.fromEntries(
+        [...tokensPorHash.entries()].map(([h, ids]) => [h, [...ids]]),
+      ),
+      assetsLocais: [...assetsLocais],
+      scriptsNaoLocalizados,
+      cssExternoFaltando: externasSemCopia.length > 0,
+      animacoesCssQueRodaram: animacoesCss,
+      shadowFechados: instrumentacao.shadowRoots.closed,
+      cssInline,
+      cssInlineOrdenado,
+      cssExternos,
+      assetsDeCss,
+      scriptsInline,
+      scriptsDecididos,
+      assets,
+      localPorUrl: [...localPorUrl.entries()],
+      stack,
+      finalUrl,
     };
 
     return {
@@ -1440,6 +1866,7 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
       finalUrl,
       segmentos,
       rejeitados,
+      evidencia,
     };
   } finally {
     await tel.medir(FASE_V2.fechar, () => s.fechar());

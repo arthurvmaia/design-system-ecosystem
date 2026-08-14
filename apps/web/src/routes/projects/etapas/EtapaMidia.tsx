@@ -124,6 +124,21 @@ export function Deposito({
     onError: (e) => toast.erro(e instanceof Error ? e.message : 'Falha ao mover a mídia.'),
   });
 
+  // Mídias de teste POR SEÇÃO, a partir da marca já salva. Vive aqui, e não na
+  // etapa de Marca, porque a ordem do wizard é Marca antes de Estrutura: só
+  // AGORA as seções existem para receber as suas imagens.
+  const gerarDaMarca = useMutation({
+    mutationFn: () => {
+      if (!projectId) throw new Error('rascunho ainda não criado');
+      return api.gerarMidiasAutomaticas(projectId);
+    },
+    onSuccess: (res) => {
+      onMedia(res.media);
+      toast.ok(`Criei ${res.criadas.length} imagem(ns) de teste, ancoradas nas seções.`);
+    },
+    onError: (e) => toast.erro(e instanceof Error ? e.message : 'Não consegui gerar as mídias.'),
+  });
+
   // Logo aparece na etapa de marca; aqui listamos só as mídias de conteúdo.
   const conteudo = media.filter((m) => m.kind !== 'logo');
   const gerais = conteudo.filter(
@@ -203,8 +218,18 @@ export function Deposito({
               <span className="text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
                 Eu decido onde cada uma entra.
               </span>
+              <button
+                type="button"
+                disabled={!projectId || gerarDaMarca.isPending}
+                onClick={() => gerarDaMarca.mutate()}
+                className="ml-auto rounded-none border px-3 py-1.5 text-[12px] disabled:opacity-50"
+                style={{ borderColor: 'var(--color-border-strong)', color: 'var(--color-fg)' }}
+                title="Crio imagens de teste com a sua marca, uma para cada espaço que as seções aceitam."
+              >
+                {gerarDaMarca.isPending ? 'gerando…' : 'gerar da marca para as seções'}
+              </button>
               <label
-                className="ml-auto flex cursor-pointer items-center gap-1.5 rounded-none px-4 py-1.5 text-[12px] font-medium"
+                className="flex cursor-pointer items-center gap-1.5 rounded-none px-4 py-1.5 text-[12px] font-medium"
                 style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
               >
                 {upload.isPending ? <Mascote tamanho={12} girando /> : <Upload size={12} />}

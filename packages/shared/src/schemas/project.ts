@@ -182,6 +182,16 @@ export const ProjectBranding = z.object({
   social: z.record(z.string(), z.string()).optional(),
   /** Chamada principal do site: rótulo do botão e para onde ele leva. */
   mainCta: z.object({ label: z.string().optional(), href: z.string().optional() }).optional(),
+  /**
+   * O NICHO do negócio ("streetwear", "cafeteria", "pousada"), texto livre.
+   *
+   * Campo de primeira classe porque ele dirige decisões visuais (que cena as
+   * mídias automáticas desenham, que receita veste a marca) e o gerador
+   * criativo precisa dele para escrever copy que vende a coisa certa. Antes só
+   * existia escondido em `identidadeVerbal.observacao` e no endereço — dado que
+   * decide aparência não pode viajar de carona em texto de observação.
+   */
+  nicho: z.string().optional(),
 
   // ── Campos NOVOS (A5) — todos aditivos; os legados acima seguem válidos ──
   /** Identidade verbal (tons + arquétipos + modelo derivado editável). */

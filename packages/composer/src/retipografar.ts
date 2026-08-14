@@ -1,4 +1,4 @@
-import postcss from 'postcss';
+import { analisarCss } from './analisar-css.js';
 import {
   type FontesDaOrigem,
   PILHA_DE_SISTEMA,
@@ -108,14 +108,13 @@ const GENERICAS = new Set([
 export const retipografarCss = (css: string, mapa: MapaDeFontes): ResultadoRetipografia => {
   if (mapa.size === 0) return { css, reescritas: 0, mantidas: 0 };
 
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     // Folha ilegível segue como está. O escopo já declara esse risco em aviso;
     // duplicar o aviso aqui só encheria a lista.
     return { css, reescritas: 0, mantidas: 0 };
   }
+  const raiz = analise.raiz;
 
   let reescritas = 0;
   let mantidas = 0;

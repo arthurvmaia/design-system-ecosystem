@@ -1,19 +1,60 @@
 import type {
+  AjusteDoSite,
   AncoraDeRolagem,
   GovernancaDoKit,
   IdentidadeVerbal,
   KitDesignSystem,
   LocalDeLogo,
   LogoVariante,
+  ObjetivoDoSite,
   PaletaDoProjeto,
   ProjectLayout,
   RedeSocial,
+  SectionRole,
   SlotDeMidia,
   TipografiaDoProjeto,
   Violacao,
 } from '@ds/shared/schemas';
 
 export type { KitDesignSystem, ProjectLayout };
+
+/** O patch de marca da geração automática — espelho da resposta do servidor. */
+export type MarcaAutomaticaBranding = {
+  brandName: string;
+  tone: string;
+  primary: string;
+  background: string;
+  foreground: string;
+  accent: string;
+  fontDisplay: string;
+  fontBody: string;
+  logoPath: string | null;
+  contact: { email: string; phone: string; whatsapp: string; address: string };
+  social: Record<string, string>;
+  mainCta: { label: string; href: string };
+  identidadeVerbal: IdentidadeVerbal;
+  logos: LogoVariante[];
+  logosLocais: Partial<Record<LocalDeLogo, string>>;
+  paleta: PaletaDoProjeto;
+  tipografia: TipografiaDoProjeto;
+  sociais: RedeSocial[];
+};
+
+/** A sugestão da montagem automática de kit — espelho da resposta do servidor. */
+export type KitAutomaticoSugestao = {
+  componentIds: string[];
+  passos: Array<{
+    papel: SectionRole;
+    etapa: string;
+    faz: string;
+    componentId: string | null;
+    nome: string | null;
+    motivo: string;
+  }>;
+  origemPrincipal: string | null;
+  nomeSugerido: string;
+  avisos: string[];
+};
 
 /**
  * A âncora de rolagem de um slot de mídia, reexportada do shared para a tela
@@ -588,6 +629,16 @@ export const previewKitUrl = (
   return `/api/preview/kit/${kitId}?${q.toString()}`;
 };
 
+/**
+ * Os avisos da última montagem da prévia do kit: o que degradou, sumiu ou não
+ * pôde ser reproduzido. Buscar DEPOIS do iframe carregar, porque é a navegação
+ * do iframe que dispara a montagem que os grava.
+ */
+export const kitPreviewAvisos = (
+  kitId: string,
+): Promise<{ avisos: string[]; faltando: string[] }> =>
+  jsonFetch<{ avisos: string[]; faltando: string[] }>(`/api/preview/kit/${kitId}/avisos`);
+
 export const previewComponentUrl = (cmpId: string, bg?: 'claro' | 'escuro'): string =>
   `/api/preview/component/${cmpId}${bg ? `?bg=${bg}` : ''}`;
 export const previewRejeitadoUrl = (dsId: string, segId: string, bg?: 'claro' | 'escuro'): string =>
@@ -632,6 +683,8 @@ export const api = {
     jsonFetch<{
       items: SegmentRecord[];
       capturaParcial?: { fase: string; motivo?: string; totalMs: number };
+      /** O que a captura declarou não ter conseguido medir, nas palavras dela. */
+      limitacoesDaCaptura?: string[];
     }>(`/api/design-systems/${dsId}/segments`),
   deleteSegment: (dsId: string, segId: string) =>
     jsonFetch<{ deleted: boolean }>(`/api/design-systems/${dsId}/segments/${segId}`, {
@@ -756,6 +809,68 @@ export const api = {
     ),
   duplicateKit: (id: string) =>
     jsonFetch<{ item: KitRecord }>(`/api/kits/${id}/duplicate`, { method: 'POST' }),
+  /**
+   * Montagem automática de kit a partir do objetivo do site. Leitura pura: o
+   * servidor sugere (ordem da sequência de marketing + peças que combinam) e a
+   * tela aplica no editor — quem salva é a pessoa, depois de revisar.
+   */
+  montarKitAutomatico: (objetivo: ObjetivoDoSite) =>
+    jsonFetch<{ sugestao: KitAutomaticoSugestao }>('/api/kits/montar-automatico', {
+      method: 'POST',
+      body: JSON.stringify({ objetivo }),
+    }),
+  /**
+   * Marca automática para testes de geração: o servidor cria a identidade
+   * completa e as mídias dela (logos + imagens); a tela aplica o patch na
+   * bancada e o autosave grava.
+   */
+  /**
+   * Via expressa: kit + projeto + marca num pedido só, trancado pela
+   * credencial de ação. Devolve o projectId; a tela dispara a geração em
+   * seguida pelo generateProject de sempre, com a mesma credencial.
+   */
+  expresso: (
+    input: {
+      objetivo: ObjetivoDoSite;
+      nicho?: string;
+      nome?: string;
+      marca?: string;
+      /**
+       * De onde saem as imagens da marca. **Obrigatório na via expressa**: o
+       * servidor recusa sem isto (a trava), porque geração pelo Magnific
+       * consome crédito e um atalho não pode escondê-lo.
+       */
+      imagens: 'desenho' | 'magnific';
+    },
+    senhaDeAcao?: string,
+  ) =>
+    jsonFetch<{
+      projectId: string;
+      kitId: string;
+      marca: string;
+      midias: number;
+      passos: KitAutomaticoSugestao['passos'];
+      avisos: string[];
+    }>('/api/projects/expresso', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: senhaDeAcao === undefined ? undefined : { [CABECALHO_DA_ACAO]: senhaDeAcao },
+    }),
+  /**
+   * Gera as imagens das SEÇÕES a partir da marca já salva do projeto — o
+   * fecho do ciclo Marca→Estrutura: cada seção que aceita mídia recebe as
+   * suas, ancoradas por secaoId.
+   */
+  gerarMidiasAutomaticas: (projectId: string) =>
+    jsonFetch<{ criadas: MediaItem[]; media: MediaItem[] }>(
+      `/api/projects/${projectId}/midias-automaticas`,
+      { method: 'POST' },
+    ),
+  criarMarcaAutomatica: (projectId: string, nicho?: string) =>
+    jsonFetch<{ branding: MarcaAutomaticaBranding; media: MediaItem[] }>(
+      `/api/projects/${projectId}/marca-automatica`,
+      { method: 'POST', body: JSON.stringify({ nicho: nicho ?? null }) },
+    ),
 
   // ── Projetos ────────────────────────────────────────────────────────────
   listProjects: () => jsonFetch<{ items: ProjectRecord[] }>('/api/projects'),
@@ -826,4 +941,36 @@ export const api = {
   meusProjetosContagem: () => jsonFetch<{ total: number }>('/api/meus-projetos/contagem'),
   abrirPasta: (id: string) =>
     jsonFetch<{ ok: boolean }>(`/api/meus-projetos/${id}/abrir-pasta`, { method: 'POST' }),
+  /**
+   * Os retoques pedidos para uma versão gerada, e o pedido novo.
+   *
+   * Não regera o site: o pedido vira job e o ajuste pousa no
+   * `assets/ajustes.css` daquela versão, que a montagem emite vazio e liga por
+   * último na cascata.
+   */
+  ajustesDoSite: (id: string, versao?: string) =>
+    jsonFetch<{ versao: string; formato: number; ajustes: AjusteDoSite[] }>(
+      `/api/meus-projetos/${id}/ajustes${versao ? `?versao=${encodeURIComponent(versao)}` : ''}`,
+    ),
+  /** O que a regra de aceite nao deixou passar, em todos os sites. */
+  pendencias: () =>
+    jsonFetch<{
+      itens: {
+        projectId: string;
+        projectName: string;
+        versao: string;
+        vereditos: { codigo: string; titulo: string; estado: string; motivo: string }[];
+      }[];
+    }>('/api/meus-projetos/pendencias'),
+  /** "Faca-me aprender": mais uma tentativa sobre o que nao passou. */
+  pedirAprendizado: (id: string, versao: string, codigo: string, motivo: string) =>
+    jsonFetch<{ job: { id: string } }>(`/api/meus-projetos/${id}/aprender`, {
+      method: 'POST',
+      body: JSON.stringify({ versao, codigo, motivo }),
+    }),
+  pedirAjuste: (id: string, pedido: string, versao?: string) =>
+    jsonFetch<{ ajuste: AjusteDoSite; job: { id: string } }>(
+      `/api/meus-projetos/${id}/ajustes${versao ? `?versao=${encodeURIComponent(versao)}` : ''}`,
+      { method: 'POST', body: JSON.stringify({ pedido }) },
+    ),
 };

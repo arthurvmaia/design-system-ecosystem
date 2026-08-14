@@ -318,7 +318,11 @@ test('@layer que colide é renomeado', () => {
 test('CSS que não faz parse segue sem escopo, com o risco DECLARADO', () => {
   // Descartar todo o estilo de uma origem por um caractere seria pior. O que
   // não pode é ficar em silêncio.
-  const r = escopar('.a{color:red} @@@ isto não é css {{{');
+  //
+  // O colchete sem fechar é o caso que sobra depois de equilibrar as chaves:
+  // desequilíbrio de `{}` hoje é reparado, e só o que o reparo não alcança cai
+  // aqui.
+  const r = escopar('.a[b{color:red}');
   assert.ok(r.avisos.length > 0 || r.css.length > 0);
   if (r.avisos.length > 0) assert.ok(r.avisos[0]?.includes('colidir'));
 });
@@ -339,4 +343,116 @@ test('nomesGlobaisDe lê keyframes, font-family de @font-face e layers', () => {
   assert.ok(n.fontFace.has('Inter'));
   assert.ok(n.layer.has('base'));
   assert.ok(n.layer.has('tema'));
+});
+
+test('sufixo com dois-pontos não vaza para o nome de @keyframes nem de @layer', () => {
+  // `@keyframes girar--ds_a::original` não é um identificador CSS válido: o
+  // navegador não parseia o nome e DESCARTA a at-rule inteira. A animação some
+  // sem erro nenhum — o CSS carrega, a regra simplesmente não existe. Era um
+  // dos motivos de as páginas geradas saírem paradas.
+  const r = escoparCss('@keyframes girar{from{opacity:0}to{opacity:1}}@layer base{.a{color:red}}', {
+    raiz: 'data-ds-raiz="x"',
+    corpo: 'data-ds-corpo="x"',
+    sufixo: 'ds_a::original',
+    nomesUsados: { keyframes: new Set(['girar']), layer: new Set(['base']) },
+  });
+  assert.doesNotMatch(r.css, /::original/, 'nenhum nome global carrega dois-pontos');
+  assert.match(r.css, /@keyframes girar--ds_a__original/, 'o sufixo virou identificador válido');
+  assert.match(r.css, /@layer base--ds_a__original/, 'e a camada também');
+});
+
+test('uma `}` sobrando não faz a folha inteira perder o escopo', () => {
+  // Medido num site do acervo: UMA chave órfã no meio de 99 KB. O navegador a
+  // ignora; o postcss estrito lançava, e a folha seguia crua. Sem escopo, o
+  // `.grid-cols-1` desta origem passou a valer para o documento todo e venceu o
+  // `lg:grid-cols-12` de OUTRA — o hero de três colunas virou três blocos
+  // empilhados e o lado direito ficou vazio. Um `.hidden` alheio apagou, pela
+  // mesma porta, a linha vertical que se preenche na rolagem.
+  const r = escoparCss('.a{color:red}}\n.grid-cols-1{grid-template-columns:repeat(1,1fr)}', {
+    raiz: 'data-ds-raiz="x"',
+    corpo: 'data-ds-corpo="x"',
+    sufixo: 'x',
+  });
+  assert.ok(r.reescritas > 0, 'a folha foi escopada, não devolvida crua');
+  assert.match(r.css, /:where\(\[data-ds-corpo="x"\]\) \.grid-cols-1/);
+  assert.doesNotMatch(r.css, /(^|\n)\.grid-cols-1\{/, 'não sobra utilitário global');
+  // O reparo é declarado: reparo calado seria a mesma falha silenciosa ao avesso.
+  assert.equal(r.avisos.length, 1);
+  assert.match(r.avisos[0] ?? '', /sobrando/);
+});
+
+test('bloco sem fechar é fechado no fim, e chave dentro de string não conta', () => {
+  const r = escoparCss('.a::after{content:"}"}\n@media (min-width:1024px){.b{color:red}', {
+    raiz: 'data-ds-raiz="x"',
+    corpo: 'data-ds-corpo="x"',
+    sufixo: 'x',
+  });
+  assert.match(r.css, /content:"\}"/, 'a chave dentro da string continua sendo conteúdo');
+  assert.match(
+    r.css,
+    /:where\(\[data-ds-corpo="x"\]\) \.b/,
+    'a regra dentro do @media foi escopada',
+  );
+  assert.match(r.avisos[0] ?? '', /sem fechar/);
+});
+
+test('folha desequilibrada não some da detecção de nomes globais', () => {
+  // Sem isto, uma folha que não analisa devolvia conjuntos vazios — e as
+  // colisões de @keyframes e @font-face dela deixavam de ser detectadas para
+  // TODAS as origens seguintes.
+  const n = nomesGlobaisDe('@keyframes girar{from{opacity:0}to{opacity:1}}}');
+  assert.ok(n.keyframes.has('girar'));
+});
+
+test('a regra do <body> perde o que descrevia o DOCUMENTO', () => {
+  // Medido: uma origem do acervo trazia `body{display:none!important}` — estado
+  // de carregamento congelado pela captura. Escopado fielmente, ele apagava a
+  // SECAO INTEIRA do site gerado: 212 caracteres, altura zero, sem erro nenhum.
+  // Outra dava `position:fixed;height:20px` e uma secao de 913px saia numa
+  // caixa de 20px, rolando por dentro.
+  const r = escoparCss(
+    'body{display:none!important;position:fixed;height:20px;overflow-y:auto;background:#03020A;color:#fff}' +
+      'html{overflow:hidden;font-size:18px}',
+    { raiz: 'data-ds-raiz="d"', corpo: 'data-ds-corpo="d"', sufixo: 'd' },
+  );
+  for (const foi of [
+    'display:none',
+    'position:fixed',
+    'height:20px',
+    'overflow-y:auto',
+    'overflow:hidden',
+  ]) {
+    assert.ok(!r.css.includes(foi), `${foi} nao pode sobreviver`);
+  }
+  // A APARENCIA fica: e dela que a peca tira a cara que tinha na origem.
+  assert.ok(r.css.includes('background:#03020A'));
+  assert.ok(r.css.includes('color:#fff'));
+  assert.ok(r.css.includes('font-size:18px'));
+  assert.ok(r.avisos.some((a) => a.includes('descreviam o DOCUMENTO')));
+});
+
+test('display e position do corpo SO saem quando escondem ou tiram do fluxo', () => {
+  // Um <body> em flex descreve a moldura que a peca espera; `relative` e
+  // contexto de posicionamento. Tirar isso mudaria o desenho de quem nunca teve
+  // defeito nenhum.
+  const r = escoparCss('body{display:flex;position:relative;overflow:visible}', {
+    raiz: 'data-ds-raiz="d"',
+    corpo: 'data-ds-corpo="d"',
+    sufixo: 'd',
+  });
+  assert.ok(r.css.includes('display:flex'));
+  assert.ok(r.css.includes('position:relative'));
+  assert.ok(r.css.includes('overflow:visible'));
+});
+
+test('a poda so alcanca a regra do DOCUMENTO, nunca a de dentro da peca', () => {
+  // `.modal{position:fixed}` e desenho da peca e continua inteiro.
+  const r = escoparCss('.modal{position:fixed;display:none}body .caixa{overflow:auto}', {
+    raiz: 'data-ds-raiz="d"',
+    corpo: 'data-ds-corpo="d"',
+    sufixo: 'd',
+  });
+  assert.ok(r.css.includes('position:fixed'), 'a peca mantem o proprio fixed');
+  assert.ok(r.css.includes('display:none'), 'a peca mantem o proprio none');
+  assert.ok(r.css.includes('overflow:auto'), 'descendente do corpo nao e o corpo');
 });

@@ -1,7 +1,11 @@
+import { CriativosShell } from '@/components/CriativosShell';
 import { Intro } from '@/components/Intro';
 import { PortaoOrbis } from '@/components/PortaoOrbis';
 import { Shell } from '@/components/Shell';
+import { ROTA_INICIAL_DO_CLIENTE, capturarPerfilDaUrl, perfilAtual } from '@/lib/perfil';
 import { aplicarMovimento, usePreferencias } from '@/lib/preferencias';
+import { CriativosPage } from '@/routes/Criativos';
+import { CriativosExpressoPage } from '@/routes/CriativosExpresso';
 import { ExtractPage } from '@/routes/Extract';
 import { GalleryPage } from '@/routes/Gallery';
 import { KitsPage } from '@/routes/Kits';
@@ -14,6 +18,8 @@ import { PADRAO_DA_ROTA_DA_FORMULA } from '@/routes/kits/rota-da-formula';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { TrabalhoProvider } from './lib/trabalho';
+import { ExpressoPage } from './routes/Expresso';
 import { HomePage } from './routes/Home';
 import { ProjectsPage } from './routes/projects';
 
@@ -26,6 +32,11 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// O perfil chega na URL de ENTRADA (o portal pergunta antes de abrir) e tem de
+// ser capturado antes do primeiro render — o Router limpa a query na primeira
+// navegação e a escolha se perderia.
+capturarPerfilDaUrl();
 
 export function App() {
   const movimento = usePreferencias((s) => s.movimento);
@@ -56,27 +67,49 @@ export function App() {
           />
         )}
         <Router>
-          <Routes>
-            <Route element={<Shell />}>
-              <Route index element={<Navigate to="/inicio" replace />} />
-              <Route path="inicio" element={<HomePage />} />
-              <Route path="/extract" element={<ExtractPage />} />
-              <Route path="/gallery" element={<GalleryPage />} />
-              <Route path="/revisao" element={<RevisaoPage />} />
-              <Route path="/library" element={<LibraryPage />} />
-              <Route path="/design-systems" element={<KitsPage />} />
-              {/* A fórmula é um DESTINO, não um pop-up: com endereço próprio ela
+          <TrabalhoProvider>
+            <Routes>
+              {/* A frente Criativos tem CASCA PRÓPRIA — fora do Shell do
+                  design system, por arquitetura que o dono corrigiu ao ver a
+                  tela vestida com a sidebar do fluxo: cada frente do portal
+                  tem o seu espaço. O código divide o bundle (é daqui que a
+                  marca dos projetos vem); a navegação, não. */}
+              <Route element={<CriativosShell />}>
+                <Route path="/criativos" element={<CriativosPage />} />
+                {/* O expresso mora DENTRO da casca da frente: é atalho de
+                    tela dos mesmos criativos, não uma frente nova. */}
+                <Route path="/criativos/expresso" element={<CriativosExpressoPage />} />
+              </Route>
+              <Route element={<Shell />}>
+                <Route
+                  index
+                  element={
+                    <Navigate
+                      to={perfilAtual() === 'cliente' ? ROTA_INICIAL_DO_CLIENTE : '/inicio'}
+                      replace
+                    />
+                  }
+                />
+                <Route path="inicio" element={<HomePage />} />
+                <Route path="/expresso" element={<ExpressoPage />} />
+                <Route path="/extract" element={<ExtractPage />} />
+                <Route path="/gallery" element={<GalleryPage />} />
+                <Route path="/revisao" element={<RevisaoPage />} />
+                <Route path="/library" element={<LibraryPage />} />
+                <Route path="/design-systems" element={<KitsPage />} />
+                {/* A fórmula é um DESTINO, não um pop-up: com endereço próprio ela
                   pode ser mandada por link e apontada de qualquer tela. O modal
                   do card continua existindo como atalho para quem já está aqui.
                   O caminho fica debaixo de `/design-systems` de propósito — é o
                   que mantém "Kits" aceso na navegação enquanto se lê a fórmula. */}
-              <Route path={PADRAO_DA_ROTA_DA_FORMULA} element={<PaginaDaFormulaDoKit />} />
-              <Route path="/projects" element={<ProjectsPage />} />
-              <Route path="/meus-projetos" element={<MeusProjetosPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="*" element={<Navigate to="/inicio" replace />} />
-            </Route>
-          </Routes>
+                <Route path={PADRAO_DA_ROTA_DA_FORMULA} element={<PaginaDaFormulaDoKit />} />
+                <Route path="/projects" element={<ProjectsPage />} />
+                <Route path="/meus-projetos" element={<MeusProjetosPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="*" element={<Navigate to="/inicio" replace />} />
+              </Route>
+            </Routes>
+          </TrabalhoProvider>
         </Router>
       </PortaoOrbis>
     </QueryClientProvider>

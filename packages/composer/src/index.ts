@@ -1,3 +1,4 @@
+export { type ResultadoAncestral, soltarAncestraisAusentes } from './ancestral-ausente.js';
 export {
   type OpcoesEscopo,
   type ResultadoEscopo,
@@ -39,8 +40,10 @@ export { type ConsolidacaoDaOrigem, consolidarCores } from './clusters.js';
 export {
   type MapaDeRecoloracao,
   type ResultadoRecoloracao,
+  type Retema,
   mapaDeRecoloracao,
   recolorirCss,
+  retemarHtmlInline,
 } from './recolorir.js';
 
 /**
@@ -68,3 +71,11 @@ export { mapaDeFontes, retipografarCss, TOKEN_DE_FONTE } from './retipografar.js
 export type { MapaDeFontes, ResultadoRetipografia } from './retipografar.js';
 export { PX_POR_REM, TOLERANCIA_EM_PX, reescalarCss } from './reescalar.js';
 export type { ReguasDeEscala, ResultadoDeReescala } from './reescalar.js';
+
+export {
+  PISO_DO_PAR,
+  contrasteEntre,
+  corrigirParesDeCor,
+  mapearClassesPorPapel,
+  tintaQueSeLeSobre,
+} from './par-de-cores.js';

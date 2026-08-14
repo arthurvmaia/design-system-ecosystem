@@ -13,6 +13,12 @@
     "db:migrate": "pnpm --filter @ds/indexer db:migrate",
     "acervo:exportar": "tsx scripts/acervo-exportar.ts",
     "acervo:importar": "tsx scripts/acervo-importar.ts",
+    "acervo:lote": "tsx scripts/acervo-lote.ts",
+    "curar": "tsx scripts/curar-biblioteca.ts",
+    "kits": "tsx scripts/montar-kits.ts",
+    "kits:provar": "tsx scripts/kits-provar.ts",
+    "projeto:de-kit": "tsx scripts/projeto-de-kit.ts",
+    "site:gerar": "tsx scripts/site-gerar.ts",
     "fila": "tsx scripts/fila.ts",
     "extrair": "tsx scripts/extrair.ts",
     "explorar": "tsx scripts/explorar.ts",
@@ -30,19 +36,26 @@
     "clean": "turbo run clean",
     "comparar": "tsx scripts/comparar-motores.ts",
     "reextrair": "tsx scripts/reextrair.ts",
+    "stack:backfill": "tsx scripts/stack-backfill.ts",
     "acervo:limpar-orfas": "tsx scripts/acervo-limpar-orfas.ts",
     "test:navegador": "node --import tsx --test --test-concurrency=1 \"packages/**/src/**/*.browser.test.ts\" \"apps/**/src/**/*.browser.test.ts\"",
     "test:tudo": "pnpm test && pnpm test:navegador",
     "verificar": "pnpm lint && pnpm typecheck && pnpm test && pnpm medir-fidelidade --falhar-se-piorar",
     "voz": "tsx scripts/voz-orbis.ts",
     "pagina": "tsx scripts/pagina-montar.ts",
-    "publicar": "tsx scripts/publicar.ts"
+    "conferir": "tsx scripts/conferir-site.ts",
+    "publicar": "tsx scripts/publicar.ts",
+    "resegmentar": "tsx scripts/resegmentar.ts",
+    "biblioteca:deduplicar": "tsx scripts/deduplicar-biblioteca.ts",
+    "biblioteca:religar": "tsx scripts/religar-biblioteca.ts",
+    "biblioteca:conferir": "tsx scripts/conferir-peca.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "tsx": "^4.19.2",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "playwright": "^1.61.1"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {
@@ -55,6 +68,7 @@
     "@ds/segmenter": "workspace:^",
     "@ds/server": "workspace:^",
     "@ds/shared": "workspace:^",
-    "@ds/engine-v2": "workspace:^"
+    "@ds/engine-v2": "workspace:^",
+    "@ds/generator": "workspace:^"
   }
 }

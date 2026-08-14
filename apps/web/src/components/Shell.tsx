@@ -1,7 +1,8 @@
 import { api } from '@/lib/api';
+import { ROTA_INICIAL_DO_CLIENTE, perfilAtual, rotaPermitida } from '@/lib/perfil';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { BarraDeFluxo } from './BarraDeFluxo';
 import { Sidebar } from './Sidebar';
 import { Toaster } from './Toaster';
@@ -21,6 +22,21 @@ import { TopBar } from './TopBar';
  */
 export function Shell() {
   const location = useLocation();
+  const navigate = useNavigate();
+
+  /**
+   * O CLIENTE vive da parte de kits em diante — pedido do dono no portal.
+   *
+   * Rota fora do recorte não abre tela vazia nem erro: volta para os kits, que
+   * é onde a escolha dele começa. Perfil é recorte de navegação (a credencial
+   * continua no portão), então o redirecionamento é hospitalidade, não tranca.
+   */
+  useEffect(() => {
+    const perfil = perfilAtual();
+    if (perfil === 'cliente' && !rotaPermitida(perfil, location.pathname)) {
+      navigate(ROTA_INICIAL_DO_CLIENTE, { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
   // A gaveta da navegação. Só existe abaixo de `lg`; acima, a coluna é fixa e
   // este estado não pinta nada. Fecha a cada troca de rota: gaveta que fica

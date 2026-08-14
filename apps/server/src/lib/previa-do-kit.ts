@@ -1,15 +1,17 @@
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { montarPaginaDoKit } from '@ds/generator';
 import { getDb, tables } from '@ds/indexer';
 import {
   DEFAULT_LAYOUT,
   DEFAULT_PROJECT_BRANDING,
+  MediaManifest,
   ProjectLayout,
   getRoot,
   libraryComponentBundleDir,
   normalizarProjectBranding,
 } from '@ds/shared';
+import type { MediaItem } from '@ds/shared';
 import { asc, eq, inArray } from 'drizzle-orm';
 
 /**
@@ -61,6 +63,30 @@ export type ResultadoDaPrevia =
 const dirDaPrevia = (kitId: string): string => join(getRoot(), 'cache', 'previa-kit', kitId);
 
 /**
+ * As mídias do projeto reancoradas nas seções sintéticas do mostruário.
+ *
+ * A mídia do projeto aponta para as seções que o dono desenhou na tela de gerar
+ * site; aqui as seções são outras — uma por peça do kit. Reaproveitar o
+ * `secaoId` original não casaria com nada e a prévia sairia sem foto alguma.
+ * Então a ordem manda: a enésima mídia de conteúdo vai para a enésima seção.
+ * Marca (`logo`, `icon`) fica de fora — ela tem o caminho das variações.
+ */
+const midiaDoMostruario = (
+  manifestoJson: string | null,
+  secoes: readonly { id: string }[],
+): { de: string; para: string; secaoId?: string; kind?: MediaItem['kind'] }[] => {
+  if (manifestoJson === null) return [];
+  const itens = MediaManifest.safeParse(JSON.parse(manifestoJson));
+  if (!itens.success) return [];
+  let proxima = 0;
+  return itens.data.map((m) => {
+    const ehMarca = m.kind === 'logo' || m.kind === 'icon';
+    const secaoId = ehMarca ? undefined : secoes[proxima++]?.id;
+    return { de: m.path, para: `midia/${m.path}`, secaoId, kind: m.kind };
+  });
+};
+
+/**
  * Monta a prévia e devolve o diretório servível.
  *
  * Refaz a cada chamada, sem cache. Medido: 2 a 9 peças montam em menos de um
@@ -70,8 +96,22 @@ const dirDaPrevia = (kitId: string): string => join(getRoot(), 'cache', 'previa-
 export const montarPrevia = (entrada: EntradaDaPrevia): ResultadoDaPrevia => {
   const db = getDb();
 
-  const kit = db.select().from(tables.kits).where(eq(tables.kits.id, entrada.kitId)).get();
-  if (!kit) return { ok: false, motivo: 'Este kit não existe mais.' };
+  const salvo = db.select().from(tables.kits).where(eq(tables.kits.id, entrada.kitId)).get();
+  // Kit AINDA NÃO SALVO: a tela de montar precisa da mesma prévia do kit
+  // salvo — quem está escolhendo peças decide olhando o site composto, não
+  // uma grade de miniaturas. O rascunho compõe pela seleção enviada, sem
+  // linha no banco e sem design system consolidado (a consolidação nasce no
+  // salvar); o id fixo `kit_rascunho` dá a ele a pasta de cache dele.
+  const ehRascunho = !salvo && entrada.kitId === 'kit_rascunho';
+  if (!salvo && !ehRascunho) return { ok: false, motivo: 'Este kit não existe mais.' };
+  if (ehRascunho && (entrada.componentIds?.length ?? 0) === 0) {
+    return { ok: false, motivo: 'Escolha peças para eu montar a prévia do rascunho.' };
+  }
+  const kit = salvo ?? {
+    id: entrada.kitId,
+    name: 'Rascunho',
+    tokensJson: null,
+  };
 
   const ids =
     entrada.componentIds ??
@@ -146,8 +186,27 @@ export const montarPrevia = (entrada: EntradaDaPrevia): ResultadoDaPrevia => {
       designSystem: kit.tokensJson === null ? null : JSON.parse(kit.tokensJson),
       layout,
       branding,
+      // Com projeto escolhido, a prévia mostra as FOTOS DELE. A prévia existe
+      // para responder "o kit presta com a minha marca?", e foto é metade
+      // dessa resposta. As mídias do projeto foram ancoradas nas seções DELE,
+      // que não são as seções sintéticas daqui, então a âncora é refeita: a
+      // enésima mídia de conteúdo vai para a enésima peça do mostruário.
+      midia: midiaDoMostruario(projeto?.mediaManifestJson ?? null, layout.secoes),
       outputDir: dir,
     });
+    // Os avisos ficam ao lado da pagina montada. A rota da previa termina num
+    // redirect e nao tem como carrega-los na resposta; sem este arquivo eles
+    // morriam ali e a Bancada mostrava a pagina sem nenhuma ressalva sobre o
+    // que degradou, sumiu ou nao pode ser reproduzido.
+    try {
+      writeFileSync(
+        join(dir, 'avisos.json'),
+        JSON.stringify({ avisos: r.avisos, faltando: r.faltando, geradoEm: Date.now() }),
+        'utf8',
+      );
+    } catch {
+      // a previa vale mesmo sem o arquivo de avisos
+    }
     return { ok: true, dir: r.outputDir, avisos: r.avisos, faltando: r.faltando };
   } catch (err) {
     return {

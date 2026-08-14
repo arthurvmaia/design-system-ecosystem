@@ -77,6 +77,7 @@ export const FAMILIA_DA_CATEGORIA: Record<ComponentCategory, Familia> = {
   timeline: 'dobras',
 
   interaction: 'efeitos',
+  cursor: 'efeitos',
   background: 'efeitos',
   overlay: 'efeitos',
 
@@ -117,6 +118,7 @@ export const CATEGORIA_LABEL: Record<ComponentCategory, string> = {
   timeline: 'Linha do tempo',
 
   interaction: 'Animações',
+  cursor: 'Ponteiro do mouse',
   background: 'Fundos',
   overlay: 'Camadas',
 

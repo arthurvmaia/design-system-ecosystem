@@ -373,6 +373,14 @@ export const construirGrafoDeEstados = async (
   };
   nodes.push(raiz);
   porAssinatura.set(raizSig, raiz.id);
+  // A assinatura BRUTA de cada estado, para a conferência tolerante. O hash
+  // exato inclui o innerHTML inteiro e o nodeCount — numa página que reescreve
+  // style por frame (framer-motion, GSAP), ele NUNCA repete, e a conferência
+  // por igualdade declarava "não pôde ser desfeita" para ações que não fizeram
+  // nada. Medido no acervo: 87 falsas falhas, cada uma custando 5 releituras,
+  // um reclique e um clique cego no canto da tela.
+  const brutaPorId = new Map<string, RawAssinaturaEstado>();
+  brutaPorId.set(raiz.id, raizBruta);
 
   // As ações barradas pela política, registradas antes de qualquer execução: o
   // log de segurança não depende de a exploração chegar até elas.
@@ -390,9 +398,17 @@ export const construirGrafoDeEstados = async (
   type Item = { estadoId: string; caminho: Array<{ ref: number; acao: SafeActionKind }> };
   const fila: Item[] = [{ estadoId: raiz.id, caminho: [] }];
 
-  const conferirBase = async (esperada: string): Promise<boolean> => {
-    const atual = assinaturaDoEstado(await lerAssinatura());
-    return atual === esperada;
+  /**
+   * A página VOLTOU ao estado esperado? Conferido pelos mesmos critérios de
+   * `houveMudanca` (overlay, ARIA, classes de html/body, overflow, delta de
+   * HTML relevante), não por igualdade de hash. Se nada MUDOU pelo critério
+   * que define mudança, então nada precisa ser desfeito — e não pode ter
+   * "falhado em ser desfeito". A assinatura exata segue registrada nos nós
+   * como identidade; aqui ela seria o critério errado.
+   */
+  const conferirBase = async (esperada: RawAssinaturaEstado): Promise<boolean> => {
+    const atual = await lerAssinatura();
+    return !houveMudanca(esperada, atual).mudou;
   };
 
   /** Reencena um caminho a partir da raiz. Devolve se chegou onde queria. */
@@ -450,7 +466,8 @@ export const construirGrafoDeEstados = async (
           // ── Conferir a base ─────────────────────────────────────────────────
           // Sem isto, o estado seguinte é medido contra o anterior contaminado —
           // o defeito exato do V1.
-          if (!(await conferirBase(estadoAtual.signature))) {
+          const brutaDoEstado = brutaPorId.get(estadoAtual.id);
+          if (brutaDoEstado !== undefined && !(await conferirBase(brutaDoEstado))) {
             let recuperou = false;
             if (opts.reestabelecer !== undefined && reestabelecimentos < maxReest) {
               reestabelecimentos++;
@@ -465,7 +482,9 @@ export const construirGrafoDeEstados = async (
                 `A exploração não pôde voltar ao estado "${estadoAtual.label}" antes de "${acao}": as ações seguintes foram medidas contra o estado encontrado, não contra o original.`,
               );
               // Adota a base atual, para não medir contra uma referência falsa.
-              estadoAtual.signature = assinaturaDoEstado(await lerAssinatura());
+              const adotada = await lerAssinatura();
+              estadoAtual.signature = assinaturaDoEstado(adotada);
+              brutaPorId.set(estadoAtual.id, adotada);
             }
           }
 
@@ -563,6 +582,7 @@ export const construirGrafoDeEstados = async (
               };
               nodes.push(node);
               porAssinatura.set(depoisSig, id);
+              brutaPorId.set(id, depois);
               destinoId = id;
               if (node.depth < maxDepth) {
                 fila.push({
@@ -574,7 +594,7 @@ export const construirGrafoDeEstados = async (
           }
 
           // ── Desfazer e CONFERIR ────────────────────────────────────────────
-          const desfeito = await tentarDesfazer(page, acao, ref, () => conferirBase(antesSig));
+          const desfeito = await tentarDesfazer(page, acao, ref, () => conferirBase(antes));
           if (!desfeito.restaurado) {
             let recuperou = false;
             if (opts.reestabelecer !== undefined && reestabelecimentos < maxReest) {

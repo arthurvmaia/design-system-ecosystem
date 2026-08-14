@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { ScrollBehavior, StructuralNode } from '@ds/shared';
-import { escolherComportamentos } from './comportamentos.js';
+import { escolherComportamentos, mecanismoDoComportamento } from './comportamentos.js';
 
 /**
  * O pedido do usuário: "os hovers e a forma que os elementos aparecem quando
@@ -108,4 +108,38 @@ test('o alvo só casa quando TODAS as classes batem', () => {
     nos: [no('h1', null, ['relative']), no('h2', null, ['relative', 'camada-funda'])],
   });
   assert.deepEqual(r[0]?.hashes, ['h2']);
+});
+
+// ── O mecanismo, de volta a partir do nome ──────────────────────────────────
+
+/**
+ * Da Biblioteca em diante só sobra o NOME da peça. O montador de kit precisa
+ * saber se dois comportamentos fazem a mesma coisa — dois observadores de
+ * rolagem sobre os mesmos elementos não dobram o efeito, só o custo — e até
+ * aqui ele deduplicava por CATEGORIA, onde só existem `interaction` e `cursor`:
+ * um teto de 2 que na prática era 1, porque `cursor` está em zero no acervo.
+ */
+test('todo nome que a captura produz tem mecanismo — o guarda contra renomear e esquecer', () => {
+  const nomes = escolherComportamentos({
+    scroll: [
+      comportamento('a', 'reveal', { id: 'a' }),
+      comportamento('b', 'class-toggle', { id: 'b' }),
+      comportamento('c', 'progress-opacity', { id: 'c' }),
+      comportamento('d', 'parallax', { id: 'd' }),
+      comportamento('e', 'sticky', { id: 'e' }),
+      comportamento('f', 'progress-transform', { id: 'f' }),
+    ],
+    nos: ['a', 'b', 'c', 'd', 'e', 'f'].map((x) => no(`h_${x}`, x, [])),
+  }).map((c) => c.nome);
+  assert.equal(nomes.length, 5, 'reveal e class-toggle são a mesma família');
+  for (const nome of nomes) {
+    assert.notEqual(mecanismoDoComportamento(nome), null, `sem mecanismo: ${nome}`);
+  }
+  assert.equal(new Set(nomes.map(mecanismoDoComportamento)).size, 5, 'cinco mecanismos distintos');
+});
+
+test('o sufixo de contagem não atrapalha: "Revelar ao rolar (×16)" é `revelar`', () => {
+  assert.equal(mecanismoDoComportamento('Revelar ao rolar (×16)'), 'revelar');
+  assert.equal(mecanismoDoComportamento('Parallax ao rolar'), 'parallax');
+  assert.equal(mecanismoDoComportamento('Cartões com ícone'), null);
 });

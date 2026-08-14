@@ -70,6 +70,54 @@ const valorDe = (attrs: string | undefined, nome: string): string => {
 const escaparAtributo = (v: string): string => v.replace(/"/g, '&quot;');
 
 /**
+ * Classes do `<html>`/`<body>` de origem que descrevem o DOCUMENTO, e por isso
+ * não podem viajar para dentro de uma peça.
+ *
+ * `min-h-screen` no corpo do site de origem quer dizer "a página ocupa pelo
+ * menos a tela". Copiada para o proxy de cada peça, ela passa a querer dizer
+ * "esta BARRA DE MENU ocupa pelo menos a tela" — e foi exatamente o que
+ * aconteceu: a nav de um site gerado saiu com 1000 px de altura e a primeira
+ * dobra ficou vazia, com o menu boiando sozinho num gradiente.
+ *
+ * A altura era só a primeira dessa família. Medido nos 20 sites do banco de
+ * prova, com o navegador lendo o estilo COMPUTADO de cada proxy:
+ *
+ * | o que o proxy virou | vezes | classe de origem |
+ * |---|---|---|
+ * | `overflow-y: auto`     | 168 | `overflow-y-auto`, `overflow-auto` |
+ * | `position: fixed`      |  20 | `fixed` |
+ * | `display: none`        |  12 | `hidden` |
+ * | `overflow-y: hidden`   |   8 | `overflow-hidden` |
+ * | `height: 0px` / `20px` |   6 | `h-0`, `h-5` |
+ * | `position: absolute`   |   1 | `absolute` |
+ *
+ * Cada uma dessas é inofensiva no documento e destrutiva num `div`:
+ *
+ * - `overflow` no `<body>` É a rolagem da página, e ninguém a vê como barra
+ *   separada; num bloco no meio da página vira uma SEGUNDA barra, que esconde
+ *   conteúdo e sequestra a roda do mouse. O dono fotografou as duas barras.
+ * - `fixed`/`absolute` tiram o documento do fluxo. A seção que embrulha a peça
+ *   passa a ter ZERO de altura: o texto está lá, ocupa lugar nenhum, e a página
+ *   fica com um buraco. Medido: seções `logos`, `faq`, `stats` e `nav` a 0px.
+ * - `hidden` é `display:none`. É estado de carregamento congelado pela captura —
+ *   e apagava a seção inteira do site gerado.
+ * - `h-0`/`h-5` no corpo davam uma caixa de 20px para uma seção de 913px.
+ *
+ * `relative` fica, de propósito: ele não tira nada do fluxo e costuma ser o
+ * contexto de posicionamento que a peça espera ter em volta. E o resto das
+ * classes do corpo continua viajando, e deve: é delas que vem o tema, a cor de
+ * tinta e a fonte que a peça conta encontrar.
+ */
+const DESCREVE_O_DOCUMENTO =
+  /^(?:min-|max-)?h-|^overflow(-[xy])?-|^(?:fixed|absolute|sticky|hidden|invisible)$/;
+
+const semTamanhoDePagina = (classes: string): string =>
+  classes
+    .split(/\s+/)
+    .filter((c) => c.length > 0 && !DESCREVE_O_DOCUMENTO.test(c.replace(/^[a-z-]+:/, '')))
+    .join(' ');
+
+/**
  * Envolve o HTML de uma peça nos dois proxies.
  *
  * Os atributos que NÃO são `class` também viajam (`data-theme`, `lang`,
@@ -81,28 +129,60 @@ export const envolverEmProxies = (peca: PecaComposta): string => {
   const attrsHtml = peca.documentoAttrs?.html ?? '';
   const attrsBody = peca.documentoAttrs?.body ?? '';
 
+  /**
+   * A ROLAGEM do documento não vira rolagem de um `div`.
+   *
+   * O estilo inline do `<html>`/`<body>` da origem viaja para o proxy, e é certo
+   * que viaje: é dele que vêm o tema e a tipografia em volta. Mas `overflow`,
+   * `height` e `min-height` ali descrevem o DOCUMENTO — no `<body>` da origem
+   * `overflow-y:auto` é a rolagem da página, e ninguém a vê como barra separada.
+   *
+   * Copiadas para um `div` no meio de uma página composta, viram uma SEGUNDA
+   * barra de rolagem: um bloco que rola dentro do que já rola, escondendo
+   * conteúdo e sequestrando a roda do mouse quando o ponteiro entra nele. O dono
+   * fotografou as duas barras na mesma tela.
+   *
+   * Medido nos 20 sites de prova: `overflow-y: auto !important` no proxy em 5
+   * deles, e 23 blocos com rolagem aninhada. Um caso: 467px de conteúdo dentro
+   * de uma caixa de 20px.
+   *
+   * É a mesma família de `TAMANHO_DA_PAGINA` logo acima, que já tira
+   * `min-h-screen` das CLASSES pelo mesmo motivo — só que aquilo estava no
+   * `class` e isto está no `style`.
+   */
+  const semRolagemDeDocumento = (estilo: string): string =>
+    estilo
+      .split(';')
+      .map((d) => d.trim())
+      .filter(
+        (d) => d.length > 0 && !/^(overflow(-[xy])?|height|min-height|max-height)\s*:/i.test(d),
+      )
+      .join(';');
+
   // `class` entra como class; os demais atributos entram como estão. `lang` sai
   // fora: repeti-lo num <div> interno confunde leitor de tela sem ganho nenhum.
   const semClasseNemLang = (attrs: string): string =>
     attrs
       .replace(/\bclass\s*=\s*("[^"]*"|'[^']*')/i, '')
       .replace(/\blang\s*=\s*("[^"]*"|'[^']*')/i, '')
+      .replace(/\bstyle\s*=\s*"([^"]*)"/i, (_inteiro, estilo: string) => {
+        const limpo = semRolagemDeDocumento(estilo);
+        return limpo.length > 0 ? `style="${limpo}"` : '';
+      })
       .trim();
 
+  const classesDaRaiz = semTamanhoDePagina(valorDe(attrsHtml, 'class'));
   const abreRaiz = [
     `<div ${raiz}="${escaparAtributo(valor)}"`,
-    valorDe(attrsHtml, 'class').length > 0
-      ? ` class="${escaparAtributo(valorDe(attrsHtml, 'class'))}"`
-      : '',
+    classesDaRaiz.length > 0 ? ` class="${escaparAtributo(classesDaRaiz)}"` : '',
     semClasseNemLang(attrsHtml).length > 0 ? ` ${semClasseNemLang(attrsHtml)}` : '',
     '>',
   ].join('');
 
+  const classesDoCorpo = semTamanhoDePagina(valorDe(attrsBody, 'class'));
   const abreCorpo = [
     `<div ${corpo}="${escaparAtributo(valor)}"`,
-    valorDe(attrsBody, 'class').length > 0
-      ? ` class="${escaparAtributo(valorDe(attrsBody, 'class'))}"`
-      : '',
+    classesDoCorpo.length > 0 ? ` class="${escaparAtributo(classesDoCorpo)}"` : '',
     semClasseNemLang(attrsBody).length > 0 ? ` ${semClasseNemLang(attrsBody)}` : '',
     '>',
   ].join('');

@@ -24,7 +24,7 @@ import type {
   TemporalObservation,
   VisualLayer,
 } from '@ds/shared';
-import { contido, intersecao } from '../mapper/build-maps.js';
+import { LIMIAR_CONTENCAO, contido, intersecao } from '../mapper/build-maps.js';
 import type { BoxPx } from '../mapper/raw.js';
 import type { CamadasDePagina } from './camadas-de-pagina.js';
 import type { ComportamentoCandidato } from './comportamentos.js';
@@ -74,13 +74,22 @@ const AREA_MINIMA_DE_SECAO = 0.06;
  * Uma seção que contém outra e **não acrescenta nada** é embrulho. O teste não é
  * de tamanho: é de conteúdo próprio. Se todo o texto e toda a mídia do candidato
  * estão dentro de filhos que também são seções, ele é só a caixa.
+ *
+ * PROPORCIONAL, não absoluto. O limiar de 24 caracteres errava nos dois
+ * sentidos, medido no acervo: um hero de 900 px sumiu calado por ter texto
+ * próprio de 22 (dois caracteres abaixo do corte), um rodapé de 766 px sumiu
+ * batendo exatamente no 24 — e, no sentido inverso, o `<body>` inteiro virou
+ * "peça" em 2 de 7 sites porque o texto solto fora das filhas passava do
+ * absoluto. A proporção pergunta a coisa certa: o candidato mostra algo que as
+ * filhas não mostram?
  */
 const ehEmbrulho = (candidato: StructuralNode, filhas: readonly StructuralNode[]): boolean => {
   if (filhas.length === 0) return false;
   const textoDasFilhas = filhas.reduce((s, f) => s + f.subtreeTextLength, 0);
-  const textoProprio = candidato.subtreeTextLength - textoDasFilhas;
-  // `main` com uma `<section>` dentro: nenhum texto próprio ⇒ embrulho.
-  return textoProprio <= 24 && candidato.ownText.trim().length === 0;
+  const textoProprio = Math.max(0, candidato.subtreeTextLength - textoDasFilhas);
+  const proporcao =
+    candidato.subtreeTextLength <= 0 ? 1 : textoProprio / candidato.subtreeTextLength;
+  return proporcao < 0.05 && candidato.ownText.trim().length === 0;
 };
 
 export type SecaoEscolhida = {
@@ -94,7 +103,11 @@ export type SecaoEscolhida = {
  * `<div>` que se comporta como seção (faixa de tela com conteúdo) — que é a
  * maioria dos sites modernos, onde nada é `<section>`.
  */
-export const escolherSecoes = (mapa: readonly StructuralNode[]): SecaoEscolhida[] => {
+export const escolherSecoes = (
+  mapa: readonly StructuralNode[],
+  /** Sai preenchido com o que foi descartado e POR QUÊ. Descarte mudo apagava heros inteiros. */
+  descartes?: Array<{ node: StructuralNode; motivo: string }>,
+): SecaoEscolhida[] => {
   const porHash = new Map(mapa.map((n) => [n.fingerprint.hash, n]));
   const filhasDe = new Map<string, StructuralNode[]>();
   for (const n of mapa) {
@@ -104,12 +117,20 @@ export const escolherSecoes = (mapa: readonly StructuralNode[]): SecaoEscolhida[
     else lista.push(n);
   }
 
-  /** Descendentes que também são candidatos a seção. */
+  /**
+   * Descendentes que também são candidatos a seção. Landmark conta SEM o corte
+   * de área, com a MESMA isenção do laço principal: a assimetria fazia um
+   * `<nav>` de 1,4% da viewport não contar como descendente do `<header>`, o
+   * header não ser embrulho, e os DOIS saírem — o mesmo bloco duas vezes na
+   * Galeria (medido: 23% dos bytes dos segmentos contidos em outro segmento).
+   */
   const secoesDescendentes = (hash: string, profundidade = 0): StructuralNode[] => {
     if (profundidade > 12) return [];
     const out: StructuralNode[] = [];
     for (const f of filhasDe.get(hash) ?? []) {
-      if (PAPEIS_DE_SECAO.has(f.role) && f.areaShare >= AREA_MINIMA_DE_SECAO) out.push(f);
+      const landmark = f.role === 'nav' || f.role === 'header' || f.role === 'footer';
+      if (PAPEIS_DE_SECAO.has(f.role) && (landmark || f.areaShare >= AREA_MINIMA_DE_SECAO))
+        out.push(f);
       else out.push(...secoesDescendentes(f.fingerprint.hash, profundidade + 1));
     }
     return out;
@@ -124,7 +145,31 @@ export const escolherSecoes = (mapa: readonly StructuralNode[]): SecaoEscolhida[
     // navegação de 60px de altura é um componente legítimo.
     const landmark = n.role === 'nav' || n.role === 'header' || n.role === 'footer';
     if (!landmark && n.areaShare < AREA_MINIMA_DE_SECAO) continue;
-    if (ehEmbrulho(n, secoesDescendentes(n.fingerprint.hash))) continue;
+    // `<main>`, `<body>` e `<html>` são A PÁGINA, nunca uma peça — desde que
+    // haja seções dentro para representá-la. Medido no acervo: o <main> quase
+    // inteiro saiu como "hero" de 28 KB, e o <body> como "pricing" de 23,8 KB,
+    // duplicando todos os outros segmentos do site na triagem.
+    const tagN = n.fingerprint.tag.toLowerCase();
+    if (tagN === 'main' || tagN === 'body' || tagN === 'html') {
+      if (secoesDescendentes(n.fingerprint.hash).length > 0) {
+        descartes?.push({
+          node: n,
+          motivo:
+            'A página inteira não é uma peça: as seções de dentro já mostram tudo o que ela tem.',
+        });
+        continue;
+      }
+    }
+    if (ehEmbrulho(n, secoesDescendentes(n.fingerprint.hash))) {
+      // NUNCA calado: o descarte vai para a Revisão com o motivo. Um hero e um
+      // rodapé inteiros sumiram do acervo sem deixar rastro nenhum.
+      descartes?.push({
+        node: n,
+        motivo:
+          'Esta faixa é só a caixa das seções de dentro: o que ela mostra já está nelas. Se alguma peça sumiu da Galeria, é aqui que ela se recupera.',
+      });
+      continue;
+    }
     escolhidas.push({ node: n, hash: n.fingerprint.hash, pageBox: n.pageBox });
   }
 
@@ -199,6 +244,14 @@ export type SinaisDeConteudo = {
   perguntas: number;
   /** Quantos campos de formulário. */
   campos: number;
+  /** Blocos de citação e trechos entre aspas — a assinatura do depoimento. */
+  citacoes: number;
+  /** Elementos cujo conteúdo INTEIRO é um número com unidade (`+250%`, `12k`). */
+  numerosDestacados: number;
+  /** Imagens sem rótulo nenhum por perto — a assinatura da nuvem de logos. */
+  imagensSemTexto: number;
+  /** Marcos numerados de etapa (`step-1`, `Etapa 2`, `class="timeline-step"`). */
+  marcosDeEtapa: number;
 };
 
 /**
@@ -225,13 +278,75 @@ export const inferirCategoria = (
   if (sinais.perguntas >= 3) {
     return { categoria: 'faq', evidencia: `${sinais.perguntas} perguntas` };
   }
+  /**
+   * Depoimento, faixa de números, nuvem de logos e linha do tempo vêm ANTES de
+   * `gallery`/`feature`/`card`, porque os quatro SÃO, por definição, itens
+   * repetidos — e o pega-tudo os engolia.
+   *
+   * Medido no acervo (1389 segmentos): `card+gallery+feature` somavam 683 (49%)
+   * e as quatro categorias abaixo estavam em ZERO absoluto. Não era falta de
+   * matéria-prima: era ordem de regra.
+   *
+   * Recomputando as categorias de seção sobre a evidência já gravada dos 57
+   * sites capturados (sem abrir navegador nenhum): `stats` 8 em 7 origens,
+   * `logo-cloud` 5 em 3, `testimonial` 4 em 4, `timeline` 4 em 4 — 21 seções que
+   * saíam como `card`, `gallery` ou `feature`, e que agora têm papel na página.
+   *
+   * É o que faz `ROLE_CATEGORIES` ter o que escolher para os papéis
+   * `testimonials`, `stats`, `logos` e `about`: das 32 etapas que os dez kits
+   * automáticos deixavam vazias, 32 eram falta de peça DESTA categoria, e
+   * nenhuma era disputa por peça já ocupada.
+   */
+  if (sinais.itensRepetidos >= 2 && sinais.citacoes >= 2) {
+    return {
+      categoria: 'testimonial',
+      evidencia: `${sinais.citacoes} citações em ${sinais.itensRepetidos} itens`,
+    };
+  }
+  if (sinais.numerosDestacados >= 3 && sinais.itensRepetidos >= 2) {
+    return {
+      categoria: 'stats',
+      evidencia: `${sinais.numerosDestacados} números com unidade em ${sinais.itensRepetidos} itens`,
+    };
+  }
+  // Nuvem de logos: imagem repetida SEM rótulo e sem título. Com legenda é
+  // galeria; com título é feature. O que sobra sem texto nenhum é a faixa de
+  // marcas de cliente.
+  if (
+    sinais.itensRepetidos >= 3 &&
+    sinais.imagensSemTexto >= 3 &&
+    sinais.imagensSemTexto >= sinais.imagens - 1 &&
+    sinais.titulos <= 1
+  ) {
+    return {
+      categoria: 'logo-cloud',
+      evidencia: `${sinais.imagensSemTexto} imagens sem rótulo em ${sinais.itensRepetidos} itens`,
+    };
+  }
+  if (sinais.marcosDeEtapa >= 3 && sinais.itensRepetidos >= 2) {
+    return {
+      categoria: 'timeline',
+      evidencia: `${sinais.marcosDeEtapa} marcos de etapa em ${sinais.itensRepetidos} itens`,
+    };
+  }
   if (sinais.itensRepetidos >= 3 && sinais.imagens >= sinais.itensRepetidos - 1) {
     return { categoria: 'gallery', evidencia: `${sinais.itensRepetidos} itens com imagem` };
   }
   if (sinais.itensRepetidos >= 3 && sinais.titulos >= 3) {
     return { categoria: 'feature', evidencia: `${sinais.itensRepetidos} itens com título` };
   }
+  /**
+   * O vocabulário de id/classe é consultado ANTES do pega-tudo `card`.
+   *
+   * Um `id="testimonials"` é evidência mais forte que "tem dois divs iguais", e
+   * até aqui ele nunca era lido: o pega-tudo devolvia `card` e a busca por
+   * pistas ficava para depois, num caminho que só segmento SEM item repetido
+   * alcançava. Continua depois da semântica e do conteúdo — muda só a posição
+   * relativa ao pega-tudo, que não é evidência de coisa nenhuma.
+   */
+  const pista = pistaDoVocabulario(node);
   if (sinais.itensRepetidos >= 2) {
+    if (pista !== null) return { categoria: pista, evidencia: `vocabulário:${pista}` };
     return { categoria: 'card', evidencia: `${sinais.itensRepetidos} itens repetidos` };
   }
   if (sinais.acoes >= 1 && sinais.texto.length < 400 && sinais.titulos >= 1) {
@@ -246,15 +361,23 @@ export const inferirCategoria = (
     return { categoria: 'overlay', evidencia: 'conteúdo em portal' };
   }
 
-  const vocabulario = [
-    node.fingerprint.id ?? '',
-    ...node.fingerprint.stableClasses,
-    node.fingerprint.text,
-  ].join(' ');
-  for (const [cat, re] of PISTAS) {
-    if (re.test(vocabulario)) return { categoria: cat, evidencia: `vocabulário:${cat}` };
-  }
+  if (pista !== null) return { categoria: pista, evidencia: `vocabulário:${pista}` };
   return { categoria: 'other', evidencia: 'sem evidência de categoria' };
+};
+
+/**
+ * A categoria que o id e as classes do nó sugerem, ou `null`.
+ *
+ * SÓ id e classes: o texto VISÍVEL entrava no vocabulário e o rodapé do Google
+ * virou "team: Equipe" porque o texto continha "Sobre". Palavra que o usuário lê
+ * é conteúdo, não anotação de estrutura.
+ */
+const pistaDoVocabulario = (node: StructuralNode): ComponentCategory | null => {
+  const vocabulario = [node.fingerprint.id ?? '', ...node.fingerprint.stableClasses].join(' ');
+  for (const [cat, re] of PISTAS) {
+    if (re.test(vocabulario)) return cat;
+  }
+  return null;
 };
 
 // ── Validação ────────────────────────────────────────────────────────────────
@@ -556,7 +679,13 @@ export const camadasQuePassamAtras = (opts: {
       saida.push(h);
       continue;
     }
-    if (intersecao(caixaDaCamada, caixaDaDobra) > 0) saida.push(h);
+    // A dobra precisa estar CONTIDA na camada, não apenas tocá-la. Interseção
+    // maior que zero colava o fundo do hero atrás do nav: medido no acervo, 44
+    // das 111 ligações tinham camada mais de 2x mais alta que a dobra, e o nav
+    // recebia camada 7 a 58x mais alta em TODAS as 7 capturas — era a causa
+    // raiz do "nav virou dobra inteira". A primitiva já existia, testada, no
+    // mesmo pacote (mapper/build-maps.ts), decidindo posse de camada.
+    if (contido(caixaDaDobra, caixaDaCamada) >= LIMIAR_CONTENCAO) saida.push(h);
   }
   return saida;
 };
@@ -649,7 +778,48 @@ export const contarSinais = (html: string): SinaisDeConteudo => {
     ),
     perguntas: contar(/\?/g),
     campos: contar(/<(?:input|textarea|select)[\s>]/gi),
+    // Citação: a marcação semântica, ou o par de aspas tipográficas. Aspas
+    // retas (") ficam de fora de propósito — elas são delimitador de atributo
+    // no HTML e apareceriam em todo segmento.
+    citacoes:
+      contar(/<(?:blockquote|cite|q)[\s>]/gi) +
+      Math.floor((semTags.match(/[“”«»„]/g) ?? []).length / 2),
+    // Número com UNIDADE e nada mais dentro do elemento: `+250%`, `12k`, `3x`.
+    // Sem a unidade a conta pegaria preço, ano e número de item de lista.
+    numerosDestacados: contar(/>\s*[+-]?\d[\d.,\s]{0,12}\s*(?:%|\+|k|K|M|x|×|mil|mi|bi)\s*</g),
+    imagensSemTexto: contarImagensSemRotulo(html),
+    // Marco de etapa: o número ordinal escrito (`step-1`, `Etapa 2`) ou a
+    // classe do ITEM. A classe do item é conteúdo — o vocabulário de `PISTAS`
+    // olha só o id e as classes da SEÇÃO, e uma linha do tempo costuma anotar
+    // a etapa, não a seção.
+    marcosDeEtapa:
+      contar(/\b(?:step|etapa|passo|fase)[-_\s]?\d/gi) +
+      contar(/class="[^"]*\b(?:timeline|roadmap|stepper|steps)\b/gi),
   };
+};
+
+/**
+ * Imagens que não têm rótulo nenhum até a próxima imagem.
+ *
+ * É o que separa uma galeria (foto com legenda) de uma nuvem de logos (marca
+ * atrás de marca, sem uma palavra entre elas). O `alt` não conta: ele não é
+ * texto que a pessoa lê na página, e toda nuvem de logos tem `alt` com o nome
+ * do cliente — se contasse, a assinatura desapareceria justamente onde ela é
+ * mais forte.
+ */
+const contarImagensSemRotulo = (html: string): number => {
+  let n = 0;
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const inicio = (m.index ?? 0) + m[0].length;
+    const depois = html.slice(inicio, inicio + 400);
+    const ateAProxima = depois.split(/<img\b/i)[0] ?? depois;
+    const texto = ateAProxima
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+    if (texto.length < 3) n++;
+  }
+  return n;
 };
 
 /** Irmãos com a MESMA lista de classes — a assinatura de um grid de cards. */
@@ -709,7 +879,8 @@ const confiancaPorPeso = (total: number): Confidence =>
  * da representação escolhida.
  */
 export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSegmentacaoV2 => {
-  const secoes = escolherSecoes(entrada.structuralMap);
+  const descartes: Array<{ node: StructuralNode; motivo: string }> = [];
+  const secoes = escolherSecoes(entrada.structuralMap, descartes);
   const porHash = new Map(entrada.structuralMap.map((n) => [n.fingerprint.hash, n]));
 
   /** Os degraus que aparecem dentro de um conjunto de membros, sem repetir. */
@@ -757,9 +928,13 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       if (p.fingerprint !== undefined && hashesMembros.has(p.fingerprint.hash)) return true;
       // Reação sem DOM: pertence à seção se a região cai dentro dela.
       if (p.region === undefined || node.pageBox === undefined) return false;
+      // A região é relativa à VIEWPORT; o pageBox é coordenada de PÁGINA. O
+      // scroll da parada é o que liga os dois — sem ele, medido no acervo,
+      // 100% das reações caíam nos segmentos do topo e tudo abaixo tinha zero.
+      // Resposta antiga (sem scrollY) continua com o comportamento de sempre.
       const emPx: BoxPx = {
         x: p.region.x * entrada.viewport.width,
-        y: p.region.y * entrada.viewport.height,
+        y: p.region.y * entrada.viewport.height + (p.scrollY ?? 0),
         w: p.region.w * entrada.viewport.width,
         h: p.region.h * entrada.viewport.height,
       };
@@ -785,6 +960,38 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       (a) => a.target !== null && hashesMembros.has(a.target),
     );
     const html = entrada.htmlPorHash.get(secao.hash) ?? '';
+
+    /**
+     * Seção sem HTML no mapa não é seção — e emitir uma derrubava o site todo.
+     *
+     * O `?? ''` acima é honesto (o mapa pode não ter aquele hash: nó em shadow
+     * root, teto de coleta atingido, elemento que sumiu entre o mapa e a
+     * coleta), mas o segmento saía assim mesmo, com `htmlSnippet` vazio. E aí o
+     * `fila:concluir` valida o manifesto, o schema exige pelo menos um
+     * caractere, e a extração INTEIRA é recusada: um site com 4 seções vazias
+     * em 7 perdia também as 3 boas, mais o fundo, mais os botões.
+     *
+     * Medido ao sair de 7 sites escolhidos a dedo (0 vazios em 154 segmentos)
+     * para 46 quaisquer do catálogo: 5 dos 11 primeiros tinham pelo menos uma
+     * seção vazia, e nenhum deles chegava à Galeria.
+     *
+     * A saída é a mesma dos outros descartes — vira rejeitado com motivo, que é
+     * o que o motor já faz com o que não presta, em vez de contaminar o resto.
+     * O ramo dos comportamentos, mais abaixo, sempre teve esta guarda.
+     */
+    if (html.trim().length === 0) {
+      rejeitados.push({
+        hash: secao.hash,
+        category: 'other',
+        name: secao.hash,
+        htmlSnippet: '',
+        motivos: [
+          'A seção não tem HTML no mapa da captura: sem conteúdo não há o que pré-visualizar nem compor.',
+        ],
+      });
+      continue;
+    }
+
     // Ícones que ficaram como casca dentro DESTA seção, e os que já vieram
     // desenhados. É o que decide se a biblioteca de ícones ainda faz falta —
     // um item cujos ícones foram todos trazidos para o HTML não depende dela.
@@ -811,11 +1018,35 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
 
     const sinais = contarSinais(html);
     const temMovimento = temporais.some((t) => t.moving);
+    /**
+     * Runtimes que NÃO podem ser a fonte de um movimento.
+     *
+     * `iconify` desenha ícone, `tailwind-cdn` compila CSS: o próprio vocabulário
+     * já os descreve como "runtimes que DESENHAM o que o HTML só declara — estes
+     * não animam nada". Mesmo assim eles zeravam a chance de o segmento declarar
+     * movimento por CSS, porque a regra pedia `runtimes.length === 0`. Uma
+     * página feita com Tailwind por CDN não podia ter uma única peça animada por
+     * CSS — e é o caso da maior parte do acervo.
+     */
+    const runtimesQueNaoAnimam = new Set<RuntimeKind>(['iconify', 'tailwind-cdn']);
+    const runtimesQuePodemAnimar = runtimes.filter((r) => !runtimesQueNaoAnimam.has(r.kind));
     const movimentoPorCss =
       temMovimento &&
       temporais.every((t) => t.domStable === false) === false &&
       entrada.animacoesCssQueRodaram.length > 0 &&
-      runtimes.length === 0;
+      runtimesQuePodemAnimar.length === 0;
+    /**
+     * O movimento medido é da PÁGINA, não do item?
+     *
+     * Duas provas juntas: nenhuma observação viu o DOM mudar (tudo é "pintura
+     * fora do DOM"), e há camada de fundo da página passando atrás. Aí o que se
+     * mediu foi o fundo, não a peça — e condená-la a foto por isso descartaria
+     * um HTML que reproduz sozinho.
+     */
+    const movimentoEhDaPagina =
+      temMovimento &&
+      temporais.every((t) => !t.moving || t.domStable === true) &&
+      camadasDeFundo.length > 0;
     const reageAoPonteiro = ponteiro.some(
       (p) =>
         p.reactions.includes('pixels') ||
@@ -833,7 +1064,19 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       if (m.poster !== undefined && m.poster.length > 0) assetsDoSegmento.add(m.poster);
       for (const s of m.sources) assetsDoSegmento.add(s);
     }
-    const externos = [...assetsDoSegmento].filter((u) => !entrada.assetsLocais.has(u));
+    /**
+     * `data:` e `blob:` NÃO são assets externos: eles já são o conteúdo.
+     *
+     * A conta era "está na lista de baixados? não → continua na origem", e um
+     * data URI nunca entra nessa lista porque não há nada para baixar — ele
+     * viaja dentro do próprio HTML. O efeito medido: um hero em WebGL foi
+     * recusado como cápsula por "1 asset(s) continuam na origem — a cápsula
+     * quebraria fora dela", e esse asset era um `data:image/svg+xml;base64`.
+     * Virou PNG por causa de um SVG que estava ali o tempo todo.
+     */
+    const externos = [...assetsDoSegmento].filter(
+      (u) => !/^(?:data|blob):/i.test(u) && !entrada.assetsLocais.has(u),
+    );
 
     // ── Representação ──────────────────────────────────────────────────────
     const midiaKinds: MediaKind[] = [...new Set(midias.map((m) => m.kind))];
@@ -859,6 +1102,7 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       estadosCapturados: estados.length,
       movimentoMedido: temMovimento,
       movimentoPorCss,
+      movimentoEhDaPagina,
       reageAoPonteiro,
       regiaoReativaSemDom,
       dependeDeJs,
@@ -933,6 +1177,12 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
       representacao: representacao.type,
       posicao: entrada.pageHeight > 0 ? secao.pageBox.y / entrada.pageHeight : undefined,
       textoVisivel: sinais.texto,
+      sinaisEstruturais: {
+        itensRepetidos: sinais.itensRepetidos,
+        titulos: sinais.titulos,
+        acoes: sinais.acoes,
+        imagens: sinais.imagens,
+      },
       fundos: fundosDistintivos,
     });
 
@@ -1055,9 +1305,14 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
 
   // ── Fundo da página ────────────────────────────────────────────────────────
   // Depois das dobras, e não dentro de nenhuma: estas camadas atravessam todas.
+  // Os três laços deste arquivo (dobras, camadas, comportamentos) não se
+  // falavam, e o MESMO nó saía como até 4 itens da Galeria: cabeçalho, "Fundo
+  // da página" e dois comportamentos, com o htmlSnippet idêntico. Quem já é
+  // segmento não vira segmento de novo.
+  const hashesJaEmitidos = new Set(segmentos.map((s) => s.hash));
   for (const grupo of ['comRuntime', 'soCss'] as const) {
-    const hashes = (entrada.camadasDePagina?.[grupo] ?? []).filter((h) =>
-      entrada.htmlPorHash.has(h),
+    const hashes = (entrada.camadasDePagina?.[grupo] ?? []).filter(
+      (h) => entrada.htmlPorHash.has(h) && !hashesJaEmitidos.has(h),
     );
     if (hashes.length === 0) continue;
 
@@ -1199,7 +1454,11 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
         assetKeys: [],
         tokenIds: tokensDe(hashes),
         nameEvidence: ['camada fixa que cobre a viewport em toda a página'],
-        confidence: 'alta',
+        // 'media', não 'alta': uma camada não passa pela escada de evidência
+        // das dobras (peso somado por sinal), e cravar 'alta' aqui era um dos
+        // dois pontos que deixavam 23 de 92 segmentos do acervo com confiança
+        // máxima sem nenhuma verificação. Confiança se ganha, não se declara.
+        confidence: 'media',
       },
       representation: representacao,
       fidelity,
@@ -1225,16 +1484,160 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     posicao++;
   }
 
+  // ── Ponteiro personalizado ────────────────────────────────────────────────
+  //
+  // O dono pediu esta categoria por nome: "tem sites como esse por exemplo que
+  // o mouse é personalizado e eu quero que isso seja um componente que eu possa
+  // escolher também".
+  //
+  // A prova é forte e sai de graça, porque o `cursor` computado de cada nó já
+  // era coletado: um site com ponteiro próprio esconde o nativo em `cursor:none`
+  // no corpo da página. Nenhum site faz isso por acidente — é sempre para pôr
+  // outro no lugar. O elemento que faz esse papel se identifica pelo nome (a
+  // convenção é universal: `cursor`, `cursor-dot`, `custom-cursor`) e por ser
+  // posicionado fora do fluxo, que é o que permite a ele seguir o ponteiro.
+  //
+  // Vale como peça de PÁGINA, não de seção: quem o escolhe está escolhendo um
+  // comportamento do site inteiro. `ehPecaDeComportamento` conhece a categoria.
+  {
+    const corpo = entrada.structuralMap.find((n) => n.fingerprint.tag === 'body' || n.depth === 0);
+    const escondeONativo = corpo?.fingerprint.cursor === 'none';
+    const temNome = (n: StructuralNode): boolean =>
+      /(^|[-_ ])cursor([-_ ]|$)/i.test(
+        `${(n.fingerprint.stableClasses ?? []).join(' ')} ${n.fingerprint.id ?? ''}`,
+      );
+    /**
+     * O ponteiro é MINÚSCULO — e sem essa exigência a detecção erra feio.
+     *
+     * Medido no site de uma clínica: a regra pelo nome casou com `cursor-glow`,
+     * que é uma classe de brilho no hover de um CARTÃO, e promoveu o artigo
+     * inteiro a "ponteiro personalizado". O cartão de 400 px foi parar colado
+     * por cima da página, fixo, cobrindo o conteúdo.
+     *
+     * Um ponteiro tem algumas dezenas de pixels; nenhum tem 400. O tamanho é a
+     * prova que faltava, e ela está medida no mapa desde sempre.
+     */
+    const CABE_NUM_PONTEIRO = 120;
+    const alvos = escondeONativo
+      ? entrada.structuralMap.filter(
+          (n) =>
+            temNome(n) &&
+            entrada.htmlPorHash.has(n.fingerprint.hash) &&
+            n.pageBox !== undefined &&
+            n.pageBox.w > 0 &&
+            n.pageBox.w <= CABE_NUM_PONTEIRO &&
+            n.pageBox.h <= CABE_NUM_PONTEIRO,
+        )
+      : [];
+    const html = alvos
+      .map((n) => entrada.htmlPorHash.get(n.fingerprint.hash) ?? '')
+      .filter((h) => h.trim().length > 0)
+      .join('\n');
+    if (html.trim().length > 0) {
+      const hashes = alvos.map((n) => n.fingerprint.hash);
+      const reprDoCursor = classificarRepresentacao({
+        runtimes: [],
+        midias: [],
+        assetsLocais: true,
+        assetsExternos: 0,
+        scriptsNaoLocalizados: entrada.scriptsNaoLocalizados,
+        iframeCrossOrigin: false,
+        shadowFechado: false,
+        estadosCapturados: 0,
+        movimentoMedido: true,
+        movimentoPorCss: false,
+        // O ponteiro se move porque um script o move; isso é o MECANISMO, não
+        // uma falta. Sem esta marca ele cairia na regra do movimento
+        // inexplicado e viraria foto — de um elemento de 24 pixels.
+        movimentoEhDaPagina: true,
+        reageAoPonteiro: true,
+        regiaoReativaSemDom: false,
+        dependeDeJs: true,
+        bootstrapIdentificado: false,
+      });
+      const fidelidadeDoCursor = montarFidelidade({
+        representacao: reprDoCursor,
+        cssExternoFaltando: entrada.cssExternoFaltando,
+        temTexto: false,
+        temMovimento: true,
+        movimentoPorCss: false,
+        backgrounds: [],
+        midias: [],
+        externos: 0,
+        totalAssets: 0,
+        assetsLocais: entrada.assetsLocais,
+        estados: 0,
+        acoes: [],
+        ponteiro: [],
+        scroll: [],
+        runtimes: [],
+        temFrame: false,
+      });
+      segmentos.push({
+        position: posicao,
+        category: 'cursor',
+        kind: 'animation',
+        name: 'Ponteiro personalizado',
+        htmlSnippet: html,
+        hash: `cursor-${hashes[0] ?? ''}`,
+        evidence: {
+          segmentId: `cursor-${hashes[0] ?? ''}`,
+          members: hashes,
+          signals: [
+            {
+              kind: 'interacao',
+              weight: PESO.interacao,
+              detail: `a página esconde o ponteiro nativo (cursor:none) e desenha ${alvos.length} elemento(s) no lugar`,
+            },
+          ],
+          backgroundIds: [],
+          mediaIds: [],
+          runtimeIds: [],
+          stateIds: [],
+          pointerResponseIds: [],
+          scrollIds: [],
+          assetKeys: [],
+          tokenIds: [],
+          nameEvidence: ['cursor:none no corpo da página'],
+          // Mesmo critério da camada de fundo e do comportamento: não passa
+          // pela escada de evidência, então 'alta' seria declaração, não medida.
+          confidence: 'media',
+        },
+        representation: reprDoCursor,
+        fidelity: fidelidadeDoCursor,
+        support: seloDe(fidelidadeDoCursor, reprDoCursor),
+        interactions: [],
+        limitations: [
+          'O ponteiro é desenhado por script: ele aparece na prévia quando o mouse entra na área.',
+        ],
+        filhos: [],
+      });
+      for (const h of hashes) hashesJaEmitidos.add(h);
+      posicao++;
+    }
+  }
+
   // ── Comportamentos ─────────────────────────────────────────────────────────
   // "Quero que meus cards apareçam assim quando eu rolo" é um pedido de
   // componente, não de etiqueta. Aqui o que a captura mediu vira item da
   // Galeria, com os alvos reais lado a lado e o `scrollIds` preenchido — é ele
   // que liga o item ao modo "Ver ao rolar" do preview, que já existia.
   for (const comp of entrada.comportamentos ?? []) {
-    const comHtml = comp.hashes.filter((h) => entrada.htmlPorHash.has(h));
+    // Comportamento cujo alvo JÁ é um segmento não vira item próprio: o
+    // movimento já viaja no scrollIds da dobra, e o item extra era duplicata
+    // pura na triagem (medido: o mesmo HTML em até 4 itens).
+    const comHtml = comp.hashes.filter(
+      (h) => entrada.htmlPorHash.has(h) && !hashesJaEmitidos.has(h),
+    );
     if (comHtml.length === 0) continue;
     const html = comHtml.map((h) => entrada.htmlPorHash.get(h) ?? '').join('\n');
     if (html.trim().length === 0) continue;
+    // E comportamento cujo alvo EMBRULHA uma dobra inteira também não: o item
+    // "Parallax ao rolar" carregava a galeria de 13,6 KB dentro dele — a
+    // pessoa via a mesma galeria duas vezes, uma com o nome do efeito. O
+    // efeito continua registrado no scrollIds da dobra; o embrulho não.
+    if (segmentos.some((seg) => seg.htmlSnippet.length > 200 && html.includes(seg.htmlSnippet)))
+      continue;
 
     const scrollDoComp = entrada.scrollObservations.filter((s) => comp.scrollIds.includes(s.id));
     const representacao = classificarRepresentacao({
@@ -1302,7 +1705,9 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
         assetKeys: [],
         tokenIds: tokensDe(comHtml),
         nameEvidence: [comp.explicacao],
-        confidence: 'alta',
+        // Mesmo motivo da camada de fundo: comportamento de scroll não passa
+        // pela escada de evidência, e 'alta' cravada era declaração, não medida.
+        confidence: 'media',
       },
       representation: representacao,
       fidelity,
@@ -1318,7 +1723,48 @@ export const segmentarPorEvidencia = (entrada: EntradaSegmentacao): ResultadoSeg
     posicao++;
   }
 
-  return { segmentos, rejeitados };
+  // ── Raiz é DOBRA; o que viaja inteiro dentro de outra raiz é amostra ──────
+  // O formulário dentro do cabeçalho, os cards dentro do rodapé, o card dentro
+  // do card: medido no acervo, 23% a 46% dos bytes das raízes eram o HTML de
+  // outra raiz, e a triagem mostrava o mesmo bloco duas vezes com nomes
+  // diferentes. O conteúdo NÃO some daqui: a subdivisão da dobra dona já o
+  // oferece como peça filha. Landmarks e hero nunca saem do primeiro nível —
+  // nav dentro do header é peça por direito próprio, e é a mais promovida do
+  // acervo.
+  const NUNCA_VIRA_AMOSTRA = new Set(['nav', 'header', 'footer', 'hero']);
+  const manter = new Set(segmentos);
+  for (const seg of segmentos) {
+    if (NUNCA_VIRA_AMOSTRA.has(seg.category)) continue;
+    if (seg.htmlSnippet.length < 200) continue;
+    const dono = segmentos.find(
+      (outro) =>
+        outro !== seg &&
+        manter.has(outro) &&
+        outro.htmlSnippet.length > seg.htmlSnippet.length &&
+        outro.htmlSnippet.includes(seg.htmlSnippet),
+    );
+    if (dono !== undefined) manter.delete(seg);
+  }
+  const finais = segmentos.filter((s) => manter.has(s));
+  finais.forEach((s, i) => {
+    s.position = i;
+  });
+
+  // Os descartes de embrulho entram na Revisão com o HTML e o motivo: o
+  // conserto da Fase 3 existe porque um hero e um rodapé inteiros sumiram do
+  // acervo sem deixar rastro em lugar NENHUM.
+  for (const d of descartes) {
+    const html = entrada.htmlPorHash.get(d.node.fingerprint.hash) ?? '';
+    if (html.trim().length === 0) continue;
+    rejeitados.push({
+      hash: d.node.fingerprint.hash,
+      category: CATEGORIA_POR_PAPEL[d.node.role] ?? 'other',
+      name: `Faixa descartada (${d.node.role})`,
+      htmlSnippet: html,
+      motivos: [d.motivo],
+    });
+  }
+  return { segmentos: finais, rejeitados };
 };
 
 /**

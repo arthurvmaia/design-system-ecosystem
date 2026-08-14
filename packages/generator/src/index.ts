@@ -22,6 +22,14 @@ import { type ModeloDeCopy, executarPlano, montarPlanoEditorial } from './editor
 import { montarPaginaDoKit } from './pagina.js';
 
 export { cssResponsivoBase } from './responsivo.js';
+/**
+ * A espera da rede de segurança sai daqui para quem MEDE a página.
+ *
+ * A conferência precisa esperar mais que ela; medir antes é medir um estado que
+ * nenhum visitante vê, e foi o que fez o número do S13 balançar (132 → 74 →
+ * 130) sem nenhuma mudança relacionada entre as medições.
+ */
+export { ESPERA_DA_REDE_MS } from './movimento-da-pagina.js';
 export { lerCssDoBundle, type LeituraDeCss } from './cascata.js';
 export { removerScriptsQueCompilamCss } from './pecas.js';
 export { type PecaDoKit, consolidarDesignSystemDoKit } from './design-system-do-kit.js';
@@ -273,9 +281,11 @@ ${buildCatalog(catalogoDoKit(input), input.layout.preferDesignSystemId)}
 
 Componha o site.`;
 
-  // Mesmo racional do extractor: o Fable 5 pensa dentro do max_tokens (em
+  // Mesmo racional do extractor: o modelo pensa DENTRO do max_tokens (em
   // effort max, 16k amputava o plano) e os classificadores de segurança podem
   // recusar uma requisição legítima — recusa cai para o modelo de fallback.
+  // O padrão da geração é o Opus 5 em effort max (ver `getModels` no servidor):
+  // é aqui que um plano raso vira um site que alguém refaz à mão.
   const MODELO_FALLBACK = 'claude-opus-4-8';
   const chamar = (model: string) =>
     client.messages.create({
@@ -366,6 +376,37 @@ const varsDaEscala = (escala: EscalaDaOrigem | null | undefined): string => {
 };
 
 /**
+ * O PISO de 12px, e só no celular.
+ *
+ * A régua é MEDIDA na origem, e é assim que deve ser: ela carrega a proporção
+ * que aquele designer escolheu. Só que a régua de um site pode começar em 11px,
+ * e num telefone 11px não se lê — medido no site do clube, onde
+ * `--marca-passo-1` saiu 11px e três trechos ("Vagas na Área VIP", "O clube",
+ * "No jogo") ficaram abaixo do legível.
+ *
+ * Levantar o degrau na régua inteira seria falsear a medição e mexeria no
+ * desktop, onde 11px em rótulo de caixa alta é escolha legítima. Então o piso
+ * vive numa media query: no celular o degrau miúdo vira 12px, e no desktop a
+ * régua da origem continua exatamente como foi medida.
+ *
+ * É a mesma natureza do alvo de toque de 44px — acessibilidade que só o
+ * tamanho da tela justifica.
+ */
+const PISO_DE_LETRA_NO_CELULAR = 12;
+
+const pisoDaEscalaNoCelular = (escala: EscalaDaOrigem | null | undefined): string => {
+  if (escala == null || escala.degraus.length === 0) return '';
+  const linhas: string[] = [];
+  escala.degraus.forEach((px, i) => {
+    if (Number.isFinite(px) && px < PISO_DE_LETRA_NO_CELULAR) {
+      linhas.push(`    ${nomeDoPasso(i)}: ${PISO_DE_LETRA_NO_CELULAR}px;`);
+    }
+  });
+  if (linhas.length === 0) return '';
+  return `\n@media (max-width: 640px) {\n  :root {\n${linhas.join('\n')}\n  }\n}\n`;
+};
+
+/**
  * CSS da marca aplicado ao site gerado.
  *
  * A tipografia sai de `buildTypographyCss` (fonte da verdade compartilhada):
@@ -429,7 +470,7 @@ body { font-size: ${e.corpoTamanho}; line-height: ${e.corpoLineHeight}; }
   ${branding.palette.accent ? `--brand-accent: ${branding.palette.accent};` : ''}
 ${varsSemanticas}${varsDaEscala(escala)}
 }
-/* Override dos --primary do componente para casar com a marca. */
+${pisoDaEscalaNoCelular(escala)}/* Override dos --primary do componente para casar com a marca. */
 :root { --primary: var(--brand-primary); }
 body { background: var(--brand-bg); color: var(--brand-fg); }
 ${escalaCss}${
@@ -469,6 +510,20 @@ export const generateSite = async (
     secoes: plan.sections.map((sec) => ({
       secaoId: sec.secaoId,
       substituicoes: sec.substitutions,
+    })),
+    // A mídia do projeto ATRAVESSA para o montador — e não atravessava.
+    //
+    // Este caminho chamava o montador sem `midia` nenhuma, então ele não tinha
+    // por onde trocar as fotos que a peça trouxe da origem, e o site do cliente
+    // saía com o acervo fotográfico de outra empresa. A prova de que ninguém
+    // tinha reparado é que o manifesto já trazia tudo o que faltava: `path` é o
+    // mesmo `de` relativo a `projects/<id>/media/`, `secaoId` é onde o dono pôs
+    // a imagem e `kind` separa foto de logo.
+    midia: input.media.map((m) => ({
+      de: m.path,
+      para: `midia/${m.path}`,
+      secaoId: m.secaoId,
+      kind: m.kind,
     })),
     outputDir,
   });

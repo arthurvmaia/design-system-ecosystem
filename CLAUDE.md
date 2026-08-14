@@ -46,15 +46,13 @@ O `pnpm extrair` abre a URL num navegador de verdade (Playwright), espera o cont
 
 **Não use WebFetch nem siga os 6 STEPs do `prompt.ts` à mão.** Aquele processo (reescrever/traduzir o HTML via LLM) só enxergava o HTML servido e perdia justamente os sites pesados. O `prompt.ts` continua existindo para o modo `api`, mas no modo `queue` a captura fiel vem do navegador, não de reconstrução manual.
 
-**Captura parcial não é defeito.** O orçamento padrão é 180 s (`DS_EXPLORER_ORCAMENTO_TOTAL_MS`), e num site pesado a fase de percurso — que rola a página e varre o ponteiro em cada parada — não termina nesse tempo. O que sai é bom: todos os segmentos com bundle, CSS completo, ícones desenhados. O que falta são comportamentos das dobras de baixo, e a Galeria diz isso por extenso.
+**O orçamento se dimensiona sozinho.** Ele não é mais uma constante, e a razão está medida: o percurso custa **295 s de mediana** e recebia 61; a soma de todas as fases passa de 560 s; e o configurado era 180. Três vezes menor que o trabalho que o motor era mandado fazer — por isso **43 das 58 capturas do acervo saíam parciais**. Não eram sites patológicos, era aritmética.
 
-Medido numa página pesada: o percurso pediu **mais de 308 s** e ainda foi cortado; a captura inteira levou 420 s. Se você quiser essa página completa, suba o orçamento:
+Hoje o total sai da soma MEDIDA das fases (o histórico que o próprio motor grava, com 20% de folga), multiplicada pelo tamanho do site — altura e número de elementos contra as medianas do acervo, medidos depois que a página assenta. Teto absoluto de 12 minutos, porque orçamento sem fim é fila travada.
 
-```powershell
-$env:DS_EXPLORER_ORCAMENTO_TOTAL_MS = "900000"; pnpm extrair <job_id>
-```
+Medido no mesmo site, antes e depois: 9 segmentos em 91 s com corte, contra 24 segmentos em 317 s sem corte. Quase o triplo de peças, porque a captura termina o trabalho.
 
-Não vale subir por padrão: a maioria dos sites termina bem dentro dos 180 s, e o custo cairia sobre todos eles.
+**Captura parcial agora É sinal.** Antes era rotina e não dizia nada; agora significa que aquele site estourou até o teto ampliado, e vale olhar. `DS_EXPLORER_ORCAMENTO_TOTAL_MS` continua existindo como piso configurável — o dimensionamento só cresce a partir dele, nunca encolhe.
 
 **Sem Playwright instalado**, o `pnpm extrair` cai para fetch estático e avisa — sites protegidos/SPA podem vir incompletos. Para a captura completa, instale uma vez:
 
@@ -135,7 +133,12 @@ CRIATIVO, entregue como dado:
      o tema) e a identidade do usuário (`branding`). É isso que faz a seção
      criada parecer do mesmo site.
    - `cssCriado`: as regras das suas seções criadas (use os tokens
-     `var(--marca-...)`, nunca hex solto).
+     `var(--marca-...)`, nunca hex solto). **O fundo é da PÁGINA, nunca da
+     seção**: não declare `background` no wrapper de seção — o compositor
+     envolve o seu HTML em `[data-ds-criado]` transparente sobre o fundo da
+     página (`--pagina-fundo`, publicado no CSS base). Fundo local só em
+     cartão/moldura, e de preferência com alfa (`color-mix(..., transparent)`),
+     para a página continuar UMA superfície contínua.
    - `responsivoExtra`: o que ESTE site pede além do `cssResponsivoBase`.
    - `midia[]`: `{de, para}` — onde entra cada arquivo de
      `projects/<id>/media/`. Mídia com `secaoId` vai naquela seção; sem
@@ -145,15 +148,43 @@ CRIATIVO, entregue como dado:
 2. **Respeite as permissões.** Sem `criarSecoesFaltantes`, não invente seção
    que o usuário não pediu (nem nav, nem rodapé — apenas avise no resumo). Sem
    `criarArteDeApoio`, seção sem mídia fica sem mídia. Com as permissões
-   ligadas, crie no estilo do kit: arte de apoio é SVG/CSS na paleta da marca
-   ou reuso das mídias gerais, nunca imagem inventada por IA.
+   ligadas, crie no estilo do kit — e toda peça visual segue o motor
+   `orbis-suite` (ver Regras): mídia do usuário vence sempre; faltando imagem
+   para aquele lugar, a rota vetor/determinística vem primeiro e a generativa
+   entra sob teto declarado, nunca em silêncio.
 3. **Rode `pnpm pagina <caminho do entrada-geracao.json>`.** Ele monta tudo,
    imprime o destino, a contagem da recoloração e os avisos. Leia os avisos:
    substituição que não casou e peça sem bundle aparecem ali, e é mais barato
    corrigir a entrada e rodar de novo do que remendar a saída.
 4. **NUNCA copie texto, nome ou marca do site de origem.** O kit empresta só o
    jeito visual; a identidade é a do usuário.
-5. **Valide como sempre**: navegador headless em ~1440px e ~390px (janela na
+5. **NÃO MUDE A ESSÊNCIA DO COMPONENTE.** É a regra que o dono deu por escrito,
+   e é ela que decide o que você pode tocar:
+
+   > "sempre que vc usar um componente vc nao pode mudar a essencia do designer
+   > dele, a ideia de qualquer componente quando for gerar o site, é apenas
+   > trocar os valores e copy, imagens e videos caso precise, mas a essencia é
+   > para continuar."
+
+   **Troque:** texto e copy, cores (pela recoloração), fotos, vídeos, números,
+   rótulos, links, nomes de produto.
+
+   **Não troque:** a estrutura do HTML (não remova, não reordene, não aninhe
+   diferente), a hierarquia visual (o que é título continua título), o layout
+   (grade, colunas, proporções), o movimento (animação, revelação, parallax) e
+   o espaçamento interno da peça.
+
+   Casos concretos, todos vividos: apagar uma `<img>` sem substituta deixa um
+   buraco e desmonta a grade — a foto de origem FICA, com aviso. Reescalar
+   valores dentro de `@keyframes` pode achatar dois passos no mesmo degrau e
+   PARAR a animação. Um respiro lateral que a peça não tinha na origem a
+   encaixota e o resultado "parece PDF"; um que ela tinha e perdeu deixa o
+   título cortado na borda — quem decide isso é a geometria MEDIDA no mapa
+   estrutural da captura, não o palpite.
+
+   Quando faltar alguma coisa (mídia, texto, tradução), **degrade para o que a
+   peça já tinha e avise** — nunca para o vazio.
+6. **Valide como sempre**: navegador headless em ~1440px e ~390px (janela na
    cara de quem usa o computador é interrupção, não validação), e feche com
    `pnpm fila:concluir <job_id>`.
 
@@ -161,6 +192,86 @@ CRIATIVO, entregue como dado:
 `montarPaginaDoKit`, isso é defeito do motor — conserte o motor (com teste) em
 vez de contornar num script descartável. Os restos de `_tmp-*` de gerações
 antigas são exatamente o que este contrato aposenta.
+
+### `criativo`
+
+O cliente pediu **imagem ou vídeo para a marca dele** pela frente Criativos. O
+payload segue `PedidoCriativo` (`packages/shared/src/schemas/criativo.ts`) e é
+a fonte da verdade — grafia da marca, formato com dimensão exata, origem da
+imagem, texto literal, claims autorizados e teto de orçamento.
+
+**Toda a produção é do motor `orbis-suite`.** Carregue a skill e siga os seis
+estágios dela — briefing separando fato de direção, rota declarada, mestre
+editável, derivados, verificação medida, entrega. É a regra do app inteiro:
+nenhuma peça visual nasce fora do motor.
+
+1. **Determinístico antes de generativo.** Dimensão, recorte, máscara, cor da
+   paleta e tipografia são calculados. Magnific/Photoshop entram pela rota do
+   motor (MCP), e só onde o pixel não existe.
+2. **Upload vence geração, sempre.** `origem: 'upload'` nunca passa por
+   gerador — o schema já reprova o payload ambíguo, e o motor respeita.
+3. **Orçamento contado.** `simulate_cost` antes (read-only), declare o custo,
+   debite do `tetoDeCreditos` do pedido e PARE ao zerar — parar é resultado,
+   estourar em silêncio é defeito.
+4. **Nada inventado.** Preço, desconto, prazo, frete, depoimento e
+   certificação só aparecem se estiverem em `autorizacoesDeClaim` — ou seja,
+   se o cliente digitou.
+5. **Saída em disco**: `criativosDir(jobId)` com as variações e um
+   `resultado.json` no formato `ResultadoCriativo`. Reporte
+   `pnpm fila:progresso` por variação.
+6. **Verificação antes do download** (estágio 5 do motor): dimensão
+   exatamente a do formato pedido, texto legível no tamanho real do canal,
+   produto do cliente preservado quando houve upload. Peça reprovada não vira
+   download: o resultado diz o que falhou. Feche com `pnpm fila:concluir`.
+
+### `ajustar`
+
+Um retoque num site **já gerado**: "esse título está pequeno", "esse azul não é
+o meu azul". O payload traz `{ projectId, versao, ajusteId, pedido }`.
+
+**Não regere o site.** Regerar refaz tudo o que já estava bom, custa a
+composição inteira e o retoque some na próxima geração. O site entregue é
+independente, então o ajuste pousa nele:
+
+1. Leia o pedido em `projects/<id>/generated/<versao>/ajustes.json` e ABRA o
+   site para ver do que a pessoa está falando. Retoque sem olhar é chute.
+2. Escreva o CSS em `generated/<versao>/assets/ajustes.css`, que já existe vazia
+   e é a **última** da cascata — o que estiver ali vence sem `!important`. Cada
+   bloco começa com um comentário citando o pedido que o originou; é isso que
+   torna o ajuste reversível um a um.
+3. Atualize a entrada em `ajustes.json`: `estado: 'aplicado'`, `aplicadoEm`, o
+   `css` que você escreveu e uma `resposta` de uma frase dizendo o que fez.
+   "Aplicado" sozinho não informa: quem pediu "deixa o botão mais destacado"
+   precisa saber se isso virou cor, tamanho ou sombra.
+4. Não conseguiu? `estado: 'recusado'` com a `resposta` explicando por quê. Um
+   pedido que não dá para atender precisa dizer isso, não ficar pendente para
+   sempre.
+
+**Nunca edite o `index.html` nem as outras folhas.** É o que garante que a
+composição original continue reproduzível e que o retoque se desfaça apagando um
+bloco.
+
+### `aprender`
+
+O botão "faça-me aprender" da tela de Pendências. O payload traz
+`{ projectId, versao, codigo, motivo, alvo }` — o código é o da regra de aceite
+(`docs/regras-de-aceite.md`), e o motivo é a frase que ela escreveu.
+
+Isto **não é retoque**: a peça ou o site não saiu bom, e o que se pede é que
+você ESTUDE aquele caso e tente **outra abordagem**. Investigação, não conserto
+de superfície.
+
+1. Leia a regra que falhou em `docs/regras-de-aceite.md` e o `aceite.json` da
+   versão. Entenda o que ela cobra e por quê.
+2. Vá à ORIGEM. `library/<cmp>/metadata.json` guarda `origin.sourceUrl`: abra o
+   site, veja como aquela região funciona de verdade, que tecnologia ela usa.
+3. Tente outro caminho. Se a cena depende de um runtime, ele pode viajar? Se o
+   movimento não reproduz, existe outro mecanismo que dê o mesmo resultado?
+4. **Conserte o motor, não o caso.** Se você descobrir como fazer aquela peça
+   passar, a correção vale para todas as peças iguais — e é assim que o acervo
+   melhora. Um remendo naquele arquivo resolve um site e deixa os outros.
+5. Não deu? Registre por quê, com o que você tentou. A pendência continua, mas
+   agora ela sabe mais do que antes, e a próxima tentativa não repete o caminho.
 
 ## Avisando que está trabalhando
 
@@ -195,6 +306,29 @@ Isso valida o schema, registra no SQLite e move o job para `concluido/`. Se o sc
 - **Nunca crie um watcher, cron, daemon ou qualquer coisa que processe a fila sem uma pessoa mandar.** O único gatilho válido é alguém abrir o `PROCESSAR.bat` e escolher os jobs na janela. A partir daí o processamento corre sozinho até o fim — mas só sobre os ids escolhidos, e a janela encerra quando acaba. Agendar, disparar em background ou ficar de olho na pasta descaracteriza o modo e coloca a conta do usuário em risco.
 - Não chame a API da Anthropic a partir do código no modo `queue` — o trabalho é seu.
 - Não invente conteúdo que não esteja no material do usuário.
+- **Toda peça visual passa pelo motor `orbis-suite`.** Qualquer processo do app
+  que crie imagem, vídeo ou peça de design — nas três frentes — segue a skill
+  `orbis-suite`: briefing separando fato de direção, rota de produção declarada,
+  mestre editável mais derivados, e verificação MEDIDA antes de dizer que
+  terminou. Não afirme que usou Photoshop, gerador ou MCP sem ter executado e
+  conferido a ação real.
+- **Imagem gerada por IA só quando não houver imagem.** Se o admin ou o cliente
+  forneceu o arquivo, ele é usado: gerar ali seria trocar material real por
+  material inventado, e ninguém pediu isso. Não havendo imagem para aquele
+  lugar, gerar é permitido. E quando a peça **é**, por definição, conteúdo
+  gerado — a frente Criativos —, não há restrição.
+- **Determinístico antes de generativo.** Cor, geometria, recorte, máscara,
+  escala e exportação são calculados, nunca gerados. Gerar o que se resolve por
+  conta introduz variação onde havia certeza e volta como retrabalho.
+- **Orçamento generativo é declarado e contado.** Estimar o custo antes (a
+  estimativa é read-only e não cobra), declarar custo e saldo, debitar do teto do
+  job, e parar ao zerar em vez de estourar em silêncio.
+- **Todo entregável final ao cliente passa pelo mesmo contrato**, nas três
+  frentes e seja ele um ZIP de site, um tema de loja ou um lote de criativos:
+  verificação medida; mestre editável junto; fonte e licença comprováveis;
+  resumo de decisões com pendências e orçamento gasto; nada inventado —
+  preço, prazo, material, medida, depoimento e certificação só existem se o
+  cliente os forneceu.
 
 ## Comandos
 

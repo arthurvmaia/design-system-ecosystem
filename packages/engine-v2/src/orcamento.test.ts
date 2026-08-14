@@ -72,3 +72,43 @@ test('a soma das frações continua abaixo de 1: a margem existe de propósito',
   const soma = comFracao.reduce((n, f) => n + (tetoDaFase(f, TOTAL) ?? 0), 0);
   assert.ok(soma < TOTAL, `as frações somam ${soma} de ${TOTAL}`);
 });
+
+// ── A reserva MEDIDA ─────────────────────────────────────────────────────────
+//
+// As frações prometem 48% do total às fases seguintes ao percurso. Medido nas
+// 7 capturas do acervo: elas usaram 15% a 20% disso — 150 a 210 s por captura
+// prometidos a ninguém, enquanto o percurso era cortado ao milissegundo da
+// fórmula. Com histórico, a promessa passa a ser o custo real com folga.
+
+test('com histórico, a reserva é o medido com folga, e o percurso respira', () => {
+  // As fases seguintes custaram 40 s no p95. Reserva: max(60 s, 8% de 600 s).
+  const comMedido = tetoDaFase(FASE_V2.percurso, TOTAL, 595_000, 40_000);
+  assert.ok(comMedido !== undefined);
+  // livre = 595 - max(40*1,5; 48) - 45 = 595 - 60 - 45 = 490 s.
+  assert.equal(comMedido, 490_000);
+  const semMedido = tetoDaFase(FASE_V2.percurso, TOTAL, 595_000);
+  assert.ok(comMedido > (semMedido ?? 0), 'o histórico devolve tempo ao percurso');
+});
+
+test('o piso de 8% protege a captura de um histórico otimista demais', () => {
+  // p95 de 1 s (site trivial no acervo): a reserva não pode zerar.
+  const teto = tetoDaFase(FASE_V2.percurso, TOTAL, 595_000, 1_000);
+  // livre = 595 - max(1,5; 48) - 45 = 502 s.
+  assert.equal(teto, 502_000);
+});
+
+test('sem histórico, nada muda: a fração continua mandando', () => {
+  assert.equal(
+    tetoDaFase(FASE_V2.percurso, TOTAL, 595_000, undefined),
+    tetoDaFase(FASE_V2.percurso, TOTAL, 595_000),
+  );
+});
+
+test('a reserva medida tem TETO na fração: histórico gordo não esfomeia o percurso', () => {
+  // O laço real: p95 crescente reservava 217 s onde a fração reservava 201 s,
+  // e o teto do percurso caía abaixo até da fórmula antiga.
+  const gordo = tetoDaFase(FASE_V2.percurso, TOTAL, 595_000, 400_000);
+  const soFracao = tetoDaFase(FASE_V2.percurso, TOTAL, 595_000);
+  assert.ok(gordo !== undefined && soFracao !== undefined);
+  assert.equal(gordo, soFracao, 'medido acima da fração vale a fração, nunca menos que isso');
+});

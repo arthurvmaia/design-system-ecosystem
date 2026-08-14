@@ -457,3 +457,36 @@ test('o HTML e o portal do estado vão para o sink, não para o manifesto', asyn
   assert.ok(r.grafo.nodes[1]?.frameRef?.startsWith('frames/st_1-'));
   assert.equal(gravados.length, 2);
 });
+
+test('página com pintura por frame não fabrica contaminação: a conferência é tolerante', async () => {
+  // O caso real do acervo: framer-motion/GSAP reescrevem style inline a cada
+  // quadro, então o hash do body NUNCA repete entre duas leituras. A
+  // conferência por igualdade exata declarava "não pôde ser desfeita" para
+  // ações que não fizeram nada — 87 falsas falhas medidas em 7 capturas, cada
+  // uma custando 5 releituras, um reclique e um clique cego no canto da tela.
+  let quadro = 0;
+  const sim: Simulacao = { estado: assinatura(), log: [] };
+  const lerComRuido = async (): Promise<RawAssinaturaEstado> => {
+    quadro++;
+    // O hash muda sempre; os bytes variam pouco (um contador, não conteúdo).
+    return { ...sim.estado, htmlHash: `frame-${quadro}`, htmlBytes: 10_000 + (quadro % 3) };
+  };
+  const page = paginaFalsa(sim, {
+    // O clique não faz NADA nesta página: não há estado a desfazer.
+    aoClicar: () => {},
+  });
+
+  const r = await construirGrafoDeEstados(page, lerComRuido, {
+    candidatos: [cand()],
+    maxDepth: 1,
+  });
+
+  assert.equal(r.contaminado, false, 'ruído de pintura não é contaminação');
+  assert.deepEqual(
+    r.limitacoes.filter((l) => /não pôde ser desfeita|não pôde voltar/.test(l)),
+    [],
+    'nenhuma falsa falha de restauração',
+  );
+  // E a ação registra que não teve efeito, que é a verdade.
+  assert.ok(r.acoes.every((a) => a.hadEffect === false));
+});

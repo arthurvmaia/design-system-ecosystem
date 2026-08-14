@@ -1,5 +1,6 @@
 import type { ReguaAlinhada } from '@ds/shared';
-import postcss from 'postcss';
+import type { AtRule, Container, Declaration, Document as Document_ } from 'postcss';
+import { analisarCss } from './analisar-css.js';
 
 /**
  * Reescala: troca os comprimentos de origem por degraus que a marca controla.
@@ -273,17 +274,65 @@ export const reescalarCss = (css: string, reguas: ReguasDeEscala): ResultadoDeRe
     return { css, reescritas: 0, mantidas: 0 };
   }
 
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     // Folha ilegível segue como está. O escopo já declara esse risco em aviso;
     // duplicar o aviso aqui só encheria a lista.
     return { css, reescritas: 0, mantidas: 0 };
   }
+  const raiz = analise.raiz;
 
   let reescritas = 0;
   let mantidas = 0;
+
+  /**
+   * A ENTRELINHA acompanha a letra, ou o texto se monta sobre si mesmo.
+   *
+   * Este é o defeito mais destrutivo que a reescala produzia, e o dono o
+   * fotografou em três sites: títulos com as linhas UMA SOBRE A OUTRA,
+   * ilegíveis. Seções inteiras perdidas.
+   *
+   * A aritmética é simples e implacável. A régua reescala `font-size` e não
+   * tocava em `line-height`. A origem tinha
+   *
+   *     font-size: 24px;  line-height: 28px;   (proporção 1,167)
+   *
+   * e depois da migração vira `font-size: 48px` com `line-height: 28px` — a
+   * entrelinha ficou MENOR que a letra, e a segunda linha sobe por cima da
+   * primeira.
+   *
+   * O conserto não é reescalar a entrelinha junto: os degraus da régua são
+   * tamanhos de LETRA, e mandar uma entrelinha para um degrau de letra é
+   * misturar duas coisas. O certo é preservar a PROPORÇÃO que o designer da
+   * origem escolheu, convertendo o valor absoluto em razão sem unidade — que é
+   * o que ela sempre deveria ter sido, porque assim acompanha qualquer tamanho.
+   *
+   * Só vale quando a MESMA regra declara os dois: sem o `font-size` ao lado não
+   * há como saber de que letra aquela entrelinha falava, e chutar seria pior.
+   * `em`, `%` e valor sem unidade já são relativos e passam intactos.
+   */
+  raiz.walkRules((regra) => {
+    let fontePx: number | null = null;
+    let alvo: { decl: Declaration; px: number } | null = null;
+    for (const no of regra.nodes ?? []) {
+      if (no.type !== 'decl') continue;
+      const d = no as Declaration;
+      const prop = d.prop.toLowerCase();
+      const casou = NUMERO_COM_UNIDADE.exec(d.value.trim());
+      if (casou === null) continue;
+      const px = emPx(Number(casou[1]), (casou[2] ?? '').toLowerCase());
+      if (px === null || px <= 0) continue;
+      if (prop === 'font-size') fontePx = px;
+      if (prop === 'line-height') alvo = { decl: d, px };
+    }
+    if (fontePx === null || alvo === null || fontePx <= 0) return;
+    const razao = alvo.px / fontePx;
+    // Proporção fora do plausível é dado torto, não escolha de desenho: uma
+    // entrelinha de 5× a letra ou de 0,3× não vem de designer nenhum.
+    if (razao < 0.5 || razao > 3) return;
+    alvo.decl.value = razao.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+    reescritas += 1;
+  });
 
   raiz.walkDecls((decl) => {
     const prop = decl.prop.toLowerCase();
@@ -301,8 +350,25 @@ export const reescalarCss = (css: string, reguas: ReguasDeEscala): ResultadoDeRe
     // marca mexeria na SELEÇÃO do arquivo, não no tamanho de algo que se lê. É o
     // mesmo guarda que `retipografar.ts` tem para `font-family`, pela mesma
     // razão: at-rule de definição não é ponto de uso.
-    const pai = decl.parent;
-    if (pai?.type === 'atrule' && pai.name.toLowerCase() === 'font-face') return;
+    //
+    // E dentro de `@keyframes` o valor não é tamanho nenhum: é a AMPLITUDE de um
+    // movimento. Um passo em `padding-left:8px` e outro em `16px` descrevem o
+    // quanto a coisa anda, não o quanto ela respira — e a régua da marca, que é
+    // grossa de propósito, pode mandar os dois para o MESMO degrau. Aí os dois
+    // passos ficam iguais e a animação vira uma linha reta: o elemento não sai
+    // do lugar. Foi um dos motivos de as páginas saírem paradas, e some sem
+    // erro nenhum, porque o CSS continua válido.
+    //
+    // O passo de `@keyframes` é uma regra (`0%`, `from`) DENTRO da at-rule, então
+    // não basta olhar o pai imediato como no `@font-face`: tem de subir.
+    let no: Container | Document_ | undefined = decl.parent;
+    while (no !== undefined) {
+      if (no.type === 'atrule') {
+        const nome = (no as AtRule).name.toLowerCase();
+        if (nome === 'font-face' || /^(-\w+-)?keyframes$/.test(nome)) return;
+      }
+      no = no.parent;
+    }
 
     let valor = '';
     let mudou = false;

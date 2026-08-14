@@ -1,4 +1,4 @@
-import postcss from 'postcss';
+import { analisarCss } from './analisar-css.js';
 import { type CorAnalisada, analisarCor } from './cor.js';
 
 /**
@@ -115,12 +115,11 @@ export const coresDoValor = (valor: string): CorAnalisada[] => {
  * aceitável; derrubar a consolidação do kit inteiro não é.
  */
 export const inventariarCores = (css: string): OcorrenciaDeCor[] => {
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     return [];
   }
+  const raiz = analise.raiz;
 
   // Agrega por literal+contexto: o mapa preserva a primeira CorAnalisada e
   // soma as repetições.
@@ -165,12 +164,11 @@ export type FonteInventariada = {
  * a única sugestão de papel que dá para afirmar sem olhar a página.
  */
 export const inventariarFontes = (css: string): FonteInventariada[] => {
-  let raiz: postcss.Root;
-  try {
-    raiz = postcss.parse(css);
-  } catch {
+  const analise = analisarCss(css);
+  if ('erro' in analise) {
     return [];
   }
+  const raiz = analise.raiz;
   /** Palavras que nomeiam uma CLASSE de fonte, nunca uma família concreta. */
   const GENERICAS = new Set([
     'sans-serif',
