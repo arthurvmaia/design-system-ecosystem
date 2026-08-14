@@ -301,6 +301,21 @@ Coisas que já custaram tempo e vão custar de novo se ninguém avisar.
    acervo já sumiu uma vez, e a causa nunca foi identificada.
 6. **O túnel serve o build antigo até reiniciar.** Depois de qualquer correção
    que os sócios precisem ver, derrube e levante de novo.
+7. **O Chromium do Playwright é por REVISÃO, e outro projeto pode trocá-la.**
+   Em 2026-08-14 as duas extrações da fila morreram antes de abrir navegador: o
+   Playwright do monorepo (1.61.1) procura o Chromium **1228** e a máquina só
+   tinha o **1234**, instalado por uma versão mais nova de outro projeto do
+   disco. A mensagem fala em "Playwright recém-instalado" e engana — não era.
+   Conserto: `pnpm exec playwright install chromium` (~300 MB). Vai repetir toda
+   vez que o outro projeto reinstalar browsers.
+8. **Captura parcial pode ser reserva pessimista, não site pesado.** Também em
+   2026-08-14: o segundo site saiu PARCIAL na fase `v2-retratos` usando 212 s de
+   um orçamento de 316 s — **104 s terminaram sem dono**. A causa é o histórico:
+   a captura anterior gravou um `v2-estados` de 44 s, a reserva medida (com
+   folga de 50%) guardou esse custo para as fases seguintes e sobrou 43,9 s para
+   `retratos`; no fim, o `estados` daquele site custou 11 s. Reserva é calculada
+   uma vez e não é devolvida quando a fase seguinte sai barata. Antes de culpar
+   o site, compare o total USADO com o total CONCEDIDO.
 
 ---
 
@@ -318,6 +333,20 @@ mora em `~/design-system-ecosystem` e não existe num runner limpo.
 
 ## 7. Estado do acervo
 
+- **2026-08-14:** entraram dois design systems da fila —
+  `ds_01M00E771YZXCH1EXB2WVSVYTH` (open-design.ai, 34 peças, captura completa em
+  261 s) e `ds_01M00EG4DHQ0TQMSKW3KT25AFP` (aris-photograph, 24 peças, parcial —
+  ver armadilha 8). Deles saiu o primeiro kit real do acervo,
+  **"Estúdio de Fotos — Editorial"** (`kit_01M00FNS6VBJE4M4DS9798S89Q`), 14
+  peças, base ARIS, com `nav`/`button`/`card`/`badge` travados numa origem só.
+  Dois achados do kit valem para o motor: a **faixa que anda na horizontal**
+  perde o ancestral que a recorta e estoura a página para 4.629 px de largura
+  (foi tirada do kit; o conserto é no compilador de bundle), e **6 das 14 peças
+  são `capsula-runtime` com `editavel: false`** — desenham a foto em WebGL, e a
+  foto do cliente não entra nelas por troca de HTML.
+- Os 8 design systems antigos do vault **não têm linha no banco**: o
+  `ecosystem.db` só conhece os dois novos. São pastas órfãs — `pnpm
+  acervo:limpar-orfas` lista, e com `--apagar` remove.
 - **160 MB** em `~/design-system-ecosystem`, fila vazia.
 - As duas origens foram **recapturadas** com o motor que mede escala. As cópias
   de segurança seguem em `vault/<ds>/capture-v2.anterior`. Confira a Galeria e,

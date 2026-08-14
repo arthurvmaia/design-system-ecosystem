@@ -7,7 +7,80 @@
 
 ---
 
-## 🔄 RETOMADA — 2026-08-14
+## 🔄 RETOMADA — 2026-08-14 (tarde): três defeitos que só o pixel denunciava
+
+A rodada da manhã deixou um item aberto: *"conferir na tela os três controles
+corrigidos (menu, busca, carrinho) — o painel de navegador que eu uso não
+desenha quadros"*. Conferi em Chromium de verdade, que compõe. **O menu não
+passou**, e a caçada revelou mais dois defeitos do mesmo tipo: coisas em que
+todo estado dizia sim e só o pixel dizia não.
+
+### 1. `46d2bdd` — seção de grupo carrega a classe de grupo
+
+O menu de três barras **abria e não aparecia**. O `<details>` abria, o corpo
+travava, o ícone virava X, os links do painel existiam com `visibility:
+visible` dentro da janela. O painel era pintado POR BAIXO do slideshow.
+
+A causa não é do menu. A Shopify carimba `shopify-section-group-<grupo>` em
+toda seção renderizada dentro de um grupo, e o render não carimbava. No Dawn a
+regra é `.section-header.shopify-section-group-header-group { z-index: 3 }` —
+é ela, sozinha, que dá empilhamento ao cabeçalho. Qualquer CSS de tema apoiado
+em classe de grupo estava morto pelo mesmo motivo.
+
+Medido: antes, o pixel do centro do painel pertencia ao `banner__content` do
+slideshow; depois, pertence ao próprio link do menu. **Busca e carrinho já
+passavam** — medidos junto, com o mesmo critério.
+
+### 2. `9b53bd4` — Exportar ZIP, Criar versão e Publicar recebiam clique de novo
+
+Os três botões estavam **cortados ao meio e nenhum recebia clique**: quem
+estava por cima do centro dos três era o `preview-stage`. Como o único caminho
+de saída real do produto é o ZIP, o botão dele inalcançável fecha o produto.
+
+Duas causas somadas: a barra tem QUATRO filhos (projeto, dispositivo, modo,
+ações) num `grid-template-columns` de TRÊS — o seletor de modo entrou depois e
+ninguém atualizou o template, e grid acomoda o excedente numa linha implícita
+em silêncio; e o `.editor-shell` fixava a linha da barra em 55px enquanto o
+conteúdo passou a pedir 79px.
+
+### 3. `d1b461c` — o placeholder tem a forma do lugar
+
+Abrir um tema dava um banner de **778×778**, um quadrado do tamanho da janela.
+A imagem de banner de uma loja real é `shopify://shop_images/BANNER-1.jpg`, que
+mora nos Arquivos da LOJA e não viaja no ZIP — então **toda** loja real cai no
+placeholder, e o placeholder era quadrado para qualquer lugar. Com
+`slide_height: adapt_image`, o Dawn adotou a proporção do quadrado.
+
+Duas metades, as duas necessárias: o SVG passou a nascer no formato do lugar, e
+as MEDIDAS vão junto do drop — o tema não olha o pixel, lê
+`image.aspect_ratio`. Medido: desktop 778×778 (1.00) → 1038×423 com placeholder
+1800×600 (**3.00:1**); celular → 0.80 com placeholder 1080×1350 (**0.80:1**).
+No desktop estreito o banner para em 423px pelo `min-height: 42rem` do próprio
+Dawn.
+
+### Item 1 do handoff: fechado até onde não depende da conta
+
+Com a barra clicável, o export rodou pela interface: **298 arquivos, 21
+regravados, zero avisos**, `templates/index.json` no pacote e **nenhuma** das
+três causas de rejeição (data URI em `image_picker`, `richtext` sem tag de
+bloco, referência `/api/media/` sobrando). Falta só subir e publicar na loja —
+**isso é do dono; eu não entro na conta da Shopify.**
+
+**88/88 testes, lint limpo.** Cada um dos três consertos tem teste que reprova
+com o código anterior.
+
+### Armadilha nova
+
+- **Estado passando não é tela funcionando.** Os três defeitos desta rodada
+  tinham estado correto: classe certa, elemento visível, botão presente e
+  encontrável por seletor. O que os pegou foi medir GEOMETRIA e PINTURA —
+  `getBoundingClientRect` mais `document.elementFromPoint` no centro da peça,
+  perguntando "o pixel do meio pertence a ela?". Vale como régua: em painel que
+  não compõe quadros, teste de estado passa e a tela continua quebrada.
+
+---
+
+## 🔄 RETOMADA — 2026-08-14 (manhã)
 
 ### Onde abrir a próxima sessão
 
@@ -68,17 +141,13 @@ Nada em execução. A rodada fechou com tudo commitado e verde.
 
 ### O que vem A SEGUIR (na ordem)
 
-1. **Subir um tema gerado para a Shopify e publicar.** É o único elo que ainda
-   não foi verificado ponta a ponta depois das correções de rejeição
-   (data URI em `image_picker`, `richtext` sem tag de bloco, template de
-   mercado). Gerar uma loja pela área do cliente, importar o `.zip`, publicar
-   e conferir em *Editar código → templates* que o `templates/index.json`
-   está lá. **Isso é do dono: eu não entro na conta da Shopify.**
-2. **Conferir na tela os três controles corrigidos** (menu, busca, carrinho).
-   O painel de navegador que eu uso não desenha quadros, e transição de CSS
-   fica congelada nele — verifiquei o estado (classe `active`, corpo travado,
-   conteúdo chegando, X fechando), não a animação.
-3. **Decidir o `push`** dos 46 commits.
+1. ~~**Subir um tema gerado para a Shopify e publicar.**~~ A metade técnica
+   está fechada (ver a retomada da tarde): o ZIP exporta pela interface e passa
+   nas três regras de rejeição. **Subir e publicar continua sendo do dono: eu
+   não entro na conta da Shopify.**
+2. ~~**Conferir na tela os três controles corrigidos**~~ — feito em Chromium
+   real. O menu REPROVOU e virou o commit `46d2bdd`; busca e carrinho passaram.
+3. **Decidir o `push`** dos commits locais.
 
 ### Armadilhas conhecidas (custaram tempo)
 
