@@ -5,6 +5,7 @@ import { Shell } from '@/components/Shell';
 import { ROTA_INICIAL_DO_CLIENTE, capturarPerfilDaUrl, perfilAtual } from '@/lib/perfil';
 import { aplicarMovimento, usePreferencias } from '@/lib/preferencias';
 import { CriativosPage } from '@/routes/Criativos';
+import { CriativosExpressoPage } from '@/routes/CriativosExpresso';
 import { ExtractPage } from '@/routes/Extract';
 import { GalleryPage } from '@/routes/Gallery';
 import { KitsPage } from '@/routes/Kits';
@@ -75,6 +76,9 @@ export function App() {
                   marca dos projetos vem); a navegação, não. */}
               <Route element={<CriativosShell />}>
                 <Route path="/criativos" element={<CriativosPage />} />
+                {/* O expresso mora DENTRO da casca da frente: é atalho de
+                    tela dos mesmos criativos, não uma frente nova. */}
+                <Route path="/criativos/expresso" element={<CriativosExpressoPage />} />
               </Route>
               <Route element={<Shell />}>
                 <Route

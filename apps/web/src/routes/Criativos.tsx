@@ -1,9 +1,19 @@
 import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
 import { api } from '@/lib/api';
+import { loadFont } from '@/lib/font-loader';
 import { TRATAMENTO } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
-import { mediaUrl } from '@/routes/projects/partes';
+import {
+  CUSTO_FALSO_POR_VARIACAO,
+  ROTULO_DO_FORMATO,
+  VARIACOES_PADRAO,
+  VOZ_POR_CAMPO,
+  marcaHerdadaDeProjetos,
+  vozDaIssue,
+} from '@/routes/criativos/partes';
+import { SecaoCabecalho } from '@/routes/projects/etapas/marca/partes';
+import { familyName } from '@ds/shared/fonts';
 import {
   CorDaPaleta,
   DIMENSAO_DO_FORMATO,
@@ -11,7 +21,6 @@ import {
   OrigemDaImagem,
   PedidoCriativo,
   TextoDaPeca,
-  normalizarProjectBranding,
 } from '@ds/shared/schemas';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -25,6 +34,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 /**
  * /criativos — a ala de criativos, no passo 2 da espec
@@ -41,24 +51,16 @@ import { useEffect, useMemo, useState } from 'react';
  * que só avisa o que ACONTECERIA. Nenhum job entra na fila, nenhum crédito é
  * gasto e o arquivo escolhido no upload nunca sai desta tela.
  *
- * A rota ainda não aparece em navegação nenhuma: ligar o
- * `ConviteOrbisCriativos` é o passo 6 da espec, depois que o motor existir.
- * Até lá ela vive por URL.
+ * Quem chega aqui vem de duas portas: o `ConviteOrbisCriativos` na etapa de
+ * Marca do wizard (a porta que a espec previu no passo 6, já ligada) e a
+ * navegação da própria casca (`CriativosShell`).
  */
 
 // ── Vocabulário da tela ──────────────────────────────────────────────────────
-
-/**
- * Só o RÓTULO mora aqui; a medida sai de `DIMENSAO_DO_FORMATO`, no contrato.
- * Dois lados mostrando números digitados em lugares diferentes é como a medida
- * diverge sem ninguém errar — a mesma razão que pôs a dimensão no shared.
- */
-const ROTULO_DO_FORMATO: Record<FormatoCriativo, string> = {
-  'feed-1x1': 'Feed 1:1',
-  'story-9x16': 'Story 9:16',
-  'reels-9x16': 'Reels 9:16',
-  'banner-3x1': 'Banner 3:1',
-};
+// O que as DUAS telas da frente compartilham (rótulo de formato, custo de
+// ensaio, voz das issues, marca herdada) mora em `criativos/partes.ts`: o
+// expresso monta o MESMO pedido, e vocabulário digitado duas vezes diverge sem
+// ninguém errar. Aqui fica só o que é exclusivo dos 4 passos.
 
 const OBJETIVOS_DA_PECA = [
   'vender produto',
@@ -71,55 +73,7 @@ type ObjetivoDaPeca = (typeof OBJETIVOS_DA_PECA)[number];
 /** Espec, "assume e registra": objetivo vazio vira "apresentar" — e o resumo declara. */
 const OBJETIVO_ASSUMIDO: ObjetivoDaPeca = 'apresentar serviço';
 
-/**
- * O padrão de variações vem do CONTRATO, não de um número redigitado aqui: se
- * o default do schema mudar, esta tela muda junto sem ninguém lembrar dela.
- */
-const VARIACOES_PADRAO: number = PedidoCriativo.shape.variacoes.parse(undefined);
-
-/**
- * Custo de ENSAIO por variação, em créditos. Números de mentira, e a tela diz
- * isso por extenso: 75 é o que a via expressa já mostra para uma imagem no
- * Magnific; o de vídeo é chute deliberado. O valor real sai do `simulate_cost`
- * quando o motor entrar (passo 3 da espec) — até lá, fingir precisão seria o
- * Orbis prometendo o que não entrega.
- */
-const CUSTO_FALSO_POR_VARIACAO: Record<'imagem' | 'video', number> = {
-  imagem: 75,
-  video: 300,
-};
-
 const PASSOS = ['o pedido', 'sua marca', 'a peça', 'conferir'] as const;
-
-/**
- * Issues do contrato que nasceram SEM voz (min/max genéricos do Zod) ganham a
- * frase do Orbis aqui, chaveadas pelo campo. As de `superRefine` já vêm
- * escritas no contrato e passam direto — a fonte da mensagem é uma só.
- */
-const VOZ_POR_CAMPO: Record<string, string> = {
-  headline: 'A headline passou de 200 caracteres. Nesse tamanho ela não fica legível na peça.',
-  cta: 'O CTA passou de 80 caracteres. Botão é uma ordem curta.',
-  descricaoParaGerar: 'A descrição passou de 2000 caracteres. Me diga o essencial da cena.',
-  restricoes: 'As restrições passaram de 2000 caracteres.',
-  marca: 'O nome da marca passa de 80 caracteres: na peça ele não cabe assim.',
-};
-
-const vozDaIssue = (issue: { code: string; message: string; path: (string | number)[] }): string =>
-  issue.code === 'custom'
-    ? issue.message
-    : (VOZ_POR_CAMPO[String(issue.path[issue.path.length - 1] ?? '')] ??
-      `O contrato reprovou "${issue.path.join('.')}". Volte ao passo desse campo e complete.`);
-
-// ── A marca que o app já conhece ─────────────────────────────────────────────
-
-type MarcaHerdada = {
-  projetoNome: string;
-  brandName: string;
-  /** Amostras clicáveis: clicar elege a cor principal da peça. */
-  amostras: Array<{ nome: string; hex: string }>;
-  corPrimaria: string;
-  logoUrl: string | null;
-};
 
 // ── A tela ───────────────────────────────────────────────────────────────────
 
@@ -182,43 +136,12 @@ export function CriativosPage() {
   // "mudar" discreto — não cobrar de quem já tem.
   const projetos = useQuery({ queryKey: ['projects'], queryFn: api.listProjects });
 
-  const marcaDoProjeto = useMemo<MarcaHerdada | null>(() => {
-    const itens = projetos.data?.items ?? [];
-    const ordenados = [...itens].sort((a, b) => b.updatedAt - a.updatedAt);
-    for (const p of ordenados) {
-      if (p.brandingJson === null) continue;
-      const b = normalizarProjectBranding(p.brandingJson);
-      const nome = (b.brandName ?? '').trim();
-      // Marca sem nome não pré-preenche nada útil: o nome é o único campo que
-      // trava, e é justamente o que faltaria.
-      if (nome === '') continue;
-
-      const amostrasNovas = (b.paleta?.cores ?? []).map((c) => ({ nome: c.nome, hex: c.hex }));
-      const amostrasLegado = [
-        { nome: 'principal', hex: b.palette.primary },
-        ...(b.palette.accent !== undefined ? [{ nome: 'acento', hex: b.palette.accent }] : []),
-        { nome: 'fundo', hex: b.palette.background },
-        { nome: 'texto', hex: b.palette.foreground },
-      ];
-      const vistos = new Set<string>();
-      const amostras = (amostrasNovas.length > 0 ? amostrasNovas : amostrasLegado).filter((c) => {
-        const chave = c.hex.toLowerCase();
-        if (vistos.has(chave)) return false;
-        vistos.add(chave);
-        return true;
-      });
-
-      const logoPath = b.logoPath ?? b.logos?.[0]?.path ?? null;
-      return {
-        projetoNome: p.name,
-        brandName: nome,
-        amostras,
-        corPrimaria: amostras[0]?.hex ?? b.palette.primary,
-        logoUrl: logoPath != null ? mediaUrl(p.id, logoPath) : null,
-      };
-    }
-    return null;
-  }, [projetos.data]);
+  // A marca herdada sai da MESMA função que o expresso usa: são dois caminhos
+  // de tela, mas uma regra só de qual projeto empresta a marca.
+  const marcaDoProjeto = useMemo(
+    () => marcaHerdadaDeProjetos(projetos.data?.items ?? []),
+    [projetos.data],
+  );
 
   // Semeia UMA vez: depois disso o campo é da pessoa, e recarregar a query não
   // pode apagar o que ela digitou por cima.
@@ -228,6 +151,15 @@ export function CriativosPage() {
     setCorPrincipal(marcaDoProjeto.corPrimaria);
     setMarcaSemeada(true);
   }, [marcaSemeada, marcaDoProjeto]);
+
+  // A prévia da tipografia usa a fonte REAL do projeto. O font-loader deduplica
+  // (pedir 2 vezes não repete <link>), e fonte fora do catálogo Google cai no
+  // fallback da própria pilha: a prévia degrada, nunca quebra a tela.
+  useEffect(() => {
+    if (marcaDoProjeto === null) return;
+    loadFont(marcaDoProjeto.fonteTitulos);
+    loadFont(marcaDoProjeto.fonteCorpo);
+  }, [marcaDoProjeto]);
 
   const custoEstimado = tipo === null ? 0 : CUSTO_FALSO_POR_VARIACAO[tipo] * VARIACOES_PADRAO;
 
@@ -276,9 +208,14 @@ export function CriativosPage() {
             : (VOZ_POR_CAMPO.marca as string),
         );
       }
-      // A cor só trava quando não há projeto de onde herdar a paleta — a
-      // espec pede o mínimo de quem chega vazio: nome e uma cor.
-      if (marcaDoProjeto === null && !CorDaPaleta.shape.hex.safeParse(corPrincipal).success)
+      // A cor só trava no caminho MANUAL: sem projeto de onde herdar a paleta,
+      // ou com a pessoa editando por cima ("mudar") — a mesma condição do
+      // expresso, senão a mesma regra trava numa tela e passa na outra. A espec
+      // pede o mínimo de quem chega vazio: nome e uma cor.
+      if (
+        (marcaDoProjeto === null || editandoMarca) &&
+        !CorDaPaleta.shape.hex.safeParse(corPrincipal).success
+      )
         m.push('Sem projeto de onde herdar a paleta, preciso de 1 cor no formato #RRGGBB.');
     }
     if (p === 2) {
@@ -355,6 +292,13 @@ export function CriativosPage() {
 
   const corValida = CorDaPaleta.shape.hex.safeParse(corPrincipal).success;
 
+  // A amostra que corresponde à cor eleita, para a tela dizer o NOME dela.
+  // Cor digitada à mão no caminho manual pode não casar com amostra nenhuma;
+  // nesse caso só o hex aparece.
+  const amostraEleita =
+    marcaDoProjeto?.amostras.find((c) => c.hex.toLowerCase() === corPrincipal.toLowerCase()) ??
+    null;
+
   return (
     <div className="mx-auto max-w-[860px] px-4 py-10 sm:px-8">
       <div className="ds-slide-up flex items-center gap-3">
@@ -368,6 +312,17 @@ export function CriativosPage() {
           ensaio · nada entra na fila
         </span>
         <span className="ds-hairline flex-1" aria-hidden />
+        {/* O atalho é discreto de propósito: os 4 passos seguem sendo o caminho
+            principal, e o expresso existe para o teste de 1 tela que o dono
+            pediu, no molde da via expressa do design system. O rótulo diz o
+            número (1 tela), não o adjetivo ("rápido"): é a régua da voz. */}
+        <Link
+          to="/criativos/expresso"
+          className="text-[11px] underline underline-offset-2"
+          style={{ color: 'var(--color-fg-muted)' }}
+        >
+          teste em 1 tela
+        </Link>
       </div>
 
       <div className="mt-6 flex items-start gap-4">
@@ -519,22 +474,45 @@ export function CriativosPage() {
               Buscando a marca que o app já conhece.
             </p>
           ) : marcaDoProjeto !== null && !editandoMarca ? (
-            <div
-              className="ds-glass-static rounded-none border p-4"
-              style={{ borderColor: 'var(--color-border)' }}
-            >
-              <div className="flex items-start gap-3">
+            /* O mesmo desenho da tela de Marca do wizard (painel de vidro,
+               SecaoCabecalho por bloco), ADAPTADO ao propósito daqui: esta tela
+               ESCOLHE a marca da peça e mostra o que vem junto. Editar marca é
+               no wizard do projeto; por isso nenhum bloco tem campo de edição,
+               e o único gesto é eleger a cor principal. */
+            <div className="ds-glass-static rounded-none p-5 md:p-6">
+              <div className="flex items-start gap-4">
                 {marcaDoProjeto.logoUrl !== null && (
-                  <img
-                    src={marcaDoProjeto.logoUrl}
-                    alt={`Logotipo de ${marcaDoProjeto.brandName}`}
-                    className="h-10 w-10 shrink-0 border object-contain"
+                  <div
+                    className="flex shrink-0 overflow-hidden border"
                     style={{ borderColor: 'var(--color-border)' }}
-                  />
+                  >
+                    {/* fundo claro E escuro, como no painel de logos do wizard:
+                        a miniatura já diz onde a logo funciona */}
+                    <span
+                      className="flex h-12 w-14 items-center justify-center"
+                      style={{ backgroundColor: '#f5f5f2' }}
+                    >
+                      <img
+                        src={marcaDoProjeto.logoUrl}
+                        alt={`Logotipo de ${marcaDoProjeto.brandName} em fundo claro`}
+                        className="max-h-10 max-w-12 object-contain"
+                      />
+                    </span>
+                    <span
+                      className="flex h-12 w-14 items-center justify-center"
+                      style={{ backgroundColor: '#141414' }}
+                    >
+                      <img
+                        src={marcaDoProjeto.logoUrl}
+                        alt={`Logotipo de ${marcaDoProjeto.brandName} em fundo escuro`}
+                        className="max-h-10 max-w-12 object-contain"
+                      />
+                    </span>
+                  </div>
                 )}
                 <div className="min-w-0 flex-1">
                   <span
-                    className="block text-[15px] font-medium"
+                    className="block text-[16px] font-medium"
                     style={{ color: 'var(--color-fg)' }}
                   >
                     {marcaNome}
@@ -543,8 +521,8 @@ export function CriativosPage() {
                     className="mt-0.5 block text-[12px]"
                     style={{ color: 'var(--color-fg-muted)' }}
                   >
-                    Trouxe do projeto "{marcaDoProjeto.projetoNome}": a paleta e a tipografia vêm
-                    junto.
+                    Trouxe do projeto "{marcaDoProjeto.projetoNome}": paleta, tipografia e voz vêm
+                    junto. Editar a marca é no projeto; aqui ela só assina a peça.
                   </span>
                 </div>
                 {/* O "mudar" é discreto de propósito: quem já tem marca não deve
@@ -559,9 +537,12 @@ export function CriativosPage() {
                 </button>
               </div>
 
-              <div className="mt-4">
-                <span className="ds-label">paleta · clique na cor principal da peça</span>
-                <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-5 border-t pt-5" style={{ borderColor: 'var(--color-border)' }}>
+                <SecaoCabecalho
+                  titulo="Paleta"
+                  descricao="A paleta vem do projeto. Clique na cor que vai ser a principal da peça."
+                />
+                <div className="flex flex-wrap gap-2">
                   {marcaDoProjeto.amostras.map((c) => (
                     <button
                       key={`${c.nome}-${c.hex}`}
@@ -579,7 +560,112 @@ export function CriativosPage() {
                     />
                   ))}
                 </div>
+                <p className="ds-data mt-2 text-[11px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                  cor principal:{' '}
+                  {amostraEleita !== null
+                    ? `${amostraEleita.nome} · ${corPrincipal}`
+                    : corPrincipal}
+                </p>
               </div>
+
+              <div className="mt-5 border-t pt-5" style={{ borderColor: 'var(--color-border)' }}>
+                <SecaoCabecalho
+                  titulo="Tipografia"
+                  descricao="As 2 fontes do projeto: uma titula, a outra explica. A prévia abaixo usa a própria fonte."
+                />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div
+                    className="rounded-none border p-3"
+                    style={{ borderColor: 'var(--color-border)' }}
+                  >
+                    <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+                      Títulos:{' '}
+                      <strong style={{ color: 'var(--color-fg)' }}>
+                        {familyName(marcaDoProjeto.fonteTitulos)}
+                      </strong>
+                    </span>
+                    <div
+                      className="mt-1.5 truncate text-[20px] leading-tight"
+                      style={{ fontFamily: marcaDoProjeto.fonteTitulos, color: 'var(--color-fg)' }}
+                    >
+                      {marcaNome || marcaDoProjeto.brandName}
+                    </div>
+                  </div>
+                  <div
+                    className="rounded-none border p-3"
+                    style={{ borderColor: 'var(--color-border)' }}
+                  >
+                    <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+                      Corpo:{' '}
+                      <strong style={{ color: 'var(--color-fg)' }}>
+                        {familyName(marcaDoProjeto.fonteCorpo)}
+                      </strong>
+                    </span>
+                    <p
+                      className="mt-1.5 text-[13px] leading-relaxed"
+                      style={{
+                        fontFamily: marcaDoProjeto.fonteCorpo,
+                        color: 'var(--color-fg-muted)',
+                      }}
+                    >
+                      O texto de apoio da peça fica assim.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* A voz entra no resumo porque é o tom que guia o texto da peça.
+                  Projeto antigo sem tons/arquétipos mostra a observação livre
+                  (o `tone` legado migrado); sem nada, o bloco não aparece, em
+                  vez de um painel vazio cobrando o que ninguém definiu. */}
+              {(marcaDoProjeto.tons.length > 0 ||
+                marcaDoProjeto.arquetipos.length > 0 ||
+                marcaDoProjeto.vozObservacao !== null) && (
+                <div className="mt-5 border-t pt-5" style={{ borderColor: 'var(--color-border)' }}>
+                  <SecaoCabecalho
+                    titulo="Voz"
+                    descricao="O tom que guia o texto da peça. O primeiro de cada lista domina."
+                  />
+                  {(marcaDoProjeto.tons.length > 0 || marcaDoProjeto.arquetipos.length > 0) && (
+                    <div className="flex flex-wrap gap-2">
+                      {marcaDoProjeto.tons.map((t, i) => (
+                        <span
+                          key={`tom-${t}`}
+                          title={i === 0 ? 'tom principal' : 'tom de apoio'}
+                          className="ds-tag rounded-none border px-2.5 py-1 text-[12px]"
+                          style={{
+                            borderColor: i === 0 ? 'var(--color-signal)' : 'var(--color-border)',
+                            color: i === 0 ? 'var(--color-fg)' : 'var(--color-fg-muted)',
+                          }}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                      {marcaDoProjeto.arquetipos.map((a, i) => (
+                        <span
+                          key={`postura-${a}`}
+                          title={i === 0 ? 'postura principal' : 'postura de apoio'}
+                          className="ds-tag rounded-none border px-2.5 py-1 text-[12px]"
+                          style={{
+                            borderColor: 'var(--color-border)',
+                            color: 'var(--color-fg-muted)',
+                          }}
+                        >
+                          postura: {a}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {marcaDoProjeto.vozObservacao !== null && (
+                    <p
+                      className="mt-2 text-[12px] leading-relaxed"
+                      style={{ color: 'var(--color-fg-muted)' }}
+                    >
+                      "{marcaDoProjeto.vozObservacao}"
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

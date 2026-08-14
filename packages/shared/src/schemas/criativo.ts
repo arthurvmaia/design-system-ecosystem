@@ -13,6 +13,24 @@ import { z } from 'zod';
  * o cliente nunca ofereceu, job que estoura o saldo em silêncio).
  */
 
+// ── Limites de texto ─────────────────────────────────────────────────────────
+
+/**
+ * Os limites de texto do pedido, com nome e exportados porque as TELAS falam
+ * deles: a frase "a headline passou de N caracteres" tem de citar o MESMO N
+ * que o schema cobra, e um N redigitado na tela diverge na primeira mudança
+ * aqui — a mesma razão que pôs `DIMENSAO_DO_FORMATO` neste arquivo.
+ */
+export const LIMITES_DO_PEDIDO = {
+  /** Nome de marca maior que isso não cabe legível numa peça. */
+  marca: 80,
+  headline: 200,
+  /** Botão é uma ordem curta. */
+  cta: 80,
+  descricaoParaGerar: 2000,
+  restricoes: 2000,
+} as const;
+
 // ── Formato ──────────────────────────────────────────────────────────────────
 
 /**
@@ -71,7 +89,12 @@ export const OrigemDaImagem = z
      * `origem: 'gerar'` — gerar sem descrição seria o motor inventando o
      * assunto da peça.
      */
-    descricaoParaGerar: z.string().min(1).max(2000).nullable().default(null),
+    descricaoParaGerar: z
+      .string()
+      .min(1)
+      .max(LIMITES_DO_PEDIDO.descricaoParaGerar)
+      .nullable()
+      .default(null),
   })
   .superRefine((v, ctx) => {
     if (v.origem === 'upload' && v.caminhoDoUpload === null) {
@@ -134,9 +157,9 @@ export const TextoDaPeca = z
     /** `true` = a peça sai sem texto nenhum, por decisão — não por esquecimento. */
     semTexto: z.boolean().default(false),
     /** A frase principal, literal, como vai aparecer. */
-    headline: z.string().min(1).max(200).nullable().default(null),
+    headline: z.string().min(1).max(LIMITES_DO_PEDIDO.headline).nullable().default(null),
     /** A chamada de ação, literal. Opcional mesmo com headline: nem toda peça tem botão. */
-    cta: z.string().min(1).max(80).nullable().default(null),
+    cta: z.string().min(1).max(LIMITES_DO_PEDIDO.cta).nullable().default(null),
   })
   .superRefine((v, ctx) => {
     if (!v.semTexto && v.headline === null) {
@@ -206,7 +229,7 @@ export const PedidoCriativo = z.object({
    * Nome da marca, com a GRAFIA EXATA. Trava se faltar porque modelo erra
    * grafia de marca — e é justamente o que aparece na peça.
    */
-  marca: z.string().min(1).max(80),
+  marca: z.string().min(1).max(LIMITES_DO_PEDIDO.marca),
   /** Imagem ou vídeo — muda todo o resto: rota de geração, custo e verificação. */
   tipo: z.enum(['imagem', 'video']),
   /** Define a dimensão. Peça fora de medida não entra no lugar. */
@@ -214,7 +237,7 @@ export const PedidoCriativo = z.object({
   imagem: OrigemDaImagem,
   texto: TextoDaPeca,
   /** O que NÃO pode aparecer, nas palavras do cliente. Campo livre, opcional. */
-  restricoes: z.string().max(2000).default(''),
+  restricoes: z.string().max(LIMITES_DO_PEDIDO.restricoes).default(''),
   /**
    * Quantas variações produzir. Padrão 2 (espec: assume e registra). Teto de 8
    * porque cada variação gasta crédito e o MVP não tem galeria para absorver

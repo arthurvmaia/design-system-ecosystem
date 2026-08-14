@@ -1,7 +1,7 @@
 import { Mascote } from '@/components/Mascote';
 import { Toaster } from '@/components/Toaster';
-import { ArrowLeft, Sparkles } from 'lucide-react';
-import { Outlet } from 'react-router-dom';
+import { ArrowLeft, Sparkles, Zap } from 'lucide-react';
+import { NavLink, Outlet } from 'react-router-dom';
 
 /**
  * A casca PRÓPRIA da frente Criativos.
@@ -59,15 +59,30 @@ export function CriativosShell() {
           </span>
         </span>
 
+        {/* NavLink de verdade agora que a frente tem 2 rotas: o próprio
+            NavLink põe aria-current="page" no ativo, e o `end` da primeira
+            impede que /criativos/expresso acenda as duas ao mesmo tempo. */}
         <nav className="ml-6 flex items-center gap-1" aria-label="Navegação da frente Criativos">
-          <span
-            className="flex items-center gap-2 rounded-none px-3 py-1.5 text-[12px]"
-            style={{ color: 'var(--color-fg)', backgroundColor: 'rgb(var(--acento) / 0.10)' }}
-            aria-current="page"
-          >
-            <Sparkles size={13} strokeWidth={1.75} />
-            Nova peça
-          </span>
+          {(
+            [
+              { para: '/criativos', rotulo: 'Nova peça', Icone: Sparkles, soExato: true },
+              { para: '/criativos/expresso', rotulo: 'Expresso', Icone: Zap, soExato: false },
+            ] as const
+          ).map(({ para, rotulo, Icone, soExato }) => (
+            <NavLink
+              key={para}
+              to={para}
+              end={soExato}
+              className="flex items-center gap-2 rounded-none px-3 py-1.5 text-[12px] transition-colors"
+              style={({ isActive }) => ({
+                color: isActive ? 'var(--color-fg)' : 'var(--color-fg-muted)',
+                backgroundColor: isActive ? 'rgb(var(--acento) / 0.10)' : 'transparent',
+              })}
+            >
+              <Icone size={13} strokeWidth={1.75} />
+              {rotulo}
+            </NavLink>
+          ))}
         </nav>
 
         <a
