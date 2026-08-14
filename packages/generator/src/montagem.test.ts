@@ -727,3 +727,22 @@ test('REGRA_DO_ACENDIDO: o acendimento vira folha, que nenhum style simples derr
   assert.match(REGRA_DO_ACENDIDO, /opacity:1!important/);
   assert.match(REGRA_DO_ACENDIDO, /transform:none!important/);
 });
+
+test('destravarOpacidadeSemRevelador: o deslocamento sai junto com a opacidade', () => {
+  // Medido no Meridiano: `.clip-slide{opacity:0;transform:translateY(40px) scale(.95)}`
+  // era detectada e recebia `opacity:1`, mas ficava presa em scale(0.95) para
+  // sempre. Um botao com `min-height:44px` aplicado chegava a tela com 42px e
+  // reprovava a S15 — e o culpado nao era o botao, era o ancestral parado.
+  const css =
+    '.clip-slide{opacity:0;transform:translateY(40px) scale(.95)}' +
+    '.so-apagado{opacity:0}';
+  const html = '<div class="clip-slide"><b class="so-apagado">oi</b></div>';
+  const r = destravarOpacidadeSemRevelador(css, [], html);
+  assert.match(r.css, /opacity:1 !important/);
+  assert.match(r.css, /\.clip-slide\{transform:none !important\}/, r.css);
+  assert.doesNotMatch(
+    r.css,
+    /\.so-apagado\{transform/,
+    'classe que so apaga nao ganha regra de transform',
+  );
+});
