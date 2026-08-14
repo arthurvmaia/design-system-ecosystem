@@ -225,3 +225,41 @@ test("gaveta do carrinho: blocos reais, abre e fecha, e o selo sai do caminho", 
   assert.match(css, /\.live-render-badge \{[^}]*top: 0;[^}]*left: 0;[^}]*right: 0/);
   assert.match(css, /\.editor-group \+ \.editor-group \{[^}]*border-left/);
 });
+
+test("a barra de ações do editor não pode ser cortada pelo corpo", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  /* A linha da barra no shell precisa ser `auto`. Com altura fixa, o dia em que
+     a barra pedir duas linhas ela não cresce: o excedente sai do box e o
+     `.editor-body`, que começa exatamente onde a linha acaba, passa por cima.
+     Foi o que aconteceu — EXPORTAR ZIP, CRIAR VERSÃO e PUBLICAR ficaram
+     cortados ao meio e sem receber clique. O único caminho de saída do produto
+     é o ZIP, então o botão dele inalcançável fecha o produto. */
+  const shell = css.match(/\.editor-shell \{[^}]*\}/)?.[0] ?? "";
+  assert.ok(shell, "regra .editor-shell sumiu");
+  assert.match(shell, /grid-template-rows:\s*auto\s/, ".editor-shell não pode fixar a altura da barra em px");
+
+  /* E a barra declara UMA COLUNA POR FILHO: projeto · dispositivo · modo ·
+     ações. Um filho a mais que o template cai numa linha implícita que ninguém
+     dimensionou, em silêncio — foi assim que o seletor de modo empurrou as
+     ações para fora. Se um quinto grupo entrar na barra, este teste reprova
+     antes de a tela quebrar. */
+  const toolbar = css.match(/\n\.editor-toolbar \{[^}]*\}/)?.[0] ?? "";
+  assert.ok(toolbar, "regra .editor-toolbar sumiu");
+  const colunas = toolbar.match(/grid-template-columns:([^;]*);/)?.[1] ?? "";
+  const trilhas = colunas.trim().split(/\s+(?![^(]*\))/).filter(Boolean).length;
+  const shellTsx = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
+  const marcacao = shellTsx.match(/className="editor-toolbar">[\s\S]*?<div className="editor-controls"/)?.[0] ?? "";
+  assert.ok(marcacao, "não achei a marcação da barra no AppShell");
+  const filhos = new Set(
+    (marcacao.match(/className="(editor-project|device-switch|mode-switch|editor-controls)"/g) ?? []).map((m) => m),
+  ).size;
+  assert.ok(filhos >= 4, `esperava ao menos 4 grupos na barra, encontrei ${filhos}`);
+  assert.equal(trilhas, filhos, `a barra tem ${filhos} grupos e ${trilhas} colunas: o excedente cai numa linha implícita`);
+
+  /* O seletor de modo só existe no fluxo Shopify, então a barra tem 3 ou 4
+     filhos. As ações ficam presas na última coluna para não apertarem quando
+     for 3. */
+  const controles = css.match(/\.editor-controls \{[^}]*\}/)?.[0] ?? "";
+  assert.match(controles, /grid-column:\s*-2\s*\/\s*-1/);
+});

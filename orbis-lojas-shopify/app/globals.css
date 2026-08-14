@@ -161,12 +161,27 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .ledger-row:last-child { border-bottom: 0; }.ledger-row > span:first-child { display: flex; align-items: center; gap: 10px; color: #c1cccc; }.ledger-row i { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; font-style: normal; }.ledger-row i.positive { background: rgba(0, 126, 168,.1); color: var(--green-bright); }.ledger-row i.negative { background: rgba(255,137,125,.08); color: var(--danger); }.ledger-row strong { color: var(--danger); }.ledger-row strong.positive-text { color: var(--green-bright); }.ledger-empty { padding: 28px; color: var(--muted); text-align: center; font-size: 12px; }
 
 .editor-main { height: 100vh; overflow: hidden; }
-.editor-shell { height: calc(100vh - var(--topbar)); display: grid; grid-template-rows: 55px 1fr; }
-.editor-toolbar { min-width: 0; display: grid; grid-template-columns: minmax(180px, 1fr) auto minmax(410px, 1fr); align-items: center; gap: 12px; padding: 0 14px; border-bottom: 1px solid var(--line); background: #050c0c; }
+/* A linha da barra é `auto`, e não 55px. Com altura fixa, o dia em que a barra
+   precisasse de duas linhas ela não crescia: o excedente saía do box e o
+   `.editor-body`, que começa exatamente onde os 55px acabam, passava por cima.
+   Foi o que aconteceu — EXPORTAR ZIP, CRIAR VERSÃO e PUBLICAR ficaram cortados
+   ao meio e sem receber clique, ou seja, o único caminho de saída do produto
+   fechado por uma linha de CSS. Altura fixa em barra que tem conteúdo variável
+   é uma aposta; `auto` não aposta. */
+.editor-shell { height: calc(100vh - var(--topbar)); display: grid; grid-template-rows: auto 1fr; }
+/* QUATRO colunas para os quatro filhos: projeto · dispositivo · modo · ações.
+   O seletor de modo (Selecionar/Interagir/Prévia) entrou depois, num template
+   de três, e empurrou as ações para uma segunda linha implícita. Grid não
+   avisa: ele acomoda em silêncio numa linha que ninguém dimensionou. */
+.editor-toolbar { min-height: 55px; min-width: 0; display: grid; grid-template-columns: minmax(150px, 1fr) auto auto minmax(360px, 1.2fr); align-items: center; gap: 12px; padding: 0 14px; border-bottom: 1px solid var(--line); background: #050c0c; }
 .editor-project { min-width: 0; display: flex; align-items: center; gap: 10px; }.editor-project > strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
 .device-switch { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: #020808; }
 .device-switch button { width: 31px; height: 27px; display: grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--muted-2); cursor: pointer; }.device-switch button.active { background: #102122; color: var(--green-bright); }
-.editor-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }.editor-controls .icon-button { width: 30px; height: 30px; }.editor-controls .secondary-button, .editor-controls .primary-button { min-height: 32px; }
+/* As ações moram na ÚLTIMA coluna, sempre. O seletor de modo só existe no
+   fluxo Shopify (`{shopify && …}`), então a barra tem 3 ou 4 filhos conforme o
+   projeto; sem fixar a coluna, o editor legado empurraria as ações para a
+   coluna `auto` do meio e elas apertariam. */
+.editor-controls { grid-column: -2 / -1; display: flex; align-items: center; justify-content: flex-end; gap: 12px; }.editor-controls .icon-button { width: 30px; height: 30px; }.editor-controls .secondary-button, .editor-controls .primary-button { min-height: 32px; }
 /* grupos com divisória: histórico · prévia · ações */
 .editor-group { display: flex; align-items: center; gap: 6px; }
 .editor-group + .editor-group { padding-left: 12px; border-left: 1px solid var(--line); }
