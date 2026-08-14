@@ -2,40 +2,50 @@
 
 > ## 🔄 RETOMADA — trabalho em voo (2026-08-14)
 >
-> **OS 20 KITS PASSARAM.** Prova22 (`kits-provar-GxInuO`): S4, S12, S13, S14,
-> S15, S16, S17, S18, S19 — todas ZERO, 20 de 20 aprovados. A ordem que
-> segurava a fila ("site nenhum antes dos kits 100%") está cumprida.
+> **Os 20 kits passam** (prova22, `kits-provar-GxInuO`): S4, S12, S13, S14, S15,
+> S16, S17, S18, S19 todas em ZERO. A fila foi liberada.
 >
-> **O que fechou o S4 (216 → 30 → 0), tudo medido:**
-> 1. *Alfa por variável do Tailwind.* `literalDe` rejeitava qualquer valor com
->    `var(`, e o Tailwind escreve TODA cor como
->    `rgb(5 5 5 / var(--tw-bg-opacity, 1))`. Quase toda cor literal do site era
->    invisível: no pior projeto, 2 correções viraram 61.
-> 2. *Tinta declarada por TAG.* O compositor escreve no `marca.css`
->    `a{color:var(--marca-link)}` e `h1..h6{color:var(--marca-heading)}` — e
->    esse arquivo nem chegava à conferência.
-> 3. *Tinta padrão da seção.* `REGRA_DA_TINTA_DA_MARCA` põe `--marca-body` no
->    proxy; a conferência passou a modelar isso.
-> 4. *Chave por ORIGEM.* `.bg-white` existe em quase toda origem: numa virou
->    `--marca-surface` (escuro), noutra ficou branca. O mapa por nome de classe
->    respondia com a errada.
-> 5. *Variável da origem.* `color:var(--c-bg)` com `--c-bg` recolorido na
->    DEFINIÇÃO — resolvida quando há uma definição só.
+> **Sites entregues:** Sócio Torcedor SJDR, AVDSGN e Meridiano — os três com 22
+> verificações nas duas larguras e aceite estático sem pendência.
 >
-> **E o S13 (83 → 0):** a régua nunca chegava ao fim da página, porque o
-> `scroll-behavior:smooth` da origem fazia cada `scrollTo` virar animação que o
-> passo seguinte reiniciava.
+> **Faltam 6 jobs `generate`:** Voltz (Imóvel e arquitetura) e as expressas
+> duplicadas — Café da Estação (×2), asteric, Navalha & Cia (×2), Ourivés (×2).
+> Processar UM de cada duplicata.
 >
-> **AGORA: a fila de 11 jobs `generate`** — SJDR primeiro COM NAVEGADOR
-> VISÍVEL, depois AVDSGN (portfólio real), depois Meridiano/Voltz/expressos
-> (Café da Estação, asteric, Navalha, Ourivés — processar UM de cada
-> duplicata). Geração completa: copy no tom da marca, Magnific, vídeo onde
-> couber, contraste medido + animações presentes, 390px bloqueante.
+> ### A receita, que já se repetiu três vezes
 >
-> **Em aberto, pedido pelo dono nesta sessão:** entregável deixa de ser zip
-> cru e passa a ser PROJETO pronto para deploy (README de publicação,
-> package.json, configs), mantendo o botão de visualizar. Depois: varredura de
-> UI/UX e os passos 3–6 do MVP Criativos.
+> **O payload é de ANTES da curadoria.** Em todos os jobs, parte das peças do
+> kit foi aposentada da Biblioteca e a seção sai VAZIA (regra S9 acusa). Antes
+> de qualquer coisa:
+>
+> 1. Ler o job e testar `library/<cmp>/bundle` de cada peça: as mortas aparecem.
+> 2. Repor pelo kit ATUAL do mesmo nome (o rótulo do job nomeia o kit) — as
+>    peças estão em `kitComponents` no SQLite, não no payload.
+> 3. Extrair o texto real de cada peça nova (`>texto<` do `index.html` do
+>    bundle) e escrever as substituições contra ele. **Âncora é o texto NU**:
+>    ancorar em `>texto<` falha quando há marcação no meio.
+> 4. **A troca mais específica vai PRIMEIRO.** Substituição é sequencial: uma
+>    chave curta (`CLIENTES`) come a longa (`FEEDBACK DOS NOSSOS CLIENTES`).
+> 5. Seção sem peça é oportunidade: `criarSecoesFaltantes` está ligado em todos,
+>    e o dono quer página longa com o AIDA inteiro.
+>
+> **Print de página inteira MENTE.** O Playwright redimensiona a viewport para
+> capturar tudo e re-dispara os observadores de rolagem: o SJDR apareceu com um
+> vazio de 4000px que não existia. Medir dobra por dobra, rolando.
+>
+> **Mídia é indexada pela ORIGEM.** Oito entradas apontando para o mesmo arquivo
+> viram uma; para preencher N vagas com a mesma arte, copiar o arquivo N vezes.
+>
+> ### Consertos de motor que saíram desta fila
+>
+> - `--ver` no `pnpm conferir`: abre a janela (padrão segue headless).
+> - `destravarOpacidadeSemRevelador` passou a devolver o DESLOCAMENTO junto com
+>   a opacidade: classe presa em `translateY(40px) scale(.95)` deixava um botão
+>   com 42px onde o CSS mandava 44, e a S15 reprovava o alvo errado.
+>
+> **Depois da fila:** varredura de UI/UX do app (autorizada) e os passos 3–6 do
+> MVP Criativos (handler do job `criativo` com o motor orbis-suite, grade de
+> resultado + download).
 
 ## 1. Onde o produto está
 
