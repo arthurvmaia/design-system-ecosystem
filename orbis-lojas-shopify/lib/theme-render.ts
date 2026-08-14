@@ -6,7 +6,6 @@
 import { Liquid, type TagToken, type TopLevelToken, type Context, type Emitter } from "liquidjs";
 import { strFromU8 } from "fflate";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
-import { CATALOGO_LOJA, type CatalogoProduto } from "./catalogo-loja";
 import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
 
 /** Item do carrinho simulado: o preview guarda só o essencial. */
@@ -62,9 +61,26 @@ class ThemeImage {
 function demoImage(label: string, tone?: string) { return new ThemeImage(PLACEHOLDER_SVG(label, tone)); }
 
 /**
- * Monta um produto no formato que os temas leem a partir de uma entrada do
- * catálogo real (`lib/catalogo-loja.ts`): título, descrição, preços, opções,
- * variantes e imagens saem todos da loja de origem.
+ * A forma que o motor precisa para montar um produto.
+ *
+ * Mora aqui, e não num arquivo de catálogo, porque a única fonte de mercadoria
+ * é o catálogo dos nichos (`lib/catalogo-nichos.ts`): loja gerada mostra os
+ * produtos do nicho, e tema importado não mostra produto nenhum.
+ */
+type CatalogoProduto = {
+  id: number; handle: string; title: string; vendor: string; type: string; tags: string[];
+  publishedAt: string; descriptionHtml: string;
+  options: Array<{ name: string; position: number; values: string[] }>;
+  images: Array<{ src: string; width: number; height: number; alt: string; variantIds: number[] }>;
+  variants: Array<{
+    id: number; title: string; option1: string | null; option2: string | null; option3: string | null;
+    sku: string; price: number; compareAtPrice: number | null; available: boolean; imageSrc: string | null;
+  }>;
+};
+
+/**
+ * Monta um produto no formato que os temas leem: título, descrição, preços,
+ * opções, variantes e imagens saem todos do catálogo do nicho.
  */
 function produtoDoCatalogo(fonte: CatalogoProduto) {
   const imagens = fonte.images.map((img) => new ThemeImage(img.src, img.alt, img.width, img.height));
@@ -120,10 +136,7 @@ function produtoDoCatalogo(fonte: CatalogoProduto) {
   };
 }
 
-/** Os 10 produtos reais que abastecem toda prévia de tema importado. */
-const DEMO_PRODUCTS = CATALOGO_LOJA.map(produtoDoCatalogo);
-
-type ProdutoDaLoja = (typeof DEMO_PRODUCTS)[number];
+type ProdutoDaLoja = ReturnType<typeof produtoDoCatalogo>;
 
 /**
  * A vitrine de uma renderização: os produtos e o índice de variantes.
@@ -143,7 +156,6 @@ function indexarLoja(produtos: ProdutoDaLoja[]): Loja {
   return { produtos, porVariante };
 }
 
-const LOJA_PADRAO = indexarLoja(DEMO_PRODUCTS);
 /**
  * Tema sem loja: nenhuma mercadoria injetada.
  *
@@ -181,7 +193,9 @@ export function lojaDoNicho(nicheId: string | undefined): Loja {
   const pronta = LOJAS_POR_NICHO.get(chave);
   if (pronta) return pronta;
   const fonte = PRODUTOS_POR_NICHO[chave];
-  if (!fonte?.length) return LOJA_PADRAO;
+  /* nicho sem catálogo também nasce vazio: inventar mercadoria faria dois
+     temas diferentes parecerem a mesma loja */
+  if (!fonte?.length) return LOJA_VAZIA;
   const loja = indexarLoja(fonte.map(produtoDoNicho));
   LOJAS_POR_NICHO.set(chave, loja);
   return loja;

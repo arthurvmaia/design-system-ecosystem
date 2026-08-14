@@ -6,13 +6,12 @@ import { createServer } from "vite";
 import { strToU8, zipSync } from "fflate";
 
 /**
- * O catálogo real (10 produtos extraídos de fiordibrasil.com) é o que abastece
- * toda prévia de tema importado. Estes testes travam: a quantidade, a completude
- * de cada produto e o fato de os produtos inventados não voltarem.
+ * O catálogo dos nichos é a ÚNICA fonte de mercadoria do app: loja gerada por
+ * nicho mostra os dez produtos daquele nicho, e tema importado não mostra
+ * produto nenhum. Estes testes travam as duas metades.
  */
 
 const raiz = fileURLToPath(new URL("..", import.meta.url));
-const catalogoUrl = new URL("../lib/catalogo-loja.ts", import.meta.url);
 const previewUrl = new URL("../app/ShopifyStorePreview.tsx", import.meta.url);
 
 async function comServidor(trabalho) {
@@ -42,30 +41,8 @@ test("todo nicho tem exatamente 10 produtos reais e completos", async () => {
   assert.equal(ids.size, 100, "dez nichos vezes dez produtos");
 });
 
-test("o catálogo tem exatamente 10 produtos reais e completos", async () => {
-  const { CATALOGO_LOJA } = await comServidor((server) => server.ssrLoadModule("/lib/catalogo-loja.ts"));
-  assert.equal(CATALOGO_LOJA.length, 10);
-  const handles = new Set();
-  for (const produto of CATALOGO_LOJA) {
-    assert.ok(produto.title.trim().length > 3, `título vazio em ${produto.handle}`);
-    assert.ok(produto.descriptionHtml.trim().length > 40, `descrição curta demais em ${produto.handle}`);
-    assert.ok(produto.images.length > 0, `sem imagem em ${produto.handle}`);
-    for (const imagem of produto.images) assert.match(imagem.src, /^https:\/\//);
-    assert.ok(produto.variants.length > 0, `sem variante em ${produto.handle}`);
-    for (const variante of produto.variants) {
-      assert.ok(Number.isInteger(variante.price) && variante.price > 0, `preço inválido em ${produto.handle}`);
-      assert.ok(Number.isInteger(variante.id), `id de variante inválido em ${produto.handle}`);
-    }
-    assert.ok(!handles.has(produto.handle), `handle repetido: ${produto.handle}`);
-    handles.add(produto.handle);
-  }
-  /* ids de variante são únicos no catálogo inteiro: é assim que o carrinho casa item e produto */
-  const variantes = CATALOGO_LOJA.flatMap((produto) => produto.variants.map((v) => v.id));
-  assert.equal(new Set(variantes).size, variantes.length);
-});
-
 test("os produtos inventados saíram do render e do fallback", async () => {
-  const [catalogo, preview] = await Promise.all([readFile(catalogoUrl, "utf8"), readFile(previewUrl, "utf8")]);
+  const [catalogo, preview] = await Promise.all([readFile(new URL("../lib/catalogo-nichos.ts", import.meta.url), "utf8"), readFile(previewUrl, "utf8")]);
   const renderSource = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
   for (const inventado of [/Daily Ritual/, /Pure Form/, /Starter Kit/, /Produto de demonstração/]) {
     assert.doesNotMatch(renderSource, inventado);
@@ -75,7 +52,7 @@ test("os produtos inventados saíram do render e do fallback", async () => {
   assert.doesNotMatch(preview, /shopify-rating/);
   assert.doesNotMatch(preview, /Opção 1<\/button>/);
   /* o catálogo declara de onde veio */
-  assert.match(catalogo, /fiordibrasil\.com/);
+  assert.match(catalogo, /aliexpress\.com/);
 });
 
 test("tema sem nicho não recebe produto nem coleção inventados", async () => {
@@ -139,14 +116,14 @@ test("a rota escolhe o produto e a variante: handle e ?variant chegam ao render"
     const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
     const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
     const { PRODUTOS_POR_NICHO } = await server.ssrLoadModule("/lib/catalogo-nichos.ts");
-    const CATALOGO_LOJA = PRODUTOS_POR_NICHO.oculos;
+    const VITRINE = PRODUTOS_POR_NICHO.oculos;
     const theme = await extractShopifyThemeBytes(zip, "rota.zip");
     const files = themeFilesFromZip(zip);
     /* com nicho: tema cru nasce SEM vitrine, e este teste é sobre a rota */
     const base = { theme, files, pageId: "product", assetBase: (path) => `/assets/${path}`, nicheId: "oculos" };
 
     /* o produto do nicho tem uma variante só; o id dele É o id da variante */
-    const alvo = CATALOGO_LOJA[0];
+    const alvo = VITRINE[0];
     const segunda = { id: alvo.id, price: alvo.price };
 
     const semHandle = await renderThemePage(base);
@@ -211,11 +188,11 @@ test("o tema renderizado mostra produto real e o carrinho recebe a variante clic
     const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
     const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
     const { PRODUTOS_POR_NICHO } = await server.ssrLoadModule("/lib/catalogo-nichos.ts");
-    const CATALOGO_LOJA = PRODUTOS_POR_NICHO.oculos;
+    const VITRINE = PRODUTOS_POR_NICHO.oculos;
 
     const theme = await extractShopifyThemeBytes(zip, "catalogo.zip");
     const files = themeFilesFromZip(zip);
-    const primeiro = CATALOGO_LOJA[0];
+    const primeiro = VITRINE[0];
     const variante = { id: primeiro.id, price: primeiro.price };
 
     const html = await renderThemePage({
@@ -226,7 +203,7 @@ test("o tema renderizado mostra produto real e o carrinho recebe a variante clic
     });
 
     /* a vitrine mostra os 10 produtos reais, com imagem da própria loja */
-    for (const produto of CATALOGO_LOJA) assert.ok(html.includes(produto.title), `faltou ${produto.title} na vitrine`);
+    for (const produto of VITRINE) assert.ok(html.includes(produto.title), `faltou ${produto.title} na vitrine`);
     assert.ok(html.includes("aliexpress-media.com"), "imagem real do produto não foi renderizada");
 
     /* o carrinho casou a variante clicada, com quantidade e total certos */

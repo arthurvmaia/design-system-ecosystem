@@ -4,7 +4,6 @@
 import { ArrowRight, Check, Plus, Search, ShieldCheck, ShoppingBag, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import type { ShopifyPage, ShopifySectionInstance, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
-import { CATALOGO_LOJA } from "../lib/catalogo-loja";
 
 /**
  * Prévia ao vivo: renderiza o Liquid REAL do tema no servidor (igual à Shopify)
@@ -208,7 +207,8 @@ type Device = "desktop" | "tablet" | "mobile";
 type DemoProduct = { id: string; name: string; category: string; price: number; compareAt?: number; image: string; description: string };
 type Runtime = {
   products: DemoProduct[];
-  product: DemoProduct;
+  /* sem catálogo simulado não há produto: quem tem vitrine é o render real */
+  product: DemoProduct | null;
   productQuantity: number;
   cart: Record<string, number>;
   searchQuery: string;
@@ -224,27 +224,15 @@ type Runtime = {
   checkout: () => void;
 };
 
-/** Descrição do catálogo vem em HTML; aqui vira texto curto para o cartão. */
-function textoSimples(html: string, limite: number) {
-  const puro = html.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
-  if (puro.length <= limite) return puro;
-  const corte = puro.slice(0, limite);
-  return `${corte.slice(0, corte.lastIndexOf(" ")) || corte}…`;
-}
-
-/** Mesmos 10 produtos reais que o motor de render usa (lib/catalogo-loja.ts). */
-const PRODUCTS: DemoProduct[] = CATALOGO_LOJA.map((produto) => {
-  const variante = produto.variants[0];
-  return {
-    id: produto.handle,
-    name: produto.title,
-    category: produto.type || produto.tags[0] || produto.vendor,
-    price: variante.price / 100,
-    compareAt: variante.compareAtPrice ? variante.compareAtPrice / 100 : undefined,
-    image: produto.images[0]?.src ?? "",
-    description: textoSimples(produto.descriptionHtml, 150),
-  };
-});
+/**
+ * A simulação não inventa mercadoria.
+ *
+ * Este desenho só aparece quando o render do Liquid falha. Enchê-lo de produtos
+ * fazia qualquer tema parecer a mesma loja — e o produto que aparecia ali não
+ * era do tema nem da loja de ninguém. Sem produto, a seção mostra o vazio, que
+ * é a verdade: quem preenche a vitrine é o estoque do dono.
+ */
+const PRODUCTS: DemoProduct[] = [];
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -256,12 +244,12 @@ export function ShopifyStorePreview({ theme, page, device, selectedSectionId, on
   const radius = typeof theme.globalValues.buttons_radius === "number" ? theme.globalValues.buttons_radius : 6;
   const [cart, setCart] = useState<Record<string, number>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeProductId, setActiveProductId] = useState(PRODUCTS[0].id);
+  const [activeProductId, setActiveProductId] = useState("");
   const [productQuantity, setProductQuantity] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [newsletterSent, setNewsletterSent] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState("");
-  const product = PRODUCTS.find((item) => item.id === activeProductId) ?? PRODUCTS[0];
+  const product = PRODUCTS.find((item) => item.id === activeProductId) ?? PRODUCTS[0] ?? null;
   const cartCount = Object.values(cart).reduce((total, quantity) => total + quantity, 0);
   const cartTotal = PRODUCTS.reduce((total, item) => total + item.price * (cart[item.id] ?? 0), 0);
   const style = { "--shopify-bg": background, "--shopify-text": textColor, "--shopify-accent": accent, "--store-radius": `${radius}px` } as CSSProperties;
@@ -351,7 +339,13 @@ function SectionPreview({ theme, pageId, section: source, accent: themeAccent, b
   }
   if (type === "main-cart-items") return <section className={`${className} shopify-cart-page`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow="CARRINHO" title="Seu carrinho" /><CartItems cart={runtime.cart} onChange={runtime.changeCart} emptyAction={() => runtime.goTo("collection")} /></section>;
   if (type === "main-cart-footer") { const total = runtime.products.reduce((sum, item) => sum + item.price * (runtime.cart[item.id] ?? 0), 0); return <section className={`${className} shopify-cart-summary`} style={{ background, color: textColor }} onClick={onSelect}><div><span>Subtotal</span><strong>{BRL.format(total)}</strong></div><p>Frete e descontos calculados no checkout.</p><button style={{ background: accent }} disabled={!total} onClick={(event) => { stop(event); runtime.checkout(); }}>Finalizar compra com segurança</button></section>; }
-  if (type === "main-product" || type === "featured-product") return <section className={`${className} shopify-product-page`} style={{ background, color: textColor }} onClick={onSelect}>{media[0] ? <img className="shopify-product-photo" src={media[0]} alt={runtime.product.name} /> : <ProductArt product={runtime.product} large />}<div className="shopify-product-info"><small>{runtime.product.category}</small><h1>{runtime.product.name}</h1><div className="shopify-price"><strong>{BRL.format(runtime.product.price)}</strong>{runtime.product.compareAt && <del>{BRL.format(runtime.product.compareAt)}</del>}</div><p>{runtime.product.description}</p><VariantRow handle={runtime.product.id} /><div className="shopify-buy-row"><div><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity - 1); }}>−</button><span>{runtime.productQuantity}</span><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity + 1); }}>+</button></div><button style={{ background: accent }} onClick={(event) => { stop(event); runtime.addToCart(runtime.product.id, runtime.productQuantity); }}>Adicionar ao carrinho</button></div><ul><li><Check size={11} /> Compra protegida</li><li><Zap size={11} /> Envio rápido</li><li><ShieldCheck size={11} /> Garantia de 30 dias</li></ul></div></section>;
+  if (type === "main-product" || type === "featured-product") {
+    const produto = runtime.product;
+    /* sem produto simulado, a página mostra o que a PRÓPRIA seção traz; a
+       mercadoria é da loja de quem publica, não deste desenho */
+    if (!produto) return <section className={`${className} shopify-product-page shopify-product-page-vazia`} style={{ background, color: textColor }} onClick={onSelect}>{media[0] && <img className="shopify-product-photo" src={media[0]} alt={heading} />}<div className="shopify-product-info"><small>{section.name}</small><h1>{heading}</h1>{body && <p>{body}</p>}<p className="shopify-sem-catalogo">Os produtos vêm da loja. Este tema ainda não tem catálogo ligado.</p></div></section>;
+    return <section className={`${className} shopify-product-page`} style={{ background, color: textColor }} onClick={onSelect}>{media[0] ? <img className="shopify-product-photo" src={media[0]} alt={produto.name} /> : <ProductArt product={produto} large />}<div className="shopify-product-info"><small>{produto.category}</small><h1>{produto.name}</h1><div className="shopify-price"><strong>{BRL.format(produto.price)}</strong>{produto.compareAt && <del>{BRL.format(produto.compareAt)}</del>}</div><p>{produto.description}</p><VariantRow /><div className="shopify-buy-row"><div><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity - 1); }}>−</button><span>{runtime.productQuantity}</span><button onClick={(event) => { stop(event); runtime.setProductQuantity(runtime.productQuantity + 1); }}>+</button></div><button style={{ background: accent }} onClick={(event) => { stop(event); runtime.addToCart(produto.id, runtime.productQuantity); }}>Adicionar ao carrinho</button></div><ul><li><Check size={11} /> Compra protegida</li><li><Zap size={11} /> Envio rápido</li><li><ShieldCheck size={11} /> Garantia de 30 dias</li></ul></div></section>;
+  }
   if (type === "main-search" || type.includes("predictive-search")) {
     const results = runtime.products.filter((item) => `${item.name} ${item.category}`.toLowerCase().includes(runtime.searchQuery.toLowerCase()));
     return <section className={`${className} shopify-search-page`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow={section.name} title={heading} /><label><Search size={16} /><input value={runtime.searchQuery} onClick={stop} onChange={(event) => runtime.setSearchQuery(event.target.value)} placeholder="Buscar produtos" /></label><p>{runtime.searchQuery ? `${results.length} resultado(s) para “${runtime.searchQuery}”` : "Produtos populares"}</p>{results.length || !runtime.searchQuery ? <ProductGrid products={results} onProduct={runtime.openProduct} onAdd={runtime.addToCart} /> : <div className="shopify-no-results"><Search size={23} /><b>Nenhum resultado encontrado</b><span>Tente buscar por outro nome ou categoria.</span></div>}</section>;
@@ -364,7 +358,7 @@ function SectionPreview({ theme, pageId, section: source, accent: themeAccent, b
   if (type.includes("hero") || type.includes("slideshow") || type.includes("banner") || type.includes("image-with-text") || type.includes("parallax")) {
     if (media.length && type.includes("image-with-text")) return <section className={`${className} shopify-image-split`} style={{ background, color: textColor }} onClick={onSelect}><div className="shopify-image-split-copy"><small style={{ color: accent }}>{section.name}</small><h2>{heading}</h2>{body && <p>{body}</p>}{buttonLabel && <button style={{ background: accent }} onClick={(event) => { stop(event); runtime.goTo("collection"); }}>{buttonLabel}</button>}</div><img className="shopify-side-image" src={media[0]} alt={heading} /></section>;
     if (media.length) return <section className={`${className} shopify-image-hero`} onClick={onSelect}><img className="shopify-image-hero-bg" src={media[0]} alt="" /><div className="shopify-image-hero-overlay" /><div className="shopify-image-hero-copy"><small>{section.name}</small><h2>{heading}</h2>{body && <p>{body}</p>}{buttonLabel && <button style={{ background: accent }} onClick={(event) => { stop(event); runtime.goTo("collection"); }}>{buttonLabel}</button>}</div>{media.length > 1 && <div className="shopify-hero-dots">{media.slice(0, 5).map((url, index) => <i key={url} className={index === 0 ? "active" : ""} />)}</div>}</section>;
-    return <section className={`${className} extracted-hero shopify-live-hero`} style={{ background: `color-mix(in srgb, ${accent} 14%, ${background})`, color: textColor }} onClick={onSelect}><div><small>{section.name}</small><h2>{heading}</h2>{body && <p>{body}</p>}{buttonLabel && <button style={{ background: accent }} onClick={(event) => { stop(event); runtime.goTo("collection"); }}>{buttonLabel}</button>}</div><ProductArt product={runtime.products[2]} hero /></section>;
+    return <section className={`${className} extracted-hero shopify-live-hero`} style={{ background: `color-mix(in srgb, ${accent} 14%, ${background})`, color: textColor }} onClick={onSelect}><div><small>{section.name}</small><h2>{heading}</h2>{body && <p>{body}</p>}{buttonLabel && <button style={{ background: accent }} onClick={(event) => { stop(event); runtime.goTo("collection"); }}>{buttonLabel}</button>}</div>{runtime.products[2] && <ProductArt product={runtime.products[2]} hero />}</section>;
   }
   if (type.includes("newsletter") || type.includes("email")) return <section className={`${className} extracted-newsletter`} style={{ background: accent, color: "#fff" }} onClick={onSelect}><div><h3>{heading}</h3>{body && <p>{body}</p>}</div>{runtime.newsletterSent ? <div className="shopify-newsletter-success"><Check size={17} /> E-mail cadastrado!</div> : <form onSubmit={(event) => { event.preventDefault(); stop(event); runtime.sendNewsletter(); }}><input aria-label="Seu e-mail" type="email" required placeholder="Seu melhor e-mail" onClick={stop} /><button type="submit">Inscrever</button></form>}</section>;
   if (type.includes("comparison-table") || type.includes("comparison-slider")) return <section className={`${className} shopify-comparison`} style={{ background, color: textColor }} onClick={onSelect}><SectionTitle eyebrow={section.name} title={heading} body={body || undefined} /><div><span /><b>{theme.themeName}</b><b>Outros</b>{section.blocks.slice(0, 5).flatMap((block) => { const label = findText(block.settings, ["benefit", "title", "text"]) ?? humanize(block.type); return [<span key={`${block.id}-label`}>{label}</span>, <strong key={`${block.id}-yes`}><Check size={12} /></strong>, <i key={`${block.id}-no`}>—</i>]; })}</div></section>;
@@ -383,11 +377,9 @@ function ProductGrid({ products, onProduct, onAdd }: { products: DemoProduct[]; 
   return <div className="shopify-product-grid">{products.map((product) => <article className="shopify-product-card" key={product.id}><button className="shopify-product-link" onClick={() => onProduct(product.id)}><ProductArt product={product} /><span>{product.category}</span><h3>{product.name}</h3><div><strong>{BRL.format(product.price)}</strong>{product.compareAt && <del>{BRL.format(product.compareAt)}</del>}</div></button><button className="shopify-quick-add" onClick={() => onAdd(product.id)} aria-label={`Adicionar ${product.name} ao carrinho`}><Plus size={14} /></button></article>)}</div>;
 }
 
-/** Opções e valores reais do produto do catálogo; sem opção, nada é mostrado. */
-function VariantRow({ handle }: { handle: string }) {
-  const produto = CATALOGO_LOJA.find((item) => item.handle === handle);
-  if (!produto || !produto.options.length || produto.variants.length < 2) return null;
-  return <>{produto.options.map((opcao) => <div className="shopify-variant-row" key={opcao.name}><span>{opcao.name}</span><div>{opcao.values.slice(0, 5).map((valor, indice) => <button className={indice === 0 ? "active" : ""} key={valor}>{valor}</button>)}</div></div>)}</>;
+/** Sem catálogo simulado não há variante para mostrar: o tema real tem a dele. */
+function VariantRow() {
+  return null;
 }
 
 function ProductArt({ product, large, hero }: { product: DemoProduct; large?: boolean; hero?: boolean }) { return <div className={`shopify-product-art ${large ? "large" : ""} ${hero ? "hero" : ""}`}>{product.image ? <img className="shopify-product-photo-fill" src={product.image} alt={product.name} loading="lazy" /> : <b>{product.name.slice(0, 1)}</b>}{product.compareAt && <i>OFERTA</i>}</div>; }
