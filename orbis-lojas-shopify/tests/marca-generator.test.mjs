@@ -540,6 +540,7 @@ test("cada dobra de banner tem foto própria, e o texto pousa na imagem", async 
       { id: "mobile_image", type: "image_picker", label: "Imagem do celular" },
       { id: "heading", type: "text", label: "Título", default: "Image slide" },
       { id: "subheading", type: "text", label: "Subtítulo", default: "Tell your story" },
+      { id: "button_label", type: "text", label: "Rótulo do botão", default: "Button label" },
       { id: "show_text_box", type: "checkbox", label: "Caixa de texto", default: true },
       { id: "image_overlay_opacity", type: "range", label: "Véu", default: 0 },
       { id: "color_scheme", type: "select", label: "Esquema", default: "background-1",
@@ -548,7 +549,7 @@ test("cada dobra de banner tem foto própria, e o texto pousa na imagem", async 
     const dobra = (id) => ({
       id, type: "slideshow", name: "Slideshow",
       settings: { slide_height: "adapt_image" },
-      blocks: [{ id: `${id}-b`, type: "slide", settings: { show_text_box: true, image_overlay_opacity: 0 } }],
+      blocks: [{ id: `${id}-b`, type: "slide", settings: { show_text_box: true, image_overlay_opacity: 0, link: "shopify://collections/all" } }],
     });
     const tema = {
       format: "shopify-os-2.0", themeName: "Tema", version: "1", author: "", sourceFile: "t.zip",
@@ -596,8 +597,61 @@ test("cada dobra de banner tem foto própria, e o texto pousa na imagem", async 
       assert.equal(bloco.color_scheme, "inverse");
     }
 
+    /* RÓTULO DE BOTÃO É RÓTULO. A regra de sobra enfiava a descrição em todo
+       campo de texto restante, e o banner saía com um botão contendo um
+       parágrafo inteiro dentro da borda. */
+    for (const bloco of [a, b]) {
+      assert.ok(bloco.button_label.length <= 24, `rótulo longo demais: ${bloco.button_label}`);
+      assert.notEqual(bloco.button_label, marca.description);
+      assert.doesNotMatch(bloco.button_label, /Button label/i, "nada de placeholder em inglês na loja publicada");
+    }
+
     /* e a altura da dobra deixa de depender do arquivo */
     for (const secao of r.theme.pages[0].sections) assert.equal(secao.settings.slide_height, "medium");
+  } finally {
+    await server.close();
+  }
+});
+
+test("o logo é o NOME da loja escrito; arte gerada não ocupa esse campo", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { aplicarMarcaNoTema } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+    const marca = gerarMarca({ nicheId: "roupas", semente: "logo" });
+    const base = () => ({
+      format: "shopify-os-2.0", themeName: "Tema", version: "1", author: "", sourceFile: "t.zip",
+      sourceFingerprint: "0000000000000000", importedAt: "", summary: {}, sourceFiles: [], compatibility: {},
+      globalGroups: [{ name: "Marca", settings: [{ id: "logo", type: "image_picker", label: "Logo" }] }],
+      /* o tema importado aponta para um arquivo da loja de ORIGEM */
+      globalValues: { logo: "shopify://shop_images/logo-da-outra-loja.png" },
+      sectionSchemas: [], pages: [],
+    });
+
+    /* A QUEIXA: a arte de logo da IA é um PNG quadrado com fundo próprio, e no
+       cabeçalho vira um retângulo cinza colado sobre a cor da página. Nenhum
+       recorte conserta: o fundo está pintado dentro do arquivo. Campo vazio =
+       o tema escreve o nome da loja, na tipografia da marca. */
+    const gerada = aplicarMarcaNoTema(base(), {
+      ...marca,
+      imagens: { logo: "/api/media/aaaaaaaaaaaaaaaaaaaa" },
+      imagensGeradas: ["logo", "banner-desktop"],
+    });
+    assert.equal(gerada.theme.globalValues.logo, "", "arte gerada não pode ocupar o campo de logo");
+
+    /* e o valor herdado do tema importado some junto: ele aponta para um
+       arquivo que não existe na loja do cliente, e ficaria um vazio no lugar
+       do nome */
+    const semNada = aplicarMarcaNoTema(base(), { ...marca, imagens: {}, imagensGeradas: [] });
+    assert.equal(semNada.theme.globalValues.logo, "");
+
+    /* quem já tem marca tem logo: o arquivo do CLIENTE vence sempre */
+    const doCliente = aplicarMarcaNoTema(base(), {
+      ...marca,
+      imagens: { logo: "/api/media/bbbbbbbbbbbbbbbbbbbb" },
+      imagensGeradas: [],
+    });
+    assert.equal(doCliente.theme.globalValues.logo, "/api/media/bbbbbbbbbbbbbbbbbbbb");
   } finally {
     await server.close();
   }

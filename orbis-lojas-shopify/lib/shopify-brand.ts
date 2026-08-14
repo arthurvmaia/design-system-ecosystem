@@ -43,6 +43,18 @@ export type MarcaAplicavel = {
    * pediu, ou do desenho local quando não.
    */
   imagens?: Record<string, string>;
+  /**
+   * Quais chaves de `imagens` a Orbis GEROU (em oposição às que o cliente
+   * enviou).
+   *
+   * Existe por causa do logo: arte gerada não pode ocupar o campo de logo do
+   * tema, porque vem com fundo quadrado próprio e o cabeçalho fica com um
+   * retângulo colado sobre a página. O logo do CLIENTE, esse sim, entra. Sem
+   * esta lista as duas coisas chegam iguais aqui e não há como escolher.
+   *
+   * Ausente = nada foi gerado, que é o caso de quem trouxe a própria marca.
+   */
+  imagensGeradas?: string[];
 };
 
 export type ResultadoDaMarca = {
@@ -75,6 +87,25 @@ const CAMPO_DE_AVISO = /(announce|aviso|bar.?text|topbar)/i;
  * ANTES do título, senão perde para ele de novo.
  */
 const CAMPO_DE_SUBTITULO = /(sub.?(heading|title)|subtitulo|caption|legenda|tagline)/i;
+/**
+ * Rótulo de botão é RÓTULO: duas ou três palavras.
+ *
+ * A regra de sobra enfiava a descrição da marca em todo campo de texto que
+ * restasse, e `button_label` é um deles — o banner saía com um botão contendo
+ * um parágrafo inteiro dentro da borda. Precisa ser pego antes da sobra.
+ */
+const CAMPO_DE_BOTAO = /(button.?(label|text)|cta|botao|call.?to.?action|link.?label)/i;
+/**
+ * A chamada, curta, em português.
+ *
+ * O padrão do Dawn é "Button label", que sai em inglês na loja publicada. Não é
+ * conteúdo inventado: é rótulo de interface, e botão sem rótulo é pior que
+ * botão com rótulo genérico. Quem tiver coleção vai para ela; o resto convida a
+ * ver a loja.
+ */
+function rotuloDeBotao(destino: unknown): string {
+  return typeof destino === "string" && /collection/i.test(destino) ? "Ver a coleção" : "Ver a loja";
+}
 const CAMPO_DE_LISTA = /(collection_list|link_list|menu)/i;
 /**
  * As peças de um papel, em ordem: `banner-desktop`, `banner-desktop-2`, …
@@ -235,6 +266,7 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
   for (const [chave, valor] of Object.entries(marca.imagens ?? {})) {
     if (typeof valor === "string" && ehImagemDeVerdade(valor)) imagens[chave] = valor;
   }
+  const geradasPelaOrbis = new Set(marca.imagensGeradas ?? []);
   /* as capas de coleção entram na ordem em que as seções as pedem */
   const capas = Object.keys(imagens)
     .filter((chave) => chave.startsWith("colecao-"))
@@ -277,9 +309,29 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
       marcou(definicao.id);
       continue;
     }
-    if (definicao.type === "image_picker" && imagens.logo && IMAGEM_DE_LOGO.test(`${definicao.id} ${definicao.label ?? ""}`)) {
-      valores[definicao.id] = imagens.logo;
-      marcou(definicao.id);
+    /**
+     * O LOGO É O NOME DA LOJA ESCRITO, a menos que o cliente tenha enviado o
+     * dele.
+     *
+     * A arte de logo que a IA devolve é um PNG quadrado com fundo próprio. No
+     * cabeçalho isso vira um quadrado cinza colado sobre a cor da página — não
+     * combina com nada, e nenhum recorte conserta, porque o fundo está pintado
+     * dentro do arquivo. Deixando o campo VAZIO, o tema escreve o nome da loja
+     * na tipografia que a marca acabou de definir, que é o que uma loja nova
+     * quer: nome legível, na cor certa, sem arquivo para subir.
+     *
+     * O valor que veio do tema importado também é limpo: ele aponta para um
+     * arquivo da loja de ORIGEM, que não existe na loja do cliente — ficaria um
+     * espaço em branco em vez do nome.
+     *
+     * Logo enviado pelo cliente vence sempre: quem já tem marca tem logo.
+     */
+    if (definicao.type === "image_picker" && IMAGEM_DE_LOGO.test(`${definicao.id} ${definicao.label ?? ""}`)) {
+      const doCliente = imagens.logo && !geradasPelaOrbis.has("logo") ? imagens.logo : "";
+      if (valores[definicao.id] !== doCliente) {
+        valores[definicao.id] = doCliente;
+        marcou(definicao.id);
+      }
       continue;
     }
     if ((definicao.type === "text" || definicao.type === "richtext") && CAMPO_DE_MARCA.test(`${definicao.id} ${definicao.label ?? ""}`)) {
@@ -395,6 +447,24 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
           if (marca.announcement && CAMPO_DE_AVISO.test(`${secao.type} ${pista}`)) {
             alvo.settings[definicao.id] = valorDeTexto(definicao, marca.announcement);
             marcou(`${secao.type}.${definicao.id}`);
+            continue;
+          }
+          /* só entra onde o tema não escreveu nada de próprio */
+          /**
+           * O rótulo de botão é conferido ANTES do guarda "o tema já escreveu
+           * algo de próprio", porque um rótulo com um parágrafo dentro não é
+           * "algo de próprio", é estrago — e uma vez gravado, o guarda o
+           * protegia para sempre. Rótulo curto que o tema (ou o lojista)
+           * escreveu continua intocado; só entra aqui o vazio, o placeholder
+           * em inglês e o que é comprido demais para caber num botão.
+           */
+          if (CAMPO_DE_BOTAO.test(pista)) {
+            const texto = typeof atual === "string" ? atual : "";
+            const rotuloDeVerdade = texto.trim() !== "" && texto.length <= 28 && texto !== definicao.default;
+            if (!rotuloDeVerdade) {
+              alvo.settings[definicao.id] = rotuloDeBotao(alvo.settings.link ?? alvo.settings.button_link);
+              marcou(`${secao.type}.${definicao.id}`);
+            }
             continue;
           }
           /* só entra onde o tema não escreveu nada de próprio */

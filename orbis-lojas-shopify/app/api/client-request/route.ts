@@ -73,6 +73,14 @@ const requestSchema = z.object({
    * loja usa os desenhos locais e nasce completa do mesmo jeito.
    */
   imagens: z.record(z.string().max(40), z.string().regex(/^\/api\/media\/[0-9a-fA-F-]{16,64}$/)).optional(),
+  /**
+   * Quais chaves de `imagens` a Orbis gerou — o resto foi o cliente que enviou.
+   *
+   * Serve ao campo de LOGO do tema: arte gerada é um PNG quadrado com fundo
+   * próprio e vira um retângulo colado no cabeçalho, então ela não entra ali e
+   * o tema escreve o nome da loja. Logo enviado pelo cliente entra.
+   */
+  imagensGeradas: z.array(z.string().max(40)).max(40).optional(),
 });
 
 /**
@@ -176,7 +184,11 @@ export async function POST(request: Request) {
       let shopify: ShopifyThemeImport | null = null;
       try { shopify = (JSON.parse(escolhido.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { shopify = null; }
       if (shopify) {
-        const resultado = aplicarMarcaNoTema(shopify, { ...marca, imagens });
+        const resultado = aplicarMarcaNoTema(shopify, {
+          ...marca,
+          imagens,
+          imagensGeradas: parsed.data.imagensGeradas ?? [],
+        });
         /* o nicho fica gravado no tema do projeto: é o que faz a vitrine da
            loja mostrar os produtos daquele nicho em toda rota de render */
         temaComMarca = { ...resultado.theme, orbisNicheId: parsed.data.nicheId };

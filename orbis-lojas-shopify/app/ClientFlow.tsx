@@ -289,6 +289,10 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           },
           /* só vai o que a IA realmente gerou; o resto o servidor desenha */
           imagens: { ...marca.imagens, ...(modo === "gerada" ? imagensGeradas : {}) },
+          /* quais dessas a Orbis gerou: o servidor precisa saber para NÃO pôr
+             arte gerada no campo de logo do tema (ela vem com fundo quadrado, e
+             o cabeçalho fica com um retângulo colado sobre a página) */
+          imagensGeradas: modo === "gerada" ? Object.keys(imagensGeradas) : [],
         }),
       });
       if (!resposta.ok) {
