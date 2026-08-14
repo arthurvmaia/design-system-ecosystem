@@ -26,6 +26,14 @@ login** — seis elementos, dez vereditos verdes — e parecia que o app inteiro
 passava. Ela faz login pela API, recebe o cookie assinado e injeta no contexto
 do navegador (o cookie é `HttpOnly`; a página não consegue colocá-lo sozinha).
 
+**Portão que não existe não é erro.** A primeira versão estourava quando
+`/api/orbis/sessao` não respondia, e isso quebrou a medição do Lojas — que tem
+porta sem senha e nenhuma rota de portão. Como a credencial também sai de
+`ORBIS_SENHA` do ambiente, bastava a variável existir para a régua recusar
+qualquer endereço de fora. Hoje: sem rota ou portão desligado, mede sem cookie;
+portão ativo com credencial errada, estoura — aí seguir mediria o login e
+devolveria verdes falsos.
+
 **Duas armadilhas de medição, aprendidas aqui:**
 
 1. **Navegador novo toca a abertura.** A régua sempre abre sessão limpa, então
@@ -45,18 +53,22 @@ Legenda: **✓** medido e passa · **✗** medido e falha · **—** não se apl
 
 | # | O que se cobra | Como medir | Piso | Design System | Portal | Lojas | Criativos |
 |---|---|---|---|---|---|---|---|
-| 1 | **O texto se lê contra o fundo que caiu atrás dele** | S4, contraste WCAG medido no par resolvido | 4.5:1 | ✓ 11/11 | ✓ | ? | ? |
-| 2 | **Nenhum texto fica apagado** | S13, opacidade computada | > 10% | ✓ (só a abertura) | ✗ 1 a 28% | ? | ? |
-| 3 | **O dedo acerta o alvo** | S15, retângulo do controle a 390px | 44×44px | ✗ **11/11** | ✗ 1 | ? | ? |
-| 4 | **A letra se lê no celular** | S16, `font-size` computado a 390px | 12px | ✓ 11/11 | ✓ | ? | ? |
-| 5 | **Nada transborda a tela** | S12, largura do conteúdo × viewport | 0 | ✓ 11/11 | ✓ | ? | ? |
-| 6 | **Uma barra de rolagem só** | S18, `scrollWidth` do documento | 1 | ✓ 11/11 | ✓ | ? | ? |
-| 7 | **Nenhuma seção colapsa** | S14, altura da seção | > 0 | ✓ 11/11 | ✓ | ? | ? |
-| 8 | **O respiro entre blocos é de gente** | S19, distância vertical medida | — | ✓ 11/11 | ✓ | ? | ? |
-| 9 | **Toda vaga de mídia foi preenchida** | S11 / S17 | 0 vazias | ✓ 11/11 | ✓ | ? | ? |
-| 10 | **Nenhum controle vive só no hover** | `opacity < 0.1` em `button/a` com perfil de toque | 0 | ✗ **6 por tela de grade** | ✓ | ? | ? |
-| 11 | **O console abre limpo** | `console.error` na carga da tela | 0 | ✗ **9 erros** | ✓ | ? | ? |
-| 12 | **A página não é mais alta que o conteúdo** | S20 | 20% | — não se aplica | — | ? | ? |
+| 1 | **O texto se lê contra o fundo que caiu atrás dele** | S4, contraste WCAG medido no par resolvido | 4.5:1 | ✓ 11/11 | ✓ | ✓ | ✓ 3/3 |
+| 2 | **Nenhum texto fica apagado** | S13, opacidade computada | > 10% | ✓ (só a abertura) | ✗ 1 a 28% | ✓ | ✓ (só a abertura) |
+| 3 | **O dedo acerta o alvo** | S15, retângulo do controle a 390px | 44×44px | ✗ **11/11** | ✗ 1 | ✓ | ✗ 3/3, 1 a 9 por tela |
+| 4 | **A letra se lê no celular** | S16, `font-size` computado a 390px | 12px | ✓ 11/11 | ✓ | ✓ | ✓ 3/3 |
+| 5 | **Nada transborda a tela** | S12, largura do conteúdo × viewport | 0 | ✓ 11/11 | ✓ | ✓ | ✓ 3/3 |
+| 6 | **Uma barra de rolagem só** | S18, `scrollWidth` do documento | 1 | ✓ 11/11 | ✓ | ✓ | ✓ 3/3 |
+| 7 | **Nenhuma seção colapsa** | S14, altura da seção | > 0 | ✓ 11/11 | ✓ | ✓ | ✓ 3/3 |
+| 8 | **O respiro entre blocos é de gente** | S19, distância vertical medida | — | ✓ 11/11 | ✓ | ✓ | ✓ 3/3 |
+| 9 | **Toda vaga de mídia foi preenchida** | S11 / S17 | 0 vazias | ✓ 11/11 | ✓ | ✓ | ✓ 3/3 |
+| 10 | **Nenhum controle vive só no hover** | `opacity < 0.1` em `button/a` com perfil de toque | 0 | ✗ **6 por tela de grade** | ✓ | ✓ | ✓ |
+| 11 | **O console abre limpo** | `console.error` na carga da tela | 0 | ✗ **9 erros** | ✓ | ✗ **12 erros** | ✓ |
+| 12 | **A página não é mais alta que o conteúdo** | S20 | 20% | — não se aplica | — | — | — |
+
+**Cobertura, dita por extenso:** Design System 11 telas, Portal 1, Criativos 3,
+**Lojas apenas 1** — e essa é a limitação da linha 13 abaixo, não um atestado de
+que a frente inteira passa.
 
 **Leitura da matriz em uma frase:** o que depende de *cor, tipografia, geometria
 e respiro* passa em tudo; o que depende de **toque** falha em tudo.
@@ -126,7 +138,45 @@ Três das quatro causas são do nosso lado do pipeline, não do site de origem. 
 ícone que não aparece na prévia não é o site que quebrou: é a nossa lista de
 domínios liberados.
 
-### 4. Portal
+### 4. Criativos passa quase inteira — e mostra que dá para nascer certo
+
+Três telas medidas (`/criativos`, `/criativos/expresso`, `/criativos/pecas`).
+Descontando os controles da abertura, que aparecem em qualquer tela: **9, 2 e 1**
+alvos abaixo de 44px, contra 22 a 48 na frente Design System. O reincidente é um
+só, e é uma classe: o link `Expresso` da casca, 92×30px.
+
+A diferença não é sorte. A frente Criativos nasceu depois, com casca própria e
+menos superfície acumulada. É a evidência de que o piso é barato quando aplicado
+cedo e caro quando cobrado depois.
+
+### 5. Lojas: dez verdes que escondem a tipografia inteira
+
+A porta de entrada passa nos dez critérios, nas duas larguras. E mesmo assim há
+**12 erros de console**, todos da mesma família:
+
+```
+Not allowed to load local resource:
+file:///…/orbis-lojas-shopify/.vinext/fonts/geist-…woff2
+```
+
+O CSS aponta as fontes por caminho de ARQUIVO em vez de URL servida. Nenhuma das
+três famílias (Geist, Geist Mono, Orbitron) carrega: o app inteiro desenha em
+fonte de fallback. As regras S4 e S16 continuam verdes porque medem **contraste e
+tamanho**, não qual tipo chegou — e é por isso que "console limpo" é critério
+separado na matriz, e não um detalhe de desenvolvedor.
+
+### 6. A limitação que a régua encontrou no Lojas
+
+O app tem **uma rota só**. Escolher "sou cliente" ou "sou do estúdio" muda estado
+do React, não endereço — então balcão e estúdio não têm URL, e a régua mede a
+porta e para ali.
+
+Isso é achado de UX antes de ser de medição: sem endereço, ninguém marca a
+página, ninguém manda um link do estúdio para outra pessoa, e recarregar joga
+todo mundo de volta para a porta. Dar URL aos dois fluxos conserta as duas coisas
+de uma vez — a experiência e a possibilidade de medir.
+
+### 7. Portal
 
 Passa em tudo, menos dois: `Desligar o Orbis` a 164×**30**px, e um parágrafo a
 **28%** de opacidade ("Os três são independentes…"). O parágrafo é decisão de
@@ -158,6 +208,12 @@ nascer certas nas outras duas frentes:
 6. **O piso vale para as três frentes ou não vale para nenhuma.** O Orbis cobra
    44px, contraste e responsividade de todo site que **gera**. Cobrar dos outros
    o que não se cumpre é o defeito que esta varredura encontrou primeiro.
+7. **Todo fluxo precisa de endereço.** No Lojas, balcão e estúdio vivem em estado
+   do React: não dá para marcar a página, mandar link nem recarregar sem voltar à
+   porta — e a régua não alcança. URL é experiência antes de ser medição.
+8. **Verde não é atestado quando a cobertura é uma tela.** A frente Lojas passa
+   nos dez critérios da porta de entrada e ainda assim não carrega nenhuma das
+   três fontes. Diga sempre quantas telas foram medidas ao lado do resultado.
 
 ---
 

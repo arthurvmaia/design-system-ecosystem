@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 import {
+  cookieDoPortao,
   destinoDoVeredito,
   ehEnderecoDeRede,
   enderecoDoAlvo,
@@ -100,6 +101,78 @@ test('as bandeiras antigas continuam lidas', () => {
   const b = lerArgumentos(['./site']);
   assert.equal(b.visivel, false);
   assert.equal(b.corrigir, false);
+});
+
+/**
+ * Portão que não existe não pode impedir a medição.
+ *
+ * A primeira versão estourava quando `/api/orbis/sessao` não respondia, e isso
+ * quebrou a medição do app de Lojas — porta de entrada sem senha, nenhuma rota
+ * de portão. Como a credencial também vem de `ORBIS_SENHA` do ambiente, bastava
+ * a variável existir para a régua recusar QUALQUER endereço de fora.
+ */
+const resposta = (corpo: unknown, ok = true, cookies: string[] = []): Response =>
+  ({
+    ok,
+    json: async () => corpo,
+    headers: { getSetCookie: () => cookies },
+  }) as unknown as Response;
+
+test('sem rota de portão, mede sem cookie em vez de recusar', async () => {
+  const semRota = (async () => resposta(null, false)) as unknown as typeof fetch;
+  assert.equal(await cookieDoPortao('http://localhost:3000/', 'seja-la-qual', semRota), null);
+
+  // Servidor mudo é o mesmo caso: não há tranca, então não há o que abrir.
+  const mudo = (async () => {
+    throw new Error('ECONNREFUSED');
+  }) as unknown as typeof fetch;
+  assert.equal(await cookieDoPortao('http://localhost:3000/', 'x', mudo), null);
+
+  // HTML no lugar de JSON também não é "a credencial falhou".
+  const html = (async () =>
+    ({
+      ok: true,
+      json: async () => {
+        throw new Error('não é JSON');
+      },
+    }) as unknown as Response) as unknown as typeof fetch;
+  assert.equal(await cookieDoPortao('http://exemplo.com.br/', 'x', html), null);
+});
+
+test('portão desligado mede sem cookie; portão ativo devolve o cookie', async () => {
+  const desligado = (async () => resposta({ estado: 'desligado' })) as unknown as typeof fetch;
+  assert.equal(await cookieDoPortao('http://localhost:5173/', 'x', desligado), null);
+
+  const ativo = (async (url: string) =>
+    String(url).endsWith('/sessao')
+      ? resposta({ estado: 'ativo' })
+      : resposta({ dentro: true }, true, [
+          'orbis_sessao=123.admin.abc; HttpOnly; Path=/; Max-Age=604800',
+          'outro=lixo; Path=/',
+        ])) as unknown as typeof fetch;
+  assert.equal(await cookieDoPortao('http://localhost:5173/', 'certa', ativo), '123.admin.abc');
+});
+
+test('portão ativo que RECUSA a credencial estoura — medir o login seria pior', async () => {
+  const recusa = (async (url: string) =>
+    String(url).endsWith('/sessao')
+      ? resposta({ estado: 'ativo' })
+      : resposta({ erro: 'senha' }, false)) as unknown as typeof fetch;
+  await assert.rejects(
+    () => cookieDoPortao('http://localhost:5173/', 'errada', recusa),
+    /recusou a credencial/,
+  );
+
+  // Aceitou mas não devolveu cookie: também estoura. Sem cookie, a próxima
+  // página é a de login de novo, e os verdes seriam mentira.
+  const semCookie = (async (url: string) =>
+    String(url).endsWith('/sessao')
+      ? resposta({ estado: 'ativo' })
+      : resposta({ dentro: true }, true, [])) as unknown as typeof fetch;
+  await assert.rejects(
+    () => cookieDoPortao('http://localhost:5173/', 'certa', semCookie),
+    /não devolveu cookie/,
+  );
 });
 
 test('o alvo vira o endereço que o navegador abre', () => {

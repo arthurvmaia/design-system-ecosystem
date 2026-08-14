@@ -942,22 +942,37 @@ const COOKIE_DO_PORTAO = 'orbis_sessao';
  * o coloca é o CONTEXTO do navegador, que está fora do alcance do JavaScript da
  * página. É por isso que a injeção acontece aqui e não dentro do `MEDIR`.
  *
- * Devolve `null` quando o portão está desligado (nada a fazer) e ESTOURA quando
- * a credencial não serve: seguir em frente mediria a tela de login de novo, e
- * essa é exatamente a falha silenciosa que este bloco veio impedir.
+ * ## Portão que não existe não é erro
+ *
+ * A primeira versão ESTOURAVA quando `/api/orbis/sessao` não respondia, e isso
+ * quebrou a medição do app de Lojas — que tem uma porta de entrada sem senha e
+ * nenhuma rota do portão. Pior: como a credencial também vem de `ORBIS_SENHA` do
+ * ambiente, bastava a variável estar definida para a régua recusar medir
+ * QUALQUER endereço de fora. Uma régua que se recusa a medir por causa de uma
+ * tranca que não existe é pior que uma régua sem credencial nenhuma.
+ *
+ * Então a decisão é por caso:
+ *
+ * - **sem rota de portão** → mede sem cookie. Não há o que abrir.
+ * - **portão desligado** → mede sem cookie, pelo mesmo motivo.
+ * - **portão ativo e a credencial não serve** → ESTOURA. Aqui seguir em frente
+ *   mediria a tela de login e devolveria verdes, que é a falha silenciosa que
+ *   este bloco inteiro veio impedir.
  */
-export const cookieDoPortao = async (endereco: string, senha: string): Promise<string | null> => {
+export const cookieDoPortao = async (
+  endereco: string,
+  senha: string,
+  buscar: typeof fetch = fetch,
+): Promise<string | null> => {
   const origem = new URL(endereco).origin;
-  const sessao = await fetch(`${origem}/api/orbis/sessao`).catch(() => null);
-  if (sessao === null || !sessao.ok) {
-    throw new Error(
-      `não consegui falar com o portão em ${origem}/api/orbis/sessao — o servidor está no ar?`,
-    );
-  }
-  const estado = (await sessao.json()) as { estado?: string };
-  if (estado.estado !== 'ativo') return null;
+  const sessao = await buscar(`${origem}/api/orbis/sessao`).catch(() => null);
+  // Servidor mudo, 404, HTML no lugar de JSON: nenhum destes é "a credencial
+  // falhou". São "não há portão aqui", e a medição segue sem cookie.
+  if (sessao === null || !sessao.ok) return null;
+  const estado = await sessao.json().catch(() => null);
+  if (estado === null || (estado as { estado?: string }).estado !== 'ativo') return null;
 
-  const entrada = await fetch(`${origem}/api/orbis/entrar`, {
+  const entrada = await buscar(`${origem}/api/orbis/entrar`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ senha }),
