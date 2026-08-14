@@ -1,85 +1,14 @@
 # HANDOFF — onde o trabalho está
 
-> ## 🔄 RETOMADA — trabalho em voo (2026-08-14)
+> ## 🔄 RETOMADA
 >
-> **Os 20 kits passam** (prova22, `kits-provar-GxInuO`): S4, S12, S13, S14, S15,
-> S16, S17, S18, S19 todas em ZERO. A fila foi liberada.
+> **O ponto de partida da próxima sessão é o `HANDOFF-RETOMADA.md`, ao lado
+> deste arquivo.** Ele diz onde o trabalho parou (2026-08-14), o que está
+> bloqueado esperando decisão do dono, a receita da fila de geração e a lição do
+> gate. Este arquivo aqui descreve o PRODUTO; aquele descreve o TRABALHO.
 >
-> **Sites entregues:** Sócio Torcedor SJDR, AVDSGN e Meridiano — os três com 22
-> verificações nas duas larguras e aceite estático sem pendência.
->
-> **Faltam 6 jobs `generate`:** Voltz (Imóvel e arquitetura) e as expressas
-> duplicadas — Café da Estação (×2), asteric, Navalha & Cia (×2), Ourivés (×2).
-> Processar UM de cada duplicata.
->
-> ### A receita, que já se repetiu três vezes
->
-> **O payload é de ANTES da curadoria.** Em todos os jobs, parte das peças do
-> kit foi aposentada da Biblioteca e a seção sai VAZIA (regra S9 acusa). Antes
-> de qualquer coisa:
->
-> 1. Ler o job e testar `library/<cmp>/bundle` de cada peça: as mortas aparecem.
-> 2. Repor pelo kit ATUAL do mesmo nome (o rótulo do job nomeia o kit) — as
->    peças estão em `kitComponents` no SQLite, não no payload.
-> 3. Extrair o texto real de cada peça nova (`>texto<` do `index.html` do
->    bundle) e escrever as substituições contra ele. **Âncora é o texto NU**:
->    ancorar em `>texto<` falha quando há marcação no meio.
-> 4. **A troca mais específica vai PRIMEIRO.** Substituição é sequencial: uma
->    chave curta (`CLIENTES`) come a longa (`FEEDBACK DOS NOSSOS CLIENTES`).
-> 5. Seção sem peça é oportunidade: `criarSecoesFaltantes` está ligado em todos,
->    e o dono quer página longa com o AIDA inteiro.
->
-> **Print de página inteira MENTE.** O Playwright redimensiona a viewport para
-> capturar tudo e re-dispara os observadores de rolagem: o SJDR apareceu com um
-> vazio de 4000px que não existia. Medir dobra por dobra, rolando.
->
-> **Mídia é indexada pela ORIGEM.** Oito entradas apontando para o mesmo arquivo
-> viram uma; para preencher N vagas com a mesma arte, copiar o arquivo N vezes.
->
-> ### Consertos de motor que saíram desta fila
->
-> - `--ver` no `pnpm conferir`: abre a janela (padrão segue headless).
-> - `destravarOpacidadeSemRevelador` passou a devolver o DESLOCAMENTO junto com
->   a opacidade: classe presa em `translateY(40px) scale(.95)` deixava um botão
->   com 42px onde o CSS mandava 44, e a S15 reprovava o alvo errado.
->
-> ### ⏸ GATE EM VOO — os três auditores morreram no limite (volta 15h)
->
-> Auditando o diff NÃO COMMITADO de `apps/portal/src/portal.css` e
-> `scripts/conferir-site.ts`. Preflight passou (typecheck, lint, sem padrão de
-> credencial; suíte com a única falha pré-existente do acervo). As três lentes
-> — adversarial, usuário-zero e convenção — caíram por limite de sessão antes
-> de emitir parecer.
->
-> **Ao voltar:** ou relançar as três (prompts na seção 5 do skill `gate`, faixa
-> VAI SAIR, lente extra CONVENÇÃO porque a peça entra em sistema existente), ou
-> aceitar o parecer degradado que eu emiti em sequência — ele está em
-> `scripts/_auditoria/` e declara o isolamento degradado no cabeçalho.
-> O diff auditado está em `%TEMP%/gate-diff.txt`.
->
-> Servidor (8787) e portal (4000) precisam estar no ar para a lente
-> usuário-zero: `pnpm --filter @ds/server dev` e `pnpm --filter @ds/portal dev`.
->
-> ### A fila TRAVOU nos quatro últimos, e não é defeito
->
-> Café da Estação, asteric, Navalha & Cia e Ourivés (cada um duplicado) são
-> sobras dos testes da Via Expressa: **sem pasta de projeto, sem mídia em disco,
-> sem projeto no banco, e zero peças vivas no kit**. Gerar produziria um site
-> com as fotos e o logotipo da empresa de ORIGEM, que é o que a S2 existe para
-> barrar. Ou o dono limpa esses sete jobs, ou roda a Via Expressa de novo para
-> as marcas que ainda interessam.
->
-> ### Feito depois da fila
->
-> A frente Criativos ganhou o FIM da linha: rota `/api/criativos` e a tela
-> "Minhas peças". Download só do que a verificação aprovou; reprovada mostra o
-> motivo, e o custo gasto aparece junto.
->
-> **Ainda em aberto:** varredura de UI/UX do app (autorizada pelo dono) e a
-> qualidade da MÍDIA automática — as imagens que o assistente gera não combinam
-> com as marcas (surfe numa loja de eletrônicos). Passa em todas as regras e é a
-> primeira coisa que alguém vê; trocar por Magnific custa crédito e precisa da
-> declaração de orçamento.
+> Resumo de uma linha: os 20 kits passam, quatro sites entregues, e a fila está
+> travada em sete jobs órfãos que não têm projeto nem mídia em disco.
 
 ## 1. Onde o produto está
 
