@@ -1,41 +1,14 @@
 # HANDOFF — onde o trabalho está
 
-> ## 🔄 RETOMADA — trabalho em voo (2026-08-14)
+> ## 🔄 RETOMADA
 >
-> **OS 20 KITS PASSARAM.** Prova22 (`kits-provar-GxInuO`): S4, S12, S13, S14,
-> S15, S16, S17, S18, S19 — todas ZERO, 20 de 20 aprovados. A ordem que
-> segurava a fila ("site nenhum antes dos kits 100%") está cumprida.
+> **O ponto de partida da próxima sessão é o `HANDOFF-RETOMADA.md`, ao lado
+> deste arquivo.** Ele diz onde o trabalho parou (2026-08-14), o que está
+> bloqueado esperando decisão do dono, a receita da fila de geração e a lição do
+> gate. Este arquivo aqui descreve o PRODUTO; aquele descreve o TRABALHO.
 >
-> **O que fechou o S4 (216 → 30 → 0), tudo medido:**
-> 1. *Alfa por variável do Tailwind.* `literalDe` rejeitava qualquer valor com
->    `var(`, e o Tailwind escreve TODA cor como
->    `rgb(5 5 5 / var(--tw-bg-opacity, 1))`. Quase toda cor literal do site era
->    invisível: no pior projeto, 2 correções viraram 61.
-> 2. *Tinta declarada por TAG.* O compositor escreve no `marca.css`
->    `a{color:var(--marca-link)}` e `h1..h6{color:var(--marca-heading)}` — e
->    esse arquivo nem chegava à conferência.
-> 3. *Tinta padrão da seção.* `REGRA_DA_TINTA_DA_MARCA` põe `--marca-body` no
->    proxy; a conferência passou a modelar isso.
-> 4. *Chave por ORIGEM.* `.bg-white` existe em quase toda origem: numa virou
->    `--marca-surface` (escuro), noutra ficou branca. O mapa por nome de classe
->    respondia com a errada.
-> 5. *Variável da origem.* `color:var(--c-bg)` com `--c-bg` recolorido na
->    DEFINIÇÃO — resolvida quando há uma definição só.
->
-> **E o S13 (83 → 0):** a régua nunca chegava ao fim da página, porque o
-> `scroll-behavior:smooth` da origem fazia cada `scrollTo` virar animação que o
-> passo seguinte reiniciava.
->
-> **AGORA: a fila de 11 jobs `generate`** — SJDR primeiro COM NAVEGADOR
-> VISÍVEL, depois AVDSGN (portfólio real), depois Meridiano/Voltz/expressos
-> (Café da Estação, asteric, Navalha, Ourivés — processar UM de cada
-> duplicata). Geração completa: copy no tom da marca, Magnific, vídeo onde
-> couber, contraste medido + animações presentes, 390px bloqueante.
->
-> **Em aberto, pedido pelo dono nesta sessão:** entregável deixa de ser zip
-> cru e passa a ser PROJETO pronto para deploy (README de publicação,
-> package.json, configs), mantendo o botão de visualizar. Depois: varredura de
-> UI/UX e os passos 3–6 do MVP Criativos.
+> Resumo de uma linha: os 20 kits passam, quatro sites entregues, e a fila está
+> travada em sete jobs órfãos que não têm projeto nem mídia em disco.
 
 ## 1. Onde o produto está
 

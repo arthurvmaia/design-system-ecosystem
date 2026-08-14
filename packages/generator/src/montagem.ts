@@ -839,11 +839,28 @@ export const destravarOpacidadeSemRevelador = (
   };
 
   const classes = new Set<string>();
+  /**
+   * As classes cujo repouso também DESLOCA — e deixá-las de fora era meia cura.
+   *
+   * `.clip-slide{opacity:0;transform:translateY(40px) scale(.95)}` é um quadro
+   * só: a peça nasce apagada, baixa e menor, e o revelador devolveria as três
+   * coisas juntas. Acender a opacidade e largar o transform deixa o bloco
+   * visível 40px abaixo do lugar e 5% menor para sempre.
+   *
+   * Medido no site do Meridiano: um botão com `min-height:44px` aplicado
+   * chegava à tela com 42px, porque o ancestral estava preso em `scale(0.95)`.
+   * A regra S15 reprovou o alvo de toque, e o culpado não era o alvo.
+   *
+   * A versão INLINE desta mesma passagem (`acenderOpacidadeCongelada`) já
+   * levava o deslocamento junto; a versão por classe é que tinha esquecido.
+   */
+  const deslocadas = new Set<string>();
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const seletor = m[1] ?? '';
     const corpo = m[2] ?? '';
     const op = /(?:^|[;\s])opacity\s*:\s*(0|0?\.0*[0-9])(?:\s|;|!|$)/i.exec(corpo);
     if (op === null) continue;
+    const desloca = /(?:^|[;\s])transform\s*:[^;]*(?:translate|scale|matrix|rotate)/i.test(corpo);
     /**
      * `pointer-events: none` junto da opacidade zero diz HOVER, não revelação.
      *
@@ -861,7 +878,9 @@ export const destravarOpacidadeSemRevelador = (
     // uma situação, não o repouso — e mexer nele mudaria o comportamento.
     for (const c of seletor.matchAll(/(?:^|[,\s])\.((?:\\.|[\w-])+)\s*(?=,|\{|$)/g)) {
       const nome = (c[1] ?? '').replace(/\\/g, '');
-      if (nome !== '') classes.add(nome);
+      if (nome === '') continue;
+      classes.add(nome);
+      if (desloca) deslocadas.add(nome);
     }
   }
   if (classes.size === 0) return { css: '', destravadas: [] };
@@ -874,9 +893,15 @@ export const destravarOpacidadeSemRevelador = (
   const alvo = [...classes].filter((c) => noHtml.has(c) && !alguemRevela(c));
   if (alvo.length === 0) return { css: '', destravadas: [] };
 
-  const seletores = alvo.map((c) => `.${c.replace(/([^\w-])/g, '\\$1')}`).join(',');
+  const escapar = (c: string): string => `.${c.replace(/([^\w-])/g, '\\$1')}`;
+  const seletores = alvo.map(escapar).join(',');
+  const comDeslocamento = alvo.filter((c) => deslocadas.has(c));
+  const regraDoDeslocamento =
+    comDeslocamento.length === 0
+      ? ''
+      : `${comDeslocamento.map(escapar).join(',')}{transform:none !important}\n`;
   return {
-    css: `\n/* Sem revelador que alcance esta página, a opacidade inicial fica para sempre. */\n${seletores}{opacity:1 !important}\n`,
+    css: `\n/* Sem revelador que alcance esta página, a opacidade inicial fica para sempre. */\n${seletores}{opacity:1 !important}\n${regraDoDeslocamento}`,
     destravadas: alvo,
   };
 };

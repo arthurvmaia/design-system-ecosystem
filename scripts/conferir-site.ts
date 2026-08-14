@@ -660,7 +660,23 @@ const MEDIR = `() => {
   let alturaTotal = 0;
   let alturaUtil = 0;
   {
-    alturaTotal = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    /*
+      Pagina SEM secao nao da para verificar, e dizer 0% seria mentir.
+
+      Tudo o que esta medida conta vive dentro de [data-secao] — e a marcacao
+      dos sites que este motor compoe. Apontada para uma pagina que nao nasceu
+      aqui (o portal, o proprio app), ela nao acha no de texto nenhum e devolve
+      0%: a regra reprovava por vazio uma tela cheia. Numero identico nos dois
+      apps foi o que denunciou o metodo.
+
+      alturaTotal em zero e como esta medida diz "nao verifiquei": a regra ja
+      se abstem nesse caso, em vez de reprovar. Reprovar o que nao se mediu e o
+      mesmo defeito da regra alimentada por constante, do avesso.
+    */
+    const temSecao = document.querySelectorAll('[data-secao]').length > 0;
+    alturaTotal = temSecao
+      ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+      : 0;
     /*
       Somar a altura de cada elemento CONTA DUAS VEZES quem esta dentro de quem:
       um <li> dentro de um <p> dentro de um cartao soma tres. A primeira versao
@@ -866,12 +882,128 @@ ${FECHA}
  *
  * Sendo chave declarada, quem chama escolhe; sendo padrão, ninguém escolheria.
  */
+/**
+ * O alvo pode ser uma PASTA ou um ENDEREÇO — e o segundo veio depois.
+ *
+ * A régua nasceu para medir site gerado, que é pasta com `index.html`. Só que
+ * ela mede coisas que valem para qualquer página: se o texto se lê, se o dedo
+ * acerta o alvo, se algo transborda. O nosso próprio app é uma página como as
+ * outras, e nunca tinha passado pela régua que ele aplica nos outros — a única
+ * coisa que faltava era saber abrir `http://`.
+ */
+/** O alvo é um endereço no ar, e não uma pasta de site gerado? */
+export const ehEnderecoDeRede = (alvo: string): boolean => /^https?:\/\//i.test(alvo);
+
+/**
+ * ONDE gravar o veredito — `null` quando não há onde.
+ *
+ * Isto é função separada porque foi exatamente aqui que o comando quebrou: o
+ * resto do arquivo usava a mesma variável para "o que medir" e "onde gravar", e
+ * `path.join` de uma URL produz um caminho inexistente. O `writeFileSync`
+ * estourava DEPOIS de imprimir todos os vereditos, então a tela mostrava tudo
+ * verde e o erro vinha no fim — e o processo saía com 1, o mesmo código de
+ * "reprovou", o que estragava o comando como portão.
+ *
+ * Endereço não tem pasta ao lado. A decisão é de uma linha e agora tem teste,
+ * porque este arquivo não tinha nenhum e foi por isso que o defeito passou.
+ */
+export const destinoDoVeredito = (alvo: string): string | null =>
+  ehEnderecoDeRede(alvo) ? null : join(resolve(alvo), 'aceite-navegador.json');
+
+export const enderecoDoAlvo = (alvo: string): string => {
+  if (/^https?:\/\//i.test(alvo)) return alvo;
+  const indice = join(alvo, 'index.html');
+  if (!existsSync(indice)) throw new Error(`não achei ${indice}`);
+  return pathToFileURL(indice).href;
+};
+
+/** O nome do cookie de sessão do portão. Mesma constante do servidor. */
+const COOKIE_DO_PORTAO = 'orbis_sessao';
+
+/**
+ * O cookie de sessão do portão, para a régua medir o que está ATRÁS dele.
+ *
+ * ## Por que existe
+ *
+ * A régua aprendeu a abrir `http://` justamente para medir o nosso próprio app
+ * — e o nosso próprio app pede credencial. Sem isto ela media a tela de login:
+ * seis elementos, dez vereditos verdes, e a impressão de que o app inteiro
+ * passou. Verde medido em página errada é pior que vermelho, porque ninguém vai
+ * conferir de novo.
+ *
+ * ## Por que login e não "desliga o portão"
+ *
+ * A alternativa era esvaziar `ORBIS_SENHA` e reiniciar o servidor. Isso muda a
+ * configuração da máquina de quem mede, exige restaurar depois, e mede um app
+ * num modo em que ele não roda de verdade. Aqui a régua entra como uma pessoa
+ * entra: manda a credencial, recebe o cookie assinado, navega.
+ *
+ * O cookie é `HttpOnly`, então a página não consegue lê-lo nem escrevê-lo — quem
+ * o coloca é o CONTEXTO do navegador, que está fora do alcance do JavaScript da
+ * página. É por isso que a injeção acontece aqui e não dentro do `MEDIR`.
+ *
+ * ## Portão que não existe não é erro
+ *
+ * A primeira versão ESTOURAVA quando `/api/orbis/sessao` não respondia, e isso
+ * quebrou a medição do app de Lojas — que tem uma porta de entrada sem senha e
+ * nenhuma rota do portão. Pior: como a credencial também vem de `ORBIS_SENHA` do
+ * ambiente, bastava a variável estar definida para a régua recusar medir
+ * QUALQUER endereço de fora. Uma régua que se recusa a medir por causa de uma
+ * tranca que não existe é pior que uma régua sem credencial nenhuma.
+ *
+ * Então a decisão é por caso:
+ *
+ * - **sem rota de portão** → mede sem cookie. Não há o que abrir.
+ * - **portão desligado** → mede sem cookie, pelo mesmo motivo.
+ * - **portão ativo e a credencial não serve** → ESTOURA. Aqui seguir em frente
+ *   mediria a tela de login e devolveria verdes, que é a falha silenciosa que
+ *   este bloco inteiro veio impedir.
+ */
+export const cookieDoPortao = async (
+  endereco: string,
+  senha: string,
+  buscar: typeof fetch = fetch,
+): Promise<string | null> => {
+  const origem = new URL(endereco).origin;
+  const sessao = await buscar(`${origem}/api/orbis/sessao`).catch(() => null);
+  // Servidor mudo, 404, HTML no lugar de JSON: nenhum destes é "a credencial
+  // falhou". São "não há portão aqui", e a medição segue sem cookie.
+  if (sessao === null || !sessao.ok) return null;
+  const estado = await sessao.json().catch(() => null);
+  if (estado === null || (estado as { estado?: string }).estado !== 'ativo') return null;
+
+  const entrada = await buscar(`${origem}/api/orbis/entrar`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ senha }),
+  });
+  if (!entrada.ok) {
+    throw new Error(`o portão recusou a credencial (HTTP ${entrada.status}).`);
+  }
+  // `getSetCookie` devolve os Set-Cookie separados; o `get` juntaria tudo numa
+  // string só e o `split(';')` pegaria o atributo errado.
+  const cabecalhos = entrada.headers.getSetCookie?.() ?? [];
+  for (const c of cabecalhos) {
+    const [par] = c.split(';');
+    const [nome, ...resto] = par.split('=');
+    if (nome.trim() === COOKIE_DO_PORTAO) return resto.join('=');
+  }
+  throw new Error('o portão aceitou a credencial mas não devolveu cookie de sessão.');
+};
+
 export const conferirNoNavegador = async (
   pasta: string,
-  opcoes: { visivel?: boolean } = {},
+  opcoes: { visivel?: boolean; credencial?: string } = {},
 ): Promise<{ largura: number; aceite: ResultadoDeAceite; medida: SiteNoNavegador }[]> => {
-  const indice = join(pasta, 'index.html');
-  if (!existsSync(indice)) throw new Error(`não achei ${indice}`);
+  const endereco = enderecoDoAlvo(pasta);
+  /**
+   * O login acontece UMA vez, antes das larguras. Duas sessões seriam dois
+   * cookies e nenhum ganho — e o servidor conta cada entrada.
+   */
+  const cookie =
+    opcoes.credencial !== undefined && ehEnderecoDeRede(pasta)
+      ? await cookieDoPortao(endereco, opcoes.credencial)
+      : null;
   const pw = await import('playwright');
   const navegador = await pw.chromium.launch({
     headless: opcoes.visivel !== true,
@@ -889,7 +1021,24 @@ export const conferirNoNavegador = async (
         hasTouch: perfil.isMobile,
         deviceScaleFactor: perfil.deviceScaleFactor,
       });
-      await pagina.goto(pathToFileURL(indice).href, { waitUntil: 'load' });
+      // O cookie entra no CONTEXTO, antes do primeiro `goto`: sendo `HttpOnly`,
+      // ele não existe para o JavaScript da página, e chegar depois da navegação
+      // faria a primeira medição cair na tela de login mesmo assim.
+      if (cookie !== null) {
+        const u = new URL(endereco);
+        await pagina.context().addCookies([
+          {
+            name: COOKIE_DO_PORTAO,
+            value: cookie,
+            domain: u.hostname,
+            path: '/',
+            httpOnly: true,
+            secure: u.protocol === 'https:',
+            sameSite: 'Lax',
+          },
+        ]);
+      }
+      await pagina.goto(endereco, { waitUntil: 'load' });
       /**
        * A página é PERCORRIDA antes de medir, como um visitante percorre.
        *
@@ -1030,15 +1179,78 @@ export const conferirNoNavegador = async (
   return saida;
 };
 
+/**
+ * A linha de comando, lida como DADO — para poder ser testada sem processo.
+ *
+ * A credencial vem por `--credencial <valor>` ou, faltando ela, de `ORBIS_SENHA`
+ * do ambiente, que é onde ela já mora para quem sobe o servidor. Nunca fica no
+ * código, e nunca na URL: URL entra em log de servidor e de histórico de shell.
+ */
+export const lerArgumentos = (
+  args: readonly string[],
+  ambiente: Record<string, string | undefined> = {},
+): {
+  alvo: string | undefined;
+  credencial: string | undefined;
+  corrigir: boolean;
+  visivel: boolean;
+} => {
+  const iCred = args.indexOf('--credencial');
+  const doAmbiente = ambiente.ORBIS_SENHA;
+  return {
+    corrigir: args.includes('--corrigir'),
+    visivel: args.includes('--ver'),
+    credencial:
+      iCred >= 0 && args[iCred + 1] !== undefined && !args[iCred + 1].startsWith('--')
+        ? args[iCred + 1]
+        : typeof doAmbiente === 'string' && doAmbiente !== ''
+          ? doAmbiente
+          : undefined,
+    /**
+     * O VALOR do `--credencial` não é o alvo: sem esta guarda,
+     * `pnpm conferir --credencial x http://…` mediria uma pasta chamada "x".
+     *
+     * O `iCred >= 0` não é zelo: sem ele, `iCred` é -1, a posição proibida vira
+     * 0 e o primeiro argumento — que é o alvo em toda chamada sem credencial —
+     * some. O teste pegou; eu não tinha visto.
+     */
+    alvo: args.find((a, i) => !a.startsWith('--') && !(iCred >= 0 && i === iCred + 1)),
+  };
+};
+
 const principal = async (): Promise<void> => {
-  const corrigir = process.argv.includes('--corrigir');
-  const visivel = process.argv.includes('--ver');
-  const alvo = process.argv.slice(2).find((a) => !a.startsWith('--'));
+  const { alvo, credencial, corrigir, visivel } = lerArgumentos(process.argv.slice(2), process.env);
   if (alvo === undefined) {
-    console.log('\n  Uso: pnpm conferir <pasta do site gerado> [--ver] [--corrigir]\n');
+    console.log(
+      '\n  Uso: pnpm conferir <pasta do site gerado | endereço http> [--ver] [--corrigir] [--credencial <senha do portão>]\n',
+    );
     process.exit(1);
   }
-  const pasta = resolve(alvo);
+  /**
+   * ENDEREÇO e PASTA são coisas diferentes, e confundi-las quebrou o comando.
+   *
+   * `resolve` transformaria `http://x` em caminho, então o endereço fica como
+   * está. Só que o resto da função usava essa MESMA variável para gravar o
+   * veredito ao lado do site (`join(pasta, 'aceite-navegador.json')`), e
+   * `path.join` não entende URL: virava um caminho relativo inexistente e o
+   * `writeFileSync` estourava.
+   *
+   * O estrago era pior do que parece: a lista de vereditos já tinha sido
+   * impressa, então a tela mostrava tudo verde e o erro vinha depois. E o
+   * processo saía com 1 — o MESMO código de "reprovou" —, de modo que quem
+   * encadeia `pnpm pagina && pnpm conferir` como portão passava a receber
+   * falha sempre, medisse o que medisse. Número que não muda não prova nada.
+   *
+   * Endereço não tem pasta ao lado onde gravar. Então não se grava, e se diz.
+   */
+  const ehEndereco = ehEnderecoDeRede(alvo);
+  const pasta = ehEndereco ? alvo : resolve(alvo);
+  if (ehEndereco && corrigir) {
+    console.log(
+      '\n  --corrigir não se aplica a endereço: a folha de ajustes mora ao lado do site gerado, e um servidor no ar não tem esse lado. Aponte para a pasta da versão.\n',
+    );
+    process.exit(1);
+  }
   // Corrigir exige medir o site CRU: com o bloco anterior no lugar, a medição
   // só enxerga o resíduo e o bloco novo nasce menor que o problema.
   if (corrigir) {
@@ -1047,7 +1259,7 @@ const principal = async (): Promise<void> => {
       writeFileSync(folha, `${semOBloco(readFileSync(folha, 'utf8')).trimEnd()}${QUEBRA}`, 'utf8');
     }
   }
-  const resultados = await conferirNoNavegador(pasta, { visivel });
+  const resultados = await conferirNoNavegador(pasta, { visivel, credencial });
 
   let reprovou = false;
   for (const { largura, aceite } of resultados) {
@@ -1071,13 +1283,18 @@ const principal = async (): Promise<void> => {
     console.log('  Rode de novo sem --corrigir para conferir o resultado.');
   }
 
-  const arquivo = join(pasta, 'aceite-navegador.json');
-  writeFileSync(
-    arquivo,
-    JSON.stringify({ formato: 1, conferidoEm: Date.now(), larguras: resultados }, null, 2),
-    'utf8',
-  );
-  console.log(`\n  Veredito gravado em ${arquivo}\n`);
+  const destino = destinoDoVeredito(alvo);
+  if (destino === null) {
+    console.log('\n  Endereço medido: o veredito fica só aqui, sem arquivo ao lado.\n');
+  } else {
+    const arquivo = destino;
+    writeFileSync(
+      arquivo,
+      JSON.stringify({ formato: 1, conferidoEm: Date.now(), larguras: resultados }, null, 2),
+      'utf8',
+    );
+    console.log(`\n  Veredito gravado em ${arquivo}\n`);
+  }
 
   // Sai com erro quando reprova: assim o comando serve de portão para quem
   // encadeia `pnpm pagina && pnpm conferir`, e não só de relatório para ler.

@@ -12,9 +12,11 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  criativosDir,
   finishJob,
   getJob,
   listarAssetsFaltando,
+  problemasDaEntregaCriativa,
   projectGeneratedDir,
   vaultDsDir,
   vaultExtractedDir,
@@ -161,6 +163,57 @@ if (job.type === 'generate') {
           }
         }
       }
+    }
+  }
+}
+
+/**
+ * `criativo` — o job que gasta DINHEIRO fechava sem conferência nenhuma.
+ *
+ * Este ramo não existia. `extract` e `generate` eram validados e o `criativo`
+ * caía direto no `finishJob`: resultado ausente, fora do schema, apontando para
+ * arquivo que não existe ou com gasto acima do teto — tudo fechava calado, como
+ * "concluído". Descoberto ao exercitar o fluxo de ponta a ponta pela primeira
+ * vez, que é exatamente para isso que se exercita.
+ *
+ * As quatro perguntas, na ordem em que doem:
+ *
+ * 1. **O resultado existe?** Sem `resultado.json` a tela "Minhas peças" não tem
+ *    o que mostrar, e o pedido some para quem o fez.
+ * 2. **Ele obedece ao contrato?** `ResultadoCriativo` já cobra que aprovada tem
+ *    arquivo e que reprovada tem motivo. Aqui isso vira portão em vez de boa
+ *    intenção.
+ * 3. **O arquivo da aprovada está EM DISCO?** O schema garante que o caminho foi
+ *    preenchido, não que ele aponta para algo. Botão de download que baixa 404 é
+ *    pior que peça reprovada com motivo.
+ * 4. **O gasto respeitou o teto?** A regra do motor é parar ao zerar. Fechar um
+ *    job que estourou o teto do cliente seria registrar o estouro como sucesso.
+ */
+if (job.type === 'criativo') {
+  const dir = criativosDir(jobId);
+  const arquivo = join(dir, 'resultado.json');
+
+  if (!existsSync(arquivo)) {
+    problemas.push(`resultado.json não existe em ${dir} — a peça não tem onde ser lida.`);
+  } else {
+    let bruto: unknown = null;
+    let leu = false;
+    try {
+      bruto = JSON.parse(readFileSync(arquivo, 'utf8'));
+      leu = true;
+    } catch (err) {
+      problemas.push(
+        `resultado.json não é JSON válido: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (leu) {
+      problemas.push(
+        ...problemasDaEntregaCriativa({
+          resultado: bruto,
+          pedido: job.payload,
+          existe: (relativo) => existsSync(join(dir, relativo)),
+        }),
+      );
     }
   }
 }

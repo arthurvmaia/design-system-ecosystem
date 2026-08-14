@@ -1,6 +1,6 @@
 import { Mascote } from '@/components/Mascote';
 import { Toaster } from '@/components/Toaster';
-import { ArrowLeft, Sparkles, Zap } from 'lucide-react';
+import { ArrowLeft, Images, Sparkles, Zap } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 
 /**
@@ -67,6 +67,7 @@ export function CriativosShell() {
             [
               { para: '/criativos', rotulo: 'Nova peça', Icone: Sparkles, soExato: true },
               { para: '/criativos/expresso', rotulo: 'Expresso', Icone: Zap, soExato: false },
+              { para: '/criativos/pecas', rotulo: 'Minhas peças', Icone: Images, soExato: false },
             ] as const
           ).map(({ para, rotulo, Icone, soExato }) => (
             <NavLink

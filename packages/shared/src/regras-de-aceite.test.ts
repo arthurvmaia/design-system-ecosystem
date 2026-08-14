@@ -412,3 +412,27 @@ test('G9 passa quando o script acha tudo que procura', () => {
   const r = conferirPecaDaGaleria(peca({ alvosPerdidos: [] }));
   assert.equal(r.vereditos.find((v) => v.codigo === 'G9')?.estado, 'passou');
 });
+
+test('S20 diz que NAO verificou, em vez de sumir da lista', () => {
+  // A medida devolve alturaTotal 0 quando a pagina nao tem secao para medir.
+  // A regra se abstinha certo, mas calada: a lista saia com uma regra a menos e
+  // quem lia nao distinguia "passou" de "ninguem mediu" — o mesmo defeito que o
+  // portao de fidelidade evita ao sair 2 em vez de 0.
+  const semSecao = conferirSiteNoNavegador(
+    noNavegador({ largura: 1440, alturaTotal: 0, alturaUtil: 0 }),
+  ).vereditos;
+  const s20 = semSecao.find((x) => x.codigo === 'S20');
+  assert.ok(s20 !== undefined, 'a regra aparece na lista');
+  assert.equal(s20.estado, 'pendente', 'nao reprova: nao foi medida');
+  assert.match(s20.motivo, /não verifiquei/);
+
+  // E quando HA o que medir, ela volta a julgar de verdade.
+  const vazia = conferirSiteNoNavegador(
+    noNavegador({ largura: 1440, alturaTotal: 4000, alturaUtil: 200 }),
+  ).vereditos;
+  assert.equal(vazia.find((x) => x.codigo === 'S20')?.estado, 'reprovou');
+  const densa = conferirSiteNoNavegador(
+    noNavegador({ largura: 1440, alturaTotal: 4000, alturaUtil: 2000 }),
+  ).vereditos;
+  assert.equal(densa.find((x) => x.codigo === 'S20')?.estado, 'passou');
+});

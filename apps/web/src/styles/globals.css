@@ -1356,6 +1356,7 @@
 
 .portao-campo {
   width: 100%;
+  min-height: 44px;
   border: 1px solid var(--color-border);
   background: rgb(0 0 0 / 0.5);
   padding: 12px 14px;
@@ -1387,6 +1388,15 @@
   border: 1px solid rgb(var(--acento) / 0.45);
   background: rgb(var(--acento) / 0.1);
   padding: 11px 18px;
+  /*
+   * 44px é o piso de alvo de toque, e a nossa própria régua nos pegou aqui.
+   *
+   * O botão saía com 42px no celular (11+11 de respiro sobre uma letra de
+   * 12px), e a regra S15 — a que ESTE app cobra de todo site que ele gera —
+   * reprovou o portão de entrada dele mesmo. Errar o toque no botão de entrar
+   * não é acidente: é a primeira coisa que a pessoa faz.
+   */
+  min-height: 44px;
   color: var(--color-bone-1);
   font-family: var(--font-display);
   font-size: 12px;

@@ -838,22 +838,51 @@ export const conferirSiteNoNavegador = (m: SiteNoNavegador): ResultadoDeAceite =
    */
   const total = m.alturaTotal;
   const util = m.alturaUtil;
-  if (total !== undefined && util !== undefined && total > 0) {
-    const fracao = util / total;
+  /**
+   * "Não verifiquei" é DITO, e não omitido — a abstenção calada era um buraco.
+   *
+   * A medida devolve `alturaTotal: 0` quando a página não tem seção nenhuma
+   * para medir (é o caso de qualquer página que não seja site composto por
+   * este motor). A regra se abstinha corretamente, mas em SILÊNCIO: sem
+   * veredito, a lista da conferência saía com uma regra a menos e quem lia não
+   * tinha como distinguir "passou" de "ninguém mediu".
+   *
+   * É o mesmo defeito que o portão de fidelidade evita ao sair 2 em vez de 0
+   * quando não dá para verificar. Dizer que não mediu custa uma linha; deixar
+   * de dizer custa a confiança na lista inteira.
+   */
+  /**
+   * Guarda ÚNICA, e não repetida em cada ramo.
+   *
+   * Medida ausente é medida ausente: aí a régua nem chegou a olhar, e não há o
+   * que dizer. Mas com a condição repetida nos dois ramos, um campo definido e
+   * o outro não fazia a regra sumir da lista em silêncio outra vez, pela porta
+   * dos fundos — o mesmo buraco que este trecho acabou de fechar pela frente.
+   */
+  if (total !== undefined && util !== undefined) {
+    const fracao = total > 0 ? util / total : null;
     v.push(
-      fracao >= 0.2
+      fracao === null
         ? {
             codigo: 'S20',
             titulo: 'A página não é mais alta que o conteúdo dela',
-            estado: 'passou',
-            motivo: '',
+            estado: 'pendente',
+            motivo:
+              'não verifiquei: esta página não tem seção para medir — a regra vale para site composto por este motor.',
           }
-        : {
-            codigo: 'S20',
-            titulo: 'A página não é mais alta que o conteúdo dela',
-            estado: 'reprovou',
-            motivo: `só ${(fracao * 100).toFixed(0)}% dos ${total}px de altura são texto ou mídia em ${m.largura}px: a maior parte do que se rola é vão.`,
-          },
+        : fracao >= 0.2
+          ? {
+              codigo: 'S20',
+              titulo: 'A página não é mais alta que o conteúdo dela',
+              estado: 'passou',
+              motivo: '',
+            }
+          : {
+              codigo: 'S20',
+              titulo: 'A página não é mais alta que o conteúdo dela',
+              estado: 'reprovou',
+              motivo: `só ${(fracao * 100).toFixed(0)}% dos ${total}px de altura são texto ou mídia em ${m.largura}px: a maior parte do que se rola é vão.`,
+            },
     );
   }
 
