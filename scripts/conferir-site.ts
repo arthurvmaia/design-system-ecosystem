@@ -866,12 +866,27 @@ ${FECHA}
  *
  * Sendo chave declarada, quem chama escolhe; sendo padrão, ninguém escolheria.
  */
+/**
+ * O alvo pode ser uma PASTA ou um ENDEREÇO — e o segundo veio depois.
+ *
+ * A régua nasceu para medir site gerado, que é pasta com `index.html`. Só que
+ * ela mede coisas que valem para qualquer página: se o texto se lê, se o dedo
+ * acerta o alvo, se algo transborda. O nosso próprio app é uma página como as
+ * outras, e nunca tinha passado pela régua que ele aplica nos outros — a única
+ * coisa que faltava era saber abrir `http://`.
+ */
+const enderecoDoAlvo = (alvo: string): string => {
+  if (/^https?:\/\//i.test(alvo)) return alvo;
+  const indice = join(alvo, 'index.html');
+  if (!existsSync(indice)) throw new Error(`não achei ${indice}`);
+  return pathToFileURL(indice).href;
+};
+
 export const conferirNoNavegador = async (
   pasta: string,
   opcoes: { visivel?: boolean } = {},
 ): Promise<{ largura: number; aceite: ResultadoDeAceite; medida: SiteNoNavegador }[]> => {
-  const indice = join(pasta, 'index.html');
-  if (!existsSync(indice)) throw new Error(`não achei ${indice}`);
+  const endereco = enderecoDoAlvo(pasta);
   const pw = await import('playwright');
   const navegador = await pw.chromium.launch({
     headless: opcoes.visivel !== true,
@@ -889,7 +904,7 @@ export const conferirNoNavegador = async (
         hasTouch: perfil.isMobile,
         deviceScaleFactor: perfil.deviceScaleFactor,
       });
-      await pagina.goto(pathToFileURL(indice).href, { waitUntil: 'load' });
+      await pagina.goto(endereco, { waitUntil: 'load' });
       /**
        * A página é PERCORRIDA antes de medir, como um visitante percorre.
        *
@@ -1038,7 +1053,8 @@ const principal = async (): Promise<void> => {
     console.log('\n  Uso: pnpm conferir <pasta do site gerado> [--ver] [--corrigir]\n');
     process.exit(1);
   }
-  const pasta = resolve(alvo);
+  // Endereço fica como está: `resolve` transformaria `http://x` em caminho.
+  const pasta = /^https?:\/\//i.test(alvo) ? alvo : resolve(alvo);
   // Corrigir exige medir o site CRU: com o bloco anterior no lugar, a medição
   // só enxerga o resíduo e o bloco novo nasce menor que o problema.
   if (corrigir) {
