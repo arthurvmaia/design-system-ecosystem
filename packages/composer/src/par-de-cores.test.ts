@@ -308,7 +308,12 @@ test('fundo LITERAL: bg-white/95 nao tem papel, e a tinta ia parar sobre ele', (
     css,
     TOKENS,
   );
-  assert.equal(r.corrigidos.length, 1, `o fundo literal tem de ser visto: ${r.html}`);
+  // DOIS: o titulo, que declara a tinta clara, e o PAINEL, que herda a tinta
+  // padrao da secao (`REGRA_DA_TINTA_DA_MARCA` poe `--marca-body` no proxy).
+  // Bege claro sobre branco da 1,6:1, entao texto solto dentro do painel sairia
+  // ilegivel do mesmo jeito — e o conserto pousa no dono da superficie, que e
+  // de quem os filhos herdam.
+  assert.equal(r.corrigidos.length, 2, `o fundo literal tem de ser visto: ${r.html}`);
   // A tinta escolhida precisa se ler sobre BRANCO, nao sobre a pagina escura.
   const escolhido = /color:var\(--marca-([a-z-]+)\)/.exec(r.html)?.[1];
   assert.ok(escolhido !== undefined, r.html);
@@ -419,4 +424,131 @@ test('fundo rgba TRANSLUCIDO nao vira superficie na tabela', () => {
     ':where([data-ds-corpo="d"]):is(.tinta){color:var(--marca-heading, #fff)}';
   const mapa = mapearClassesPorPapel(css);
   assert.equal(mapa.fundoLiteral.get('veu'), undefined, 'veu translucido nao e superficie');
+});
+
+test('a cor literal do Tailwind vem com o alfa por VARIAVEL, e era descartada inteira', () => {
+  // Medido no banco: o rodape `bg-[#050505]` (quase-preto da origem, que a
+  // recoloracao nao tocou) era invisivel para os dois mapas, porque a guarda
+  // rejeitava qualquer `var(` — e o Tailwind escreve TODA cor como
+  // `rgb(5 5 5 / var(--tw-bg-opacity, 1))`. Enquanto isso o texto virava
+  // `--marca-heading` (#2a2118, escuro, num tema claro): 1,29:1 no rodape
+  // inteiro, com o corretor passando reto por nao enxergar lado nenhum.
+  const css =
+    ':where([data-ds-corpo="d"]):is(.bg-preto){--tw-bg-opacity:1;background-color:rgb(5 5 5 / var(--tw-bg-opacity, 1))}' +
+    ':where([data-ds-corpo="d"]):is(.text-white){color:rgb(from var(--marca-heading, #fff) r g b / var(--tw-text-opacity, 1))}';
+  const mapa = mapearClassesPorPapel(css);
+  assert.equal(
+    mapa.fundoLiteral.get('bg-preto'),
+    '#050505',
+    'o fundo literal do Tailwind entra no mapa',
+  );
+  assert.equal(mapa.tinta.get('text-white'), 'heading');
+
+  // E o par colapsado e corrigido: heading escuro sobre o quase-preto.
+  const r = corrigirParesDeCor(
+    '<footer class="bg-preto"><h2 class="text-white">Titulo</h2></footer>',
+    css,
+    {
+      ...TOKENS,
+      heading: '#2a2118',
+      background: '#f8f4ec',
+      'primary-foreground': '#ffffff',
+    } as never,
+  );
+  assert.equal(r.corrigidos.length, 1, 'um par corrigido');
+  assert.equal(r.corrigidos[0]?.papelDoFundo, 'literal #050505');
+  assert.match(r.html, /style="color:var\(--marca-primary-foreground\)"/);
+
+  // O alfa por variavel NAO inventa translucidez: o padrao dele e 1.
+  assert.equal(lerAlfa('rgb(5 5 5 / var(--tw-bg-opacity, 1))'), null);
+  // Mas um padrao FRACIONARIO passa a ser lido, e antes se perdia junto.
+  assert.equal(lerAlfa('rgb(5 5 5 / var(--tw-bg-opacity, 0.4))'), 0.4);
+});
+
+test('a tinta declarada por TAG e nossa, e o mapa so olhava classe', () => {
+  // O proprio compositor escreve no marca.css `a{color:var(--marca-link)}` e
+  // `h1..h6{color:var(--marca-heading)}`. Elas pintam TODO titulo e TODO link
+  // que nao traga classe de cor, e um mapa de classes nao ve nenhuma das duas.
+  const css =
+    'h1, h2, h3, h4, h5, h6 { color: var(--marca-heading); }' +
+    'a { color: var(--marca-link); }' +
+    ':where([data-ds-corpo="d"]) p{color:var(--marca-muted)}' +
+    ':where([data-ds-corpo="d"]):is(.painel){background-color:rgb(5 5 5 / var(--tw-bg-opacity, 1))}';
+  const mapa = mapearClassesPorPapel(css);
+  assert.equal(mapa.tinta.get('@h1'), 'heading', 'tag nua entra no mapa');
+  assert.equal(mapa.tinta.get('@h6'), 'heading', 'a lista inteira, nao so a primeira');
+  assert.equal(mapa.tinta.get('@a'), 'link');
+  assert.equal(mapa.tinta.get('@p'), 'muted', 'com prefixo de escopo tambem');
+  assert.equal(mapa.tinta.get('@painel'), undefined, 'classe nao vira tag');
+
+  // `:where(…) .card h1` fica de fora: o ancestral e do recorte e pode nao vir.
+  const frageis = mapearClassesPorPapel(
+    ':where([data-ds-corpo="d"]) .card h1{color:var(--marca-link)}',
+  );
+  assert.equal(frageis.tinta.get('@h1'), undefined, 'descendente com classe no meio nao conta');
+
+  // E o par colapsa de verdade: heading escuro sobre o quase-preto do painel.
+  const r = corrigirParesDeCor(
+    '<div data-ds-corpo="d"><div class="painel"><h1>Titulo</h1></div></div>',
+    css,
+    { ...TOKENS, heading: '#2a2118', body: '#54483a', 'primary-foreground': '#ffffff' } as never,
+  );
+  const oTitulo = r.corrigidos.find((c) => c.papelAntes === 'heading');
+  assert.ok(
+    oTitulo !== undefined,
+    `o h1 sem classe tem de ser conferido: ${JSON.stringify(r.corrigidos)}`,
+  );
+  assert.equal(oTitulo.papelDoFundo, 'literal #050505');
+});
+
+test('a mesma classe em origens DIFERENTES tem cores diferentes', () => {
+  // Medido: `.bg-white` existe em quase toda origem. Numa, a recoloracao a
+  // levou para --marca-surface (escuro); noutra, ficou branca. O mapa indexado
+  // so pelo nome respondia com a primeira, o corretor aprovava tinta clara
+  // sobre "escuro", e a tela pintava a mesma tinta sobre BRANCO: 1,72:1.
+  const css =
+    ':where([data-ds-raiz="ds_A"], [data-ds-corpo="ds_A"]):is(.bg-white){background-color:var(--marca-surface, #fff)}' +
+    ':where([data-ds-raiz="ds_B"], [data-ds-corpo="ds_B"]):is(.bg-white){background-color:rgb(255 255 255 / var(--tw-bg-opacity, 1))}' +
+    ':where([data-ds-raiz="ds_B"], [data-ds-corpo="ds_B"]):is(.text-black){color:var(--marca-body, #000)}';
+  const mapa = mapearClassesPorPapel(css);
+  assert.equal(mapa.fundo.get('ds_A|bg-white'), 'surface', 'a origem A guarda o papel dela');
+  assert.equal(
+    mapa.fundoLiteral.get('ds_B|bg-white'),
+    '#ffffff',
+    'a origem B guarda o branco dela',
+  );
+
+  // Marca clara-sobre-branco: body #c9c5ba sobre o branco de B da 1,72:1.
+  const tokens = {
+    ...TOKENS,
+    body: '#c9c5ba',
+    surface: '#1c1c1a',
+    background: '#111110',
+    heading: '#f4f2ec',
+  } as never;
+  const r = corrigirParesDeCor(
+    '<div data-ds-corpo="ds_B"><button class="bg-white text-black">Enviar</button></div>',
+    css,
+    tokens,
+  );
+  assert.equal(r.corrigidos.length, 1, `o branco de B tem de ser visto: ${r.html}`);
+  assert.equal(r.corrigidos[0]?.papelDoFundo, 'literal #ffffff', 'nao o surface escuro de A');
+});
+
+test('a variavel DA ORIGEM e resolvida quando tem uma definicao so', () => {
+  // O site de origem escreve `color:var(--c-bg)` e a recoloracao troca a
+  // DEFINICAO, nao o uso. A conferencia lia o uso, procurava `var(--marca-`
+  // ali dentro, nao achava, e a tinta ficava sem papel e sem literal.
+  const css =
+    ':root{--c-bg:var(--marca-body, #e3e1dc)}' +
+    ':where([data-ds-corpo="d"]):is(.texto){color:var(--c-bg)}' +
+    ':where([data-ds-corpo="d"]):is(.card-content){background-color:rgb(26 26 26 / var(--tw-bg-opacity, 1))}';
+  assert.equal(mapearClassesPorPapel(css).tinta.get('d|texto'), 'body');
+
+  // Duas definicoes = tema claro/escuro: qual vale depende do ancestral, e
+  // escolher uma seria adivinhar. Melhor nao saber do que saber errado.
+  const ambigua =
+    ':root{--c-bg:var(--marca-body)}.escuro{--c-bg:var(--marca-heading)}' +
+    ':where([data-ds-corpo="d"]):is(.texto){color:var(--c-bg)}';
+  assert.equal(mapearClassesPorPapel(ambigua).tinta.get('d|texto'), undefined);
 });

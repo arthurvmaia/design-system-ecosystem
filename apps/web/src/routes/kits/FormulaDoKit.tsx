@@ -3,7 +3,6 @@ import { Modal } from '@/components/Modal';
 import { PreviewFrame } from '@/components/PreviewFrame';
 import {
   type KitComponentRef,
-  type KitDesignSystem,
   type KitRecord,
   api,
   previewComponentUrl,
@@ -37,39 +36,6 @@ import { rotaDaFormula } from './rota-da-formula';
  * apresentar um design system, e ela existe há tempo demais para ser reinventada
  * aqui.
  */
-/**
- * As famílias que são fim de pilha de fallback, não escolha de tipografia.
- *
- * Elas entram no inventário porque estão mesmo escritas no CSS — o inventário
- * está certo. Errado seria a tela apresentá-las como decisão de design ao lado
- * da fonte que a pessoa de fato veio ver.
- */
-const FONTES_DE_SISTEMA = [
-  'apple color emoji',
-  'segoe ui emoji',
-  'segoe ui symbol',
-  'noto color emoji',
-  'sfmono-regular',
-  'ui-sans-serif',
-  'ui-serif',
-  'ui-monospace',
-  'system-ui',
-  '-apple-system',
-  'blinkmacsystemfont',
-  'sans-serif',
-  'serif',
-  'monospace',
-  'inherit',
-  'initial',
-];
-
-const ehFonteDeSistema = (familia: string): boolean => {
-  const f = familia
-    .trim()
-    .toLowerCase()
-    .replace(/^["']|["']$/g, '');
-  return FONTES_DE_SISTEMA.includes(f);
-};
 
 /**
  * A fórmula como ATALHO: o mesmo conteúdo da página, aberto por cima do kit.
@@ -116,21 +82,6 @@ export function CorpoDaFormula({ kit }: { kit: KitRecord }) {
   const nomeDaOrigem = (id: string): string =>
     sistemas.data?.items.find((s) => s.id === id)?.name ?? 'origem que não reconheci';
 
-  // As fontes de todas as origens, sem repetir e sem os fallbacks do sistema:
-  // `Apple Color Emoji` e `SFMono-Regular` aparecem em quase toda folha porque
-  // são o fim da pilha de fallback, e não descrevem a tipografia de ninguém.
-  // Mostrá-las aqui é dar peso de decisão a algo que ninguém decidiu.
-  const fontes = [
-    ...new Set((item?.origens ?? []).flatMap((o) => o.fontes.map((f) => f.familia))),
-  ].filter((f) => !ehFonteDeSistema(f));
-  // As cores COM papel primeiro: são as que dialogam com a marca. Depois as
-  // outras, que descrevem o resto da superfície.
-  const clusters = (item?.origens ?? []).flatMap((o) =>
-    o.clusters.map((c) => ({ ...c, origem: o.designSystemId })),
-  );
-  const comPapel = clusters.filter((c) => c.papel !== null);
-  const semPapel = clusters.filter((c) => c.papel === null);
-
   return (
     <div>
       <div className="ds-label">a fórmula</div>
@@ -140,12 +91,21 @@ export function CorpoDaFormula({ kit }: { kit: KitRecord }) {
       >
         {kit.name}
       </h2>
+      {/*
+        A fórmula mostra as PEÇAS, e só.
+        
+        Ela já mostrou também a tipografia, a escala medida e a paleta de cada
+        origem — e o dono cortou: quem abre o olho quer ver o que vai montar o
+        site, não a ficha técnica dele. As fontes e as cores aparecem dentro de
+        cada peça renderizada, que é onde elas significam alguma coisa; em lista
+        separada elas eram três telas de rolagem antes da primeira peça.
+      */}
       <p
         className="mt-2 max-w-[70ch] text-[13px] leading-relaxed"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        É isto que vai reger o seu site: estas fontes, estas cores e estas peças. O seu texto e a
-        sua marca entram por cima; daqui sai só o jeito visual.
+        É isto que vai reger o seu site: estas peças. O seu texto e a sua marca entram por cima;
+        daqui sai só o jeito visual.
       </p>
 
       {ds.isPending && (
@@ -156,157 +116,6 @@ export function CorpoDaFormula({ kit }: { kit: KitRecord }) {
           <Mascote tamanho={13} girando />
           Consolidando as cores e as fontes das peças.
         </div>
-      )}
-
-      {/* ── Tipografia ─────────────────────────────────────────────────── */}
-      {fontes.length > 0 && (
-        <section className="mt-9">
-          <Titulo>Tipografia</Titulo>
-          <div className="mt-3 space-y-3">
-            {fontes.map((familia) => (
-              <div
-                key={familia}
-                className="border p-4"
-                style={{ borderColor: 'var(--color-border)' }}
-              >
-                <div className="ds-data text-[11px]" style={{ color: 'var(--color-ion-3)' }}>
-                  {familia}
-                </div>
-                {/* O espécime: o mesmo texto em três tamanhos diz mais sobre
-                      uma fonte do que qualquer descrição dela. */}
-                <div style={{ fontFamily: familia }}>
-                  <div
-                    className="mt-2 text-[21px] sm:text-[28px] leading-tight"
-                    style={{ color: 'var(--color-fg)' }}
-                  >
-                    Um título como sairia aqui
-                  </div>
-                  <div className="mt-1 text-[15px]" style={{ color: 'var(--color-fg-muted)' }}>
-                    E o texto corrido logo abaixo, no tamanho de leitura.
-                  </div>
-                  <div className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                    Os detalhes miúdos, que é onde a fonte costuma quebrar.
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── A escala ───────────────────────────────────────────────────── */}
-      {(item?.origens ?? []).length > 0 && (
-        <section className="mt-9">
-          <Titulo>A escala</Titulo>
-          <p
-            className="mt-1 max-w-[70ch] text-[12.5px] leading-relaxed"
-            style={{ color: 'var(--color-fg-muted)' }}
-          >
-            Os degraus de tamanho, respiro e canto que cada origem usa. Medidos no navegador, na
-            captura: é o tamanho que a página de fato pintou, não o que a folha declarou.
-          </p>
-          <div className="mt-3 space-y-3">
-            {(item?.origens ?? []).map((o) => (
-              <div
-                key={o.designSystemId}
-                className="border p-4"
-                style={{ borderColor: 'var(--color-border)' }}
-              >
-                <div className="ds-data text-[11px]" style={{ color: 'var(--color-ion-3)' }}>
-                  {nomeDaOrigem(o.designSystemId)}
-                </div>
-
-                {o.escala === undefined || o.escala.degraus.length === 0 ? (
-                  // A ausência tem de aparecer como ausência. Uma rampa vazia
-                  // desenhada como se fosse rampa diria que o site não tem
-                  // escala, e o que houve foi que ninguém mediu.
-                  <p className="mt-2 text-[12.5px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                    Esta origem foi capturada antes de eu medir escala. Extraia o site de novo e eu
-                    meço.
-                  </p>
-                ) : (
-                  <>
-                    <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-2">
-                      {o.escala.degraus.map((d) => (
-                        <span
-                          key={d}
-                          title={`${d}px${
-                            d === o.escala?.corpo
-                              ? ', o tamanho em que está a maior parte do texto'
-                              : d === o.escala?.display
-                                ? ', o degrau de destaque'
-                                : ''
-                          }`}
-                          style={{
-                            // O degrau mostrado NO tamanho dele, com teto: uma
-                            // escala vista em números não é uma escala vista.
-                            fontSize: Math.min(d, 44),
-                            lineHeight: 1,
-                            color:
-                              d === o.escala?.corpo || d === o.escala?.display
-                                ? 'var(--color-fg)'
-                                : 'var(--color-fg-subtle)',
-                          }}
-                        >
-                          Aa
-                        </span>
-                      ))}
-                    </div>
-                    <div
-                      className="ds-data mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px]"
-                      style={{ color: 'var(--color-fg-subtle)' }}
-                    >
-                      <span>
-                        texto {o.escala.corpo === null ? 'não medido' : `${o.escala.corpo}px`}
-                      </span>
-                      <span>
-                        destaque{' '}
-                        {o.escala.display === null ? 'sem degrau próprio' : `${o.escala.display}px`}
-                      </span>
-                      {o.escala.espacos.length > 0 && (
-                        <span>respiros {o.escala.espacos.join(' · ')}</span>
-                      )}
-                      {o.escala.raios.length > 0 && (
-                        <span>cantos {o.escala.raios.join(' · ')}</span>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── Cores ──────────────────────────────────────────────────────── */}
-      {clusters.length > 0 && (
-        <section className="mt-9">
-          <Titulo>Cores e superfícies</Titulo>
-          {comPapel.length > 0 && (
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-              {comPapel.map((c) => (
-                <Amostra key={`${c.origem}-${c.corCanonica}`} hex={c.corCanonica} papel={c.papel} />
-              ))}
-            </div>
-          )}
-          {semPapel.length > 0 && (
-            <>
-              <p className="mt-4 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-                As demais, que compõem a superfície e não recebem papel da marca:
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {semPapel.slice(0, 24).map((c) => (
-                  <span
-                    key={`${c.origem}-${c.corCanonica}`}
-                    title={c.corCanonica}
-                    className="h-6 w-6 shrink-0 border"
-                    style={{ backgroundColor: c.corCanonica, borderColor: 'var(--color-border)' }}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </section>
       )}
 
       {/* ── Peças ──────────────────────────────────────────────────────── */}
@@ -649,25 +458,5 @@ function QuadroDaPeca({
         )}
       </figcaption>
     </figure>
-  );
-}
-
-/** Uma cor com o papel que ela ocupa: é o papel que diz o que vai acontecer. */
-function Amostra({
-  hex,
-  papel,
-}: { hex: string; papel: KitDesignSystem['origens'][number]['clusters'][number]['papel'] }) {
-  return (
-    <div className="border" style={{ borderColor: 'var(--color-border)' }}>
-      <div className="h-14 w-full" style={{ backgroundColor: hex }} />
-      <div className="px-2.5 py-2">
-        <div className="text-[12px]" style={{ color: 'var(--color-fg)' }}>
-          {papel}
-        </div>
-        <div className="ds-data text-[10px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          {hex}
-        </div>
-      </div>
-    </div>
   );
 }

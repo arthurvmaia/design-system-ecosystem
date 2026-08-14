@@ -111,6 +111,28 @@ export const lerAjusteRelativo = (valor: string): AjusteDeCor | null => {
 };
 
 /**
+ * O alfa que o Tailwind escreve por VARIÁVEL, trocado pelo padrão dele.
+ *
+ * Toda cor de um site Tailwind sai da forma `rgb(5 5 5 / var(--tw-bg-opacity,
+ * 1))` — a variável ocupa só o lugar do ALFA, e o padrão dela é o valor real
+ * enquanto ninguém a redefine, que é o caso de toda cor estática.
+ *
+ * A guarda que rejeitava QUALQUER `var(` — escrita para pular os tokens da
+ * marca, que são papel e não literal — descartava junto essas, isto é, quase
+ * todas as cores literais do site. Medido no banco de prova: 8 fundos literais
+ * conhecidos contra 84 por papel, e o rodapé `bg-[#050505]` (o quase-preto da
+ * origem, que a recoloração não tocou) ficava INVISÍVEL para os dois mapas
+ * enquanto o texto dele virava `--marca-heading` (#2a2118, escuro, num tema
+ * claro). Escuro sobre escuro: 1,29:1 em todo o rodapé, e o corretor de pares
+ * passava reto porque não enxergava nenhum dos dois lados.
+ */
+export const resolverAlfaPorVariavel = (valor: string): string =>
+  valor.replace(
+    /var\(\s*--tw-[\w-]*opacity\s*(?:,\s*([\d.]+%?)\s*)?\)/gi,
+    (_tudo, padrao: string | undefined) => padrao ?? '1',
+  );
+
+/**
  * O ALFA de uma superfície translúcida, quando ela declara um.
  *
  * Reconhece as três formas que aparecem no CSS composto: a sintaxe relativa que
@@ -118,7 +140,7 @@ export const lerAjusteRelativo = (valor: string): AjusteDeCor | null => {
  * origem e o `color-mix` com porcentagem de transparente.
  */
 export const lerAlfa = (valor: string): number | null => {
-  const m = /\/\s*([\d.]+%?)\s*\)/.exec(valor);
+  const m = /\/\s*([\d.]+%?)\s*\)/.exec(resolverAlfaPorVariavel(valor));
   if (m !== null) {
     const bruto = m[1] ?? '';
     const n = Number.parseFloat(bruto);
@@ -233,6 +255,34 @@ const classesDoSeletor = (seletor: string): string[] => {
 };
 
 /**
+ * As TAGS cujo seletor é o sujeito da regra — a outra metade do mapa.
+ *
+ * O próprio compositor escreve, no `marca.css`, `a{color:var(--marca-link)}` e
+ * `h1,h2,h3,h4,h5,h6{color:var(--marca-heading)}`. Um mapa só de classes não vê
+ * nenhuma das duas, e elas pintam TODO título e TODO link da página que não
+ * traga classe de cor — medido no banco, 34 dos achados de S4 nasciam aí.
+ *
+ * O prefixo de escopo sai antes da leitura, e ele é seguro de descartar por um
+ * motivo que a classe não tem: o ancestral dele é o PROXY, que o compositor
+ * sempre cria. O que sobra tem de ser exatamente uma tag — `:where(…) .card h1`
+ * continua de fora, porque aí o ancestral é do recorte e pode não ter vindo.
+ *
+ * A chave vai com `@` na frente para dividir o mapa com as classes sem colidir:
+ * atributo `class` nenhum produz um nome começando por `@`.
+ */
+const tagsDoSeletor = (seletor: string): string[] => {
+  const out = new Set<string>();
+  for (const parte of seletor.split(/,(?![^()]*\))/)) {
+    const semEscopo = parte
+      .trim()
+      .replace(/^:where\((?:\[[^\]]*\][\s,]*)+\)\s+/i, '')
+      .trim();
+    if (/^[a-z][\w-]*$/i.test(semEscopo)) out.add(`@${semEscopo.toLowerCase()}`);
+  }
+  return [...out];
+};
+
+/**
  * O mapa `classe → papel`, lido do CSS JÁ RECOLORIDO.
  *
  * Duas leituras separadas, porque a mesma classe não pode servir aos dois lados:
@@ -282,16 +332,55 @@ export const mapearClassesPorPapel = (
   const ajusteDoFundo = new Map<string, AjusteDeCor>();
   const alfaDoFundo = new Map<string, number>();
 
+  /**
+   * As variáveis DA ORIGEM, quando cada uma tem UMA definição só.
+   *
+   * O site de origem costuma ter o próprio jogo de variáveis
+   * (`--c-bg`, `--fg`, `--surface`) e escrever `color:var(--c-bg)`. A
+   * recoloração troca a DEFINIÇÃO (`--c-bg: var(--marca-body, #e3e1dc)`) e
+   * deixa o uso intacto — o que é certo. Só que a conferência lia o uso,
+   * procurava `var(--marca-` ali dentro e não achava nada: a tinta ficava sem
+   * papel e sem literal, invisível dos dois lados.
+   *
+   * Só entra a variável com definição ÚNICA. Havendo duas — que é como se
+   * escreve tema claro/escuro — qual delas vale depende do ancestral, e
+   * escolher uma seria adivinhar; aí é melhor não saber do que saber errado.
+   */
+  const definicaoUnica = new Map<string, string | null>();
+  for (const d of css.matchAll(/(--[\w-]+)\s*:\s*([^;{}]+)/g)) {
+    const nome = d[1] ?? '';
+    const valor = (d[2] ?? '').trim();
+    if (nome.startsWith('--marca-')) continue;
+    definicaoUnica.set(nome, definicaoUnica.has(nome) ? null : valor);
+  }
+  /** Troca `var(--x)` da origem pela definição dela, até três saltos. */
+  const resolverVariaveis = (valor: string): string => {
+    let v = valor;
+    for (let i = 0; i < 3; i++) {
+      const antes = v;
+      v = v.replace(
+        /var\(\s*(--[\w-]+)\s*(?:,[^()]*(?:\([^()]*\)[^()]*)*)?\)/g,
+        (tudo, nome: string) => {
+          if (nome.startsWith('--marca-')) return tudo;
+          const def = definicaoUnica.get(nome);
+          return def === undefined || def === null ? tudo : def;
+        },
+      );
+      if (v === antes) break;
+    }
+    return v;
+  };
+
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const seletor = m[1] ?? '';
     const corpo = m[2] ?? '';
 
-    const classes = classesDoSeletor(seletor);
+    const classes = [...classesDoSeletor(seletor), ...tagsDoSeletor(seletor)];
     if (classes.length === 0) continue;
 
     const papelDe = (prop: RegExp): string | null => {
       const decl = new RegExp(`${prop.source}\\s*:([^;]*)`, 'i').exec(corpo);
-      const v = decl?.[1] ?? '';
+      const v = resolverVariaveis(decl?.[1] ?? '');
       return /var\(--marca-([a-z-]+)/i.exec(v)?.[1] ?? null;
     };
 
@@ -309,7 +398,11 @@ export const mapearClassesPorPapel = (
      */
     const literalDe = (prop: RegExp): string | null => {
       const decl = new RegExp(`${prop.source}\\s*:([^;]*)`, 'i').exec(corpo);
-      const v = (decl?.[1] ?? '').trim();
+      // O alfa por variável do Tailwind sai ANTES da guarda — senão ela
+      // descarta a cor literal inteira por causa dele (ver
+      // `resolverAlfaPorVariavel`). O que sobrar com `var(` é papel da marca
+      // ou pilha de gradiente, e aí não é superfície literal mesmo.
+      const v = resolverAlfaPorVariavel((decl?.[1] ?? '').trim());
       if (v === '' || /var\(/i.test(v)) return null;
       const hex = /#([0-9a-f]{3,8})\b/i.exec(v);
       if (hex !== null) return `#${hex[1]}`;
@@ -345,14 +438,32 @@ export const mapearClassesPorPapel = (
     const aTinta = lerAjusteRelativo(valorDe(/(?:^|[;\s])color/));
     const aFundo = lerAjusteRelativo(valorDe(/background(?:-color)?/));
     const alfa = lerAlfa(valorDe(/background(?:-color)?/));
-    for (const c of classes) {
-      if (pTinta !== null && !tinta.has(c)) tinta.set(c, pTinta);
-      if (pFundo !== null && !fundo.has(c)) fundo.set(c, pFundo);
-      if (lTinta !== null && !tintaLiteral.has(c)) tintaLiteral.set(c, lTinta);
-      if (lFundo !== null && !fundoLiteral.has(c)) fundoLiteral.set(c, lFundo);
-      if (aTinta !== null && !ajusteDaTinta.has(c)) ajusteDaTinta.set(c, aTinta);
-      if (aFundo !== null && !ajusteDoFundo.has(c)) ajusteDoFundo.set(c, aFundo);
-      if (alfa !== null && !alfaDoFundo.has(c)) alfaDoFundo.set(c, alfa);
+    /**
+     * A mesma classe tem cores DIFERENTES em origens diferentes.
+     *
+     * O CSS composto é escopado por origem, e `.bg-white` existe em quase
+     * todas: numa delas a recoloração a levou para `--marca-surface` (escuro),
+     * noutra ela ficou branca. Um mapa indexado só pelo nome da classe responde
+     * com a primeira que encontrou — medido no banco, o corretor achava que o
+     * cartão era escuro, via tinta clara sobre fundo escuro, aprovava o par, e
+     * a tela pintava a mesma tinta clara sobre BRANCO: 1,72:1.
+     *
+     * A chave passa a levar a origem na frente. A chave sem origem continua
+     * sendo escrita (primeira vence, como antes) porque as regras que NÃO são
+     * escopadas — o `marca.css`, a base da página — valem para todo mundo, e
+     * porque ela é o recurso quando a origem não declara aquela classe.
+     */
+    const origem = /\[data-ds-(?:raiz|corpo)="([^"]+)"\]/.exec(seletor)?.[1] ?? '';
+    for (const base of classes) {
+      for (const c of origem === '' ? [base] : [`${origem}|${base}`, base]) {
+        if (pTinta !== null && !tinta.has(c)) tinta.set(c, pTinta);
+        if (pFundo !== null && !fundo.has(c)) fundo.set(c, pFundo);
+        if (lTinta !== null && !tintaLiteral.has(c)) tintaLiteral.set(c, lTinta);
+        if (lFundo !== null && !fundoLiteral.has(c)) fundoLiteral.set(c, lFundo);
+        if (aTinta !== null && !ajusteDaTinta.has(c)) ajusteDaTinta.set(c, aTinta);
+        if (aFundo !== null && !ajusteDoFundo.has(c)) ajusteDoFundo.set(c, aFundo);
+        if (alfa !== null && !alfaDoFundo.has(c)) alfaDoFundo.set(c, alfa);
+      }
     }
   }
   return {
@@ -543,6 +654,8 @@ export const corrigirParesDeCor = (
      * fazia o par passar aqui e a pessoa ver 1,49:1 na tela.
      */
     tintaAjuste: AjusteDeCor | undefined;
+    /** A ORIGEM em que este elemento está — o proxy que o embrulha. */
+    origem: string;
   }[] = [];
   /** O ajuste e o hex do fundo VIGENTE, para pintar a mesma cor que a tela pinta. */
   let ajusteVigente: AjusteDeCor | undefined;
@@ -576,6 +689,56 @@ export const corrigirParesDeCor = (
     }
     return { papel: null, hex: null, ajuste: undefined };
   };
+
+  /**
+   * O que a TAG declara, quando nenhuma classe do elemento declara nada.
+   *
+   * Vem DEPOIS da classe porque é isso que a cascata faz: `.text-white` vale
+   * (0,1,0) e `h1` vale (0,0,1). E vem ANTES da herança porque declaração
+   * própria vence herdada, qualquer que seja a especificidade.
+   */
+  /**
+   * A cor de um lado do par: papel e literal resolvidos JUNTOS, por origem.
+   *
+   * A ordem importa e custou um teste vermelho: procurar o papel em todas as
+   * chaves e só depois o literal fazia a busca cair na chave GERAL da origem
+   * alheia (`.bg-white` → `--marca-surface`, escuro) antes de ver o literal da
+   * origem DESTE elemento (branco). Ou a origem responde pelos dois, ou nenhum.
+   */
+  const procurar = (
+    origem: string,
+    chaves: readonly string[],
+    papeis: Map<string, string>,
+    literais: Map<string, string>,
+    ajustes: Map<string, AjusteDeCor>,
+  ): {
+    chave: string;
+    papel: string | null;
+    hex: string | null;
+    ajuste: AjusteDeCor | undefined;
+  } | null => {
+    for (const base of chaves) {
+      for (const k of origem === '' ? [base] : [`${origem}|${base}`, base]) {
+        const papel = papeis.get(k);
+        if (papel !== undefined) return { chave: base, papel, hex: null, ajuste: ajustes.get(k) };
+        const hex = literais.get(k);
+        if (hex !== undefined) return { chave: base, papel: null, hex, ajuste: undefined };
+      }
+    }
+    return null;
+  };
+
+  /**
+   * A busca no mapa: a origem DESTE elemento primeiro, o geral depois.
+   *
+   * A chave com origem é a resposta certa quando aquela origem declara a
+   * classe. A chave sem origem cobre o que não é escopado (o `marca.css`, a
+   * base da página) e é o recurso quando a origem não diz nada — o mesmo
+   * comportamento de antes, agora só onde ele é o que sobrou.
+   */
+  function doMapa<T>(m: Map<string, T>, origem: string, chave: string): T | undefined {
+    return (origem === '' ? undefined : m.get(`${origem}|${chave}`)) ?? m.get(chave);
+  }
 
   const saida = html.replace(
     /<\/([a-z][\w-]*)\s*>|<([a-z][\w-]*)\b([^>]*)>/gi,
@@ -617,49 +780,52 @@ export const corrigirParesDeCor = (
      * Dentro de um proxy, o fundo é o da PÁGINA.
      */
     const ehProxy = /\bdata-ds-(?:raiz|corpo|criado)\b/i.test(attrs);
+    // A origem do proxy vale para tudo que estiver dentro dele.
+    const origemDaqui =
+      /\bdata-ds-(?:raiz|corpo)="([^"]+)"/i.exec(attrs)?.[1] ??
+      pilha[pilha.length - 1]?.origem ??
+      '';
     let fundoProprio: string | null = ehProxy ? 'background' : null;
     let hexDoFundoProprio: string | null = null;
     let ajusteDoFundoProprio: AjusteDeCor | undefined;
     let alfaDoFundoProprio: number | undefined;
     if (!ehProxy) {
-      for (const c of listaDoEl) {
-        const f = mapa.fundo.get(c);
-        if (f !== undefined) {
-          fundoProprio = f;
-          ajusteDoFundoProprio = mapa.ajusteDoFundo.get(c);
-          alfaDoFundoProprio = mapa.alfaDoFundo.get(c);
-          break;
-        }
-        const h = mapa.fundoLiteral.get(c);
-        if (h !== undefined) {
-          hexDoFundoProprio = h;
-          break;
-        }
+      const doFundo =
+        procurar(origemDaqui, listaDoEl, mapa.fundo, mapa.fundoLiteral, mapa.ajusteDoFundo) ??
+        procurar(origemDaqui, [`@${nome}`], mapa.fundo, mapa.fundoLiteral, mapa.ajusteDoFundo);
+      if (doFundo !== null) {
+        fundoProprio = doFundo.papel;
+        hexDoFundoProprio = doFundo.hex;
+        ajusteDoFundoProprio = doFundo.ajuste;
+        alfaDoFundoProprio = doMapa(mapa.alfaDoFundo, origemDaqui, doFundo.chave);
       }
     }
     // A tinta que ESTE elemento declara — vira a vigente para os filhos.
-    let tintaPropriaPapel: string | null = null;
-    let tintaPropriaHex: string | null = null;
-    let tintaPropriaAjuste: AjusteDeCor | undefined;
-    for (const c of listaDoEl) {
-      const t = mapa.tinta.get(c);
-      if (t !== undefined) {
-        tintaPropriaPapel = t;
-        tintaPropriaAjuste = mapa.ajusteDaTinta.get(c);
-        break;
-      }
-      const h = mapa.tintaLiteral.get(c);
-      if (h !== undefined) {
-        tintaPropriaHex = h;
-        break;
-      }
+    const daTinta =
+      procurar(origemDaqui, listaDoEl, mapa.tinta, mapa.tintaLiteral, mapa.ajusteDaTinta) ??
+      procurar(origemDaqui, [`@${nome}`], mapa.tinta, mapa.tintaLiteral, mapa.ajusteDaTinta);
+    let tintaPropriaPapel: string | null = daTinta?.papel ?? null;
+    let tintaPropriaHex: string | null = daTinta?.hex ?? null;
+    let tintaPropriaAjuste: AjusteDeCor | undefined = daTinta?.ajuste;
+    /**
+     * Dentro de uma seção, a tinta padrão é `--marca-body` — e é regra NOSSA.
+     *
+     * `REGRA_DA_TINTA_DA_MARCA` escreve
+     * `[data-secao]>[data-ds-raiz],[data-secao] [data-ds-corpo],[data-ds-criado]
+     * {color:var(--marca-body)}`. Sem modelá-la aqui, todo texto que não traz
+     * classe de cor nem ancestral com cor chegava a `conferir` sem tinta
+     * nenhuma e voltava intocado — mesmo sentando numa superfície que colapsa
+     * o par. A tinta nasce no proxy e desce pela pilha, igual à tela.
+     */
+    if (ehProxy && tintaPropriaPapel === null && tintaPropriaHex === null) {
+      tintaPropriaPapel = 'body';
     }
     tintaCorrigidaAgora = null;
     const resultado = conferir(
       tudo,
       attrs,
       classesDoEl,
-      listaDoEl,
+      { papel: tintaPropriaPapel, hex: tintaPropriaHex, ajuste: tintaPropriaAjuste },
       fundoProprio,
       hexDoFundoProprio,
       ajusteDoFundoProprio,
@@ -687,6 +853,7 @@ export const corrigirParesDeCor = (
         tintaPapel: tintaPropriaPapel,
         tintaHex: tintaPropriaHex,
         tintaAjuste: tintaPropriaAjuste,
+        origem: origemDaqui,
       });
     }
     return resultado;
@@ -696,7 +863,7 @@ export const corrigirParesDeCor = (
     tudo: string,
     attrs: string,
     classes: string,
-    lista: readonly string[],
+    tintaPropria: { papel: string | null; hex: string | null; ajuste: AjusteDeCor | undefined },
     fundoProprio: string | null,
     hexDoFundoProprio: string | null,
     ajusteDoFundoProprio: AjusteDeCor | undefined,
@@ -721,16 +888,17 @@ export const corrigirParesDeCor = (
     const styleAtual = /\bstyle="([^"]*)"/i.exec(attrs)?.[1] ?? '';
     if (styleAtual.split(';').some((d) => /^\s*color\s*:/i.test(d))) return tudo;
 
-    let papelDaTinta: string | null = null;
-    let classeDaTinta: string | null = null;
-    for (const c of lista) {
-      const t = mapa.tinta.get(c);
-      if (t !== undefined) {
-        papelDaTinta = t;
-        classeDaTinta = c;
-        break;
-      }
-    }
+    /**
+     * A tinta PRÓPRIA chega pronta de `abrir` — e antes divergia dela.
+     *
+     * As duas leituras existiam em paralelo com ordens diferentes: `abrir`
+     * parava na primeira classe que dissesse alguma coisa (papel ou literal),
+     * aqui o papel de qualquer classe vencia o literal de todas. Num elemento
+     * `class="text-white bg-…"` em que a primeira é literal e a segunda é
+     * papel, a pilha descia um valor e a correção decidia por outro. Uma
+     * leitura só: a mesma que os filhos herdam.
+     */
+    let papelDaTinta = tintaPropria.papel;
     /**
      * A tinta LITERAL entra quando ela não virou papel — o par MEIO recolorido.
      *
@@ -738,16 +906,7 @@ export const corrigirParesDeCor = (
      * continuou branco (não pertence a papel nenhum), e num tema claro o par
      * colapsou para 1,49:1. Sem este ramo a correção via um lado só e desistia.
      */
-    let hexDaTintaLiteral: string | null = null;
-    if (papelDaTinta === null) {
-      for (const c of lista) {
-        const t = mapa.tintaLiteral.get(c);
-        if (t !== undefined) {
-          hexDaTintaLiteral = t;
-          break;
-        }
-      }
-    }
+    let hexDaTintaLiteral = tintaPropria.hex;
     /**
      * A tinta HERDADA, quando este elemento não declara nenhuma.
      *
@@ -762,8 +921,7 @@ export const corrigirParesDeCor = (
      * Quem recebe o conserto é ESTE elemento — o que traz a superfície nova —,
      * e tudo o que estiver dentro dele herda a tinta corrigida.
      */
-    let ajusteDaTintaUsado =
-      classeDaTinta === null ? undefined : mapa.ajusteDaTinta.get(classeDaTinta);
+    let ajusteDaTintaUsado = tintaPropria.ajuste;
     if (papelDaTinta === null && hexDaTintaLiteral === null) {
       const herdada = tintaVigente();
       papelDaTinta = herdada.papel;

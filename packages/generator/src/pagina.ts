@@ -2717,7 +2717,8 @@ ${criada.html}
   // A régua da referência vira `--marca-passo-N` e `--marca-espaco-N` aqui, e é
   // o que as peças reescritas acima consomem. Sem referência, `buildBrandingCss`
   // sai idêntico ao de antes: nenhum token novo, nenhuma mudança de aparência.
-  escrever('assets/marca.css', buildBrandingCss(entrada.branding, referencia?.escala));
+  const cssDaMarca = buildBrandingCss(entrada.branding, referencia?.escala);
+  escrever('assets/marca.css', cssDaMarca);
 
   /**
    * A folha dos RETOQUES — nasce vazia e é a ÚLTIMA da cascata.
@@ -2970,7 +2971,16 @@ ${criada.html}
    * 20 kits.
    */
   if (tokensDaMarca !== undefined) {
-    const par = corrigirParesDeCor(corpoDaPagina, concatCss, tokensDaMarca);
+    /**
+     * O `marca.css` entra na conferência — e ficava de fora justamente ele.
+     *
+     * É a folha que o compositor escreve por último e que declara
+     * `a{color:var(--marca-link)}` e `h1..h6{color:var(--marca-heading)}`: a
+     * tinta de TODO título e TODO link que não traga classe de cor. Conferir o
+     * par sem ela era conferir uma página que não existe — o par visto aqui
+     * passava e o navegador media 1,29:1 no rodapé inteiro.
+     */
+    const par = corrigirParesDeCor(corpoDaPagina, `${concatCss}\n${cssDaMarca}`, tokensDaMarca);
     corpoDaPagina = par.html;
     if (par.corrigidos.length > 0) {
       const exemplo = par.corrigidos[0];

@@ -418,10 +418,23 @@ function EscolhaDePerfil({
     if (elemento !== null && !elemento.open) elemento.showModal();
   }, []);
 
+  /**
+   * As DUAS escolhas viajam na URL — e mandar só uma delas era o defeito.
+   *
+   * O admin ia para o endereço limpo, sem parâmetro nenhum. Só que o perfil
+   * fica guardado na sessão da aba (é o que faz a navegação interna do app não
+   * perdê-lo), então quem tivesse entrado como cliente antes continuava cliente
+   * ao escolher admin: a tela abria com as três etapas do cliente e nada da
+   * fábrica. Medido pelo dono na própria tela.
+   *
+   * Ausência de parâmetro não é uma escolha, é silêncio — e silêncio não pode
+   * apagar o que estava guardado, porque é assim que o app sobrevive à
+   * navegação interna. Quem escolhe, declara.
+   */
   const entrar = (perfil: 'admin' | 'cliente') => {
     if (porta.destino === null) return;
     const base = enderecoDe(porta.destino, publicos);
-    window.location.href = perfil === 'cliente' ? `${base}/?perfil=cliente` : base;
+    window.location.href = `${base}/?perfil=${perfil}`;
   };
 
   return (
