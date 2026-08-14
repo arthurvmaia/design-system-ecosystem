@@ -982,6 +982,29 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   });
   engine.registerTag("layout", { parse() { /* layout tratado externamente */ }, render() { return ""; } });
 
+  /**
+   * O grupo a que uma seção pertence (`header-group`, `footer-group`…), ou
+   * undefined quando ela é de template.
+   *
+   * A Shopify carimba `shopify-section-group-<grupo>` em TODA seção renderizada
+   * dentro de um grupo, e o CSS dos temas se apoia nisso. No Dawn a regra é
+   * `.section-header.shopify-section-group-header-group { z-index: 3 }`: é ela,
+   * e só ela, que dá empilhamento ao cabeçalho. Sem a classe o cabeçalho fica
+   * em `z-index: auto` e a gaveta do menu — que é filha dele — é pintada POR
+   * BAIXO da primeira seção do corpo. O menu ABRIA (o `<details>` abria, o
+   * corpo travava, o ícone virava X) e mesmo assim não aparecia nada: o tipo de
+   * defeito que só a conferência por pixel pega, porque todo estado dizia sim.
+   *
+   * Grupo é o que vem de `sections/*.json` (a Shopify também trata assim) mais
+   * os grupos que o importador sintetiza para tema clássico.
+   */
+  const grupoDaSecao = (sectionId: string): string | undefined =>
+    theme.pages.find(
+      (item) =>
+        (item.template.startsWith("sections/") || item.id.endsWith("-group")) &&
+        item.sections.some((candidate) => candidate.id === sectionId),
+    )?.id;
+
   const renderSectionInstance = async (section: ShopifySectionInstance): Promise<string> => {
     if (section.disabled) return "";
     const source = text(files, `sections/${section.type}.liquid`);
@@ -1005,7 +1028,9 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     } else {
       inner = `<!-- seção ${section.type} sem arquivo .liquid -->`;
     }
-    return `<div id="shopify-section-${section.id}" class="shopify-section section-${section.type}" data-orbis-section="${section.id}">${inner}</div>`;
+    const grupo = grupoDaSecao(section.id);
+    const classes = `shopify-section${grupo ? ` shopify-section-group-${grupo}` : ""} section-${section.type}`;
+    return `<div id="shopify-section-${section.id}" class="${classes}" data-orbis-section="${section.id}">${inner}</div>`;
   };
 
   const renderGroup = async (groupId: string): Promise<string> => {

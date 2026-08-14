@@ -111,6 +111,22 @@ test("render reproduz cores, esquemas, fontes e grupos como a Shopify", async ()
     assert.equal((sheet.match(/family=/g) ?? []).length, 2, "duas famílias usadas, duas famílias na folha");
     /* grupo arbitrário renderizado por {% sections 'promo-group' %} */
     assert.match(html, /Faixa global/);
+    /* Seção de grupo carrega `shopify-section-group-<grupo>`, como na Shopify.
+       Não é enfeite: o CSS dos temas se apoia nessa classe, e no Dawn é
+       `.section-header.shopify-section-group-header-group { z-index: 3 }` que
+       dá empilhamento ao cabeçalho. Sem ela o cabeçalho fica em `z-index: auto`
+       e a gaveta do menu, que é filha dele, é pintada POR BAIXO da primeira
+       seção do corpo: o menu abria — `<details>` aberto, corpo travado, ícone
+       virando X — e não aparecia nada na tela. Todo estado dizia sim; só o
+       pixel dizia não. */
+    assert.match(
+      html,
+      /<div id="shopify-section-faixa" class="shopify-section shopify-section-group-promo-group section-promo"/,
+      "seção de grupo precisa da classe shopify-section-group-<grupo>",
+    );
+    /* e seção de TEMPLATE não carrega grupo nenhum: inventar a classe faria o
+       CSS de grupo alcançar o corpo da página, que é o oposto do problema */
+    assert.match(html, /<div id="shopify-section-hero" class="shopify-section section-hero"/);
     /* nenhuma variável de cor quebrada */
     assert.doesNotMatch(html, /--[\w-]+:\s*(?:,\s*)+;/);
     /* ponte de sincronia: clique → editor e editor → scroll na seção */
