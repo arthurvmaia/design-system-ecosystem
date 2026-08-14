@@ -917,11 +917,78 @@ export const enderecoDoAlvo = (alvo: string): string => {
   return pathToFileURL(indice).href;
 };
 
+/** O nome do cookie de sessão do portão. Mesma constante do servidor. */
+const COOKIE_DO_PORTAO = 'orbis_sessao';
+
+/**
+ * O cookie de sessão do portão, para a régua medir o que está ATRÁS dele.
+ *
+ * ## Por que existe
+ *
+ * A régua aprendeu a abrir `http://` justamente para medir o nosso próprio app
+ * — e o nosso próprio app pede credencial. Sem isto ela media a tela de login:
+ * seis elementos, dez vereditos verdes, e a impressão de que o app inteiro
+ * passou. Verde medido em página errada é pior que vermelho, porque ninguém vai
+ * conferir de novo.
+ *
+ * ## Por que login e não "desliga o portão"
+ *
+ * A alternativa era esvaziar `ORBIS_SENHA` e reiniciar o servidor. Isso muda a
+ * configuração da máquina de quem mede, exige restaurar depois, e mede um app
+ * num modo em que ele não roda de verdade. Aqui a régua entra como uma pessoa
+ * entra: manda a credencial, recebe o cookie assinado, navega.
+ *
+ * O cookie é `HttpOnly`, então a página não consegue lê-lo nem escrevê-lo — quem
+ * o coloca é o CONTEXTO do navegador, que está fora do alcance do JavaScript da
+ * página. É por isso que a injeção acontece aqui e não dentro do `MEDIR`.
+ *
+ * Devolve `null` quando o portão está desligado (nada a fazer) e ESTOURA quando
+ * a credencial não serve: seguir em frente mediria a tela de login de novo, e
+ * essa é exatamente a falha silenciosa que este bloco veio impedir.
+ */
+export const cookieDoPortao = async (endereco: string, senha: string): Promise<string | null> => {
+  const origem = new URL(endereco).origin;
+  const sessao = await fetch(`${origem}/api/orbis/sessao`).catch(() => null);
+  if (sessao === null || !sessao.ok) {
+    throw new Error(
+      `não consegui falar com o portão em ${origem}/api/orbis/sessao — o servidor está no ar?`,
+    );
+  }
+  const estado = (await sessao.json()) as { estado?: string };
+  if (estado.estado !== 'ativo') return null;
+
+  const entrada = await fetch(`${origem}/api/orbis/entrar`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ senha }),
+  });
+  if (!entrada.ok) {
+    throw new Error(`o portão recusou a credencial (HTTP ${entrada.status}).`);
+  }
+  // `getSetCookie` devolve os Set-Cookie separados; o `get` juntaria tudo numa
+  // string só e o `split(';')` pegaria o atributo errado.
+  const cabecalhos = entrada.headers.getSetCookie?.() ?? [];
+  for (const c of cabecalhos) {
+    const [par] = c.split(';');
+    const [nome, ...resto] = par.split('=');
+    if (nome.trim() === COOKIE_DO_PORTAO) return resto.join('=');
+  }
+  throw new Error('o portão aceitou a credencial mas não devolveu cookie de sessão.');
+};
+
 export const conferirNoNavegador = async (
   pasta: string,
-  opcoes: { visivel?: boolean } = {},
+  opcoes: { visivel?: boolean; credencial?: string } = {},
 ): Promise<{ largura: number; aceite: ResultadoDeAceite; medida: SiteNoNavegador }[]> => {
   const endereco = enderecoDoAlvo(pasta);
+  /**
+   * O login acontece UMA vez, antes das larguras. Duas sessões seriam dois
+   * cookies e nenhum ganho — e o servidor conta cada entrada.
+   */
+  const cookie =
+    opcoes.credencial !== undefined && ehEnderecoDeRede(pasta)
+      ? await cookieDoPortao(endereco, opcoes.credencial)
+      : null;
   const pw = await import('playwright');
   const navegador = await pw.chromium.launch({
     headless: opcoes.visivel !== true,
@@ -939,6 +1006,23 @@ export const conferirNoNavegador = async (
         hasTouch: perfil.isMobile,
         deviceScaleFactor: perfil.deviceScaleFactor,
       });
+      // O cookie entra no CONTEXTO, antes do primeiro `goto`: sendo `HttpOnly`,
+      // ele não existe para o JavaScript da página, e chegar depois da navegação
+      // faria a primeira medição cair na tela de login mesmo assim.
+      if (cookie !== null) {
+        const u = new URL(endereco);
+        await pagina.context().addCookies([
+          {
+            name: COOKIE_DO_PORTAO,
+            value: cookie,
+            domain: u.hostname,
+            path: '/',
+            httpOnly: true,
+            secure: u.protocol === 'https:',
+            sameSite: 'Lax',
+          },
+        ]);
+      }
       await pagina.goto(endereco, { waitUntil: 'load' });
       /**
        * A página é PERCORRIDA antes de medir, como um visitante percorre.
@@ -1080,13 +1164,50 @@ export const conferirNoNavegador = async (
   return saida;
 };
 
+/**
+ * A linha de comando, lida como DADO — para poder ser testada sem processo.
+ *
+ * A credencial vem por `--credencial <valor>` ou, faltando ela, de `ORBIS_SENHA`
+ * do ambiente, que é onde ela já mora para quem sobe o servidor. Nunca fica no
+ * código, e nunca na URL: URL entra em log de servidor e de histórico de shell.
+ */
+export const lerArgumentos = (
+  args: readonly string[],
+  ambiente: Record<string, string | undefined> = {},
+): {
+  alvo: string | undefined;
+  credencial: string | undefined;
+  corrigir: boolean;
+  visivel: boolean;
+} => {
+  const iCred = args.indexOf('--credencial');
+  const doAmbiente = ambiente.ORBIS_SENHA;
+  return {
+    corrigir: args.includes('--corrigir'),
+    visivel: args.includes('--ver'),
+    credencial:
+      iCred >= 0 && args[iCred + 1] !== undefined && !args[iCred + 1].startsWith('--')
+        ? args[iCred + 1]
+        : typeof doAmbiente === 'string' && doAmbiente !== ''
+          ? doAmbiente
+          : undefined,
+    /**
+     * O VALOR do `--credencial` não é o alvo: sem esta guarda,
+     * `pnpm conferir --credencial x http://…` mediria uma pasta chamada "x".
+     *
+     * O `iCred >= 0` não é zelo: sem ele, `iCred` é -1, a posição proibida vira
+     * 0 e o primeiro argumento — que é o alvo em toda chamada sem credencial —
+     * some. O teste pegou; eu não tinha visto.
+     */
+    alvo: args.find((a, i) => !a.startsWith('--') && !(iCred >= 0 && i === iCred + 1)),
+  };
+};
+
 const principal = async (): Promise<void> => {
-  const corrigir = process.argv.includes('--corrigir');
-  const visivel = process.argv.includes('--ver');
-  const alvo = process.argv.slice(2).find((a) => !a.startsWith('--'));
+  const { alvo, credencial, corrigir, visivel } = lerArgumentos(process.argv.slice(2), process.env);
   if (alvo === undefined) {
     console.log(
-      '\n  Uso: pnpm conferir <pasta do site gerado | endereço http> [--ver] [--corrigir]\n',
+      '\n  Uso: pnpm conferir <pasta do site gerado | endereço http> [--ver] [--corrigir] [--credencial <senha do portão>]\n',
     );
     process.exit(1);
   }
@@ -1123,7 +1244,7 @@ const principal = async (): Promise<void> => {
       writeFileSync(folha, `${semOBloco(readFileSync(folha, 'utf8')).trimEnd()}${QUEBRA}`, 'utf8');
     }
   }
-  const resultados = await conferirNoNavegador(pasta, { visivel });
+  const resultados = await conferirNoNavegador(pasta, { visivel, credencial });
 
   let reprovou = false;
   for (const { largura, aceite } of resultados) {

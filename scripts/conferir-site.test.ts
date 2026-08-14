@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
-import { destinoDoVeredito, ehEnderecoDeRede, enderecoDoAlvo } from './conferir-site.js';
+import {
+  destinoDoVeredito,
+  ehEnderecoDeRede,
+  enderecoDoAlvo,
+  lerArgumentos,
+} from './conferir-site.js';
 
 /**
  * Este arquivo não existia, e foi por isso que o defeito passou.
@@ -39,6 +44,62 @@ test('endereço NÃO grava veredito ao lado: não existe lado', () => {
   assert.ok(pasta !== null, 'pasta tem onde gravar');
   assert.equal(pasta, resolve('./algum-site', 'aceite-navegador.json'));
   assert.ok(!pasta.includes('http'), 'e o caminho não carrega esquema de URL');
+});
+
+/**
+ * O `--credencial` nasceu de uma medição que MENTIU por omissão.
+ *
+ * A régua mediu `http://localhost:4000/` e devolveu dez vereditos verdes. A
+ * página que ela mediu era a tela de login: seis elementos. Verde medido no
+ * lugar errado é pior que vermelho, porque ninguém confere de novo.
+ *
+ * Estes testes cobrem a leitura da linha de comando, que é onde o defeito
+ * óbvio mora: tratar o VALOR da credencial como se fosse o alvo.
+ */
+test('o valor da credencial não é confundido com o alvo', () => {
+  const a = lerArgumentos(['--credencial', 'iron7*', 'http://localhost:5173/inicio']);
+  assert.equal(a.alvo, 'http://localhost:5173/inicio');
+  assert.equal(a.credencial, 'iron7*');
+
+  // E na ordem inversa, que é como as pessoas realmente digitam.
+  const b = lerArgumentos(['http://localhost:5173/inicio', '--credencial', 'iron7*']);
+  assert.equal(b.alvo, 'http://localhost:5173/inicio');
+  assert.equal(b.credencial, 'iron7*');
+});
+
+test('sem --credencial, a senha vem do ambiente; sem ambiente, não vem nenhuma', () => {
+  assert.equal(lerArgumentos(['./site'], { ORBIS_SENHA: 'do-ambiente' }).credencial, 'do-ambiente');
+  assert.equal(lerArgumentos(['./site'], {}).credencial, undefined);
+  assert.equal(
+    lerArgumentos(['./site'], { ORBIS_SENHA: '' }).credencial,
+    undefined,
+    'senha vazia é portão desligado, não credencial vazia',
+  );
+  // A explícita vence a do ambiente: quem digitou quis aquela.
+  assert.equal(
+    lerArgumentos(['./site', '--credencial', 'digitada'], { ORBIS_SENHA: 'do-ambiente' })
+      .credencial,
+    'digitada',
+  );
+});
+
+test('--credencial sem valor não engole a bandeira seguinte', () => {
+  // `pnpm conferir ./site --credencial --ver` não pode virar senha "--ver" nem
+  // perder o alvo: a falha tem de ser a ausência da senha, não um alvo sumido.
+  const a = lerArgumentos(['./site', '--credencial', '--ver']);
+  assert.equal(a.alvo, './site');
+  assert.equal(a.credencial, undefined);
+  assert.equal(a.visivel, true);
+});
+
+test('as bandeiras antigas continuam lidas', () => {
+  const a = lerArgumentos(['./site', '--ver', '--corrigir']);
+  assert.equal(a.alvo, './site');
+  assert.equal(a.visivel, true);
+  assert.equal(a.corrigir, true);
+  const b = lerArgumentos(['./site']);
+  assert.equal(b.visivel, false);
+  assert.equal(b.corrigir, false);
 });
 
 test('o alvo vira o endereço que o navegador abre', () => {
