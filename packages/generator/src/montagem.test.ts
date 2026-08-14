@@ -734,8 +734,7 @@ test('destravarOpacidadeSemRevelador: o deslocamento sai junto com a opacidade',
   // sempre. Um botao com `min-height:44px` aplicado chegava a tela com 42px e
   // reprovava a S15 — e o culpado nao era o botao, era o ancestral parado.
   const css =
-    '.clip-slide{opacity:0;transform:translateY(40px) scale(.95)}' +
-    '.so-apagado{opacity:0}';
+    '.clip-slide{opacity:0;transform:translateY(40px) scale(.95)}' + '.so-apagado{opacity:0}';
   const html = '<div class="clip-slide"><b class="so-apagado">oi</b></div>';
   const r = destravarOpacidadeSemRevelador(css, [], html);
   assert.match(r.css, /opacity:1 !important/);
