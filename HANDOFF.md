@@ -43,9 +43,26 @@
 >   a opacidade: classe presa em `translateY(40px) scale(.95)` deixava um botão
 >   com 42px onde o CSS mandava 44, e a S15 reprovava o alvo errado.
 >
-> **Depois da fila:** varredura de UI/UX do app (autorizada) e os passos 3–6 do
-> MVP Criativos (handler do job `criativo` com o motor orbis-suite, grade de
-> resultado + download).
+> ### A fila TRAVOU nos quatro últimos, e não é defeito
+>
+> Café da Estação, asteric, Navalha & Cia e Ourivés (cada um duplicado) são
+> sobras dos testes da Via Expressa: **sem pasta de projeto, sem mídia em disco,
+> sem projeto no banco, e zero peças vivas no kit**. Gerar produziria um site
+> com as fotos e o logotipo da empresa de ORIGEM, que é o que a S2 existe para
+> barrar. Ou o dono limpa esses sete jobs, ou roda a Via Expressa de novo para
+> as marcas que ainda interessam.
+>
+> ### Feito depois da fila
+>
+> A frente Criativos ganhou o FIM da linha: rota `/api/criativos` e a tela
+> "Minhas peças". Download só do que a verificação aprovou; reprovada mostra o
+> motivo, e o custo gasto aparece junto.
+>
+> **Ainda em aberto:** varredura de UI/UX do app (autorizada pelo dono) e a
+> qualidade da MÍDIA automática — as imagens que o assistente gera não combinam
+> com as marcas (surfe numa loja de eletrônicos). Passa em todas as regras e é a
+> primeira coisa que alguém vê; trocar por Magnific custa crédito e precisa da
+> declaração de orçamento.
 
 ## 1. Onde o produto está
 
