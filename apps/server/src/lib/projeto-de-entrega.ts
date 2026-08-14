@@ -48,7 +48,10 @@ type Aceite = { aprovado?: boolean; vereditos?: Veredito[] };
 export const nomeDePacote = (marca: string): string => {
   const limpo = marca
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    // `\p{M}` são as marcas combinantes que o NFD separou da letra — dizer isso
+    // por nome evita escrever a faixa com os caracteres crus, que é ilegível no
+    // editor e que o lint reprova por casar letra e acento na mesma classe.
+    .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
@@ -254,7 +257,10 @@ export const montarProjetoDeEntrega = (opcoes: {
   // Sem comando de build e publicando a raiz: é o que um site estático pede,
   // e dizer isso por escrito evita a hospedagem tentar adivinhar.
   escrever('netlify.toml', '[build]\n  publish = "."\n  command = ""\n');
-  escrever('vercel.json', `${JSON.stringify({ cleanUrls: true, trailingSlash: false }, null, 2)}\n`);
+  escrever(
+    'vercel.json',
+    `${JSON.stringify({ cleanUrls: true, trailingSlash: false }, null, 2)}\n`,
+  );
   // O Pages esconde pastas iniciadas por `_` quando acha que o site é Jekyll.
   escrever('.nojekyll', '');
   escrever('.gitignore', 'node_modules/\n.DS_Store\nThumbs.db\n');

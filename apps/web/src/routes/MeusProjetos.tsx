@@ -61,9 +61,9 @@ export function MeusProjetosPage() {
         className="ds-slide-up ds-d2 mt-3 max-w-[62ch] text-[14px] leading-[1.6]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        Cada versão é um site completo: veja a prévia, abra numa aba ou baixe o projeto inteiro,
-        com o leia-me de publicação, o servidor para rodar na sua máquina e as configurações
-        prontas dos hosts. Se quiser mudar alguma coisa, edite o projeto e eu gero de novo.
+        Cada versão é um site completo: veja a prévia, abra numa aba ou baixe o projeto inteiro, com
+        o leia-me de publicação, o servidor para rodar na sua máquina e as configurações prontas dos
+        hosts. Se quiser mudar alguma coisa, edite o projeto e eu gero de novo.
       </p>
 
       {items.length === 0 ? (
