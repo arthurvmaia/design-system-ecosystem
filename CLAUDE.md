@@ -193,6 +193,37 @@ CRIATIVO, entregue como dado:
 vez de contornar num script descartável. Os restos de `_tmp-*` de gerações
 antigas são exatamente o que este contrato aposenta.
 
+### `criativo`
+
+O cliente pediu **imagem ou vídeo para a marca dele** pela frente Criativos. O
+payload segue `PedidoCriativo` (`packages/shared/src/schemas/criativo.ts`) e é
+a fonte da verdade — grafia da marca, formato com dimensão exata, origem da
+imagem, texto literal, claims autorizados e teto de orçamento.
+
+**Toda a produção é do motor `orbis-suite`.** Carregue a skill e siga os seis
+estágios dela — briefing separando fato de direção, rota declarada, mestre
+editável, derivados, verificação medida, entrega. É a regra do app inteiro:
+nenhuma peça visual nasce fora do motor.
+
+1. **Determinístico antes de generativo.** Dimensão, recorte, máscara, cor da
+   paleta e tipografia são calculados. Magnific/Photoshop entram pela rota do
+   motor (MCP), e só onde o pixel não existe.
+2. **Upload vence geração, sempre.** `origem: 'upload'` nunca passa por
+   gerador — o schema já reprova o payload ambíguo, e o motor respeita.
+3. **Orçamento contado.** `simulate_cost` antes (read-only), declare o custo,
+   debite do `tetoDeCreditos` do pedido e PARE ao zerar — parar é resultado,
+   estourar em silêncio é defeito.
+4. **Nada inventado.** Preço, desconto, prazo, frete, depoimento e
+   certificação só aparecem se estiverem em `autorizacoesDeClaim` — ou seja,
+   se o cliente digitou.
+5. **Saída em disco**: `criativosDir(jobId)` com as variações e um
+   `resultado.json` no formato `ResultadoCriativo`. Reporte
+   `pnpm fila:progresso` por variação.
+6. **Verificação antes do download** (estágio 5 do motor): dimensão
+   exatamente a do formato pedido, texto legível no tamanho real do canal,
+   produto do cliente preservado quando houve upload. Peça reprovada não vira
+   download: o resultado diz o que falhou. Feche com `pnpm fila:concluir`.
+
 ### `ajustar`
 
 Um retoque num site **já gerado**: "esse título está pequeno", "esse azul não é
