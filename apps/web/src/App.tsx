@@ -6,6 +6,7 @@ import { ROTA_INICIAL_DO_CLIENTE, capturarPerfilDaUrl, perfilAtual } from '@/lib
 import { aplicarMovimento, usePreferencias } from '@/lib/preferencias';
 import { CriativosPage } from '@/routes/Criativos';
 import { CriativosExpressoPage } from '@/routes/CriativosExpresso';
+import { CriativosPecasPage } from '@/routes/CriativosPecas';
 import { ExtractPage } from '@/routes/Extract';
 import { GalleryPage } from '@/routes/Gallery';
 import { KitsPage } from '@/routes/Kits';
@@ -79,6 +80,7 @@ export function App() {
                 {/* O expresso mora DENTRO da casca da frente: é atalho de
                     tela dos mesmos criativos, não uma frente nova. */}
                 <Route path="/criativos/expresso" element={<CriativosExpressoPage />} />
+                <Route path="/criativos/pecas" element={<CriativosPecasPage />} />
               </Route>
               <Route element={<Shell />}>
                 <Route

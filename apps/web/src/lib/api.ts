@@ -649,6 +649,31 @@ export const siteUrl = (prjId: string, versao: string): string =>
   `/site/${prjId}/${encodeURIComponent(versao)}/index.html`;
 
 /** URL de download do .zip de uma versão gerada. */
+/** Uma peça produzida pela frente Criativos, como a tela a mostra. */
+export type PecaCriativa = {
+  id: string;
+  label: string;
+  status: 'pendente' | 'concluido' | 'erro' | 'cancelado';
+  criadoEm: number;
+  pedido: { marca: string; formato: string | null; tipo: string | null; variacoes: number | null };
+  variacoes: {
+    caminho: string | null;
+    estado: 'aprovada' | 'reprovada' | 'falhou';
+    motivo: string | null;
+  }[];
+  aprovadas: number;
+  custoGasto: number | null;
+};
+
+/**
+ * O arquivo de uma variação APROVADA.
+ *
+ * O caminho vai por query e o servidor só entrega o que o `resultado.json`
+ * declarou aprovado — nome montado aqui não alcança arquivo nenhum.
+ */
+export const arquivoCriativoUrl = (jobId: string, caminho: string): string =>
+  `/api/criativos/${jobId}/arquivo?caminho=${encodeURIComponent(caminho)}`;
+
 export const downloadUrl = (prjId: string, versao: string): string =>
   `/api/meus-projetos/${prjId}/download?versao=${encodeURIComponent(versao)}`;
 
@@ -938,6 +963,7 @@ export const api = {
 
   // ── Meus sites (versões geradas em disco) ───────────────────────────────
   listMeusProjetos: () => jsonFetch<{ items: MeusProjetosItem[] }>('/api/meus-projetos'),
+  listPecasCriativas: () => jsonFetch<{ items: PecaCriativa[] }>('/api/criativos'),
   meusProjetosContagem: () => jsonFetch<{ total: number }>('/api/meus-projetos/contagem'),
   abrirPasta: (id: string) =>
     jsonFetch<{ ok: boolean }>(`/api/meus-projetos/${id}/abrir-pasta`, { method: 'POST' }),
