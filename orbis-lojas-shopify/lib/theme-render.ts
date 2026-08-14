@@ -1168,10 +1168,15 @@ var conteudo=novo.querySelector("[id^='shopify-section-']")||novo;alvo.innerHTML
 /* Elementos que formam a gaveta: o custom element (cart-drawer/mini-cart) e o
    contêiner interno. Aplicar em todos evita depender do nome que cada tema
    escolheu — pegar só o primeiro do seletor acertava uma div interna e a
-   gaveta não abria. */
+   gaveta não abria.
+
+   Não exigimos que a gaveta esteja dentro de uma seção: no Dawn ela vem de um
+   render de snippet no layout, filha direta do body — exatamente como na loja
+   de verdade. Exigindo a seção, a lista saía vazia e o clique no ícone do
+   carrinho não abria nada. */
 function alvosDaGaveta(){var lista=[];
 document.querySelectorAll("cart-drawer, mini-cart, #CartDrawer, #mini-cart, .cart-drawer, .mini-cart, [id*='cart-drawer' i]").forEach(function(el){
-  if(el.closest&&el.closest("[id^='shopify-section-']")&&lista.indexOf(el)<0)lista.push(el);});
+  if(lista.indexOf(el)<0)lista.push(el);});
 return lista;}
 function abrirGaveta(){var alvos=alvosDaGaveta();if(!alvos.length)return false;
 alvos.forEach(function(el){["active","is-open","open","drawer--active"].forEach(function(c){el.classList.add(c);});
@@ -1282,9 +1287,11 @@ document.body.classList.remove("overflow-hidden");return true;}
 document.addEventListener("click",function(e){var alvo=e.target.closest&&e.target.closest('[class*="close" i],[class*="dismiss" i],[class*="overlay" i],[aria-label*="fech" i],[aria-label*="close" i]');
 if(!alvo)return;var dentro=alvo.closest("cart-drawer, #CartDrawer, #mini-cart, .cart-drawer, .drawer");if(dentro)setTimeout(fecharGaveta,0);},false);
 document.addEventListener("keydown",function(e){if(e.key==="Escape")fecharGaveta();});
-/* o ícone do carrinho abre a gaveta ATUALIZADA (em vez de abrir vazia) */
+/* o ícone do carrinho abre a gaveta ATUALIZADA (em vez de abrir vazia).
+   Só engolimos o clique quando existe gaveta para abrir: sem isso, num tema
+   que leva o carrinho para uma página, o clique morria aqui e nada acontecia. */
 document.addEventListener("click",function(e){var link=e.target.closest&&e.target.closest('a[href="/cart"], a[href^="/cart?"], a[class*="cart" i]');
-if(!link)return;var g=document.querySelector("cart-drawer, #CartDrawer, #mini-cart, .cart-drawer");if(!g)return;
+if(!link)return;if(!alvosDaGaveta().length)return;
 e.preventDefault();e.stopPropagation();
 pedirSecoes(secoesDaGaveta()).then(function(html){aplicarSecoes(html);abrirGaveta();});},true);
 window.__orbisCarrinho={estado:estado,itens:function(){return itens;},comprar:comprar,abrir:abrirGaveta,fechar:fecharGaveta};
@@ -1295,25 +1302,18 @@ function limparHover(){if(hoverAlvo){hoverAlvo.style.outline="";hoverAlvo.style.
 document.addEventListener("submit",function(event){event.preventDefault();},true);
 document.addEventListener("mouseover",function(event){if(mode!=="selecionar"){return;}var alvo=event.target.closest("[data-block-id],[data-orbis-section]");if(alvo===hoverAlvo){return;}limparHover();if(alvo){hoverAlvo=alvo;alvo.style.outline="1px dashed rgba(47,128,237,0.85)";alvo.style.outlineOffset="-1px";}},true);
 /* CAPTURA (antes do tema): só o que precisa vir primeiro — nunca sair para a
-   internet, e avisar a seção clicada no modo de seleção. Cliques que não são
-   link ficam bloqueados no modo de seleção (nada de comprar sem querer). */
+   internet, e avisar a seção clicada no modo de seleção.
+
+   O modo de seleção AVISA, não bloqueia. A lista de exceções que existia aqui
+   (fechar, comprar, carrinho…) tentava adivinhar o que podia responder, e
+   deixava de fora o resto do tema: menu de três barras, busca, accordion e
+   qualquer summary morriam no clique. Na prévia da Shopify essas coisas
+   respondem, e uma prévia que não responde parece quebrada. O que continua
+   travado é o que sai do lugar: link para fora e envio de formulário. */
 document.addEventListener("click",function(event){var anchor=event.target.closest("a");
-if(anchor){var externo=anchor.getAttribute("href")||"";if(externo.indexOf("http://")===0||externo.indexOf("https://")===0||anchor.target==="_blank"){event.preventDefault();}
-if(mode==="selecionar"){var s=anchor.closest("[data-orbis-section]");var b=anchor.closest("[data-block-id]");if(s&&window.parent!==window){window.parent.postMessage({orbisSection:s.getAttribute("data-orbis-section"),orbisBlock:b?b.getAttribute("data-block-id"):null},"*");}}
-return;}
-if(mode==="selecionar"){
-/* fechar gaveta/modal continua funcionando mesmo no modo de seleção: sem
-   isso, abrir o carrinho no editor prendia a pessoa com a gaveta aberta */
-var saida=event.target.closest('[class*="close" i],[class*="dismiss" i],[class*="overlay" i],[aria-label*="fech" i],[aria-label*="close" i]');
-if(saida)return;
-/* comprar e "Escolher opções" também passam: no editor da Shopify o carrinho
-   responde, e travar isso fazia o botão parecer quebrado */
-var loja=event.target.closest('button[name="add"],[data-add-to-cart],[class*="quick-add" i],[class*="quick-buy" i],modal-opener,[data-product-url]');
-if(loja)return;
-/* dentro do carrinho tudo responde: quantidade, remover, finalizar */
-var carrinho=event.target.closest('cart-drawer, mini-cart, cart-items, cart-drawer-items, #CartDrawer, #mini-cart, .cart-drawer, .mini-cart, [class*="cart-item" i]');
-if(carrinho)return;
-event.preventDefault();event.stopPropagation();var block=event.target.closest("[data-block-id]");var section=event.target.closest("[data-orbis-section]");if(section&&window.parent!==window){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section"),orbisBlock:block?block.getAttribute("data-block-id"):null},"*");}return;}},true);
+if(anchor){var externo=anchor.getAttribute("href")||"";if(externo.indexOf("http://")===0||externo.indexOf("https://")===0||anchor.target==="_blank"){event.preventDefault();}}
+if(mode==="selecionar"&&window.parent!==window){var section=event.target.closest("[data-orbis-section]");var block=event.target.closest("[data-block-id]");
+if(section){window.parent.postMessage({orbisSection:section.getAttribute("data-orbis-section"),orbisBlock:block?block.getAttribute("data-block-id"):null},"*");}}},true);
 /* BOLHA (depois do tema): se o proprio tema tratou o clique — carrinho que
    abre a gaveta, menu, modal — ele ja chamou preventDefault e a previa NAO
    troca de pagina. So navega o link que ninguem tratou. */

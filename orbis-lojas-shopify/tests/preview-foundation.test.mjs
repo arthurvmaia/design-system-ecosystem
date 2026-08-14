@@ -209,8 +209,16 @@ test("gaveta do carrinho: blocos reais, abre e fecha, e o selo sai do caminho", 
   assert.match(render, /function alvosDaGaveta/);
   assert.match(render, /function fecharGaveta/);
   assert.match(render, /keydown[\s\S]{0,60}Escape[\s\S]{0,40}fecharGaveta/);
-  /* no modo de seleção, fechar continua clicável */
-  assert.match(render, /var saida=event\.target\.closest/);
+  /* a gaveta não precisa estar dentro de uma seção: no Dawn ela é filha direta
+     do body, e a exigência antiga deixava a lista vazia — o ícone do carrinho
+     não abria nada */
+  assert.doesNotMatch(render, /alvosDaGaveta\(\)\{[\s\S]{0,300}?shopify-section/);
+  /* o modo de seleção AVISA, não bloqueia: com o clique engolido, o menu de
+     três barras, a busca e o carrinho do tema não respondiam */
+  const captura = render.match(/CAPTURA \(antes do tema\)[\s\S]*?BOLHA \(depois do tema\)/);
+  assert.ok(captura, "o handler de captura sumiu do bridge");
+  assert.doesNotMatch(captura[0], /stopPropagation/);
+  assert.match(captura[0], /mode==="selecionar"[\s\S]{0,200}orbisSection/);
 
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   /* o selo vira faixa no topo: no canto direito ele cobria o X da gaveta */
