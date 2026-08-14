@@ -699,3 +699,20 @@ test('a rede da AMOSTRA vale no site gerado, fora de qualquer @media', () => {
   assert.match(fora, /align-items: flex-start/, 'sem stretch ate a borda');
   assert.match(fora, /\[data-ds-amostra="botoes"\]/, 'fileira de botoes continua fileira');
 });
+
+test('acenderLetraMiuda: o seletor DESCENDENTE inteiro tambem ganha piso', () => {
+  // `.form-group label{font-size:0.6rem}`: o assunto e o <label> NU. O piso por
+  // classe pousava no CONTEINER, e font-size direto num descendente vence
+  // heranca — os 9,6px sobreviviam (12 rotulos medidos em dois kits). O seletor
+  // original emitido verbatim no fim da folha empata em especificidade e vence
+  // por ordem.
+  const r = acenderLetraMiuda(
+    ':where([data-ds-corpo="d"]) .form-group label{font-size:0.6rem}' +
+      '@keyframes x{from{font-size:8px}to{font-size:16px}}',
+  );
+  assert.ok(
+    r.css.includes(':where([data-ds-corpo="d"]) .form-group label'),
+    'o seletor inteiro esta no piso',
+  );
+  assert.ok(!/from|to\{/.test(r.css.replace(/max-width/g, '')), 'preludio de keyframe fica fora');
+});

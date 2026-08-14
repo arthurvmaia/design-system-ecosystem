@@ -1136,6 +1136,17 @@ export const PISO_DE_LETRA_MOVEL = 12;
 
 export const acenderLetraMiuda = (css: string): { css: string; classes: string[] } => {
   const alvo = new Set<string>();
+  /**
+   * O SELETOR INTEIRO também entra — porque o piso na classe errada não pisa.
+   *
+   * A regra da origem era `.form-group label{font-size:0.6rem}`: o assunto é o
+   * <label> NU, sem classe nenhuma. A extração por classe pegava `.form-group`
+   * e emitia o piso NO CONTÊINER — e font-size direto num descendente vence
+   * herança, então os 9,6px do label sobreviviam intactos (12 rótulos medidos
+   * em dois kits). Emitir o seletor original verbatim ganha na cascata: o piso
+   * é concatenado no FIM da folha, empata em especificidade e vence por ordem.
+   */
+  const seletoresInteiros = new Set<string>();
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const seletor = m[1] ?? '';
     const corpo = m[2] ?? '';
@@ -1151,6 +1162,9 @@ export const acenderLetraMiuda = (css: string): { css: string; classes: string[]
           ? Number.parseFloat(rem[1] ?? '0') * 16
           : Number.NaN;
     if (!Number.isFinite(tamanho) || tamanho <= 0 || tamanho >= PISO_DE_LETRA_MOVEL) continue;
+    // Prelúdio de @keyframes (`from`, `to`, `40%`) não é seletor de elemento.
+    const bruto = seletor.trim();
+    if (!/^(?:from|to|\d+(?:\.\d+)?%)/.test(bruto)) seletoresInteiros.add(bruto);
     for (const c of seletor.matchAll(/[\s>+~,(]\.((?:\\.|[\w-])+)\s*(?=[,){]|$)/g)) {
       const nome = (c[1] ?? '').replace(/\\/g, '');
       if (nome !== '') alvo.add(nome);
@@ -1160,10 +1174,13 @@ export const acenderLetraMiuda = (css: string): { css: string; classes: string[]
       if (nome !== '') alvo.add(nome);
     }
   }
-  if (alvo.size === 0) return { css: '', classes: [] };
+  if (alvo.size === 0 && seletoresInteiros.size === 0) return { css: '', classes: [] };
 
   const lista = [...alvo].sort();
-  const seletores = lista.map((c) => `.${c.replace(/([^\w-])/g, '\\$1')}`).join(',');
+  const seletores = [
+    ...lista.map((c) => `.${c.replace(/([^\w-])/g, '\\$1')}`),
+    ...[...seletoresInteiros].sort(),
+  ].join(',');
   return {
     css: `\n@media (max-width: 768px){\n  /* Letra abaixo de ${PISO_DE_LETRA_MOVEL}px não se lê no celular, por melhor que seja o contraste. */\n  ${seletores}{font-size:${PISO_DE_LETRA_MOVEL}px !important}\n}\n`,
     classes: lista,

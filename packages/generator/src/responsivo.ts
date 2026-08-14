@@ -100,8 +100,27 @@ img, video, iframe, canvas, svg, picture {
     \`inline-flex\` para o botão-ícone porque \`min-width\` sozinho alarga a caixa
     e deixa o ícone encostado num canto; centrar é parte de acertar o alvo.
   */
-  a, button, [role="button"], [role="tab"], input, select, textarea, summary {
+  /*
+    Checkbox e radio ficam FORA da inflacao: o controle de marcar e pequeno DE
+    PROPOSITO (o desenho da peca pinta borda e fundo nele), e o min-height o
+    esticava para 16x44 — deformava a essencia E continuava reprovando, porque
+    a largura seguia 16. O alvo do dedo e o ROTULO, e e ele que cresce abaixo.
+  */
+  a, button, [role="button"], [role="tab"], input:not([type="checkbox"]):not([type="radio"]), select, textarea, summary {
     min-height: 44px !important;
+  }
+  /*
+    O rotulo que carrega (ou aponta para) o controle E o alvo real: label[for]
+    e label:has(input) ativam o campo nativamente, entao crescer o rotulo e
+    crescer o alvo — sem tocar o desenho do controle (a trilha do toggle de
+    32x16 continua 32x16, centrada dentro do rotulo). Medido no banco: 7 alvos
+    (3 checkboxes desenhados + 4 toggles sr-only) passam a 44x44 pelo rotulo.
+  */
+  label:has(input[type="checkbox"]), label:has(input[type="radio"]), label[for] {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px !important;
+    min-width: 44px !important;
   }
   button, [role="button"], [role="tab"], input[type="button"], input[type="submit"], summary {
     min-width: 44px !important;

@@ -436,12 +436,30 @@ const MEDIR = `() => {
        * Quando o texto do pai e praticamente so o do link, o link E o item — e
        * o dedo precisa acerta-lo.
        */
+      /*
+        Link no meio de FRASE e texto, nao botao (WCAG 2.5.8) — e a pergunta
+        certa e "tem frase em volta?", MEDIDA, nao "qual e a tag do pai?".
+
+        A lista branca de tags (P/LI/SPAN/H1-4) barrou um paragrafo legitimo so
+        porque ele era um DIV com classes de texto — site Tailwind escreve
+        paragrafo em div o tempo todo. Medido no banco: 4 links "Ver relatorio
+        detalhado" no meio de frase, acusados por causa da tag.
+
+        Conta-se o texto do pai que vive FORA de qualquer link: acima de 10
+        caracteres, ha frase em volta e o link e leitura. <li><a>Vagas</a></li>
+        continua acusavel (fora de link = 0), e fileira de links de rodape
+        tambem — todo o texto mora dentro de links.
+      */
       const pai = el.parentElement;
-      const textoDoLink = (el.textContent || '').trim();
-      const textoDoPai = pai ? (pai.textContent || '').trim() : '';
-      const dentroDeTexto = el.tagName === 'A' && pai
-        && ['P', 'LI', 'SPAN', 'H1', 'H2', 'H3', 'H4'].indexOf(pai.tagName) >= 0
-        && textoDoPai.length > textoDoLink.length + 10;
+      let foraDeLink = 0;
+      if (el.tagName === 'A' && pai) {
+        for (const n of pai.childNodes) {
+          if (n.nodeType === 3) foraDeLink += (n.textContent || '').trim().length;
+          else if (n.nodeType === 1 && n.tagName !== 'A' && !n.querySelector('a'))
+            foraDeLink += (n.textContent || '').trim().length;
+        }
+      }
+      const dentroDeTexto = el.tagName === 'A' && foraDeLink > 10;
       if (dentroDeTexto) continue;
       /*
         CAMPO ESCONDIDO com rotulo clicavel: o alvo e o ROTULO, nao o campo.
