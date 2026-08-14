@@ -1,6 +1,6 @@
 # HANDOFF — onde o trabalho está
 
-> ## 🔄 RETOMADA — trabalho em voo (2026-08-13, ~20h)
+> ## 🔄 RETOMADA — trabalho em voo (2026-08-14, ~1h30)
 >
 > **Se os subagentes caírem por limite de sessão, é DAQUI que se volta.**
 > Regra do dono: gravar isto antes do teto; ao voltar os tokens, retomar de
@@ -33,6 +33,17 @@
 > **Ao chegar o R2:** aplicar só `confirmadas`, reprovar (`pnpm kits:provar
 > --manter`), atualizar aqui. Depois: bench novo (o atual 4pVuiY ainda tem a
 > rede v2 nos sites).
+>
+> **Às 5h (reset do limite), relançar:** (1) diagnóstico S4+S13 —
+> `fechar-pendencias-kits-r3-wf_5d39b017-f3c.js` com bench NOVO da prova 19
+> (o R3 de S15+S16 JÁ foi colhido e aplicado em 4a9c3c7); (2) o workflow
+> `criativos-marca-e-expresso-wf_6b4011a6-75e.js` (morreu inteiro no limite —
+> tela de marca espelhando EtapaMarca + Criativo Expresso).
+>
+> **Aplicado nesta madrugada:** S15/S16 do R3 (frase medida na régua,
+> checkbox/radio fora da inflação + rótulo 44px, piso por seletor inteiro);
+> bug vídeo-tratado-como-imagem no passo 3; perfil cliente/admin (portal
+> pergunta, app enxuga dos kits em diante); prova 19 RODANDO.
 >
 > **Decisão registrada — Astro (2026-08-14):** avaliado a pedido do dono e NÃO
 > adotado. O que o Astro entrega (HTML estático, zero JS por padrão) o nosso
