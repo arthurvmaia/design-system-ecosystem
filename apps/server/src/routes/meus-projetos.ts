@@ -24,6 +24,7 @@ import { zValidator } from '@hono/zod-validator';
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { montarProjetoDeEntrega, nomeDePacote } from '../lib/projeto-de-entrega.js';
 
 export const meusProjetosRoute = new Hono();
 
@@ -98,7 +99,14 @@ meusProjetosRoute.get('/', (c) => {
 });
 
 /**
- * Baixa uma versão gerada como .zip.
+ * Baixa uma versão gerada como PROJETO pronto para publicar.
+ *
+ * O que se baixa não é mais a pasta gerada compactada crua. `montarProjetoDeEntrega`
+ * monta um projeto — leia-me com os caminhos de publicação, servidor local sem
+ * dependência, configuração dos hosts estáticos, `.gitignore` e o resumo do que
+ * foi verificado — porque o dono apontou o que faltava: *"o cliente precisa do
+ * projeto para fazer deploy e subir isso"*. O zip continua existindo, mas como
+ * TRANSPORTE: navegador não baixa pasta.
  *
  * A compactação usa a ferramenta do sistema em vez de uma dependência nova:
  * `Compress-Archive` no Windows, `zip` no resto. Vale o `if` porque evita
@@ -117,25 +125,30 @@ meusProjetosRoute.get('/:id/download', async (c) => {
   const versao = pedida === undefined ? versoes[0] : versoes.find((v) => v.timestamp === pedida);
   if (versao === undefined) return c.json({ error: 'versao_nao_encontrada' }, 404);
 
+  const db = getDb();
+  const projeto = db.select().from(tables.projects).where(eq(tables.projects.id, id)).get();
+  const marca = projeto?.name ?? 'site';
+
   const origem = join(projectGeneratedDir(id), versao.timestamp);
   const temp = mkdtempSync(join(tmpdir(), 'ds-zip-'));
   const destino = join(temp, `${id}.zip`);
 
   try {
+    const raiz = montarProjetoDeEntrega({ origem, destino: temp, marca, versao: versao.timestamp });
     if (process.platform === 'win32') {
       await run('powershell', [
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
         '-Command',
-        `Compress-Archive -Path '${origem}\\*' -DestinationPath '${destino}' -Force`,
+        `Compress-Archive -Path '${raiz}' -DestinationPath '${destino}' -Force`,
       ]);
     } else {
-      await run('zip', ['-r', '-q', destino, '.'], { cwd: origem });
+      await run('zip', ['-r', '-q', destino, nomeDePacote(marca)], { cwd: temp });
     }
 
     const buf = readFileSync(destino);
-    const nome = `${id}-${versao.timestamp}.zip`.replace(/[^\w.-]/g, '_');
+    const nome = `${nomeDePacote(marca)}-${versao.timestamp}.zip`.replace(/[^\w.-]/g, '_');
 
     return new Response(new Uint8Array(buf), {
       headers: {

@@ -61,8 +61,9 @@ export function MeusProjetosPage() {
         className="ds-slide-up ds-d2 mt-3 max-w-[62ch] text-[14px] leading-[1.6]"
         style={{ color: 'var(--color-fg-muted)' }}
       >
-        Cada versão é um site completo: veja a prévia, abra numa aba ou baixe o .zip para subir num
-        host. Se quiser mudar alguma coisa, edite o projeto e eu gero de novo.
+        Cada versão é um site completo: veja a prévia, abra numa aba ou baixe o projeto inteiro,
+        com o leia-me de publicação, o servidor para rodar na sua máquina e as configurações
+        prontas dos hosts. Se quiser mudar alguma coisa, edite o projeto e eu gero de novo.
       </p>
 
       {items.length === 0 ? (
@@ -232,7 +233,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                 style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-bone-1)' }}
               >
                 <Download size={12} />
-                Baixar .zip
+                Baixar projeto
               </a>
             )}
             {maisRecente && (
@@ -319,7 +320,7 @@ function CardProjeto({ projeto }: { projeto: MeusProjetosItem }) {
                     <a
                       href={downloadUrl(projeto.id, versao.timestamp)}
                       className="opacity-50 transition-opacity hover:opacity-100"
-                      title="Baixar esta versão"
+                      title="Baixar o projeto desta versão"
                     >
                       <Download size={12} />
                     </a>
