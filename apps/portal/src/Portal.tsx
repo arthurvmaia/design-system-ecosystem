@@ -63,8 +63,15 @@ const PORTAS: Porta[] = [
     marca: 'ORBIS',
     titulo: 'Criativos',
     fala: 'Geração de criativos para anúncio e redes, a partir da mesma marca que já vive aqui.',
-    detalhes: ['Ainda em construção'],
-    destino: null,
+    /**
+     * A ala abriu. O aviso de obra prometia por escrito que, quando ela
+     * ficasse de pé, entraria aqui sem que nada mais precisasse mudar — e o
+     * dono apontou a porta fechada DUAS vezes com a tela pronta atrás. A
+     * frente mora dentro do app de design system (/criativos, os quatro passos
+     * da espec do MVP), porque é de lá que ela puxa a marca dos projetos.
+     */
+    detalhes: ['Imagem ou vídeo para a marca', 'Formato com medida certa', 'Download verificado'],
+    destino: { porta: 5173, chave: 'designSystem', caminho: '/criativos' },
   },
 ];
 
