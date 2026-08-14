@@ -391,3 +391,32 @@ test('o AJUSTE viaja com a tinta herdada — a terceira vez do mesmo erro', () =
   // o ajuste na heranca.
   assert.equal(r.corrigidos.length, 1, `o ajuste nao viajou: ${r.html}`);
 });
+
+test('folha SEM classe e conferida, e o conteiner corrigido avisa os descendentes', () => {
+  // Os 63 achados que sobravam no banco eram folhas sem classe nenhuma,
+  // herdando tinta de um ancestral — e a guarda antiga desistia em
+  // classes === ''. E quando o conteiner ganha o conserto, a tinta que desce
+  // e a NOVA: sem o aviso, a folha ganhava um segundo style redundante.
+  const css =
+    ':where([data-ds-corpo="d"]):is(.texto-claro){color:var(--marca-heading, #eee)}' +
+    ':where([data-ds-corpo="d"]):is(.cartao-claro){background-color:#f0f0f0}';
+  const r = corrigirParesDeCor(
+    '<div class="texto-claro cartao-claro"><p>folha sem classe nenhuma</p><span>outra folha</span></div>',
+    css,
+    TOKENS,
+  );
+  assert.equal(r.corrigidos.length, 1, `um conserto so, no conteiner: ${r.html}`);
+  const styles = (r.html.match(/style="color:var\(--marca-/g) ?? []).length;
+  assert.equal(styles, 1, `a folha herda a tinta corrigida, sem style proprio: ${r.html}`);
+});
+
+test('fundo rgba TRANSLUCIDO nao vira superficie na tabela', () => {
+  // rgba(20,20,30,0.5) entrava como fundo opaco escuro; na tela, composto
+  // sobre a pagina creme, aquilo e quase-creme. O corretor escolheu branco
+  // para o fundo da tabela e o branco pousou no creme real: 1,10:1 medido.
+  const css =
+    ':where([data-ds-corpo="d"]):is(.veu){background-color:rgba(20, 20, 30, 0.5)}' +
+    ':where([data-ds-corpo="d"]):is(.tinta){color:var(--marca-heading, #fff)}';
+  const mapa = mapearClassesPorPapel(css);
+  assert.equal(mapa.fundoLiteral.get('veu'), undefined, 'veu translucido nao e superficie');
+});

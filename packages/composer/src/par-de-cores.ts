@@ -315,8 +315,19 @@ export const mapearClassesPorPapel = (
       if (hex !== null) return `#${hex[1]}`;
       const nome = /^(white|black)\b/i.exec(v);
       if (nome !== null) return nome[1]?.toLowerCase() === 'white' ? '#ffffff' : '#000000';
-      const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i.exec(v);
+      /**
+       * Cor TRANSLÚCIDA não é superfície — e fingir que é escolheu tinta errada.
+       *
+       * `rgba(20,20,30,0.5)` entrava na tabela como fundo opaco escuro; na tela,
+       * composta sobre a página creme, aquela superfície é quase-creme. O
+       * corretor escolheu `primary-foreground` (branco) para o fundo da tabela
+       * e o branco pousou no creme real: 1,10:1, medido. Alfa abaixo de 0,95
+       * não vira literal — o fundo verdadeiro é o de trás, e a pilha o tem.
+       */
+      const rgb = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,/]+([\d.]+))?/i.exec(v);
       if (rgb === null) return null;
+      const alfaDaCor = rgb[4] === undefined ? 1 : Number.parseFloat(rgb[4]);
+      if (Number.isFinite(alfaDaCor) && alfaDaCor < 0.95) return null;
       const n = (i: number): string =>
         Math.min(255, Number.parseInt(rgb[i] ?? '0', 10))
           .toString(16)
@@ -535,6 +546,8 @@ export const corrigirParesDeCor = (
   }[] = [];
   /** O ajuste e o hex do fundo VIGENTE, para pintar a mesma cor que a tela pinta. */
   let ajusteVigente: AjusteDeCor | undefined;
+  /** A tinta que `conferir` acabou de aplicar — o walker a empurra p/ pilha. */
+  let tintaCorrigidaAgora: string | null = null;
   let hexVigente: string | null = null;
   let alfaVigente: number | undefined;
   const fundoVigente = (): string | null => {
@@ -641,6 +654,7 @@ export const corrigirParesDeCor = (
         break;
       }
     }
+    tintaCorrigidaAgora = null;
     const resultado = conferir(
       tudo,
       attrs,
@@ -651,6 +665,18 @@ export const corrigirParesDeCor = (
       ajusteDoFundoProprio,
       alfaDoFundoProprio,
     );
+    /**
+     * O elemento corrigido AVISA os descendentes: a tinta que desce e a nova.
+     *
+     * Sem isto, o conteiner ganhava o style e a folha sem classe, herdando a
+     * tinta VELHA pela pilha, ganhava um segundo style redundante — o mesmo
+     * conserto escrito duas vezes, e corrigidos contando dobrado.
+     */
+    if (tintaCorrigidaAgora !== null) {
+      tintaPropriaPapel = tintaCorrigidaAgora;
+      tintaPropriaAjuste = undefined;
+      tintaPropriaHex = null;
+    }
     if (!autoFechada) {
       pilha.push({
         tag: nome,
@@ -676,7 +702,15 @@ export const corrigirParesDeCor = (
     ajusteDoFundoProprio: AjusteDeCor | undefined,
     alfaDoFundoProprio: number | undefined,
   ): string {
-    if (classes === '') return tudo;
+    /**
+     * Elemento SEM classe também é conferido — era o maior buraco que restava.
+     *
+     * A guarda antiga desistia em `classes === ''`, e os 63 achados que
+     * sobraram no banco eram exatamente isso: folhas sem classe nenhuma,
+     * herdando a tinta de um ancestral e sentando num fundo que a pilha
+     * conhece. O texto não precisa de classe para ser ilegível; a correção
+     * pousa como `style` no próprio elemento, com ou sem classe.
+     */
     /**
      * O `style` é extraído ANTES de procurar `color` dentro dele.
      *
@@ -805,6 +839,7 @@ export const corrigirParesDeCor = (
     const nova = tintaQueSeLeSobre(papelDoFundo, tokens, piso, hexFundo);
     if (nova === null || nova === papelDaTinta) return tudo;
 
+    tintaCorrigidaAgora = nova;
     corrigidos.push({
       classes,
       papelDoFundo: papelDoFundo ?? `literal ${hexFundo}`,
