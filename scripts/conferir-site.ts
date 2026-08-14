@@ -855,13 +855,30 @@ ${FECHA}
   return { regras: porSeletor.size, semAlvo };
 };
 
+/**
+ * A conferência roda ESCONDIDA por padrão, e o `--ver` é a exceção pedida.
+ *
+ * Janela abrindo na cara de quem está usando o computador é interrupção, não
+ * validação: por isso o padrão é headless e continua sendo. Mas o dono pediu
+ * para ACOMPANHAR a conferência do primeiro site da fila, e ver a régua
+ * percorrer a página é uma informação que número nenhum entrega — dá para
+ * perceber a dobra que trava, o texto que aparece tarde, o vídeo que não roda.
+ *
+ * Sendo chave declarada, quem chama escolhe; sendo padrão, ninguém escolheria.
+ */
 export const conferirNoNavegador = async (
   pasta: string,
+  opcoes: { visivel?: boolean } = {},
 ): Promise<{ largura: number; aceite: ResultadoDeAceite; medida: SiteNoNavegador }[]> => {
   const indice = join(pasta, 'index.html');
   if (!existsSync(indice)) throw new Error(`não achei ${indice}`);
   const pw = await import('playwright');
-  const navegador = await pw.chromium.launch({ headless: true });
+  const navegador = await pw.chromium.launch({
+    headless: opcoes.visivel !== true,
+    // Sem o atraso, o percurso inteiro passa como um piscar e não dá para ver
+    // nada — que é justamente o motivo de alguém ter pedido a janela.
+    ...(opcoes.visivel === true ? { slowMo: 120 } : {}),
+  });
   const saida: { largura: number; aceite: ResultadoDeAceite; medida: SiteNoNavegador }[] = [];
   try {
     for (const largura of LARGURAS) {
@@ -1015,9 +1032,10 @@ export const conferirNoNavegador = async (
 
 const principal = async (): Promise<void> => {
   const corrigir = process.argv.includes('--corrigir');
+  const visivel = process.argv.includes('--ver');
   const alvo = process.argv.slice(2).find((a) => !a.startsWith('--'));
   if (alvo === undefined) {
-    console.log('\n  Uso: pnpm conferir <pasta do site gerado>\n');
+    console.log('\n  Uso: pnpm conferir <pasta do site gerado> [--ver] [--corrigir]\n');
     process.exit(1);
   }
   const pasta = resolve(alvo);
@@ -1029,7 +1047,7 @@ const principal = async (): Promise<void> => {
       writeFileSync(folha, `${semOBloco(readFileSync(folha, 'utf8')).trimEnd()}${QUEBRA}`, 'utf8');
     }
   }
-  const resultados = await conferirNoNavegador(pasta);
+  const resultados = await conferirNoNavegador(pasta, { visivel });
 
   let reprovou = false;
   for (const { largura, aceite } of resultados) {
