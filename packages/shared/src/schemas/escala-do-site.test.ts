@@ -372,9 +372,16 @@ test('o rabo absurdo da regua e cortado: 2520px nao e degrau de respiro', () => 
   const daOrigem = escala({ espacos: [8, 16, 24] });
   const daReferencia = escala({ espacos: [6, 10, 16, 20, 24, 32, 40, 100, 160, 470, 2520] });
   const { espaco } = reguasParaOrigem(daOrigem, daReferencia);
-  // Com 2520 fora, a regua de referencia tem 10 degraus e a ponta de cima do
-  // espaco da origem mira o degrau 10, nao o 11.
-  assert.equal(espaco.porValor.get(24), '--marca-espaco-10');
+  // Este teste JÁ consagrou o próprio defeito: ele esperava 24 → espaco-10,
+  // que é 24px virando 470px — 19,6× de deformação, a mesma mecânica que
+  // estourou o S12 de dois kits (40px→160px em cada gap de um grid de 12
+  // colunas). O corte do rabo continua valendo (nada mira o degrau 11), e a
+  // guarda de distorção agora segura o topo: 24px NÃO vira 470px — o literal
+  // da origem vale mais.
+  assert.equal(espaco.porValor.get(24), undefined, '24px não pode virar 470px');
+  for (const nome of espaco.porValor.values()) {
+    assert.ok(!nome.endsWith('-11'), 'nada mira o degrau do rabo cortado');
+  }
 });
 
 test('salto de 4x e degrau legitimo: regua grossa nao e decapitada', () => {
@@ -389,4 +396,26 @@ test('a regua nunca fica vazia: torta e melhor que ausente', () => {
   const daReferencia = escala({ espacos: [8, 16] });
   const { espaco } = reguasParaOrigem(daOrigem, daReferencia);
   assert.ok(espaco.porValor.size > 0);
+});
+
+test('degrau que DEFORMA fica fora do mapa — harmonizar nao e deformar', () => {
+  // A regua de referencia de um kit publicava espaco-8:100px e -9:160px, e o
+  // alinhamento posicional jogou 32px da origem no 100 (3,1x) e 40px no 160
+  // (4x). Num grid de 12 colunas, 11 gaps de 160px somam mais que o proprio
+  // grid: as tracks colapsam e o cartao termina 520px alem da borda (S12
+  // medido em dois kits). Acima de 2x, o literal da origem vale mais.
+  const referencia = [6, 10, 16, 20, 24, 32, 40, 100, 160, 470.766, 2520];
+  const origem = [8, 16, 24, 32, 40];
+  const r = reguaDaOrigem(origem, referencia, (i) => `espaco-${i}`);
+  assert.ok(
+    !r.porValor.has(32) || !/-(7|8|9|10)$/.test(r.porValor.get(32) ?? ''),
+    '32px nao pode cair em 100px',
+  );
+  assert.ok(
+    !r.porValor.has(40) || !/-(8|9|10)$/.test(r.porValor.get(40) ?? ''),
+    '40px nao pode cair em 160px',
+  );
+  // O par legitimo continua mapeado: harmonizar dentro de 2x e o trabalho.
+  const legitimo = reguaDaOrigem([24], [40], (i) => `espaco-${i}`);
+  assert.equal(legitimo.porValor.get(24), 'espaco-0', '24→40 (1,67x) e harmonizacao legitima');
 });

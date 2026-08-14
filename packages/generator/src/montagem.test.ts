@@ -22,6 +22,7 @@ import {
   soltarRaizDaSecaoNoFluxo,
   trocarMonogramaDaOrigem,
 } from './montagem.js';
+import { cssResponsivoBase } from './responsivo.js';
 
 test('extrairCorpo: documento completo vira só o corpo; fragmento passa direto', () => {
   const doc = `<!doctype html><html><head><title>x</title></head><body class="a">\n<div>oi</div>\n</body></html>`;
@@ -685,4 +686,16 @@ test('REGRA_DA_LISTA_SUSPENSA: o <option> pinta o proprio fundo, e nao vem de CS
   assert.match(REGRA_DA_LISTA_SUSPENSA, /optgroup/, 'o grupo tambem e desenhado pelo sistema');
   assert.match(REGRA_DA_LISTA_SUSPENSA, /var\(--pagina-fundo\)!important/);
   assert.match(REGRA_DA_LISTA_SUSPENSA, /var\(--marca-heading/);
+});
+
+test('a rede da AMOSTRA vale no site gerado, fora de qualquer @media', () => {
+  // O embrulho <div data-ds-amostra class="flex flex-col gap-6 p-8"> e do
+  // motor, e as classes dele so existem se a origem as usou. Sem a rede, o
+  // align-items:stretch esticou um botao ate os 1440px e o skewX projetou a
+  // caixa 6px alem da borda (S12 medido). O preview ja tinha a mesma rede.
+  const css = cssResponsivoBase();
+  const fora = css.split('@media')[0] ?? '';
+  assert.match(fora, /\[data-secao\] \[data-ds-amostra\]/, 'a rede existe');
+  assert.match(fora, /align-items: flex-start/, 'sem stretch ate a borda');
+  assert.match(fora, /\[data-ds-amostra="botoes"\]/, 'fileira de botoes continua fileira');
 });

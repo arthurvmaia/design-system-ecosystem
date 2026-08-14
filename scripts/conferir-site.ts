@@ -655,7 +655,46 @@ const MEDIR = `() => {
     */
     const faixas = [];
     const topoDoDoc = window.scrollY || document.documentElement.scrollTop || 0;
-    for (const el of document.querySelectorAll('[data-secao] p, [data-secao] h1, [data-secao] h2, [data-secao] h3, [data-secao] h4, [data-secao] li, [data-secao] img, [data-secao] video, [data-secao] button, [data-secao] input')) {
+    for (const el of document.querySelectorAll('[data-secao] p, [data-secao] h1, [data-secao] h2, [data-secao] h3, [data-secao] h4, [data-secao] li, [data-secao] img, [data-secao] video, [data-secao] canvas, [data-secao] button, [data-secao] input')) {
+      const r = el.getBoundingClientRect();
+      if (r.height <= 0 || r.width <= 0) continue;
+      faixas.push([r.top + topoDoDoc, r.bottom + topoDoDoc]);
+    }
+    /*
+      A REGUA SUBCONTAVA, e reprovava pagina densa como se fosse vazio.
+
+      A lista de tags acima e o portugues classico de documento — mas site
+      Tailwind poe texto em <div>, <span> e <a> nus (cartao de preco, grade de
+      stats, rodape em grid) e midia em background-image ou <canvas>. Medido no
+      kit Agencia e marketing: a pagina e visualmente densa e media 16% — a
+      reprovacao era artefato da medida, nao vao. O NO DE TEXTO nao mente:
+      onde ha texto desenhado, ha conteudo, seja qual for a tag em volta.
+
+      Aditivo de proposito (a uniao dedupa): alturaUtil so cresce, entao site
+      que passava continua passando — e vao real continua vao, porque no vazio
+      nao ha no de texto nenhum.
+    */
+    const andarilho = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let no;
+    while ((no = andarilho.nextNode())) {
+      if (!no.nodeValue || !no.nodeValue.trim()) continue;
+      const dono = no.parentElement;
+      if (!dono || !dono.closest('[data-secao]')) continue;
+      if (dono.closest('script, style, noscript')) continue;
+      const alcance = document.createRange();
+      alcance.selectNodeContents(no);
+      for (const r of alcance.getClientRects()) {
+        if (r.height <= 0 || r.width <= 0) continue;
+        faixas.push([r.top + topoDoDoc, r.bottom + topoDoDoc]);
+      }
+    }
+    // Fundo com imagem e conteudo visual: o hero com foto de fundo ocupava a
+    // dobra inteira e contava zero. SVG solto fica de fora de proposito —
+    // decoracao vetorial gigante viraria conteudo; icone junto de texto ja
+    // entra pela faixa do proprio texto.
+    for (const el of document.querySelectorAll('[data-secao] *')) {
+      const cs = getComputedStyle(el);
+      if (!cs.backgroundImage || !cs.backgroundImage.includes('url(')) continue;
       const r = el.getBoundingClientRect();
       if (r.height <= 0 || r.width <= 0) continue;
       faixas.push([r.top + topoDoDoc, r.bottom + topoDoDoc]);

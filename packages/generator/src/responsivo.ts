@@ -28,6 +28,34 @@ img, video, iframe, canvas, svg, picture {
   max-width: 100%;
   height: auto;
 }
+/*
+  O embrulho da AMOSTRA é do motor, não da origem — e as classes dele também.
+
+  \`embrulhar\` (segmenter) veste o subcomponente num
+  \`<div data-ds-amostra class="flex flex-col gap-6 p-8">\`, apostando que esses
+  utilitários existem no CSS capturado. Quando a origem nunca usou \`p-8\`, o
+  padding é zero e o \`align-items: stretch\` do flex estica o botão até os
+  1440px da tela — e um \`skewX(-12°)\` projeta a caixa 6px além da borda
+  (medido no kit Loja de produto físico; \`max-width\` não segura porque o
+  excesso é da bounding box do transform, não da largura de layout).
+
+  O preview JÁ tem exatamente esta rede no ESTILO_BASE dele, pelo mesmo
+  motivo. O site gerado não tinha. Especificidade (0,2,0) vence as regras
+  escopadas por \`:where()\` sem precisar de !important, e o alcance é SÓ o
+  embrulho que o próprio motor escreveu — o desenho da peça não é tocado.
+*/
+[data-secao] [data-ds-amostra] {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px;
+  align-items: flex-start;
+}
+[data-secao] [data-ds-amostra="botoes"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
 
 @media (max-width: 768px) {
   body {

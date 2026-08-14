@@ -98,7 +98,25 @@ const soltarNoSeletor = (
               .trim();
           mudou = true;
           const resto = grupo.filter((n) => !ausentes.includes(n));
-          if (resto.length === 0) return undefined;
+          /**
+           * O SUJEITO morto mata a regra — soltá-lo re-mira no ancestral.
+           *
+           * `#scroll-progress{transform:scaleX(0)}` (a barra de progresso de
+           * 2px, que ficou fora do recorte) já escopado virou
+           * `:where([data-ds-corpo="…"]){transform:scaleX(0)}` — e achatou para
+           * LARGURA ZERO o corpo de TODAS as peças daquela origem. Medido no
+           * kit Educação e curso: 4 seções invisíveis somando 4203px, 46% da
+           * altura da página, e mais 4 kits com a mesma origem.
+           *
+           * O composto que era só o id ausente pode sair de cena quando é
+           * ANCESTRAL (`#platform .card` → `.card`: o filho continua o
+           * sujeito); quando é o ÚLTIMO composto, ele É o sujeito, e regra sem
+           * sujeito não re-mira — morre, exatamente como a filosofia deste
+           * arquivo já dizia: melhor uma regra morta que uma regra solta.
+           */
+          if (resto.length === 0) {
+            return grupo === compostos[compostos.length - 1] ? null : undefined;
+          }
           if (!resto.some((n) => ANCORAS.has(n.type))) return null;
           return resto
             .map((n) => String(n))

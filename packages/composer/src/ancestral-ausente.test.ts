@@ -56,3 +56,22 @@ test('CSS sem id nenhum não é reescrito', () => {
   assert.equal(r.relaxados, 0);
   assert.equal(r.descartados, 0);
 });
+
+test('o SUJEITO morto mata a regra — soltar re-miraria no ancestral', () => {
+  // #scroll-progress (a barra de 2px que ficou fora do recorte) escopado virou
+  // `:where([data-ds-corpo]){transform:scaleX(0)}` e achatou para largura zero
+  // o corpo de TODAS as pecas daquela origem. Medido: 4 secoes invisiveis, 46%
+  // da altura do kit Educacao e curso.
+  const r = soltarAncestraisAusentes(
+    ':where([data-ds-corpo="ds_a"]) #scroll-progress{transform:scaleX(0)}',
+    new Set<string>(),
+  );
+  assert.ok(!r.css.includes('scaleX'), 'a regra morre em vez de re-mirar no proxy');
+
+  // O caso do ANCESTRAL continua funcionando: o filho segue sendo o sujeito.
+  const ok = soltarAncestraisAusentes(
+    ':where([data-ds-corpo="ds_a"]) #platform .card{color:red}',
+    new Set<string>(),
+  );
+  assert.match(ok.css, /\.card\{color:red\}/, 'o ancestral sai e o sujeito fica');
+});

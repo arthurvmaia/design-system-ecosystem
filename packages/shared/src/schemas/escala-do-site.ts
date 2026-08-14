@@ -194,6 +194,32 @@ const semRaboAbsurdo = (degraus: readonly number[]): number[] => {
   return degraus.filter((_, i) => !fora.includes(i));
 };
 
+/**
+ * A distorção máxima que um degrau da referência pode impor ao valor da origem.
+ *
+ * O alinhamento é POSICIONAL, e no topo da régua ele deforma: a referência de
+ * um kit publicava `--marca-espaco-8: 100px` e `-9: 160px`, e o `sm:p-8` de
+ * 32px da origem caiu no 100px (3,1×), o `gap-10` de 40px caiu no 160px (4×).
+ * Num grid de 12 colunas e 1040px, 11 gaps de 160px somam 1760px: as tracks
+ * colapsam a zero e o terceiro cartão termina 520px além da borda — foi o S12
+ * de dois kits, medido.
+ *
+ * Harmonizar não é deformar. Medido nos pares legítimos do acervo, a razão
+ * chega a 1,67× (24→40); os que estouram começam em 3,1×. Acima de 2×, o
+ * literal da origem vale mais que o degrau — a mesma degradação que o
+ * `reescalar` já promete: não reescrever nunca é melhor que reescrever errado.
+ */
+export const DISTORCAO_MAXIMA_DA_REGUA = 2;
+
+/**
+ * A razão sozinha condenaria o desenho deliberado: "pontas nas pontas" leva
+ * 12px→32px (2,7×) e o canto quase vivo 2px→12px (6×) — deltas de 20px e 10px,
+ * inofensivos e INTENCIONAIS. O dano que o S12 mediu escala com o delta
+ * absoluto: 40px→160px são 120px a mais em CADA gap de um grid. A guarda só
+ * age quando as DUAS coisas passam do limite.
+ */
+export const FOLGA_DA_DISTORCAO_PX = 32;
+
 export const reguaDaOrigem = (
   origemBruta: readonly number[],
   referenciaBruta: readonly number[],
@@ -206,7 +232,15 @@ export const reguaDaOrigem = (
   const porValor = new Map<number, string>();
   origem.forEach((valor, i) => {
     const j = destinos[i];
-    if (j !== undefined) porValor.set(valor, nome(j));
+    if (j === undefined) return;
+    const destino = referencia[j];
+    if (destino !== undefined && valor > 0 && destino > 0) {
+      const razao = destino > valor ? destino / valor : valor / destino;
+      if (razao > DISTORCAO_MAXIMA_DA_REGUA && Math.abs(destino - valor) > FOLGA_DA_DISTORCAO_PX) {
+        return;
+      }
+    }
+    porValor.set(valor, nome(j));
   });
   return { porValor };
 };
