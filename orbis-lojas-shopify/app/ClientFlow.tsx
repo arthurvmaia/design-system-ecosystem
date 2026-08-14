@@ -149,8 +149,17 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     });
   }
 
+  /**
+   * O nicho diz o que a loja VENDE. Só isso.
+   *
+   * Quando a Orbis é quem cria a marca, ele é também a semente da identidade —
+   * daí a geração aqui. No modo manual ele traz o catálogo e não encosta na
+   * marca: quem chegou com nome, cores e logo próprios não pode ver isso ser
+   * sobrescrito por ter escolhido o que vende.
+   */
   function escolherNicho(id: string) {
     setNicheId(id);
+    if (modo === "manual") return;
     setModo("gerada");
     const sementeNova = novaSemente();
     setSemente(sementeNova);
@@ -266,7 +275,11 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         body: JSON.stringify({
           themeId,
           templateId,
-          nicheId: modo === "gerada" ? nicheId : undefined,
+          /* o nicho vai nos dois modos: ele é o CATÁLOGO, não a marca */
+          nicheId: nicheId || undefined,
+          /* e quem escreve a marca é dito por extenso, não deduzido do nicho */
+          criarMarca: modo === "gerada",
+          /* a semente, essa sim, só faz sentido quando a Orbis inventa a marca */
           seed: modo === "gerada" ? semente : undefined,
           brand: {
             name: marca.name, slogan: marca.slogan, description: marca.description,
@@ -398,16 +411,34 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                   <strong>A Orbis cria minha marca</strong>
                   <p>Escolha o nicho e receba nome, paleta, tipografia, voz, logo e coleções. Depois é só escolher o tema.</p>
                 </button>
-                <button className={`cf-modo ${modo === "manual" ? "selecionado" : ""}`} onClick={() => { setModo("manual"); setNicheId(""); setGerada(false); }}>
+                {/* trocar para "eu já tenho marca" NÃO apaga o nicho: ele é a
+                    outra pergunta, e apagá-lo tirava o catálogo de quem só
+                    quis escrever a própria marca */}
+                <button className={`cf-modo ${modo === "manual" ? "selecionado" : ""}`} onClick={() => { setModo("manual"); setGerada(false); }}>
                   <span className="cf-modo-icone"><PenLine size={20} strokeWidth={1.6} /></span>
                   <strong>Eu já tenho minha marca</strong>
                   <p>Preencha nome, cores e contatos do seu jeito. O que ficar em branco eu resolvo com o kit.</p>
                 </button>
               </div>
 
-              {modo === "gerada" && (
+              {/* O nicho vale nos DOIS caminhos. As duas caixas acima decidem
+                  quem escreve a MARCA; o nicho decide o que a loja VENDE, e uma
+                  coisa não diz nada sobre a outra. Enquanto ele morava dentro
+                  do caminho "a Orbis cria", quem chegava com marca própria — o
+                  cliente real, que já tem nome e logo — saía com a loja sem
+                  produto nenhum, sem nunca ter visto esta pergunta. */}
+              {modo !== null && (
                 <>
-                  <span className="cf-secao-titulo">Escolha o nicho da loja</span>
+                  <span className="cf-secao-titulo">
+                    {modo === "gerada"
+                      ? "Escolha o nicho da loja"
+                      : "O que a sua loja vende? (opcional)"}
+                  </span>
+                  <p className="cf-secao-ajuda">
+                    {modo === "gerada"
+                      ? "É daqui que saem a identidade e os produtos da vitrine."
+                      : "Traz os produtos da vitrine. Sua marca continua sendo a que você preencher. Sem escolher, a loja sai sem catálogo."}
+                  </p>
                   <div className="cf-nichos">
                     {NICHOS.map((nicho: { id: string; nome: string; resumo: string }) => (
                       <button key={nicho.id} className={`cf-nicho ${nicheId === nicho.id ? "selecionado" : ""}`} onClick={() => escolherNicho(nicho.id)}>
@@ -521,6 +552,12 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             <div className="cf-body">
               <dl className="cf-review">
                 <div><dt>Como foi criada</dt><dd>{modo === "gerada" ? `Gerada pela Orbis a partir de ${NICHOS.find((n: { id: string; nome: string }) => n.id === nicheId)?.nome ?? "um nicho"}` : "Preenchida por você"}</dd></div>
+                {/* o catálogo é decisão à parte da marca, então aparece à parte
+                    — e "sem catálogo" é dito, não deixado para a pessoa
+                    descobrir com a loja pronta e a vitrine vazia */}
+                <div><dt>Catálogo</dt><dd>{nicheId
+                  ? `${NICHOS.find((n: { id: string; nome: string }) => n.id === nicheId)?.nome ?? nicheId}: 10 produtos com foto e preço`
+                  : "Sem catálogo: a loja sai com a vitrine vazia"}</dd></div>
                 <div><dt>Marca</dt><dd>{marca.name.trim() || "Minha Marca"}</dd></div>
                 {marca.slogan && <div><dt>Slogan</dt><dd>{marca.slogan}</dd></div>}
                 <div><dt>Cores</dt><dd><i className="cf-swatch" style={{ background: marca.primaryColor }} /> {marca.primaryColor} · <i className="cf-swatch" style={{ background: marca.backgroundColor }} /> {marca.backgroundColor}</dd></div>

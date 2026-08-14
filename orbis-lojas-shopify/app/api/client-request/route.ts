@@ -38,8 +38,19 @@ import { pecasDaMarca } from "@/lib/marca-imagens";
 const requestSchema = z.object({
   themeId: z.string().min(1).max(80).optional(),
   templateId: z.enum(["essencial", "vitrine"]),
-  /* geração por nicho: o servidor refaz a marca a partir daqui */
+  /* o que a loja VENDE. Não diz nada sobre quem escreve a marca. */
   nicheId: z.string().min(1).max(40).optional(),
+  /**
+   * Quem escreve a MARCA: `true` = a Orbis inventa a partir do nicho, `false` =
+   * o cliente já tem a dele e só preencheu.
+   *
+   * Existe porque o servidor deduzia isso da presença do `nicheId`, e as duas
+   * coisas não são a mesma pergunta. Com a dedução, um cliente com marca
+   * própria que escolhesse o nicho — só para ter catálogo — teria os campos em
+   * branco preenchidos com uma identidade inventada. Ausente, a dedução antiga
+   * vale, para não quebrar pedido gravado antes disto.
+   */
+  criarMarca: z.boolean().optional(),
   seed: z.string().min(1).max(40).optional(),
   brand: z.object({
     name: z.string().min(2).max(48),
@@ -124,9 +135,11 @@ export async function POST(request: Request) {
       return Response.json({ error: "INVALID_REQUEST", issues: parsed.error.flatten() }, { status: 400 });
     }
 
-    /* a marca do pedido: gerada pelo nicho quando houver, com o que a pessoa
-       digitou vencendo campo a campo */
-    const marca = parsed.data.nicheId
+    /* a marca do pedido: gerada a partir do nicho SÓ quando o cliente pediu
+       isso, com o que ele digitou vencendo campo a campo. O nicho sozinho não
+       autoriza inventar identidade — ele é o catálogo. */
+    const criarMarca = parsed.data.criarMarca ?? Boolean(parsed.data.nicheId);
+    const marca = criarMarca && parsed.data.nicheId
       ? gerarMarca({ nicheId: parsed.data.nicheId, semente: parsed.data.seed ?? "orbis", sobrescritas: parsed.data.brand })
       : { ...parsed.data.brand, collections: [] as string[], announcement: "" };
     /* toda loja sai com logo, inclusive a preenchida à mão: sem isto o

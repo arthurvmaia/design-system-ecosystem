@@ -790,6 +790,9 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-modo p { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .cf-modo-icone { display: grid; place-items: center; width: 40px; height: 40px; background: rgba(6,182,212,.14); color: var(--green-bright); }
 .cf-secao-titulo { color: var(--muted-2); font: 700 10px var(--font-geist-mono); letter-spacing: .16em; text-transform: uppercase; }
+/* a linha que explica o que aquela escolha faz — o nicho vale nos dois modos e
+   significa coisas diferentes em cada um, então a diferença fica escrita */
+.cf-secao-ajuda { margin: -6px 0 2px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .cf-nichos { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 .cf-nicho { position: relative; display: grid; gap: 6px; justify-items: start; text-align: left; padding: 14px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); cursor: pointer; transition: border-color .2s; }
 .cf-nicho:hover { border-color: rgba(34,211,238,.4); }
