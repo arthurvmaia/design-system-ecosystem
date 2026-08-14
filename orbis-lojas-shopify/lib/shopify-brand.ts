@@ -66,7 +66,29 @@ const IMAGEM_DE_LOGO = /(logo|favicon|brand.?image|marca)/i;
 const IMAGEM_DE_CELULAR = /(mobile|celular|small|portrait|phone)/i;
 const CAMPO_DE_MARCA = /(shop.?name|store.?name|brand|logo.?text|site.?title|nome.?da.?loja|marca)/i;
 const CAMPO_DE_AVISO = /(announce|aviso|bar.?text|topbar)/i;
+/**
+ * Subtítulo NÃO é título.
+ *
+ * `PAPEL_TITULO` casa `head(ing|er)`, e `subheading` contém "heading" — então o
+ * subtítulo recebia o mesmo slogan do título e o banner saía com a frase
+ * escrita duas vezes, uma grande e outra miúda logo abaixo. Precisa ser testado
+ * ANTES do título, senão perde para ele de novo.
+ */
+const CAMPO_DE_SUBTITULO = /(sub.?(heading|title)|subtitulo|caption|legenda|tagline)/i;
 const CAMPO_DE_LISTA = /(collection_list|link_list|menu)/i;
+/**
+ * As peças de um papel, em ordem: `banner-desktop`, `banner-desktop-2`, …
+ *
+ * Uma lista, e não uma chave só, porque um tema pode ter mais de uma dobra de
+ * banner — e repetir a mesma foto em todas faz a loja parecer quebrada.
+ */
+function pecasDeBanner(imagens: Record<string, string>, papel: string): string[] {
+  const numeradas = Object.keys(imagens)
+    .filter((chave) => chave === papel || chave.startsWith(`${papel}-`))
+    .sort();
+  return numeradas.map((chave) => imagens[chave]);
+}
+
 /** O select que decide a altura da dobra: `slide_height` no slideshow, `image_height` no banner. */
 const ALTURA_DE_BANNER = /^(slide_height|image_height|banner_height|height)$/i;
 /** Só em seção de dobra do topo: em cartão ou galeria a altura adaptativa é o certo. */
@@ -270,11 +292,17 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
   const schemaPorTipo = new Map(theme.sectionSchemas.map((schema) => [schema.type, schema]));
   const colecoes = (marca.collections ?? []).map(handleDeColecao).filter(Boolean);
 
+  /* qual dobra de banner é esta: decide QUAL foto ela recebe */
+  let indiceDaDobra = 0;
+
   for (const page of theme.pages) {
     for (const secao of page.sections) {
       const schema = schemaPorTipo.get(secao.type);
       const definicoesDaSecao = achatar(schema?.settings ?? []);
       const alvos = [secao, ...secao.blocks];
+      /* conta ANTES de aplicar: a primeira dobra é a 0, a segunda a 1, e com
+         duas fotos elas saem diferentes */
+      const dobraDeBanner = SECAO_DE_BANNER.test(secao.type);
       for (const alvo of alvos) {
         const definicoesDoAlvo = alvo === secao
           ? definicoesDaSecao
@@ -297,9 +325,23 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
             /* banner do topo, capa de coleção e logo, cada um no seu lugar:
                o campo de celular recebe o corte vertical, e não o de desktop */
             const pista2 = `${secao.type} ${pista}`;
+            /**
+             * Cada dobra de banner recebe uma FOTO DIFERENTE.
+             *
+             * Havia uma chave só (`banner-desktop`) para todo slot de banner, e
+             * um tema com duas dobras abria a loja com a mesma foto duas vezes
+             * — parecia defeito de carregamento. As peças de banner são
+             * numeradas e distribuídas em rodízio; com uma peça só, o
+             * comportamento é o de antes.
+             */
+            const bannersDesktop = pecasDeBanner(imagens, "banner-desktop");
+            const bannersCelular = pecasDeBanner(imagens, "banner-mobile");
+            const ehBanner = /slide|banner|hero|image.?banner|rich.?text/i.test(pista2);
             const escolhida = IMAGEM_DE_LOGO.test(pista) ? imagens.logo
-              : IMAGEM_DE_CELULAR.test(pista2) ? imagens["banner-mobile"]
-              : /slide|banner|hero|image.?banner|rich.?text/i.test(pista2) ? imagens["banner-desktop"]
+              : IMAGEM_DE_CELULAR.test(pista2)
+                ? bannersCelular[indiceDaDobra % Math.max(bannersCelular.length, 1)]
+              : ehBanner
+                ? bannersDesktop[indiceDaDobra % Math.max(bannersDesktop.length, 1)]
               : capas.length ? capas[proximaCapa++ % capas.length]
               : undefined;
             if (escolhida) { alvo.settings[definicao.id] = escolhida; marcou(`${secao.type}.${definicao.id}`); }
@@ -358,7 +400,12 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
           /* só entra onde o tema não escreveu nada de próprio */
           const noPadrao = atual === undefined || atual === "" || atual === definicao.default;
           if (!noPadrao) continue;
-          if (PAPEL_TITULO.test(pista) && marca.slogan) {
+          if (CAMPO_DE_SUBTITULO.test(pista) && marca.description) {
+            /* o subtítulo diz o que o título não disse; repetir o slogan aqui
+               era o "O básico bem-feito" aparecendo duas vezes no banner */
+            alvo.settings[definicao.id] = valorDeTexto(definicao, marca.description);
+            marcou(`${secao.type}.${definicao.id}`);
+          } else if (PAPEL_TITULO.test(pista) && marca.slogan) {
             alvo.settings[definicao.id] = valorDeTexto(definicao, marca.slogan);
             marcou(`${secao.type}.${definicao.id}`);
           } else if (marca.description) {
@@ -366,7 +413,41 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
             marcou(`${secao.type}.${definicao.id}`);
           }
         }
+
+        /**
+         * O TEXTO VAI NA IMAGEM, não numa caixa branca por cima dela.
+         *
+         * O Dawn traz `show_text_box: true`, que encaixota a frase num retângulo
+         * branco sobre a foto — fica um adesivo, e some a paleta da marca. Com a
+         * caixa desligada o texto pousa na imagem; para ele continuar legível
+         * sobre foto, entra um véu leve (`image_overlay_opacity`) e o esquema
+         * `inverse`, que é o par claro/escuro que a própria marca já pintou.
+         *
+         * Só onde a Orbis pôs a arte, e só onde o tema oferece o controle: em
+         * tema que não tem esses campos, nada muda.
+         */
+        if (dobraDeBanner) {
+          const definicoesDoAlvo2 = alvo === secao
+            ? definicoesDaSecao
+            : achatar(schema?.blocks?.find((bloco) => bloco.type === alvo.type)?.settings ?? []);
+          const porId = new Map(definicoesDoAlvo2.map((d) => [d.id, d]));
+          if (porId.get("show_text_box")?.type === "checkbox" && alvo.settings.show_text_box !== false) {
+            alvo.settings.show_text_box = false;
+            marcou(`${secao.type}.show_text_box`);
+          }
+          const veu = porId.get("image_overlay_opacity");
+          if (veu?.type === "range" && (alvo.settings.image_overlay_opacity ?? 0) === 0) {
+            alvo.settings.image_overlay_opacity = 20;
+            marcou(`${secao.type}.image_overlay_opacity`);
+          }
+          const esquema = porId.get("color_scheme");
+          if (esquema?.type === "select" && (esquema.options ?? []).some((o) => o.value === "inverse")) {
+            alvo.settings.color_scheme = "inverse";
+            marcou(`${secao.type}.color_scheme`);
+          }
+        }
       }
+      if (dobraDeBanner) indiceDaDobra++;
     }
   }
 

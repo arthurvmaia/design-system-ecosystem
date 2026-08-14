@@ -208,6 +208,46 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       ].join(" "),
       fallbackSvg: bannerSvg(marca, true),
     },
+    /**
+     * A SEGUNDA dobra, com outra cena.
+     *
+     * Um tema com duas dobras de banner recebia a mesma foto nas duas — a loja
+     * abria repetindo a imagem, e parecia defeito de carregamento. A segunda
+     * peça existe para ser DIFERENTE da primeira, e o prompt diz isso por
+     * extenso: a primeira é a cena aberta com pessoa, esta é o detalhe do
+     * produto. Sem isso, dois pedidos ao mesmo modelo com o mesmo texto voltam
+     * praticamente iguais.
+     */
+    {
+      chave: "banner-desktop-2",
+      papel: "banner-desktop",
+      titulo: "Banner do desktop (segunda dobra)",
+      aspecto: ASPECTO["banner-desktop"],
+      prompt: [
+        `Fotografia publicitária de DETALHE de ${tema}, em close, para a segunda dobra de uma loja.`,
+        "Enquadramento fechado no produto e na textura do material, sem pessoas no quadro.",
+        `Paleta dominante: ${cores}.`,
+        "Assunto à esquerda do quadro, metade direita limpa e desocupada para o texto entrar por cima.",
+        QUALIDADE,
+        "Sem letras, sem logotipos, sem marca d'água.",
+      ].join(" "),
+      fallbackSvg: bannerSvg(marca, false),
+    },
+    {
+      chave: "banner-mobile-2",
+      papel: "banner-mobile",
+      titulo: "Banner do celular (segunda dobra)",
+      aspecto: ASPECTO["banner-mobile"],
+      prompt: [
+        `Fotografia publicitária de DETALHE de ${tema}, em close e enquadramento vertical para celular.`,
+        "Enquadramento fechado no produto e na textura do material, sem pessoas no quadro.",
+        `Paleta dominante: ${cores}.`,
+        "Assunto na metade de cima do quadro, metade de baixo limpa para o texto entrar por cima.",
+        QUALIDADE,
+        "Sem letras, sem logotipos, sem marca d'água.",
+      ].join(" "),
+      fallbackSvg: bannerSvg(marca, true),
+    },
   ];
 
   for (const [indice, nome] of colecoes.entries()) {

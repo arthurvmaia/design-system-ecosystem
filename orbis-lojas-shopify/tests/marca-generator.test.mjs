@@ -381,7 +381,14 @@ test("marca própria é 100% manual; as artes da Orbis só existem no caminho ge
   assert.match(imagens, /const QUALIDADE = /);
   const pedacos = imagens.split("prompt: [").slice(1);
   const fotos = pedacos.filter((trecho) => /Fotografia|Foto de catálogo/.test(trecho.slice(0, 200)));
-  assert.equal(fotos.length, 3, "banner de desktop, de celular e capa de coleção são fotografia");
+  /* cinco: as DUAS dobras de banner (desktop e celular cada) mais a capa de
+     coleção. A segunda dobra existe porque um tema com dois banners recebia a
+     mesma foto nos dois, e a loja abria repetindo a imagem. */
+  assert.equal(fotos.length, 5, "duas dobras de banner (desktop e celular) e a capa de coleção são fotografia");
+  /* e a segunda dobra tem de pedir uma cena DIFERENTE da primeira: dois
+     pedidos com o mesmo texto voltam praticamente iguais */
+  assert.match(imagens, /chave: "banner-desktop-2"/);
+  assert.match(imagens, /DETALHE[\s\S]{0,200}sem pessoas no quadro/);
   for (const foto of fotos) assert.ok(foto.slice(0, 600).includes("QUALIDADE"), "toda foto pede qualidade comercial");
   /* a logo continua sendo símbolo sem letra: modelo de imagem erra texto */
   assert.match(imagens, /Símbolo de marca minimalista[\s\S]{0,400}Sem letras/);
@@ -515,6 +522,82 @@ test("o provedor de imagem por IA é opcional e só aceita modelo da lista", asy
     assert.equal(modeloValido("video", "mystic"), false);
     assert.ok(modeloPadrao("imagem").length > 0);
     assert.match(promptDaVitrine({ nicho: "óculos", marca: "Vista Co.", paleta: ["#000000"] }), /Vista Co\./);
+  } finally {
+    await server.close();
+  }
+});
+
+test("cada dobra de banner tem foto própria, e o texto pousa na imagem", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { aplicarMarcaNoTema } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+    const marca = gerarMarca({ nicheId: "roupas", semente: "dobras" });
+
+    /* duas dobras de slideshow, como o Dawn de uma loja real */
+    const settingsDoSlide = [
+      { id: "image", type: "image_picker", label: "Imagem" },
+      { id: "mobile_image", type: "image_picker", label: "Imagem do celular" },
+      { id: "heading", type: "text", label: "Título", default: "Image slide" },
+      { id: "subheading", type: "text", label: "Subtítulo", default: "Tell your story" },
+      { id: "show_text_box", type: "checkbox", label: "Caixa de texto", default: true },
+      { id: "image_overlay_opacity", type: "range", label: "Véu", default: 0 },
+      { id: "color_scheme", type: "select", label: "Esquema", default: "background-1",
+        options: [{ value: "background-1" }, { value: "inverse" }] },
+    ];
+    const dobra = (id) => ({
+      id, type: "slideshow", name: "Slideshow",
+      settings: { slide_height: "adapt_image" },
+      blocks: [{ id: `${id}-b`, type: "slide", settings: { show_text_box: true, image_overlay_opacity: 0 } }],
+    });
+    const tema = {
+      format: "shopify-os-2.0", themeName: "Tema", version: "1", author: "", sourceFile: "t.zip",
+      sourceFingerprint: "0000000000000000", importedAt: "", summary: {}, sourceFiles: [], compatibility: {},
+      globalGroups: [], globalValues: {},
+      sectionSchemas: [{
+        type: "slideshow", name: "Slideshow", presets: [],
+        settings: [{ id: "slide_height", type: "select", label: "Altura", default: "medium",
+          options: [{ value: "adapt_image" }, { value: "medium" }] }],
+        blocks: [{ type: "slide", name: "Slide", settings: settingsDoSlide }],
+      }],
+      pages: [{ id: "index", name: "Início", template: "templates/index.json", sections: [dobra("s1"), dobra("s2")] }],
+    };
+
+    const r = aplicarMarcaNoTema(tema, {
+      ...marca,
+      imagens: {
+        "banner-desktop": "/api/media/1111111111111111aaaa",
+        "banner-desktop-2": "/api/media/2222222222222222bbbb",
+        "banner-mobile": "/api/media/3333333333333333cccc",
+        "banner-mobile-2": "/api/media/4444444444444444dddd",
+      },
+    });
+    const [a, b] = r.theme.pages[0].sections.map((s) => s.blocks[0].settings);
+
+    /* A QUEIXA: as duas dobras abriam com a MESMA foto, e parecia defeito de
+       carregamento. Uma chave só (`banner-desktop`) servia todo slot. */
+    assert.notEqual(a.image, b.image, "as duas dobras não podem repetir a foto");
+    assert.notEqual(a.mobile_image, b.mobile_image, "nem no celular");
+    assert.equal(a.image, "/api/media/1111111111111111aaaa");
+    assert.equal(b.image, "/api/media/2222222222222222bbbb");
+
+    /* o subtítulo diz o que o título não disse: `subheading` contém "heading",
+       casava na regra de título e recebia o mesmo slogan */
+    for (const bloco of [a, b]) {
+      assert.equal(bloco.heading, marca.slogan);
+      assert.equal(bloco.subheading, marca.description);
+      assert.notEqual(bloco.heading, bloco.subheading, "título e subtítulo não podem ser a mesma frase");
+    }
+
+    /* o texto pousa NA imagem, na paleta da marca — nada de caixa branca */
+    for (const bloco of [a, b]) {
+      assert.equal(bloco.show_text_box, false);
+      assert.equal(bloco.image_overlay_opacity, 20, "véu leve para o texto continuar legível sobre foto");
+      assert.equal(bloco.color_scheme, "inverse");
+    }
+
+    /* e a altura da dobra deixa de depender do arquivo */
+    for (const secao of r.theme.pages[0].sections) assert.equal(secao.settings.slide_height, "medium");
   } finally {
     await server.close();
   }
