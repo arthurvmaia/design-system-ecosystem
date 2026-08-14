@@ -1,3 +1,4 @@
+import { CriativosShell } from '@/components/CriativosShell';
 import { Intro } from '@/components/Intro';
 import { PortaoOrbis } from '@/components/PortaoOrbis';
 import { Shell } from '@/components/Shell';
@@ -61,14 +62,18 @@ export function App() {
         <Router>
           <TrabalhoProvider>
             <Routes>
+              {/* A frente Criativos tem CASCA PRÓPRIA — fora do Shell do
+                  design system, por arquitetura que o dono corrigiu ao ver a
+                  tela vestida com a sidebar do fluxo: cada frente do portal
+                  tem o seu espaço. O código divide o bundle (é daqui que a
+                  marca dos projetos vem); a navegação, não. */}
+              <Route element={<CriativosShell />}>
+                <Route path="/criativos" element={<CriativosPage />} />
+              </Route>
               <Route element={<Shell />}>
                 <Route index element={<Navigate to="/inicio" replace />} />
                 <Route path="inicio" element={<HomePage />} />
                 <Route path="/expresso" element={<ExpressoPage />} />
-                {/* A ala de criativos ainda em ensaio: acessível só por URL.
-                    Ligar o ConviteOrbisCriativos aqui é o passo 6 da espec —
-                    porta aberta antes do motor seria porta para lugar nenhum. */}
-                <Route path="/criativos" element={<CriativosPage />} />
                 <Route path="/extract" element={<ExtractPage />} />
                 <Route path="/gallery" element={<GalleryPage />} />
                 <Route path="/revisao" element={<RevisaoPage />} />
