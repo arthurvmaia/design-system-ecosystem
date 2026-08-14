@@ -316,3 +316,67 @@ export const ResultadoCriativo = z.object({
   custoGasto: z.number().min(0),
 });
 export type ResultadoCriativo = z.infer<typeof ResultadoCriativo>;
+
+// ── O portão da entrega ──────────────────────────────────────────────────────
+
+/**
+ * O que impede um job `criativo` de fechar. Lista vazia = pode fechar.
+ *
+ * ## Por que existe
+ *
+ * O `fila:concluir` validava `extract` e `generate` e deixava o `criativo`
+ * passar direto para o `finishJob` — justamente o job que gasta DINHEIRO.
+ * Resultado ausente, fora do schema, apontando para arquivo inexistente ou com
+ * gasto acima do teto: tudo fechava calado, registrado como "concluído". O
+ * buraco apareceu ao exercitar o fluxo de ponta a ponta pela primeira vez, que
+ * é para isso que se exercita.
+ *
+ * ## Por que mora aqui, e sem `fs`
+ *
+ * Junto do contrato que ela cobra, não no script: o schema já sabe o que é uma
+ * entrega válida, e duas cópias dessa regra divergiriam na primeira mudança. A
+ * existência do arquivo entra por `existe`, então este módulo continua sem
+ * tocar em disco — e a conferência inteira fica testável sem escrever nada.
+ */
+export const problemasDaEntregaCriativa = (entrada: {
+  /** O conteúdo lido de `resultado.json`, ainda não validado. */
+  resultado: unknown;
+  /** O `payload` do job, de onde sai o teto que valia para ESTE pedido. */
+  pedido: unknown;
+  /** O caminho relativo à pasta do job existe em disco? */
+  existe: (caminhoRelativo: string) => boolean;
+}): string[] => {
+  const problemas: string[] = [];
+
+  const lido = ResultadoCriativo.safeParse(entrada.resultado);
+  if (!lido.success) {
+    for (const i of lido.error.issues) {
+      problemas.push(`resultado.json → ${i.path.join('.') || '(raiz)'}: ${i.message}`);
+    }
+    return problemas;
+  }
+
+  /**
+   * O schema garante que a aprovada tem CAMINHO preenchido, não que o caminho
+   * aponta para alguma coisa. Botão de download que baixa 404 é pior que peça
+   * reprovada com motivo: a reprovada avisa, esta mente.
+   */
+  for (const [n, v] of lido.data.variacoes.entries()) {
+    if (v.estado !== 'aprovada' || v.caminho === null) continue;
+    if (!entrada.existe(v.caminho)) {
+      problemas.push(
+        `variação ${n + 1} está aprovada mas ${v.caminho} não existe em disco: o download não teria o que baixar.`,
+      );
+    }
+  }
+
+  // O teto vem do PEDIDO, nunca de constante nossa: cada job tem o seu.
+  const pedido = PedidoCriativo.safeParse(entrada.pedido);
+  if (pedido.success && lido.data.custoGasto > pedido.data.tetoDeCreditos) {
+    problemas.push(
+      `o job gastou ${lido.data.custoGasto} crédito(s) e o teto do pedido era ${pedido.data.tetoDeCreditos}: o motor devia ter PARADO no teto, e fechar aqui registraria o estouro como sucesso.`,
+    );
+  }
+
+  return problemas;
+};

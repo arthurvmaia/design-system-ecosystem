@@ -9,6 +9,7 @@ import {
   TextoDaPeca,
   VariacaoCriativa,
   claimsAutorizados,
+  problemasDaEntregaCriativa,
 } from './criativo.js';
 
 /**
@@ -180,4 +181,108 @@ test('PROVA: upload com descricao de geracao e o espelho ambiguo, e reprova', ()
     !r.success && r.error.issues.some((i) => i.path.join('.') === 'descricaoParaGerar'),
     'a issue aponta o campo ambiguo',
   );
+});
+
+// ── O portao da entrega ──────────────────────────────────────────────────────
+
+/**
+ * Estes testes nasceram de um buraco REAL: o ila:concluir validava extract
+ * e generate e deixava o criativo — o job que gasta dinheiro — passar direto
+ * para o inishJob. Descoberto ao exercitar o fluxo de ponta a ponta pela
+ * primeira vez.
+ */
+const entregaBoa = {
+  variacoes: [{ caminho: '02_exportados/peca-1.png', estado: 'aprovada', motivo: null }],
+  custoGasto: 150,
+};
+
+const pedidoBom = {
+  marca: 'Orbis',
+  tipo: 'imagem',
+  formato: 'feed-1x1',
+  imagem: { origem: 'gerar', descricaoParaGerar: 'uma esfera escura' },
+  texto: { semTexto: true },
+  variacoes: 1,
+  tetoDeCreditos: 500,
+};
+
+const sempreExiste = () => true;
+
+test('entrega inteira nao tem o que impedir', () => {
+  const p = problemasDaEntregaCriativa({
+    resultado: entregaBoa,
+    pedido: pedidoBom,
+    existe: sempreExiste,
+  });
+  assert.deepEqual(p, []);
+});
+
+test('aprovada cujo arquivo nao existe em disco NAO fecha', () => {
+  // O schema garante que o caminho foi preenchido, nao que ele aponta para algo.
+  // Botao de download que baixa 404 e pior que peca reprovada com motivo.
+  const p = problemasDaEntregaCriativa({
+    resultado: entregaBoa,
+    pedido: pedidoBom,
+    existe: () => false,
+  });
+  assert.equal(p.length, 1);
+  assert.match(p.join('\n'), /não teria o que baixar/);
+});
+
+test('reprovada com arquivo ausente nao acusa: ela nao promete download', () => {
+  const p = problemasDaEntregaCriativa({
+    resultado: {
+      variacoes: [{ caminho: null, estado: 'falhou', motivo: 'saldo zerou' }],
+      custoGasto: 0,
+    },
+    pedido: pedidoBom,
+    existe: () => false,
+  });
+  assert.deepEqual(p, []);
+});
+
+test('gasto acima do teto do PEDIDO nao fecha', () => {
+  const p = problemasDaEntregaCriativa({
+    resultado: { ...entregaBoa, custoGasto: 501 },
+    pedido: pedidoBom,
+    existe: sempreExiste,
+  });
+  assert.equal(p.length, 1);
+  // O gasto E o teto aparecem na mensagem: "estourou" sem os dois números não
+  // diz quanto faltou nem de quanto era o combinado.
+  assert.match(p.join('\n'), /501/);
+  assert.match(p.join('\n'), /500/);
+  // Exatamente no teto passa: parar AO zerar e o contrato, nao antes dele.
+  assert.deepEqual(
+    problemasDaEntregaCriativa({
+      resultado: { ...entregaBoa, custoGasto: 500 },
+      pedido: pedidoBom,
+      existe: sempreExiste,
+    }),
+    [],
+  );
+});
+
+test('resultado fora do schema vira lista de problemas, nao excecao', () => {
+  const p = problemasDaEntregaCriativa({
+    resultado: { variacoes: [{ caminho: null, estado: 'aprovada', motivo: null }], custoGasto: 10 },
+    pedido: pedidoBom,
+    existe: sempreExiste,
+  });
+  assert.ok(p.length > 0, 'aprovada sem arquivo reprova no proprio schema');
+  assert.ok(
+    p.every((m) => m.startsWith('resultado.json')),
+    'e a mensagem diz de onde veio',
+  );
+});
+
+test('resultado que nao e objeto nenhum tambem e recusado sem estourar', () => {
+  for (const lixo of [null, 'texto', 42, []]) {
+    const p = problemasDaEntregaCriativa({
+      resultado: lixo,
+      pedido: pedidoBom,
+      existe: sempreExiste,
+    });
+    assert.ok(p.length > 0, `a entrada ${JSON.stringify(lixo)} tinha de reprovar`);
+  }
 });
