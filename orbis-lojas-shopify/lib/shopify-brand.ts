@@ -67,6 +67,10 @@ const IMAGEM_DE_CELULAR = /(mobile|celular|small|portrait|phone)/i;
 const CAMPO_DE_MARCA = /(shop.?name|store.?name|brand|logo.?text|site.?title|nome.?da.?loja|marca)/i;
 const CAMPO_DE_AVISO = /(announce|aviso|bar.?text|topbar)/i;
 const CAMPO_DE_LISTA = /(collection_list|link_list|menu)/i;
+/** O select que decide a altura da dobra: `slide_height` no slideshow, `image_height` no banner. */
+const ALTURA_DE_BANNER = /^(slide_height|image_height|banner_height|height)$/i;
+/** Só em seção de dobra do topo: em cartão ou galeria a altura adaptativa é o certo. */
+const SECAO_DE_BANNER = /(slideshow|image.?banner|hero|banner)/i;
 
 /**
  * As famílias que o `font_picker` da Shopify aceita.
@@ -299,6 +303,25 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
               : capas.length ? capas[proximaCapa++ % capas.length]
               : undefined;
             if (escolhida) { alvo.settings[definicao.id] = escolhida; marcou(`${secao.type}.${definicao.id}`); }
+            continue;
+          }
+          /**
+           * A ALTURA do banner é do tema, não do arquivo.
+           *
+           * `adapt_image` faz a seção adotar a proporção da imagem. Com a arte
+           * saindo em formato de vídeo, o banner abria com quase o dobro da
+           * altura de um banner de loja — e mesmo com a arte no formato certo,
+           * deixar a dobra depender do arquivo significa que trocar a foto
+           * muda o layout do site. O tema já traz `medium` como padrão dele;
+           * voltamos a esse padrão só quando a Orbis é quem pôs a arte ali.
+           */
+          if (definicao.type === "select" && ALTURA_DE_BANNER.test(definicao.id) && SECAO_DE_BANNER.test(secao.type)) {
+            const adaptativo = typeof atual === "string" && /^adapt/.test(atual);
+            const temMedium = (definicao.options ?? []).some((opcao) => opcao.value === "medium");
+            if (adaptativo && temMedium) {
+              alvo.settings[definicao.id] = "medium";
+              marcou(`${secao.type}.${definicao.id}`);
+            }
             continue;
           }
           if (CAMPO_DE_LISTA.test(definicao.type) && colecoes.length) {

@@ -54,9 +54,26 @@ export type MarcaDeImagem = {
  */
 const QUALIDADE = "Fotografia comercial de alta qualidade, iluminação de estúdio suave com luz de preenchimento, foco nítido, profundidade de campo rasa, cores fiéis, sem ruído, sem distorção, sem texto na imagem.";
 
+/**
+ * O enquadramento de cada peça.
+ *
+ * O banner de desktop pedia `widescreen_16_9` — 1,78:1, que é formato de VÍDEO,
+ * não de banner de loja. A Shopify recomenda 3:1 (3000×1000 ou 1800×600), e a
+ * arte saía com quase o dobro da altura: medido, 2752×1536. Num tema com
+ * `slide_height: adapt_image` isso vira uma dobra gigante, que é exatamente o
+ * "está muito grande" de quem abre a loja.
+ *
+ * 3:1 não está na lista fechada do provedor; o mais largo que ele aceita é
+ * `smartphone_horizontal_20_9` (2,22:1). Fica ele, que é o mais perto do
+ * banner, e a altura final quem decide é o TEMA — ver `alturaDeBanner` em
+ * `shopify-brand.ts`. Pedir proporção ao gerador e ainda deixar a seção adotar
+ * a proporção do arquivo era confiar duas vezes no mesmo palpite.
+ *
+ * O celular já estava certo: `social_post_4_5` é 1080×1350.
+ */
 const ASPECTO: Record<PapelDaPeca, string> = {
   logo: "square_1_1",
-  "banner-desktop": "widescreen_16_9",
+  "banner-desktop": "smartphone_horizontal_20_9",
   "banner-mobile": "social_post_4_5",
   colecao: "square_1_1",
 };

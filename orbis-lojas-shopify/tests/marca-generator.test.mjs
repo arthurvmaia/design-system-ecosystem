@@ -141,7 +141,15 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
       const porPapel = new Map(pecas.map((peca) => [peca.papel, peca]));
       /* logo, banner de desktop e banner de celular, cada um no seu corte */
       assert.equal(porPapel.get("logo").aspecto, "square_1_1");
-      assert.equal(porPapel.get("banner-desktop").aspecto, "widescreen_16_9");
+      /* Banner de loja, não formato de vídeo. `widescreen_16_9` é 1,78:1 e a
+         arte saía 2752×1536 — quase o dobro da altura de um banner. A Shopify
+         recomenda 3:1, que a lista fechada do provedor não tem; 20:9 (2,22:1) é
+         o mais largo que ele aceita, e a altura final quem decide é o tema. */
+      const desktop = porPapel.get("banner-desktop").aspecto;
+      assert.equal(desktop, "smartphone_horizontal_20_9");
+      const [, largo, alto] = desktop.match(/(\d+)_(\d+)$/);
+      assert.ok(Number(largo) / Number(alto) >= 2, "o banner de desktop tem de ser largo, não 16:9");
+      /* 1080×1350, a medida de banner de celular da Shopify */
       assert.equal(porPapel.get("banner-mobile").aspecto, "social_post_4_5");
       assert.notEqual(porPapel.get("banner-desktop").aspecto, porPapel.get("banner-mobile").aspecto,
         "o banner do celular não pode sair no corte do desktop");

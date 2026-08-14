@@ -9,6 +9,7 @@ import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
 import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { collectEditorMediaIds, exportThemeZip, type EditorMediaFile } from "@/lib/theme-export";
 import { pecasDaMarca } from "@/lib/marca-imagens";
+import { csvDeProdutos } from "@/lib/catalogo-csv";
 
 /**
  * Solicitação de loja do Fluxo Cliente.
@@ -199,10 +200,86 @@ export async function POST(request: Request) {
       arquivos[`previa-local/${caminho}`] = typeof conteudo === "string" ? strToU8(conteudo) : conteudo;
     }
 
+    /**
+     * O CATÁLOGO, que não cabe no tema.
+     *
+     * Produto não é arquivo de tema: um ZIP de tema leva Liquid, CSS, JS e
+     * configurações, e o catálogo é dado da loja. Por isso a loja subia bonita
+     * e vazia, e não havia como consertar isso dentro do tema. O caminho
+     * oficial é o CSV de importação, e ele resolve as fotos de brinde: a coluna
+     * de imagem aceita URL externa e a Shopify baixa cada uma na importação.
+     *
+     * Vai dentro de `previa-local/`, que a Shopify ignora ao subir o tema — um
+     * arquivo solto na raiz do pacote é risco de a importação do tema recusar.
+     */
+    const csv = csvDeProdutos(parsed.data.nicheId);
+    if (csv) {
+      arquivos["previa-local/produtos-para-importar.csv"] = strToU8(csv);
+      arquivos["previa-local/COMO-SUBIR-OS-PRODUTOS.txt"] = strToU8(
+        [
+          "COMO SUBIR OS PRODUTOS DESTA LOJA",
+          "",
+          "O tema e o catalogo sao duas coisas separadas na Shopify. O ZIP sobe o tema;",
+          "os produtos entram por importacao, e e isso que este arquivo faz.",
+          "",
+          "1. Na Shopify, abra Produtos e clique em Importar.",
+          "2. Escolha o arquivo produtos-para-importar.csv, aqui desta pasta.",
+          "3. Confirme. A Shopify baixa as fotos sozinha durante a importacao,",
+          "   entao nao e preciso subir imagem nenhuma a mao.",
+          "",
+          "Depois disso a vitrine do tema mostra os produtos.",
+        ].join("\r\n"),
+      );
+    }
+
     /* O tema Shopify de verdade: o ZIP tem de subir em Temas → Adicionar tema.
        Sem isto a entrega era um site estático, e a importação falhava. */
     const tema = temaComMarca ? await montarTemaShopify(viewer.id, temaComMarca) : null;
     if (tema) for (const [caminho, dados] of Object.entries(tema)) arquivos[caminho] = dados;
+
+    /**
+     * AS IMAGENS, numa pasta em que dê para achá-las.
+     *
+     * A Shopify não deixa um tema carregar as próprias imagens de vitrine: o
+     * `image_picker` é populado só com os arquivos de Content → Files, e ZIP de
+     * tema não leva imagem de loja (documentado por eles). Por isso a loja
+     * subia com os quadros em branco.
+     *
+     * Só que a saída já estava meio pronta e ninguém sabia: a exportação grava
+     * a arte em `assets/` e a referência aponta para o MESMO nome de arquivo.
+     * Basta esses arquivos existirem em Files e o tema os encontra sozinho. O
+     * que faltava era achá-los no meio de uma centena de CSS e JS, com nome
+     * embaralhado. Aqui eles saem separados, com o nome que a referência
+     * espera, ao lado da instrução.
+     */
+    const paraFiles = Object.entries(tema ?? {}).filter(
+      ([caminho]) => /^assets\/orbis-/.test(caminho) && /\.(png|jpe?g|webp|gif|svg|avif)$/i.test(caminho),
+    );
+    if (paraFiles.length) {
+      for (const [caminho, dados] of paraFiles) {
+        arquivos[`previa-local/imagens-para-a-shopify/${caminho.slice("assets/".length)}`] = dados;
+      }
+      arquivos["previa-local/imagens-para-a-shopify/COMO-SUBIR-AS-IMAGENS.txt"] = strToU8(
+        [
+          "COMO FAZER AS IMAGENS APARECEREM NA SHOPIFY",
+          "",
+          "A Shopify nao deixa um tema carregar as proprias imagens: o seletor de",
+          "imagem so enxerga o que esta em Content > Files. Por isso a loja sobe com os",
+          "quadros em branco, e nao ha jeito de resolver isso dentro do tema.",
+          "",
+          "A boa noticia e que o tema ja procura por estes arquivos, pelo nome exato.",
+          "",
+          "1. Na Shopify, abra Content > Files.",
+          "2. Suba TODOS os arquivos desta pasta (menos este .txt).",
+          "3. Nao renomeie nenhum: o tema procura pelo nome que esta aqui.",
+          "",
+          "Pronto. Recarregue a loja e as imagens aparecem, sem mexer no editor.",
+          "",
+          `Arquivos desta pasta: ${paraFiles.length}`,
+          ...paraFiles.map(([caminho]) => `  ${caminho.slice("assets/".length)}`),
+        ].join("\r\n"),
+      );
+    }
 
     const zip = zipSync(arquivos, { level: 6 });
     return new Response(zip.slice().buffer, {
