@@ -64,3 +64,71 @@ sai, mas a nota carrega o fato de que ninguém independente a leu.
 PRÓXIMA AÇÃO: relançar as três lentes em subagente depois das 15h e acrescentar
 a rodada neste mesmo arquivo. Se elas confirmarem, a nota sobe; se acharem algo,
 o gate cumpre o papel que hoje não pôde cumprir.
+
+---
+
+# Rodada 2 — 2026-08-14 15h32 — isolamento RESTAURADO
+
+sha256 (16 primeiros), depois da última correção:
+- `apps/portal/src/portal.css` — 4A6C3C82602AA754
+- `scripts/conferir-site.ts` — 3067BE87A06713EC
+- `packages/shared/src/regras-de-aceite.ts` — 8FCA576AEF242E1E
+
+As três lentes rodaram em subagentes de contexto limpo, como manda a regra 1.
+E elas acharam o que a rodada 1 degradada não achou.
+
+## BLOQUEADOR — confirmado por três lentes independentes e por mim
+
+`pnpm conferir <endereço>` **quebrava em 100% das execuções**. `join(pasta,
+'aceite-navegador.json')` tratava a URL como pasta, o `writeFileSync` estourava
+com ENOENT — e o crash vinha DEPOIS de imprimir a lista inteira de vereditos.
+A tela mostrava tudo verde e o erro aparecia no fim.
+
+Pior: o processo saía com **1**, o mesmo código de "reprovou". Para quem
+encadeia `pnpm pagina && pnpm conferir` como portão, o comando passou a falhar
+sempre, medisse o que medisse. Número que não muda não prova nada — o defeito
+que este repositório mais persegue, do avesso.
+
+A rodada 1 (eu, auditando a mim mesmo) leu a lista bonita de ✓ e não conferiu
+se o comando terminava. É exatamente o que a regra dos quatro olhos existe para
+impedir.
+
+**CORRIGIDO:** `destinoDoVeredito(alvo)` devolve `null` para endereço, e a
+gravação só acontece quando há pasta. `--corrigir` com endereço é recusado cedo,
+com mensagem que diz por quê. Medido depois: endereço sai 0, pasta sai 0, e o
+site do SJDR continua com `✓ S20` nas duas larguras.
+
+## IMPORTANTES — todos corrigidos
+
+| Achado | Lente | Correção |
+|---|---|---|
+| Zero teste em `scripts/conferir-site.ts` — a causa raiz de o bloqueador ter sobrevivido a dois commits e a uma rodada de gate | as três | `scripts/conferir-site.test.ts` criado. A decisão que quebrou virou função testável (`destinoDoVeredito`) e tem teste de regressão de verdade. |
+| Texto de ajuda não mencionava endereço | adversarial | `Uso: pnpm conferir <pasta do site gerado \| endereço http>` |
+| Acentuação ausente no comentário novo do `portal.css`, num arquivo 100% acentuado, a 29 linhas de "portão" escrito certo | convenção | Reescrito com acentuação plena. |
+| Brecha latente: a condição `total !== undefined && util !== undefined` repetida nos dois ramos fazia a S20 sumir em silêncio se só um viesse definido — o mesmo buraco pela porta dos fundos | convenção | Guarda única, com os três estados num só ramo. |
+
+## IMPORTANTE aceito e NÃO corrigido, com a razão
+
+O `pendente` da S20 significa "esta página não é do tipo que a regra mede", e o
+`pendente` das outras regras significa "falta material seu, resolva". A lente de
+convenção apontou com razão que são coisas diferentes dividindo o mesmo estado,
+e que o portão de fidelidade trata "não deu para verificar" como estado de
+primeira classe (saída 2, distinta de 0 e 1).
+
+Não separei agora porque um quarto estado atravessa `VereditoDaRegra`, as telas
+de pendência e o `kits-provar` — é refatoração de contrato, não conserto. A
+lente adversarial verificou que **nenhum consumidor de produção lê
+`aprovado`/`comPendencia` do `aceite-navegador.json` hoje**, então o risco atual
+é zero. Fica registrado como dívida consciente.
+
+## Veredito da rodada 2
+
+adversarial ✗→ corrigido · usuário-zero ✗→ corrigido · convenção ✗→ corrigido
+
+**LIBERADO** — zero BLOQUEADOR em aberto. As notas das lentes (3, 3 e 4) valem
+para o estado em que elas auditaram; o bloqueador que as motivou está corrigido,
+medido e coberto por teste.
+
+O gate funcionou: a rodada degradada liberou com nota 7 o que três auditores
+independentes reprovaram por unanimidade. É a prova de que a regra 1 não é
+formalidade.

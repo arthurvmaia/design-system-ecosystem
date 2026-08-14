@@ -891,7 +891,26 @@ ${FECHA}
  * outras, e nunca tinha passado pela régua que ele aplica nos outros — a única
  * coisa que faltava era saber abrir `http://`.
  */
-const enderecoDoAlvo = (alvo: string): string => {
+/** O alvo é um endereço no ar, e não uma pasta de site gerado? */
+export const ehEnderecoDeRede = (alvo: string): boolean => /^https?:\/\//i.test(alvo);
+
+/**
+ * ONDE gravar o veredito — `null` quando não há onde.
+ *
+ * Isto é função separada porque foi exatamente aqui que o comando quebrou: o
+ * resto do arquivo usava a mesma variável para "o que medir" e "onde gravar", e
+ * `path.join` de uma URL produz um caminho inexistente. O `writeFileSync`
+ * estourava DEPOIS de imprimir todos os vereditos, então a tela mostrava tudo
+ * verde e o erro vinha no fim — e o processo saía com 1, o mesmo código de
+ * "reprovou", o que estragava o comando como portão.
+ *
+ * Endereço não tem pasta ao lado. A decisão é de uma linha e agora tem teste,
+ * porque este arquivo não tinha nenhum e foi por isso que o defeito passou.
+ */
+export const destinoDoVeredito = (alvo: string): string | null =>
+  ehEnderecoDeRede(alvo) ? null : join(resolve(alvo), 'aceite-navegador.json');
+
+export const enderecoDoAlvo = (alvo: string): string => {
   if (/^https?:\/\//i.test(alvo)) return alvo;
   const indice = join(alvo, 'index.html');
   if (!existsSync(indice)) throw new Error(`não achei ${indice}`);
@@ -1066,11 +1085,36 @@ const principal = async (): Promise<void> => {
   const visivel = process.argv.includes('--ver');
   const alvo = process.argv.slice(2).find((a) => !a.startsWith('--'));
   if (alvo === undefined) {
-    console.log('\n  Uso: pnpm conferir <pasta do site gerado> [--ver] [--corrigir]\n');
+    console.log(
+      '\n  Uso: pnpm conferir <pasta do site gerado | endereço http> [--ver] [--corrigir]\n',
+    );
     process.exit(1);
   }
-  // Endereço fica como está: `resolve` transformaria `http://x` em caminho.
-  const pasta = /^https?:\/\//i.test(alvo) ? alvo : resolve(alvo);
+  /**
+   * ENDEREÇO e PASTA são coisas diferentes, e confundi-las quebrou o comando.
+   *
+   * `resolve` transformaria `http://x` em caminho, então o endereço fica como
+   * está. Só que o resto da função usava essa MESMA variável para gravar o
+   * veredito ao lado do site (`join(pasta, 'aceite-navegador.json')`), e
+   * `path.join` não entende URL: virava um caminho relativo inexistente e o
+   * `writeFileSync` estourava.
+   *
+   * O estrago era pior do que parece: a lista de vereditos já tinha sido
+   * impressa, então a tela mostrava tudo verde e o erro vinha depois. E o
+   * processo saía com 1 — o MESMO código de "reprovou" —, de modo que quem
+   * encadeia `pnpm pagina && pnpm conferir` como portão passava a receber
+   * falha sempre, medisse o que medisse. Número que não muda não prova nada.
+   *
+   * Endereço não tem pasta ao lado onde gravar. Então não se grava, e se diz.
+   */
+  const ehEndereco = ehEnderecoDeRede(alvo);
+  const pasta = ehEndereco ? alvo : resolve(alvo);
+  if (ehEndereco && corrigir) {
+    console.log(
+      '\n  --corrigir não se aplica a endereço: a folha de ajustes mora ao lado do site gerado, e um servidor no ar não tem esse lado. Aponte para a pasta da versão.\n',
+    );
+    process.exit(1);
+  }
   // Corrigir exige medir o site CRU: com o bloco anterior no lugar, a medição
   // só enxerga o resíduo e o bloco novo nasce menor que o problema.
   if (corrigir) {
@@ -1103,13 +1147,18 @@ const principal = async (): Promise<void> => {
     console.log('  Rode de novo sem --corrigir para conferir o resultado.');
   }
 
-  const arquivo = join(pasta, 'aceite-navegador.json');
-  writeFileSync(
-    arquivo,
-    JSON.stringify({ formato: 1, conferidoEm: Date.now(), larguras: resultados }, null, 2),
-    'utf8',
-  );
-  console.log(`\n  Veredito gravado em ${arquivo}\n`);
+  const destino = destinoDoVeredito(alvo);
+  if (destino === null) {
+    console.log('\n  Endereço medido: o veredito fica só aqui, sem arquivo ao lado.\n');
+  } else {
+    const arquivo = destino;
+    writeFileSync(
+      arquivo,
+      JSON.stringify({ formato: 1, conferidoEm: Date.now(), larguras: resultados }, null, 2),
+      'utf8',
+    );
+    console.log(`\n  Veredito gravado em ${arquivo}\n`);
+  }
 
   // Sai com erro quando reprova: assim o comando serve de portão para quem
   // encadeia `pnpm pagina && pnpm conferir`, e não só de relatório para ler.
