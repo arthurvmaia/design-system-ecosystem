@@ -29,8 +29,46 @@ export type RenderOptions = {
   nicheId?: string;
 };
 
-const PLACEHOLDER_SVG = (label: string, tone = "#e5e7eb") =>
-  `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200"><rect width="1200" height="1200" fill="${tone}"/><path d="M0 1200 900 300l300 300v600z" fill="#d1d5db"/><circle cx="320" cy="320" r="140" fill="#d1d5db"/><text x="50%" y="94%" font-family="Arial" font-size="64" fill="#9ca3af" text-anchor="middle">${label}</text></svg>`)}`;
+/**
+ * Formatos de placeholder, em pixels — os mesmos que a Shopify recomenda para
+ * cada lugar.
+ *
+ * O banner é 3:1 (3000×1000 ou 1800×600) e a versão de celular é 1080×1350.
+ * Fora de banner, o quadrado continua servindo: é o formato de cartão de
+ * produto e de coleção.
+ */
+const FORMATO_PADRAO = { largura: 1200, altura: 1200 };
+const FORMATO_BANNER = { largura: 1800, altura: 600 };
+const FORMATO_BANNER_CELULAR = { largura: 1080, altura: 1350 };
+
+/**
+ * O vazio tem de ter a FORMA do cheio.
+ *
+ * Um `image_picker` de banner sem imagem recebia o quadrado de 1200×1200, e o
+ * Dawn com `slide_height: adapt_image` adota a proporção da imagem: o banner
+ * abria com altura igual à largura, uma tela inteira de placeholder. Não é um
+ * exagero do tema — é o placeholder mentindo sobre o formato do que vai entrar
+ * ali. Acontece sempre que a imagem é `shopify://shop_images/...`, que mora nos
+ * Arquivos da loja e não viaja no ZIP do tema, ou seja: em toda loja real.
+ *
+ * A decisão sai do PAR seção+campo, e não do nome do arquivo: nome de arquivo é
+ * do lojista e não segue regra nenhuma.
+ */
+const formatoDoPlaceholder = (secao?: string, campo?: string) => {
+  if (!secao || !/banner|slideshow|hero|slide/i.test(secao)) return FORMATO_PADRAO;
+  return /mobile|celular/i.test(campo ?? "") ? FORMATO_BANNER_CELULAR : FORMATO_BANNER;
+};
+
+const PLACEHOLDER_SVG = (label: string, tone = "#e5e7eb", formato = FORMATO_PADRAO) => {
+  const { largura: w, altura: h } = formato;
+  const raio = Math.round(Math.min(w, h) * 0.117);
+  const corpo =
+    `<rect width="${w}" height="${h}" fill="${tone}"/>` +
+    `<path d="M0 ${h} ${Math.round(w * 0.75)} ${Math.round(h * 0.25)}l${Math.round(w * 0.25)} ${Math.round(h * 0.25)}v${Math.round(h * 0.5)}z" fill="#d1d5db"/>` +
+    `<circle cx="${Math.round(w * 0.27)}" cy="${Math.round(h * 0.27)}" r="${raio}" fill="#d1d5db"/>` +
+    `<text x="50%" y="94%" font-family="Arial" font-size="${Math.round(Math.min(w, h) * 0.053)}" fill="#9ca3af" text-anchor="middle">${label}</text>`;
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">${corpo}</svg>`)}`;
+};
 
 function text(files: Map<string, Uint8Array>, path: string): string | undefined {
   const data = files.get(path);
@@ -370,7 +408,10 @@ function flattenTranslations(source: Record<string, unknown>, prefix = "", out: 
 function resolveSettingValues(
   values: Record<string, ShopifyValue>,
   definitions: ShopifySettingDefinition[],
-  helpers: { loja: Loja; imageFor: (value: ShopifyValue) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
+  helpers: { loja: Loja; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
+  /* O tipo da seção (ou do bloco) chega até aqui só por causa do placeholder:
+     é o par seção+campo que diz qual FORMATO o vazio deve ter. */
+  secao?: string,
 ) {
   const byId = new Map(definitions.map((definition) => [definition.id, definition]));
   const resolved: Record<string, unknown> = {};
@@ -387,7 +428,7 @@ function resolveSettingValues(
       resolved[id] = colorDrop(value);
       continue;
     }
-    if (type === "image_picker") { resolved[id] = helpers.imageFor(value); continue; }
+    if (type === "image_picker") { resolved[id] = helpers.imageFor(value, secao, id); continue; }
     if (type === "color_scheme") { resolved[id] = helpers.schemeFor(value); continue; }
     if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : ""); continue; }
     if (type === "product") { resolved[id] = demoProduct(helpers.loja, typeof value === "string" ? value : "", 2); continue; }
@@ -556,11 +597,11 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     return path ? assetBase(path) : `assets/${clean}`;
   };
 
-  const imageFor = (value: ShopifyValue): ThemeImage | null => {
+  const imageFor = (value: ShopifyValue, secao?: string, campo?: string): ThemeImage | null => {
     if (value == null || value === "") return null;
     if (typeof value === "object" && !Array.isArray(value)) {
       const source = value as Record<string, ShopifyValue>;
-      return imageFor(source.src ?? source.url ?? null);
+      return imageFor(source.src ?? source.url ?? null, secao, campo);
     }
     if (typeof value !== "string") return null;
     /* mídia enviada pelo editor do Orbis e data URIs são imagens válidas */
@@ -568,7 +609,22 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     const name = value.split("?")[0].split("/").at(-1) ?? "";
     if (/^https?:\/\//i.test(value) && !assetPathByName.has(name.toLowerCase())) return new ThemeImage(value);
     if (assetPathByName.has(name.toLowerCase())) return new ThemeImage(assetUrl(name));
-    if (/\.(png|jpe?g|webp|gif|svg|avif)$/i.test(name)) return new ThemeImage(PLACEHOLDER_SVG("Conecte esta imagem"));
+    /* `shopify://shop_images/...` cai aqui: o arquivo mora nos Arquivos da loja,
+       não no ZIP do tema, então toda loja real chega neste ramo. O placeholder
+       assume o formato do lugar — 3:1 em banner, 1080×1350 no celular. */
+    if (/\.(png|jpe?g|webp|gif|svg|avif)$/i.test(name)) {
+      const formato = formatoDoPlaceholder(secao, campo);
+      /* As MEDIDAS vão junto do src. O tema não olha o pixel: o `adapt_image`
+         do Dawn dimensiona a seção por `image.aspect_ratio`, então um drop que
+         responde 1200×1200 mantém o banner quadrado por mais correto que o SVG
+         esteja. */
+      return new ThemeImage(
+        PLACEHOLDER_SVG("Conecte esta imagem", undefined, formato),
+        "",
+        formato.largura,
+        formato.altura,
+      );
+    }
     return null;
   };
 
@@ -629,12 +685,14 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   }
   const resolveSection = (section: ShopifySectionInstance) => {
     const schema = schemaByType.get(section.type);
-    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, imageFor, schemeFor, registerFont });
+    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, imageFor, schemeFor, registerFont }, section.type);
     const blocks = section.blocks.map((block, index) => {
       const blockSchema = schema?.blocks.find((item) => item.type === block.type);
       return {
         id: block.id, type: block.type,
-        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, imageFor, schemeFor, registerFont }),
+        /* o formato do placeholder é da SEÇÃO: no Dawn a imagem do banner mora
+           num bloco `slide`, cujo nome não diz que aquilo é um banner */
+        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, imageFor, schemeFor, registerFont }, section.type),
         shopify_attributes: `data-block-id="${block.id}"`,
         index: index + 1, index0: index,
       };

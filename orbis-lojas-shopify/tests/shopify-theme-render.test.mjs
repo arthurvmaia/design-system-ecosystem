@@ -65,10 +65,27 @@ function makeZip() {
     "layout/theme.liquid": layout,
     "sections/hero.liquid": section("Hero", [{ type: "text", id: "heading", label: "Título", default: "Olá" }]),
     "sections/promo.liquid": section("Promo", [{ type: "text", id: "heading", label: "Título", default: "Promo" }]),
+    /* Banner com imagem da LOJA (shopify://shop_images/…), que é o caso de toda
+       loja real: o arquivo mora nos Arquivos da loja e não viaja no ZIP. */
+    "sections/image-banner.liquid": `<div class="banner">desktop={{ section.settings.image.width }}x{{ section.settings.image.height }} celular={{ section.settings.mobile_image.width }}x{{ section.settings.mobile_image.height }}</div>{% schema %}${JSON.stringify({
+      name: "Banner",
+      settings: [
+        { type: "image_picker", id: "image", label: "Imagem" },
+        { type: "image_picker", id: "mobile_image", label: "Imagem do celular" },
+      ],
+      blocks: [],
+    })}{% endschema %}`,
     "sections/main-product.liquid": section("Produto"),
     "sections/main-cart-items.liquid": section("Carrinho"),
     "sections/promo-group.json": JSON.stringify({ type: "promo", name: "Promoções", sections: { faixa: { type: "promo", settings: { heading: "Faixa global" } } }, order: ["faixa"] }),
-    "templates/index.json": JSON.stringify({ sections: { hero: { type: "hero", settings: { heading: "Início" }, blocks: { "linha-1": { type: "linha", settings: { texto: "linha um" } } }, block_order: ["linha-1"] } }, order: ["hero"] }),
+    "templates/index.json": JSON.stringify({
+      sections: {
+        hero: { type: "hero", settings: { heading: "Início" }, blocks: { "linha-1": { type: "linha", settings: { texto: "linha um" } } }, block_order: ["linha-1"] },
+        faixa: { type: "image-banner", settings: { image: "shopify://shop_images/BANNER.jpg", mobile_image: "shopify://shop_images/BANNER-CELULAR.png" } },
+        cartao: { type: "promo", settings: { heading: "Promo" } },
+      },
+      order: ["hero", "faixa", "cartao"],
+    }),
     "templates/index.context.abc-123.json": JSON.stringify({ sections: { hero: { type: "hero", settings: { heading: "Contexto de mercado" } } }, order: ["hero"] }),
     "templates/product.json": JSON.stringify({ sections: { main: { type: "main-product", settings: {} } }, order: ["main"] }),
     "templates/cart.json": JSON.stringify({ sections: { cart: { type: "main-cart-items", settings: {} } }, order: ["cart"] }),
@@ -127,6 +144,19 @@ test("render reproduz cores, esquemas, fontes e grupos como a Shopify", async ()
     /* e seção de TEMPLATE não carrega grupo nenhum: inventar a classe faria o
        CSS de grupo alcançar o corpo da página, que é o oposto do problema */
     assert.match(html, /<div id="shopify-section-hero" class="shopify-section section-hero"/);
+
+    /* O PLACEHOLDER TEM A FORMA DO LUGAR.
+       Imagem de banner é `shopify://shop_images/…`: mora nos Arquivos da loja,
+       não viaja no ZIP, e por isso TODA loja real cai no placeholder. Com o
+       quadrado de 1200×1200, o Dawn — que dimensiona por `image.aspect_ratio`
+       quando `slide_height: adapt_image` — abria o banner com altura igual à
+       largura: uma tela inteira de cinza. As medidas do drop são o que o tema
+       lê, então elas têm de vir no formato da Shopify: 3:1 no desktop
+       (1800×600) e 1080×1350 no celular. */
+    assert.match(html, /desktop=1800x600 celular=1080x1350/, "o placeholder de banner tem de sair 3:1 e 1080x1350");
+    /* fora de banner o quadrado continua: é o formato de cartão de produto */
+    const semBanner = await renderThemePage({ theme, files, pageId: "product", assetBase: (path) => `/x/${path}` });
+    assert.doesNotMatch(semBanner, /1800x600/, "só banner recebe 3:1");
     /* nenhuma variável de cor quebrada */
     assert.doesNotMatch(html, /--[\w-]+:\s*(?:,\s*)+;/);
     /* ponte de sincronia: clique → editor e editor → scroll na seção */
