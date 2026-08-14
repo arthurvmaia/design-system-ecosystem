@@ -10,6 +10,7 @@ import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme"
 import { collectEditorMediaIds, exportThemeZip, type EditorMediaFile } from "@/lib/theme-export";
 import { pecasDaMarca } from "@/lib/marca-imagens";
 import { csvDeProdutos } from "@/lib/catalogo-csv";
+import { kitDeLogo } from "@/lib/kit-de-logo";
 
 /**
  * Solicitação de loja do Fluxo Cliente.
@@ -211,6 +212,46 @@ export async function POST(request: Request) {
     for (const [caminho, conteudo] of Object.entries(site.files as Record<string, string | Uint8Array>)) {
       arquivos[`previa-local/${caminho}`] = typeof conteudo === "string" ? strToU8(conteudo) : conteudo;
     }
+
+    /**
+     * O KIT DE LOGO, desenhado e não gerado.
+     *
+     * A peça "logo" pedida ao gerador voltava foto de produto — um frasco, uma
+     * bolsa — porque é o que um modelo de imagem faz bem; e quando acertava o
+     * símbolo, vinha com fundo pintado dentro do arquivo. Logo é geometria e
+     * cor, então sai de vetor: exato, reproduzível, com transparência de
+     * verdade e no tamanho que se pedir.
+     *
+     * Nomes de arquivo estáveis, porque a ideia declarada é automatizar a
+     * subida depois: adivinhar nome é o que impede automação.
+     */
+    const kit = kitDeLogo(marca);
+    for (const peca of kit) {
+      arquivos[`previa-local/logo-da-marca/${peca.arquivo}.svg`] = strToU8(peca.svg);
+    }
+    arquivos["previa-local/logo-da-marca/COMO-USAR-O-LOGO.txt"] = strToU8(
+      [
+        "KIT DE LOGO DE " + String(marca.name ?? "").toUpperCase(),
+        "",
+        "Sao arquivos VETORIAIS (.svg): nao perdem qualidade em tamanho nenhum e",
+        "tem fundo transparente de verdade, menos os que dizem 'fundo branco' ou",
+        "'fundo preto' no nome.",
+        "",
+        "ONDE VAI CADA UM",
+        ...kit.map((p) => `  ${p.arquivo}.svg  (${p.largura}x${p.altura})  ${p.uso}`),
+        "",
+        "NA SHOPIFY",
+        "  Logo do cabecalho: Tema > Personalizar > Cabecalho > Logo.",
+        "    Use logo-horizontal ou logo-extenso.",
+        "  Favicon: Tema > Personalizar > Configuracoes do tema > Favicon.",
+        "",
+        "SE A SHOPIFY RECUSAR O .SVG",
+        "  Ela aceita SVG em Files, mas alguns campos so pegam PNG ou JPG.",
+        "  Abra o .svg no navegador, clique com o botao direito e salve como",
+        "  imagem, ou use qualquer conversor. O vetor e o mestre: converta a",
+        "  partir dele, nunca de um PNG ja reduzido.",
+      ].join("\r\n"),
+    );
 
     /**
      * O CATÁLOGO, que não cabe no tema.
