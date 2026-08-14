@@ -34,6 +34,18 @@
 > --manter`), atualizar aqui. Depois: bench novo (o atual 4pVuiY ainda tem a
 > rede v2 nos sites).
 >
+> **Decisão registrada — Astro (2026-08-14):** avaliado a pedido do dono e NÃO
+> adotado. O que o Astro entrega (HTML estático, zero JS por padrão) o nosso
+> compositor já produz por construção; adotá-lo custaria uma toolchain de build
+> dentro do `montarPaginaDoKit` (fere o `.zip` offline) e um modelo de
+> componente autoral sobre peças capturadas cruas (fere "não mude a essência").
+> Caso de uso futuro legítimo: vitrine PÚBLICA de kits como site de marketing.
+>
+> **Fila de prioridade combinada com o dono:** 1) prova das correções R2;
+> 2) workflow R3 (S4/S13/S15+S16); 3) aplicar→reprovar até 20/20; 4) fila dos
+> 11 sites (SJDR navegador visível → AVDSGN → demais, um por duplicata);
+> 5) varredura UI/UX; 6) MVP Criativos passos 3–6.
+>
 > **Pendências fora dos kits:** varredura UI/UX autorizada ("qualquer melhoria
 > principalmente ui/ux") — lançar depois que o MVP sair do ar em apps/web.
 
