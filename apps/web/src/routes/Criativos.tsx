@@ -133,6 +133,25 @@ export function CriativosPage() {
 
   // passo 1 — o pedido
   const [tipo, setTipo] = useState<'imagem' | 'video' | null>(null);
+  /**
+   * O vocabulário do passo 3 SEGUE o tipo — o dono escolheu vídeo e a tela
+   * continuou pedindo "a foto": rótulo, regra, botão, accept e resumo falavam
+   * de imagem cravada. Uma fonte só para as palavras, e o accept do arquivo
+   * acompanha, senão o seletor de arquivo recusa exatamente o que se pediu.
+   */
+  const eVideo = tipo === 'video';
+  const midia = {
+    rotulo: eVideo ? 'o vídeo' : 'a imagem',
+    regra: eVideo
+      ? 'Se o vídeo existe, ele vence: eu só crio quando não há vídeo.'
+      : 'Se a foto existe, ela vence: eu só crio quando não há imagem.',
+    tenho: eVideo ? 'Tenho o vídeo' : 'Tenho a foto',
+    aceita: eVideo ? 'video/*' : 'image/*',
+    origemPergunta: eVideo
+      ? 'O vídeo vem de onde? Ou o arquivo que a marca já tem, ou eu crio um.'
+      : 'A imagem vem de onde? Ou a foto que a marca já tem, ou eu crio uma.',
+    enviada: eVideo ? 'o vídeo enviado' : 'a foto enviada',
+  };
   const [objetivo, setObjetivo] = useState<ObjetivoDaPeca | null>(null);
 
   // passo 2 — sua marca
@@ -266,7 +285,7 @@ export function CriativosPage() {
       if (!FormatoCriativo.safeParse(formato).success)
         m.push('Escolha o formato: a medida decide onde a peça entra.');
       if (origem === null) {
-        m.push('A imagem vem de onde? Ou a foto que a marca já tem, ou eu crio uma.');
+        m.push(midia.origemPergunta);
       } else {
         const ri = OrigemDaImagem.safeParse({
           origem,
@@ -659,9 +678,9 @@ export function CriativosPage() {
             })}
           </div>
 
-          <span className="ds-label mt-6 block">a imagem</span>
+          <span className="ds-label mt-6 block">{midia.rotulo}</span>
           <p className="mt-1 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-            Se a foto existe, ela vence: eu só crio quando não há imagem.
+            {midia.regra}
           </p>
           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <button
@@ -672,7 +691,7 @@ export function CriativosPage() {
               style={{ borderColor: bordaDeChip(origem === 'upload'), color: 'var(--color-fg)' }}
             >
               <Upload size={15} style={{ color: 'rgb(var(--acento))' }} />
-              <span className="text-[13px] font-medium">Tenho a foto</span>
+              <span className="text-[13px] font-medium">{midia.tenho}</span>
             </button>
             <button
               type="button"
@@ -697,7 +716,7 @@ export function CriativosPage() {
               </span>
               <input
                 type="file"
-                accept="image/*"
+                accept={midia.aceita}
                 className="hidden"
                 onChange={(e) => setArquivoNome(e.target.files?.[0]?.name ?? null)}
               />
@@ -807,7 +826,7 @@ export function CriativosPage() {
                 [
                   'imagem',
                   origem === 'upload'
-                    ? `a foto enviada (${arquivoNome ?? 'sem arquivo'}): eu não gero por cima de material real`
+                    ? `${midia.enviada} (${arquivoNome ?? 'sem arquivo'}): eu não gero por cima de material real`
                     : 'eu crio, a partir da descrição',
                 ],
                 [
