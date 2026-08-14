@@ -902,14 +902,38 @@ export const conferirNoNavegador = async (
        */
       let y = 0;
       for (let volta = 0; volta < 200; volta++) {
-        await pagina.evaluate(`window.scrollTo(0, ${y})`);
+        /**
+         * `behavior:'instant'` atravessa o scroll-behavior:smooth da origem.
+         *
+         * O smooth transforma cada scrollTo em ANIMACAO, e o passo seguinte
+         * (120ms depois) a reinicia da posicao atual: o scroll real ESTACIONA
+         * milhares de px antes do fim enquanto o laco confia no y pedido — as
+         * ultimas secoes nunca entravam na viewport, nenhum revelador
+         * disparava, e a S13 contava como apagado um texto que visitante real
+         * (roda/toque, que o CSS smooth nao afeta) veria aceso. Medido: 100%
+         * dos 83 reprovados alem do alcance real; com instant, maxY ==
+         * scrollHeight - viewport EXATO nas 8 combinacoes e 0 apagados, duas
+         * rodadas seguidas. O estacionamento variava com a carga da maquina —
+         * era ISSO que fazia o numero oscilar entre medicoes.
+         */
+        await pagina.evaluate(`window.scrollTo({ top: ${y}, left: 0, behavior: 'instant' })`);
         await pagina.waitForTimeout(120);
         const altura = await pagina.evaluate('document.body.scrollHeight');
         const total = typeof altura === 'number' ? altura : 0;
         if (y >= total) break;
         y += 450;
       }
-      await pagina.evaluate('window.scrollTo(0, 0)');
+      // A CHEGADA e dado, nao fe: se o fim nao foi alcancado, vai-se ate ele.
+      const chegou = await pagina.evaluate(
+        'window.scrollY + innerHeight + 4 >= Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)',
+      );
+      if (chegou !== true) {
+        await pagina.evaluate(
+          "window.scrollTo({ top: document.body.scrollHeight, left: 0, behavior: 'instant' })",
+        );
+        await pagina.waitForTimeout(240);
+      }
+      await pagina.evaluate("window.scrollTo({ top: 0, left: 0, behavior: 'instant' })");
       /**
        * A espera final tem de ser MAIOR que a rede de segurança da página.
        *

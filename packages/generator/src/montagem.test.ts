@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   REGRA_DA_LISTA_SUSPENSA,
+  REGRA_DO_ACENDIDO,
   REGRA_QUE_ABRE_PASSAGEM,
   acenderLetraMiuda,
   acenderOpacidadeCongelada,
@@ -715,4 +716,14 @@ test('acenderLetraMiuda: o seletor DESCENDENTE inteiro tambem ganha piso', () =>
     'o seletor inteiro esta no piso',
   );
   assert.ok(!/from|to\{/.test(r.css.replace(/max-width/g, '')), 'preludio de keyframe fica fora');
+});
+
+test('REGRA_DO_ACENDIDO: o acendimento vira folha, que nenhum style simples derruba', () => {
+  // Inline !important cai com a proxima escrita simples de el.style.opacity (o
+  // caminho do GSAP): a escrita substitui a declaracao e derruba a prioridade.
+  // Folha !important vence qualquer inline sem !important, para sempre, sem
+  // observador — e o transform vai junto, senao o texto acende deslocado 40px.
+  assert.match(REGRA_DO_ACENDIDO, /\[data-orbis-acendido\]/, 'o seletor e o atributo do resolver');
+  assert.match(REGRA_DO_ACENDIDO, /opacity:1!important/);
+  assert.match(REGRA_DO_ACENDIDO, /transform:none!important/);
 });

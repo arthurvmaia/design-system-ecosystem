@@ -66,6 +66,7 @@ import {
   PISO_DE_LETRA_MOVEL,
   REGRA_DA_LISTA_SUSPENSA,
   REGRA_DA_TINTA_DA_MARCA,
+  REGRA_DO_ACENDIDO,
   REGRA_QUE_ABRE_PASSAGEM,
   acenderLetraMiuda,
   acenderOpacidadeCongelada,
@@ -2468,7 +2469,7 @@ ${criada.html}
    */
   const respiroDaEmenda =
     '[data-secao] + [data-secao]{margin-top:max(var(--marca-espaco-8, 2.5rem), 0px)}';
-  concatCss += `\n/* base da página composta */\nhtml,body{margin:0}\n:root{--pagina-fundo:${fundoDaMarca}}\nbody{background:var(--pagina-fundo)}\n${REGRA_QUE_ABRE_PASSAGEM}\n${REGRA_DA_TINTA_DA_MARCA}\n${REGRA_DA_LISTA_SUSPENSA}\n[data-secao="nav"][data-fixa-no-topo]{position:sticky;top:0;z-index:60}\n${respiroDaEmenda}\n`;
+  concatCss += `\n/* base da página composta */\nhtml,body{margin:0}\n:root{--pagina-fundo:${fundoDaMarca}}\nbody{background:var(--pagina-fundo)}\n${REGRA_QUE_ABRE_PASSAGEM}\n${REGRA_DA_TINTA_DA_MARCA}\n${REGRA_DA_LISTA_SUSPENSA}\n${REGRA_DO_ACENDIDO}\n[data-secao="nav"][data-fixa-no-topo]{position:sticky;top:0;z-index:60}\n${respiroDaEmenda}\n`;
 
   /**
    * O CONTAINER da página, devolvido às seções que provaram tê-lo perdido.

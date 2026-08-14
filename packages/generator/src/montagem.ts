@@ -637,6 +637,24 @@ export const envolverCamadaDePagina = (
  * um par conferido. `!important` porque o padrão do agente de usuário para
  * `option` é teimoso e a folha da origem raramente diz alguma coisa.
  */
+/**
+ * O acendimento da rede de segurança vira REGRA DE FOLHA — permanente.
+ *
+ * O `resolver` da rede escreve `opacity:1 !important` inline e marca o elemento
+ * com `data-orbis-acendido`. Só que inline `!important` cai com a PRÓXIMA
+ * escrita simples de `el.style.opacity` (o caminho normal do GSAP): a escrita
+ * substitui a declaração e derruba a prioridade — medido pelo cético do R4,
+ * computed 1→0 sem a rede saber, porque o elemento já saiu da observação.
+ *
+ * Folha `!important` não cai: ela vence qualquer inline sem `!important`, de
+ * qualquer escritor, para sempre — sem observador, sem janela, sem briga. O
+ * atributo que o próprio resolver já escreve é o seletor. E o transform vai
+ * junto, porque o estado re-aplicado inteiro deixaria o texto aceso porém
+ * deslocado 40px do lugar.
+ */
+export const REGRA_DO_ACENDIDO =
+  '[data-orbis-acendido]{opacity:1!important;transform:none!important}';
+
 export const REGRA_DA_LISTA_SUSPENSA =
   '[data-secao] option,[data-secao] optgroup{background-color:var(--pagina-fundo)!important;color:var(--marca-heading,inherit)!important}';
 
