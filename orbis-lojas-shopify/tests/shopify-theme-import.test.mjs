@@ -95,3 +95,49 @@ test("importador encontra automaticamente um tema dentro de ZIPs de instalação
     await server.close();
   }
 });
+
+test("a pasta de prévia do pacote entregue não entra no tema", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { themeFilesFromZip, extractShopifyThemeBytes } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+
+    /**
+     * O pacote que a Orbis entrega é importável como tema — é o objetivo — e
+     * leva ao lado uma pasta `previa-local/` com a prévia, o CSV de produtos e
+     * o kit de logo. Reimportar esse pacote é gesto natural, e ela entrava
+     * junto: um tema real desta máquina chegou a 354 arquivos, 40 de prévia.
+     *
+     * O estrago era silencioso e cumulativo: na geração seguinte os arquivos do
+     * tema são gravados DEPOIS dos novos e sobrescreviam o CSV, o leia-me e as
+     * imagens pelos da entrega anterior — cada loja nova nascia com o catálogo
+     * de uma loja velha.
+     */
+    const arquivos = {
+      "config/settings_schema.json": JSON.stringify([{ name: "theme_info", theme_name: "T", theme_version: "1", theme_author: "a" }]),
+      "config/settings_data.json": JSON.stringify({ current: {} }),
+      "layout/theme.liquid": "{{ content_for_layout }}",
+      "sections/hero.liquid": '<div></div>{% schema %}{"name":"Hero"}{% endschema %}',
+      "templates/index.json": JSON.stringify({ sections: { hero: { type: "hero", settings: {} } }, order: ["hero"] }),
+      /* o que vem de carona num pacote entregue */
+      "previa-local/index.html": "<html></html>",
+      "previa-local/produtos-para-importar.csv": "Title\nvelho",
+      "previa-local/logo-da-marca/logo-extenso.svg": "<svg></svg>",
+      "previa-local/imagens-para-a-shopify/orbis-1-banner.png": "x",
+    };
+    const zip = zipSync(Object.fromEntries(Object.entries(arquivos).map(([p, v]) => [p, strToU8(v)])));
+
+    const lidos = themeFilesFromZip(zip);
+    const caminhos = [...lidos.keys()];
+    assert.equal(caminhos.filter((p) => p.startsWith("previa-local/")).length, 0, "prévia não pode virar arquivo de tema");
+    /* e o tema de verdade continua inteiro */
+    for (const obrigatorio of ["layout/theme.liquid", "config/settings_schema.json", "templates/index.json", "sections/hero.liquid"]) {
+      assert.ok(lidos.has(obrigatorio), `sumiu ${obrigatorio}`);
+    }
+    /* o importador tambem nao lista a previa entre os arquivos do tema */
+    const tema = extractShopifyThemeBytes(zip, "pacote.zip");
+    assert.equal(tema.sourceFiles.filter((f) => f.path.startsWith("previa-local/")).length, 0);
+  } finally {
+    await server.close();
+  }
+});

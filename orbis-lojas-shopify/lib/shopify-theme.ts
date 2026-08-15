@@ -170,7 +170,28 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   const byRelativePath = new Map<string, Uint8Array>();
   for (const [path, value] of entries) {
     const normalized = normalizedPath(path);
-    if (normalized.startsWith(rootPrefix)) byRelativePath.set(normalized.slice(rootPrefix.length), value);
+    if (!normalized.startsWith(rootPrefix)) continue;
+    const relativo = normalized.slice(rootPrefix.length);
+    /**
+     * `previa-local/` NÃO entra no tema.
+     *
+     * O pacote que a Orbis entrega é importável como tema — é o objetivo dele —
+     * e leva ao lado do tema uma pasta `previa-local/` com o site de prévia, o
+     * CSV de produtos, o kit de logo e as instruções. Quando alguém reimporta
+     * esse pacote (gesto natural: "vou pôr minha loja de volta no estúdio"), a
+     * pasta entra junto e vira parte do tema para sempre.
+     *
+     * O estrago é silencioso e cumulativo: na geração seguinte os arquivos do
+     * tema são gravados DEPOIS dos novos e sobrescrevem o CSV, o leia-me e as
+     * imagens com os da entrega anterior. Um tema real desta máquina chegou a
+     * 354 arquivos, 40 deles de prévia, e cada loja nova nascia com o catálogo
+     * de uma loja velha.
+     *
+     * Aqui se corta na raiz: prévia não é arquivo de tema, e a Shopify também
+     * não a reconheceria.
+     */
+    if (relativo.startsWith("previa-local/")) continue;
+    byRelativePath.set(relativo, value);
   }
 
   const rawSettingsSchema = parseJson<unknown[]>(byRelativePath.get("config/settings_schema.json"), []);
@@ -331,7 +352,28 @@ export function themeFilesFromZip(bytes: Uint8Array): Map<string, Uint8Array> {
   const byRelativePath = new Map<string, Uint8Array>();
   for (const [path, value] of resolved.entries) {
     const normalized = normalizedPath(path);
-    if (normalized.startsWith(rootPrefix)) byRelativePath.set(normalized.slice(rootPrefix.length), value);
+    if (!normalized.startsWith(rootPrefix)) continue;
+    const relativo = normalized.slice(rootPrefix.length);
+    /**
+     * `previa-local/` NÃO entra no tema.
+     *
+     * O pacote que a Orbis entrega é importável como tema — é o objetivo dele —
+     * e leva ao lado do tema uma pasta `previa-local/` com o site de prévia, o
+     * CSV de produtos, o kit de logo e as instruções. Quando alguém reimporta
+     * esse pacote (gesto natural: "vou pôr minha loja de volta no estúdio"), a
+     * pasta entra junto e vira parte do tema para sempre.
+     *
+     * O estrago é silencioso e cumulativo: na geração seguinte os arquivos do
+     * tema são gravados DEPOIS dos novos e sobrescrevem o CSV, o leia-me e as
+     * imagens com os da entrega anterior. Um tema real desta máquina chegou a
+     * 354 arquivos, 40 deles de prévia, e cada loja nova nascia com o catálogo
+     * de uma loja velha.
+     *
+     * Aqui se corta na raiz: prévia não é arquivo de tema, e a Shopify também
+     * não a reconheceria.
+     */
+    if (relativo.startsWith("previa-local/")) continue;
+    byRelativePath.set(relativo, value);
   }
   return byRelativePath;
 }
