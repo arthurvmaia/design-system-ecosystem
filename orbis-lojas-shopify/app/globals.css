@@ -754,6 +754,10 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .conta-shopify-passos span { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .conta-shopify-seguir { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; margin-top: 6px; padding: 0 16px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; font: 700 10px var(--font-geist-mono); letter-spacing: .18em; text-transform: uppercase; transition: border-color .2s, color .2s; }
 .conta-shopify-seguir:hover, .conta-shopify-seguir:focus-visible { border-color: rgba(34,211,238,.5); color: var(--green-bright); }
+/* liberado depois do clique: passa a ser o caminho da vez, então para de ser
+   discreto. É o mesmo botão, com o peso que o momento pede. */
+.conta-shopify-seguir.seguir-pronto { border-color: rgba(34,211,238,.55); background: rgba(6,182,212,.08); color: var(--green-bright); }
+.conta-shopify-seguir.seguir-pronto:hover, .conta-shopify-seguir.seguir-pronto:focus-visible { background: rgba(6,182,212,.16); }
 .conta-shopify-aviso { max-width: 460px; color: #ebcd91; font-size: 11px; line-height: 1.5; }
 @media (max-width: 640px) { .conta-shopify-passos { grid-template-columns: 1fr; } }
 

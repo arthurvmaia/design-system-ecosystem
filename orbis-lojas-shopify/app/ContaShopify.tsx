@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
 import { LINK_DE_AFILIADO, SEM_LINK_DE_INDICACAO } from "@/app/shopify-afiliado";
 
@@ -8,17 +9,22 @@ import { LINK_DE_AFILIADO, SEM_LINK_DE_INDICACAO } from "@/app/shopify-afiliado"
  *
  * A loja que este app monta é um TEMA da Shopify: sem conta lá, o arquivo que
  * a pessoa recebe no fim não tem onde ser aberto. Perguntar isso no fim seria
- * tarde — ela já teria escolhido marca, cores e produtos para descobrir que
+ * tarde: ela já teria escolhido marca, cores e produtos para descobrir que
  * falta o principal.
  *
- * E é aqui que o link de indicação vive: no único ponto do fluxo em que abrir
- * a Shopify é o que a pessoa precisa fazer de qualquer jeito. Pedir o clique
- * onde ele já era necessário é diferente de espalhar convite pelo app.
+ * A ÚNICA saída daqui passa pelo link de indicação. Não é obstáculo por
+ * obstáculo: a conta é necessária de verdade, e este é o momento em que ela é
+ * necessária. O que a decisão remove é o atalho que pulava o link sem pular a
+ * necessidade.
  *
- * Quem já tem conta segue direto. Barrar seria trocar um passo útil por um
- * pedágio, e o site continua sendo dela.
+ * Depois do clique a tela não presume nada. Ela sabe uma coisa só, a que
+ * aconteceu de fato: a Shopify foi aberta em outra aba. Por isso o texto passa
+ * a ser "quando terminar por lá, siga" em vez de "conta criada" — dizer o que
+ * não se viu é o começo de uma tela que mente.
  */
 export function ContaShopify({ onSeguir, onVoltar }: { onSeguir: () => void; onVoltar: () => void }) {
+  const [abriu, setAbriu] = useState(false);
+
   return (
     <main className="entry-gate">
       <div className="entry-gate-brilho" aria-hidden="true" />
@@ -29,7 +35,14 @@ export function ContaShopify({ onSeguir, onVoltar }: { onSeguir: () => void; onV
       <div className="entry-gate-caixa">
         {/* a logo é o próprio link: é o que a pessoa reconhece antes de ler
             qualquer palavra, e clicar nela é o gesto natural */}
-        <a className="conta-shopify-marca" href={LINK_DE_AFILIADO} target="_blank" rel="noreferrer" aria-label="Criar conta na Shopify">
+        <a
+          className="conta-shopify-marca"
+          href={LINK_DE_AFILIADO}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Criar conta na Shopify"
+          onClick={() => setAbriu(true)}
+        >
           <MarcaShopify />
         </a>
         <div className="entry-gate-marca">SHOPIFY</div>
@@ -41,11 +54,16 @@ export function ContaShopify({ onSeguir, onVoltar }: { onSeguir: () => void; onV
 
         {/* sem repetir a sacola aqui: em cima do verde da própria Shopify ela
             fica verde sobre verde e sobra só o "s" solto */}
-        <a className="conta-shopify-botao" href={LINK_DE_AFILIADO} target="_blank" rel="noreferrer">
+        <a
+          className="conta-shopify-botao"
+          href={LINK_DE_AFILIADO}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => setAbriu(true)}
+        >
           Criar minha conta na Shopify
           <ExternalLink size={14} />
         </a>
-        <span className="conta-shopify-nota">Abre em outra aba. Esta tela fica esperando o senhor.</span>
 
         <div className="conta-shopify-passos">
           <div><b>01</b><span>Crie a conta e escolha o endereço da loja.</span></div>
@@ -53,13 +71,24 @@ export function ContaShopify({ onSeguir, onVoltar }: { onSeguir: () => void; onV
           <div><b>03</b><span>Receba o tema pronto e suba na sua loja.</span></div>
         </div>
 
-        <button type="button" className="conta-shopify-seguir" onClick={onSeguir}>
-          Já tenho conta, criar meu site <ArrowRight size={13} />
-        </button>
+        {abriu ? (
+          <>
+            <button type="button" className="conta-shopify-seguir seguir-pronto" onClick={onSeguir}>
+              Terminei na Shopify, criar meu site <ArrowRight size={13} />
+            </button>
+            <span className="conta-shopify-nota">
+              Abri a Shopify na outra aba. Termine por lá e volte, que eu continuo daqui.
+            </span>
+          </>
+        ) : (
+          <span className="conta-shopify-nota">
+            Abre em outra aba. Assim que o senhor abrir, eu libero a criação do site.
+          </span>
+        )}
 
         {SEM_LINK_DE_INDICACAO && (
           /* aviso para o DONO do app, não para o cliente: sem o link de
-             indicação configurado, o botão funciona e a comissão não existe —
+             indicação configurado, o botão funciona e a comissão não existe,
              e um erro silencioso desses só aparece no extrato */
           <span className="conta-shopify-aviso">
             Link de indicação ainda não configurado: o botão leva à Shopify, mas não gera comissão.
@@ -73,9 +102,9 @@ export function ContaShopify({ onSeguir, onVoltar }: { onSeguir: () => void; onV
 /**
  * A sacola da Shopify, desenhada em vetor.
  *
- * Fica no app inteiro sem baixar nada: some em nenhuma resolução e não depende
- * de rede. Para usar o arquivo oficial do portal de parceiros, é trocar este
- * componente pela <img> do asset — o resto da tela não muda.
+ * Fica no app inteiro sem baixar nada: não some em resolução nenhuma e não
+ * depende de rede. Para usar o arquivo oficial do portal de parceiros, é
+ * trocar este componente pela imagem do asset, e o resto da tela não muda.
  */
 function MarcaShopify({ tamanho = 60 }: { tamanho?: number }) {
   return (

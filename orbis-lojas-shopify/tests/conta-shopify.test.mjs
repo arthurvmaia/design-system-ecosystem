@@ -16,7 +16,7 @@ import { join } from "node:path";
 
 const RAIZ = fileURLToPath(new URL("..", import.meta.url));
 
-test("o cliente passa pela conta Shopify ANTES de criar, e consegue seguir sem ela", async () => {
+test("o cliente passa pela conta Shopify ANTES de criar, e a unica saida passa pelo link", async () => {
   const shell = await readFile(join(RAIZ, "app/AppShell.tsx"), "utf8");
 
   /* a ordem é o que importa: perguntar isso no fim seria perguntar tarde, com
@@ -27,15 +27,41 @@ test("o cliente passa pela conta Shopify ANTES de criar, e consegue seguir sem e
   assert.match(ordem[0], /ClientFlow/);
 
   const tela = await readFile(join(RAIZ, "app/ContaShopify.tsx"), "utf8");
-  /* quem já tem conta segue direto: barrar trocaria um passo útil por pedágio,
-     e o site continua sendo do cliente */
-  assert.match(tela, /onSeguir/, "tem de haver saída para quem já tem conta");
-  assert.match(tela, /Já tenho conta/);
-  /* e dá para voltar ao portão: escolher a porta errada não pode prender */
+
+  /**
+   * A ÚNICA saída para a criação passa pelo link de indicação.
+   *
+   * O atalho "já tenho conta" pulava o link sem pular a necessidade da conta,
+   * e era por ali que a indicação se perdia. Agora `onSeguir` só existe depois
+   * que a Shopify foi aberta.
+   */
+  assert.doesNotMatch(tela, /Já tenho conta/, "o atalho que pulava o link não pode voltar");
+  const liberado = tela.match(/\{abriu \?[\s\S]*?\)\}/);
+  assert.ok(liberado, "o seguir precisa depender de ter aberto a Shopify");
+  assert.match(liberado[0], /onClick=\{onSeguir\}/, "o seguir mora no ramo de depois do clique");
+  assert.match(tela, /onClick=\{\(\) => setAbriu\(true\)\}/, "abrir o link é o que libera");
+
+  /* e a tela não presume o que não viu: ela sabe que a aba abriu, não que a
+     conta foi mesmo criada. O comentário do arquivo pode falar disso; o que
+     não pode é a FRASE DE TELA afirmar. */
+  const semComentarios = tela.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(semComentarios, /[Cc]onta criada|[Cc]onta confirmada/);
+
+  /* dá para voltar ao portão: escolher a porta errada não pode prender */
   assert.match(tela, /onVoltar/);
   /* o link abre FORA, sem levar o endereço do app junto */
   assert.match(tela, /target="_blank"/);
   assert.match(tela, /rel="noreferrer"/);
+});
+
+test("o link em uso é o de indicação, com o rid que liga a conta à origem", async () => {
+  const modulo = await readFile(join(RAIZ, "app/shopify-afiliado.ts"), "utf8");
+  const emUso = modulo.match(/export const LINK_DE_AFILIADO = "([^"]+)"/)?.[1] ?? "";
+  assert.ok(emUso, "o link precisa estar escrito, não derivado");
+  /* o rid é o identificador da indicação: sem ele o link continua abrindo o
+     cadastro e a comissão simplesmente não acontece */
+  assert.match(emUso, /[?&]rid=[0-9a-f-]{8,}/i, `link sem rid: ${emUso}`);
+  assert.match(emUso, /^https:\/\/accounts\.shopify\.com\/signup/, "o destino é o cadastro, não a home");
 });
 
 test("o link de indicação mora num lugar só, e o app avisa enquanto não estiver configurado", async () => {
@@ -60,9 +86,10 @@ test("o link de indicação mora num lugar só, e o app avisa enquanto não esti
     for (const linha of fonte.split(/\r?\n/)) {
       const limpa = linha.trim();
       if (limpa.startsWith("*") || limpa.startsWith("//") || limpa.startsWith("/*")) continue;
-      /* o CDN da Shopify não conta: `cdn.shopify.com` é onde o Liquid busca
-         asset da plataforma, não para onde a pessoa é levada */
-      if (/["'`]https?:\/\/(www\.)?shopify\.com/i.test(limpa)) { comEndereco.push(arquivo); break; }
+      /* qualquer host da Shopify para onde a PESSOA é levada — accounts, www ou
+         o domínio nu. O CDN fica de fora: `cdn.shopify.com` é onde o Liquid
+         busca asset da plataforma, não destino de clique. */
+      if (/["'`]https?:\/\/(?!cdn\.)([a-z0-9-]+\.)*shopify\.com/i.test(limpa)) { comEndereco.push(arquivo); break; }
     }
   }
   assert.deepEqual(

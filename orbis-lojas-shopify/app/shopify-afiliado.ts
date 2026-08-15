@@ -13,8 +13,13 @@
  */
 export const LINK_PADRAO = "https://www.shopify.com/br";
 
-/** Cole aqui o seu link de afiliado/parceiro da Shopify. */
-export const LINK_DE_AFILIADO = LINK_PADRAO;
+/**
+ * O link de indicação em uso.
+ *
+ * O `rid` é o identificador da indicação: é ele, e só ele, que liga a conta
+ * criada a esta origem. Ao trocar o endereço, o `rid` tem de vir junto.
+ */
+export const LINK_DE_AFILIADO = "https://accounts.shopify.com/signup?rid=7c38fff0-e701-43c8-992b-7fc6f48e98e9";
 
 /** Verdadeiro enquanto ninguém trocou o link de fábrica pelo de indicação. */
 export const SEM_LINK_DE_INDICACAO = LINK_DE_AFILIADO === LINK_PADRAO;
