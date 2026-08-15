@@ -89,6 +89,7 @@ export function ClientMarcaBancada({
   marca,
   nicheId,
   gerada,
+  marcaPropria,
   pecas,
   onChange,
   onGerar,
@@ -97,6 +98,15 @@ export function ClientMarcaBancada({
   marca: MarcaCliente;
   nicheId: string;
   gerada: boolean;
+  /**
+   * A pessoa disse que JÁ TEM a marca dela.
+   *
+   * Nesse caminho o convite "Ainda não tem uma marca criada? Quero criar"
+   * contradiz a escolha que ela acabou de fazer no passo anterior, e pior:
+   * aceitar o convite sobrescreveria o nome, as cores e a logo que ela veio
+   * trazer. O convite some; a bancada de preencher continua igual.
+   */
+  marcaPropria?: boolean;
   pecas: PecaNaBancada[];
   onChange: (parcial: Partial<MarcaCliente>) => void;
   onGerar: () => void;
@@ -125,6 +135,7 @@ export function ClientMarcaBancada({
 
   return (
     <div className="cf-body cf-bancada">
+      {!marcaPropria && (
       <button className="cf-convite" onClick={onGerar}>
         <span className="cf-convite-icone" aria-hidden="true"><Sparkles size={20} strokeWidth={1.6} /></span>
         <span className="cf-convite-texto">
@@ -138,6 +149,7 @@ export function ClientMarcaBancada({
         </span>
         <span className="cf-convite-acao">{gerada ? <><RefreshCw size={14} /> Gerar outra</> : <>Quero criar <ChevronRight size={14} /></>}</span>
       </button>
+      )}
 
       <p className="cf-bancada-nota">
         Abra um de cada vez. O que o senhor deixar em branco eu resolvo com o kit, e a lista diz o que já está definido.

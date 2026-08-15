@@ -470,6 +470,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
               marca={marca}
               nicheId={nicheId}
               gerada={gerada}
+              marcaPropria={modo === "manual"}
               pecas={pecas.map((peca: { chave: string; titulo: string; aspecto: string; fallbackSvg: string }) => ({ chave: peca.chave, titulo: peca.titulo, aspecto: peca.aspecto, previaLocal: fallbackDataUri(peca) }))}
               onEnviarImagem={enviarImagem}
               onChange={ajustarMarca}

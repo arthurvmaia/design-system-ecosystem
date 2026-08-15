@@ -125,7 +125,18 @@ function corpoDoPedido(
   if (ehNanoBanana(modelo)) {
     return { prompt, aspect_ratio: razaoCurta(aspecto), resolution: "2K" };
   }
-  const corpo: Record<string, unknown> = { prompt, aspect_ratio: aspecto, resolution: "2k" };
+  /**
+   * `4k`, e não `2k`.
+   *
+   * A API aceita `1k`, `2k` e `4k`; estávamos pedindo o do meio. Num banner que
+   * ocupa a largura inteira da tela, 2k já chega esticado — e foi assim que as
+   * imagens da loja apareceram pixeladas para quem olhou de perto. O banner é a
+   * primeira coisa que a pessoa vê, então é onde nitidez importa mais.
+   *
+   * Custa mais crédito por imagem. É uma troca declarada: pixel visível numa
+   * loja que se quer vender é caro de outra forma.
+   */
+  const corpo: Record<string, unknown> = { prompt, aspect_ratio: aspecto, resolution: "4k" };
   /* `styling.colors` é o que faz a imagem sair na paleta da marca em vez de
      depender de o modelo obedecer as cores citadas no texto */
   const paleta = cores.filter((cor) => /^#[0-9a-f]{6}$/i.test(cor)).slice(0, 5);

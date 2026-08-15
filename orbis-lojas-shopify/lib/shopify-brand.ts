@@ -96,6 +96,15 @@ const CAMPO_DE_SUBTITULO = /(sub.?(heading|title)|subtitulo|caption|legenda|tagl
  */
 const CAMPO_DE_BOTAO = /(button.?(label|text)|cta|botao|call.?to.?action|link.?label)/i;
 /**
+ * Campos que pedem texto FUNCIONAL, não o slogan da marca.
+ *
+ * "Assine nossa newsletter" e "Links rápidos" são rótulos de função: o tema já
+ * traz a frase certa e ela serve a qualquer loja. Escrever o slogan ali fazia o
+ * rodapé abrir com a mesma frase da marca duas vezes, uma como título de lista
+ * e outra como chamada de e-mail — repetição que parece defeito porque é.
+ */
+const CAMPO_FUNCIONAL = /(newsletter|link.?list|menu|quick.?links|social|assinar|inscri)/i;
+/**
  * A chamada, curta, em português.
  *
  * O padrão do Dawn é "Button label", que sai em inglês na loja publicada. Não é
@@ -346,6 +355,8 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
 
   /* qual dobra de banner é esta: decide QUAL foto ela recebe */
   let indiceDaDobra = 0;
+  /* o texto que cada seção já recebeu, atravessando as páginas do tema */
+  const escritosPorSecao = new Map<string, Set<string>>();
 
   for (const page of theme.pages) {
     for (const secao of page.sections) {
@@ -355,6 +366,20 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
       /* conta ANTES de aplicar: a primeira dobra é a 0, a segunda a 1, e com
          duas fotos elas saem diferentes */
       const dobraDeBanner = SECAO_DE_BANNER.test(secao.type);
+      /**
+       * O que esta seção já recebeu de texto nosso.
+       *
+       * Sem isto, a mesma frase preenchia dois campos da MESMA seção: o rodapé
+       * saía com o slogan como título e, logo abaixo, o slogan de novo como
+       * chamada da newsletter. Repetição não é ênfase, é descuido visível.
+       *
+       * A memória é POR SEÇÃO e vive fora do laço de páginas: um grupo como o
+       * rodapé aparece em todas as páginas do tema, e um controle recriado a
+       * cada página chegava vazio na segunda volta — o campo que tinha sido
+       * poupado na primeira era preenchido ali, com a mesma frase.
+       */
+      const jaEscrito = escritosPorSecao.get(secao.id) ?? new Set<string>();
+      escritosPorSecao.set(secao.id, jaEscrito);
       for (const alvo of alvos) {
         const definicoesDoAlvo = alvo === secao
           ? definicoesDaSecao
@@ -389,6 +414,23 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
             const bannersDesktop = pecasDeBanner(imagens, "banner-desktop");
             const bannersCelular = pecasDeBanner(imagens, "banner-mobile");
             const ehBanner = /slide|banner|hero|image.?banner|rich.?text/i.test(pista2);
+            /**
+             * No RODAPÉ, imagem é marca — nunca capa de coleção.
+             *
+             * O rodapé do Dawn tem um `image_picker` que não diz "logo" no id,
+             * então ele caía na sobra e recebia uma FOTO DE PRODUTO: a loja
+             * fechava com um frasco onde deveria estar a marca. Como o campo de
+             * marca agora fica vazio de propósito (o tema escreve o nome), aqui
+             * também: vazio, e o rodapé mostra o nome da loja.
+             */
+            if (/footer|rodape/i.test(secao.type)) {
+              const doCliente = imagens.logo && !geradasPelaOrbis.has("logo") ? imagens.logo : "";
+              if (alvo.settings[definicao.id] !== doCliente) {
+                alvo.settings[definicao.id] = doCliente;
+                marcou(`${secao.type}.${definicao.id}`);
+              }
+              continue;
+            }
             const escolhida = IMAGEM_DE_LOGO.test(pista) ? imagens.logo
               : IMAGEM_DE_CELULAR.test(pista2)
                 ? bannersCelular[indiceDaDobra % Math.max(bannersCelular.length, 1)]
@@ -477,17 +519,23 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
           /* só entra onde o tema não escreveu nada de próprio */
           const noPadrao = atual === undefined || atual === "" || atual === definicao.default;
           if (!noPadrao) continue;
+          /* a mesma frase não entra duas vezes na mesma seção */
+          const escrever = (texto: string) => {
+            if (!texto || jaEscrito.has(texto)) return;
+            jaEscrito.add(texto);
+            alvo.settings[definicao.id] = valorDeTexto(definicao, texto);
+            marcou(`${secao.type}.${definicao.id}`);
+          };
+          /* rótulo de função fica com o texto do tema: ele já é o certo */
+          if (CAMPO_FUNCIONAL.test(`${alvo === secao ? "" : alvo.type} ${pista}`)) continue;
           if (CAMPO_DE_SUBTITULO.test(pista) && marca.description) {
             /* o subtítulo diz o que o título não disse; repetir o slogan aqui
                era o "O básico bem-feito" aparecendo duas vezes no banner */
-            alvo.settings[definicao.id] = valorDeTexto(definicao, marca.description);
-            marcou(`${secao.type}.${definicao.id}`);
+            escrever(marca.description);
           } else if (PAPEL_TITULO.test(pista) && marca.slogan) {
-            alvo.settings[definicao.id] = valorDeTexto(definicao, marca.slogan);
-            marcou(`${secao.type}.${definicao.id}`);
+            escrever(marca.slogan);
           } else if (marca.description) {
-            alvo.settings[definicao.id] = valorDeTexto(definicao, marca.description);
-            marcou(`${secao.type}.${definicao.id}`);
+            escrever(marca.description);
           }
         }
 
@@ -508,6 +556,19 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
             ? definicoesDaSecao
             : achatar(schema?.blocks?.find((bloco) => bloco.type === alvo.type)?.settings ?? []);
           const porId = new Map(definicoesDoAlvo2.map((d) => [d.id, d]));
+          /**
+           * O texto fica NA imagem, inclusive no celular.
+           *
+           * O Dawn traz `show_text_below: true`, e no celular isso tira a frase
+           * de cima da foto e a joga para BAIXO dela: a dobra vira uma imagem
+           * e, solto embaixo, um bloco de texto na cor de fundo. Some a
+           * composição inteira — a foto é enquadrada com metade limpa
+           * justamente para o texto pousar ali.
+           */
+          if (porId.get("show_text_below")?.type === "checkbox" && alvo.settings.show_text_below !== false) {
+            alvo.settings.show_text_below = false;
+            marcou(`${secao.type}.show_text_below`);
+          }
           if (porId.get("show_text_box")?.type === "checkbox" && alvo.settings.show_text_box !== false) {
             alvo.settings.show_text_box = false;
             marcou(`${secao.type}.show_text_box`);

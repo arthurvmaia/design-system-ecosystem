@@ -363,14 +363,43 @@ function buildCart(loja: Loja, items: PreviewCartItem[] | undefined) {
   };
 }
 
+/**
+ * A foto de um cartão de coleção: um produto do acervo, escolhido pelo handle.
+ *
+ * A soma dos códigos do handle serve de índice. Não é aleatório — precisa ser
+ * estável entre renders, senão a prévia troca de imagem a cada tecla digitada
+ * no editor.
+ */
+function fotoDaColecao(loja: Loja, handle: string) {
+  if (!loja.produtos.length) return null;
+  const semente = [...String(handle ?? "")].reduce((n, c) => n + c.charCodeAt(0), 0);
+  const produto = loja.produtos[semente % loja.produtos.length];
+  return produto?.featured_image ?? produto?.images?.[0] ?? null;
+}
+
 function demoCollection(loja: Loja, handle: string) {
   const title = handle ? handle.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Coleção em destaque";
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
     products: loja.produtos, products_count: loja.produtos.length, all_products_count: loja.produtos.length,
-    /* coleção não empresta a foto de um produto qualquer: era isso que punha a
-       MESMA imagem nos sete cartões de "Nossas Coleções" */
-    image: null, featured_image: null,
+    /**
+     * Cada coleção mostra uma foto DIFERENTE, escolhida pelo handle.
+     *
+     * A foto tinha sido zerada porque a versão anterior emprestava sempre o
+     * primeiro produto, e os sete cartões de "Nossas Coleções" saíam com a
+     * MESMA imagem. Só que zerar trocou um defeito por outro: os cartões
+     * viraram retângulos vazios, e no celular sobrava um quadrado branco no fim
+     * da página.
+     *
+     * A escolha é determinística — o mesmo handle devolve sempre a mesma foto,
+     * então a prévia não pisca a cada render — e distribuída, então dois
+     * cartões vizinhos não repetem. Sem produto no acervo, segue nulo: inventar
+     * imagem para loja sem mercadoria seria mentir sobre o que ela tem.
+     */
+    ...(() => {
+      const foto = fotoDaColecao(loja, handle);
+      return { image: foto, featured_image: foto };
+    })(),
     all_tags: [...new Set(loja.produtos.flatMap((produto) => produto.tags))],
     all_types: [...new Set(loja.produtos.map((produto) => produto.type).filter(Boolean))],
     all_vendors: [...new Set(loja.produtos.map((produto) => produto.vendor))],
