@@ -263,3 +263,46 @@ test("a barra de ações do editor não pode ser cortada pelo corpo", async () =
   const controles = css.match(/\.editor-controls \{[^}]*\}/)?.[0] ?? "";
   assert.match(controles, /grid-column:\s*-2\s*\/\s*-1/);
 });
+
+/**
+ * Comprar tem de MUDAR A TELA, não só o estado.
+ *
+ * O item entrava no carrinho — /cart.js já respondia item_count 1 — e a tela
+ * não mexia: contador em 0, gaveta vazia. Duas causas, e as duas eram sobre
+ * ONDE as coisas moram num tema de verdade:
+ *
+ * 1. a lista de seções a redesenhar saía de `sectionSchemas`, e a gaveta e o
+ *    contador do Dawn são seções ESTÁTICAS, sem bloco de schema. Sobravam
+ *    main-cart-items e main-cart-footer, que não existem na home: lista vazia,
+ *    nada pedido, nada redesenhado.
+ * 2. o alvo era procurado só como <div id="shopify-section-...">. No Dawn a
+ *    gaveta é um <cart-drawer> filho do body e o contador é um
+ *    <a id="cart-icon-bubble"> dentro do CABEÇALHO. Nenhum dos dois casava.
+ */
+test("comprar redesenha a gaveta e o contador: a lista vem dos ARQUIVOS e o alvo aceita as três formas", async () => {
+  const render = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
+
+  /* a lista sai dos arquivos de seção, não dos schemas */
+  const fonte = render.match(/function secoesDeCarrinhoDoTema[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(fonte, "secoesDeCarrinhoDoTema sumiu");
+  assert.match(fonte, /sourceFiles/, "a lista tem de vir dos arquivos: seção estática não tem schema");
+  assert.doesNotMatch(fonte, /sectionSchemas/, "por sectionSchemas a gaveta do Dawn fica de fora");
+  /* a gaveta primeiro: o pedido tem teto de 8 seções e é ela que a pessoa espera ver */
+  assert.match(fonte, /drawer\|notification\|bubble\|icon/);
+
+  /* o alvo aceita as três formas em que os temas montam uma seção */
+  const alvo = render.match(/function alvoDaSecao[\s\S]*?\n(?=function|\/\*)/)?.[0] ?? "";
+  assert.ok(alvo, "alvoDaSecao sumiu");
+  assert.match(alvo, /shopify-section-/, "invólucro padrão");
+  assert.match(alvo, /getElementById\(tipo\)/, "id igual ao nome da seção (cart-icon-bubble)");
+  assert.match(alvo, /querySelector\(tipo\)/, "custom element de mesmo nome (cart-drawer)");
+  assert.match(render, /SECOES_DE_CARRINHO\.forEach/, "a lista do tema entra em secoesDaGaveta");
+  /* só se pede o que tem onde pintar: renderizar para jogar fora é desperdício */
+  assert.match(render, /if\(tipos\.indexOf\(t\)<0&&alvoDaSecao\(t\)\)tipos\.push\(t\)/);
+
+  /* ao aplicar, o conteúdo sai do PRÓPRIO elemento de destino quando ele vem
+     dentro do HTML da seção — senão a gaveta entraria dentro da gaveta */
+  const aplicar = render.match(/function aplicarSecoes[\s\S]*?function alvosDaGaveta/)?.[0] ?? "";
+  assert.match(aplicar, /alvo\.tagName\.indexOf\("-"\)>0/);
+  assert.match(aplicar, /var fonte=mesmo\|\|conteudo/);
+});

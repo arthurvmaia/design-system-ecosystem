@@ -321,6 +321,27 @@ function comVarianteSelecionada(produto: ProdutoDaLoja, variantId: number | unde
   };
 }
 
+/**
+ * As seções de carrinho que ESTE tema tem, pelo nome do arquivo.
+ *
+ * Vem dos arquivos e não de `sectionSchemas` porque as duas que mais importam —
+ * a gaveta e o contador do ícone — são seções ESTÁTICAS no Dawn: não têm bloco
+ * `{% schema %}`, então não entram na lista de schemas. Pela lista de schemas
+ * sobravam só `main-cart-items` e `main-cart-footer`, que não existem na home;
+ * o resultado era comprar e a tela não mudar nada.
+ *
+ * A gaveta primeiro: o pedido de renderização tem teto de 8 seções, e é ela que
+ * a pessoa está esperando ver abrir.
+ */
+function secoesDeCarrinhoDoTema(theme: ShopifyThemeImport): string[] {
+  const nomes = theme.sourceFiles
+    .filter((file) => file.kind === "section")
+    .map((file) => file.path.split("/").at(-1)?.replace(/\.liquid$/i, "") ?? "")
+    .filter((nome) => /cart|carrinho/i.test(nome) && /^[a-z][a-z0-9-]*$/.test(nome));
+  const peso = (nome: string) => (/drawer|notification|bubble|icon/i.test(nome) ? 0 : 1);
+  return [...new Set(nomes)].sort((a, b) => peso(a) - peso(b) || a.localeCompare(b)).slice(0, 12);
+}
+
 /** Índice variante → dados de linha, para a ponte do carrinho dentro do preview. */
 function catalogoPorVariante(loja: Loja) {
   const mapa: Record<string, unknown> = {};
@@ -1303,13 +1324,46 @@ return fetchOriginal(entrada,init);};
 /* Compra tratada AQUI, não pelo JS do tema: cada tema liga o botão de um
    jeito (e muitos vêm ofuscados). Interceptar o envio do formulário de
    compra faz "Adicionar ao carrinho" funcionar em qualquer tema. */
-/* toda seção do tema cujo TIPO fale de carrinho: mini-cart, cart-drawer,
-   cart-notification, cart-icon-bubble… o nome muda de tema para tema */
-function secoesDaGaveta(){var tipos=[];document.querySelectorAll("[id^='shopify-section-']").forEach(function(s){var m=(s.className||"").toString().match(/section-([\\w-]+)/);var t=m&&m[1];if(t&&/cart/i.test(t)&&tipos.indexOf(t)<0)tipos.push(t);});return tipos;}
+/* ONDE cada seção pousa na página.
+   Nem toda seção de carrinho aparece como <div id="shopify-section-...">. No
+   Dawn a gaveta é um snippet do layout (<cart-drawer>, filha do body) e o
+   contador é um <a id="cart-icon-bubble"> dentro do CABEÇALHO. Procurar só o
+   invólucro padrão não achava nenhum dos dois — por isso comprar não mudava
+   nada na tela, mesmo com o item já no carrinho.
+   As três formas, na ordem em que os temas montam: invólucro de seção, um
+   elemento com o id igual ao nome da seção, e o custom element de mesmo nome. */
+function alvoDaSecao(tipo){if(!/^[a-z][a-z0-9-]*$/.test(tipo))return null;
+return document.querySelector("[id^='shopify-section-'].section-"+tipo)||document.getElementById("shopify-section-"+tipo)||document.getElementById(tipo)||(tipo.indexOf("-")>0?document.querySelector(tipo):null);}
+/* As seções de carrinho DESTE tema, ditas pelo servidor (é lá que a lista de
+   arquivos existe), cruzadas com o que a página realmente tem onde pintar:
+   pedir o que não tem alvo é gastar renderização para jogar fora.
+
+   A lista sai dos ARQUIVOS, não dos schemas: a gaveta e o contador do Dawn
+   (sections/cart-drawer.liquid, sections/cart-icon-bubble.liquid) são seções
+   ESTÁTICAS, sem bloco de schema, então não aparecem entre os schemas. Por ali
+   a lista vinha só com main-cart-items e main-cart-footer, que não existem na
+   home: nada era redesenhado. */
+var SECOES_DE_CARRINHO=${JSON.stringify(secoesDeCarrinhoDoTema(theme))};
+function secoesDaGaveta(){var tipos=[];
+document.querySelectorAll("[id^='shopify-section-']").forEach(function(s){var m=(s.className||"").toString().match(/section-([\\w-]+)/);var t=m&&m[1];if(t&&/cart/i.test(t)&&tipos.indexOf(t)<0)tipos.push(t);});
+SECOES_DE_CARRINHO.forEach(function(t){if(tipos.indexOf(t)<0&&alvoDaSecao(t))tipos.push(t);});
+return tipos;}
 function aplicarSecoes(html){Object.keys(html||{}).forEach(function(tipo){if(!html[tipo])return;
-var alvo=document.querySelector("[id^='shopify-section-'].section-"+tipo)||document.getElementById("shopify-section-"+tipo);
+var alvo=alvoDaSecao(tipo);
 if(!alvo)return;var novo=document.createElement("div");novo.innerHTML=html[tipo];
-var conteudo=novo.querySelector("[id^='shopify-section-']")||novo;alvo.innerHTML=conteudo.innerHTML;});}
+var conteudo=novo.querySelector("[id^='shopify-section-']")||novo;
+/* Se o HTML da seção traz o PRÓPRIO elemento de destino dentro — e traz: o
+   arquivo sections/cart-drawer.liquid renderiza um <cart-drawer> —, é dele que
+   sai o conteúdo. Sem isso a gaveta iria para dentro da gaveta, e o tema
+   procuraria .drawer__inner um nível abaixo do que espera. */
+var mesmo=null;
+try{if(alvo.id)mesmo=conteudo.querySelector("#"+(window.CSS&&CSS.escape?CSS.escape(alvo.id):alvo.id));}catch(err){}
+if(!mesmo&&alvo.tagName.indexOf("-")>0)mesmo=conteudo.querySelector(alvo.tagName.toLowerCase());
+var fonte=mesmo||conteudo;
+alvo.innerHTML=fonte.innerHTML;
+/* a classe carrega estado no Dawn (is-empty some quando entra item); as de
+   abrir são repostas logo depois, por abrirGaveta */
+if(mesmo&&mesmo.className)alvo.className=mesmo.className;});}
 /* Elementos que formam a gaveta: o custom element (cart-drawer/mini-cart) e o
    contêiner interno. Aplicar em todos evita depender do nome que cada tema
    escolheu — pegar só o primeiro do seletor acertava uma div interna e a
