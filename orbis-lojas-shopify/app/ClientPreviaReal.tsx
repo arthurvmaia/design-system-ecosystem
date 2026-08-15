@@ -20,20 +20,45 @@ export function ClientPreviaReal({
   marca,
   nicheId,
   largura = 1280,
+  semTema = "",
 }: {
   themeId: string;
   marca: Record<string, unknown>;
   nicheId: string;
   largura?: number;
+  /**
+   * Por que não há tema, quando não há.
+   *
+   * Sem isto a prévia ficava em "Montando a prévia da loja…" para sempre: o
+   * efeito saía na primeira linha por falta de `themeId`, e o texto de espera
+   * continuava na tela dizendo que algo estava sendo montado. Nada estava.
+   * Espera eterna é a pior tela de erro que existe, porque ninguém sabe se
+   * espera mais ou se está quebrado.
+   */
+  semTema?: string;
 }) {
   const hospedeiro = useRef<HTMLDivElement | null>(null);
   const [html, setHtml] = useState<string | null>(null);
-  const [estado, setEstado] = useState<"carregando" | "pronto" | "indisponivel">("carregando");
+  const [falhou, setFalhou] = useState(false);
   const [quadro, setQuadro] = useState({ escala: 0, altura: 0 });
+
+  /**
+   * O estado é DERIVADO, não guardado.
+   *
+   * Guardado, ele precisava ser corrigido dentro do efeito toda vez que o tema
+   * mudava, e um `setState` síncrono em efeito é o caminho curto para renders
+   * em cascata. Derivar tira a chance de o estado discordar do que existe:
+   * sem tema é indisponível, ponto, sem ninguém precisar lembrar de escrever.
+   */
+  const indisponivel = !themeId || falhou;
+  /* o HTML de um tema antigo não pode continuar na tela depois que o tema sai */
+  const paraMostrar = themeId && !falhou ? html : null;
 
   /* a marca muda a cada tecla; o render é caro, então espera a pessoa parar */
   const assinatura = JSON.stringify({ themeId, nicheId, marca });
   useEffect(() => {
+    /* sem tema não há o que montar. Quem conta isso na tela é `indisponivel`,
+       derivado: aqui só não há trabalho a fazer. */
     if (!themeId) return;
     let vivo = true;
     const espera = window.setTimeout(async () => {
@@ -44,11 +69,11 @@ export function ClientPreviaReal({
           body: JSON.stringify({ themeId, page: "index", marca: { ...marca, nicheId } }),
         });
         if (!vivo) return;
-        if (!resposta.ok) { setEstado("indisponivel"); return; }
+        if (!resposta.ok) { setFalhou(true); return; }
         setHtml(await resposta.text());
-        setEstado("pronto");
+        setFalhou(false);
       } catch {
-        if (vivo) setEstado("indisponivel");
+        if (vivo) setFalhou(true);
       }
     }, 700);
     return () => { vivo = false; window.clearTimeout(espera); };
@@ -76,17 +101,19 @@ export function ClientPreviaReal({
 
   return (
     <div className="cpr-host" ref={hospedeiro} style={{ height: quadro.altura || 360 }}>
-      {estado === "pronto" && html ? (
+      {paraMostrar ? (
         <iframe
           className="cpr-frame"
           title="Prévia da loja"
           sandbox="allow-same-origin"
-          srcDoc={html}
+          srcDoc={paraMostrar}
           style={{ width: largura, height: 900, transform: `scale(${quadro.escala})` }}
         />
       ) : (
         <div className="cpr-vazio">
-          {estado === "indisponivel" ? "Escolha um tema para ver a prévia." : "Montando a prévia da loja…"}
+          {indisponivel
+            ? semTema || "Não consegui montar a prévia deste tema agora."
+            : "Montando a prévia da loja…"}
         </div>
       )}
     </div>

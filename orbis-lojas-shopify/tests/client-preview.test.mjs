@@ -63,3 +63,34 @@ test("o nicho é o CATÁLOGO e vale nos dois caminhos; a marca é outra pergunta
      nada, que é o caso que a pessoa descobria com a loja pronta */
   assert.match(flow, /Sem catálogo: a loja sai com a vitrine vazia/);
 });
+
+/**
+ * Sem tema, a prévia DIZ que não há tema.
+ *
+ * Ela ficava em "Montando a prévia da loja…" para sempre: o efeito saía na
+ * primeira linha por falta de `themeId` e o texto de espera continuava na tela,
+ * prometendo algo que ninguém estava montando. Espera eterna é a pior tela de
+ * erro que existe — não dá para saber se espera mais ou se quebrou.
+ *
+ * Foi o que aconteceu quando os temas do estúdio foram apagados: a área do
+ * cliente não tinha o que renderizar e não contava isso a ninguém.
+ */
+test("a prévia não fica prometendo uma loja quando não há tema", async () => {
+  const previa = await readFile(new URL("../app/ClientPreviaReal.tsx", import.meta.url), "utf8");
+
+  /* o estado é DERIVADO: sem tema é indisponível por construção, e ninguém
+     precisa lembrar de corrigir isso dentro de um efeito */
+  assert.match(previa, /const indisponivel = !themeId \|\| falhou;/);
+  /* e o HTML de um tema antigo não fica na tela depois que o tema sai */
+  assert.match(previa, /const paraMostrar = themeId && !falhou \? html : null;/);
+  /* e o texto do vazio vem de fora: só quem chamou sabe se falta escolher um
+     tema ou se não existe nenhum importado */
+  assert.match(previa, /semTema\?: string/);
+  assert.match(previa, /semTema \|\|/);
+
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+  /* os três motivos são distintos: procurando, nenhum importado, nenhum escolhido */
+  assert.match(flow, /Procurando os temas do estúdio/);
+  assert.match(flow, /Nenhum tema importado ainda/);
+  assert.match(flow, /Escolha um tema para ver a prévia/);
+});

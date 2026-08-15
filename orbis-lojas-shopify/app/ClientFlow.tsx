@@ -689,7 +689,14 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         <aside className="cf-preview" aria-label="Prévia da loja">
           <span className="cf-preview-title">Prévia ao vivo</span>
           {/* a home REAL do tema com a marca aplicada, não um desenho de caixas */}
-          <ClientPreviaReal themeId={themeId} nicheId={nicheId} marca={{
+          {/* o motivo vai junto: sem tema a prévia não pode ficar prometendo
+              uma loja que nunca vem, e "escolha um tema" seria mentira quando
+              não há nenhum importado */}
+          <ClientPreviaReal themeId={themeId} nicheId={nicheId} semTema={
+            temasCarregando ? "Procurando os temas do estúdio…"
+              : temas.length === 0 ? "Nenhum tema importado ainda. Importe um em Importar temas e a prévia aparece aqui."
+                : "Escolha um tema para ver a prévia."
+          } marca={{
             name: marca.name || "Minha Marca", slogan: marca.slogan, description: marca.description,
             primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
             headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
