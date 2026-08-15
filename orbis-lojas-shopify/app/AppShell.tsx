@@ -57,6 +57,7 @@ import { FontCatalog, catalogFontFor } from "@/app/FontCatalog";
 import type { CatalogFont } from "@/lib/google-fonts";
 import { CONTRAST_MINIMUM, contextBackgroundColor, contrastRatio, formatColorValue, isTextColorSetting, parseColorValue } from "@/lib/color-tools";
 import { Orbis as OrbisNucleo } from "@/app/Orbis";
+import { ContaShopify } from "@/app/ContaShopify";
 import { EntryGate } from "@/app/EntryGate";
 import { ClientFlow } from "@/app/ClientFlow";
 
@@ -105,7 +106,7 @@ const navItems = [
 ];
 
 export function AppShell({ identity }: { identity: Identity }) {
-  const [flow, setFlow] = useState<"client" | "admin" | null>(null);
+  const [flow, setFlow] = useState<"client" | "client-criar" | "admin" | null>(null);
   const [tab, setTab] = useState<Tab>("home");
   const [data, setData] = useState<BootstrapData | null>(null);
   const [loading, setLoading] = useState(Boolean(identity));
@@ -183,7 +184,11 @@ export function AppShell({ identity }: { identity: Identity }) {
 
   if (!identity) return <SignedOutLanding />;
   if (flow === null) return <EntryGate onChoose={setFlow} />;
-  if (flow === "client") return <ClientFlow onExit={() => setFlow(null)} />;
+  /* o cliente passa pela conta da Shopify ANTES de criar: sem ela o arquivo
+     que ele recebe no fim não tem onde ser aberto, e descobrir isso depois de
+     escolher marca, cores e produtos é descobrir tarde demais */
+  if (flow === "client") return <ContaShopify onSeguir={() => setFlow("client-criar")} onVoltar={() => setFlow(null)} />;
+  if (flow === "client-criar") return <ClientFlow onExit={() => setFlow(null)} />;
 
   const selectedProject = data?.projects.find((project) => project.id === selectedProjectId) ?? data?.projects[0] ?? null;
 
