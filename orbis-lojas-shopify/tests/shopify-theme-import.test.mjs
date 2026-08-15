@@ -184,3 +184,40 @@ test("asset que não entra na instalação é declarado, e o banner 4k entra", a
   }
 });
 
+/**
+ * Os rótulos do editor saíam em tcheco num Dawn com trinta idiomas: sem
+ * `pt-BR` e sem `en.default`, o código pegava o PRIMEIRO `locales/*.schema.json`
+ * do ZIP. "Záhlaví" no lugar de "Cabeçalho" não é detalhe — é o painel inteiro
+ * ilegível para quem edita.
+ */
+test("os rótulos do editor seguem a escada de idioma: português, inglês, e só então o resto", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemeBytes } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const base = {
+      "Tema/layout/theme.liquid": strToU8("<html><body>{{ content_for_layout }}</body></html>"),
+      "Tema/sections/cabecalho.liquid": strToU8(section("t:sections.header.name")),
+      "Tema/templates/index.json": strToU8(JSON.stringify({ sections: { cabecalho: { type: "cabecalho" } }, order: ["cabecalho"] })),
+      "Tema/config/settings_schema.json": strToU8(settingsSchema),
+      "Tema/config/settings_data.json": strToU8(JSON.stringify({ current: {} })),
+    };
+    const tcheco = strToU8(JSON.stringify({ sections: { header: { name: "Záhlaví" } } }));
+    const ingles = strToU8(JSON.stringify({ sections: { header: { name: "Header" } } }));
+    const portugues = strToU8(JSON.stringify({ sections: { header: { name: "Cabeçalho" } } }));
+    const nomeDaSecao = (zip) => extractShopifyThemeBytes(zip, "tema.zip").sectionSchemas[0]?.name;
+
+    /* tcheco vem antes no ZIP e mesmo assim perde para o inglês */
+    assert.equal(nomeDaSecao(zipSync({ ...base, "Tema/locales/cs.schema.json": tcheco, "Tema/locales/en.schema.json": ingles })), "Header");
+    /* e o português ganha do inglês, mesmo sem ser o nome exato pt-BR */
+    assert.equal(nomeDaSecao(zipSync({ ...base, "Tema/locales/en.schema.json": ingles, "Tema/locales/pt.schema.json": portugues })), "Cabeçalho");
+    /* o caso real do dawn8.zip: português é o PADRÃO do tema, mas com outro
+       nome de arquivo — e o tcheco vem primeiro na lista */
+    assert.equal(nomeDaSecao(zipSync({ ...base, "Tema/locales/cs.schema.json": tcheco, "Tema/locales/en.schema.json": ingles, "Tema/locales/pt-BR.default.schema.json": portugues })), "Cabeçalho");
+    /* sem português, vale o idioma que o TEMA marcou como padrão */
+    assert.equal(nomeDaSecao(zipSync({ ...base, "Tema/locales/cs.schema.json": tcheco, "Tema/locales/de.default.schema.json": strToU8(JSON.stringify({ sections: { header: { name: "Kopfzeile" } } })) })), "Kopfzeile");
+    /* só tcheco: rótulo estranho ainda é melhor que a chave crua */
+    assert.equal(nomeDaSecao(zipSync({ ...base, "Tema/locales/cs.schema.json": tcheco })), "Záhlaví");
+  } finally {
+    await server.close();
+  }
+});

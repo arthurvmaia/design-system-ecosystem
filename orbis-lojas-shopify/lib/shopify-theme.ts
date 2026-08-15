@@ -219,7 +219,7 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   const rawSettingsSchema = parseJson<unknown[]>(byRelativePath.get("config/settings_schema.json"), []);
   if (!rawSettingsSchema.length) throw new Error("SHOPIFY_SETTINGS_SCHEMA");
   const rawSettingsData = parseJson<Record<string, unknown>>(byRelativePath.get("config/settings_data.json"), {});
-  const translationEntry = byRelativePath.get("locales/pt-BR.schema.json") ?? byRelativePath.get("locales/en.default.schema.json") ?? Array.from(byRelativePath.entries()).find(([path]) => path.startsWith("locales/") && path.endsWith(".schema.json"))?.[1];
+  const translationEntry = escolherTraducao(byRelativePath);
   const translations = parseJson<Record<string, unknown>>(translationEntry, {});
   const themeInfo = record(rawSettingsSchema.find((group) => record(group).name === "theme_info"));
   const globalGroups = rawSettingsSchema
@@ -315,6 +315,39 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   const { assets, fora } = collectImageAssets(byRelativePath);
   if (fora.length) theme.assetsForaDaInstalacao = fora;
   return { theme, images: assets };
+}
+
+/**
+ * Escolhe de qual idioma saem os RÓTULOS do editor (nome de seção, de campo).
+ *
+ * A ordem importa e a última posição era um sorteio: sem `pt-BR` e sem
+ * `en.default`, pegava-se o primeiro `locales/*.schema.json` que aparecesse no
+ * ZIP. Num Dawn com trinta idiomas, isso deu um editor inteiro em tcheco —
+ * "Záhlaví" no lugar de "Cabeçalho", "Barvy" no lugar de "Cores".
+ *
+ * Agora a escada é declarada: português primeiro (qualquer variante), depois o
+ * idioma que o TEMA marcou como padrão (`*.default.schema.json` — escolha do
+ * autor, não palpite nosso), depois inglês, e só então o que houver — porque
+ * rótulo em idioma estranho ainda é melhor que a chave crua
+ * `t:sections.header.name`.
+ *
+ * O `dawn8.zip` desta máquina é o caso exato: ele traz
+ * `pt-BR.default.schema.json`, ou seja, português JÁ ERA o padrão do tema. O
+ * código antigo procurava `pt-BR.schema.json` (nome que não existe ali) e
+ * `en.default.schema.json` (idem), errava as duas e caía no primeiro da lista,
+ * `cs.schema.json`.
+ */
+function escolherTraducao(byRelativePath: Map<string, Uint8Array>) {
+  const locales = Array.from(byRelativePath.entries())
+    .filter(([path]) => path.startsWith("locales/") && path.endsWith(".schema.json"))
+    .map(([path, data]) => [path.slice("locales/".length), data] as const);
+  const acharPor = (teste: RegExp) => locales.find(([nome]) => teste.test(nome))?.[1];
+  return (
+    acharPor(/^pt\b/i) ??
+    acharPor(/\.default\.schema\.json$/i) ??
+    acharPor(/^en\b/i) ??
+    locales[0]?.[1]
+  );
 }
 
 /**
