@@ -294,7 +294,26 @@ export async function POST(request: Request) {
     /* O tema Shopify de verdade: o ZIP tem de subir em Temas → Adicionar tema.
        Sem isto a entrega era um site estático, e a importação falhava. */
     const tema = temaComMarca ? await montarTemaShopify(viewer.id, temaComMarca) : null;
-    if (tema) for (const [caminho, dados] of Object.entries(tema)) arquivos[caminho] = dados;
+    /**
+     * O tema entra SEM a pasta de prévia.
+     *
+     * `previa-local/` não é conteúdo de tema — é o material que a Orbis põe ao
+     * lado dele no pacote. Só que um tema importado a partir de um pacote
+     * ENTREGUE pela Orbis carrega essa pasta dentro de si, e como os arquivos
+     * do tema são gravados depois, ela sobrescrevia o CSV, o leia-me e as
+     * imagens desta entrega com os da entrega ANTERIOR, congelados.
+     *
+     * Foi um caso real e sorrateiro: o CSV saía sempre no formato antigo por
+     * mais que o código estivesse certo, porque o arquivo certo era escrito e
+     * logo apagado. O sintoma parecia cache do servidor; a causa era ordem de
+     * escrita mais uma pasta que nunca deveria ter entrado no tema.
+     */
+    if (tema) {
+      for (const [caminho, dados] of Object.entries(tema)) {
+        if (caminho.startsWith("previa-local/")) continue;
+        arquivos[caminho] = dados;
+      }
+    }
 
     /**
      * AS IMAGENS, numa pasta em que dê para achá-las.
