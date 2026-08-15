@@ -29,8 +29,13 @@ export async function POST(request: Request) {
         imported.compatibility.preservedSource = true;
       } catch { sourceKey = ""; }
     }
-    imported.assetUrls = await installThemeImages(viewer.id, imported.sourceFingerprint, images);
+    const instalados = await installThemeImages(viewer.id, imported.sourceFingerprint, images);
+    imported.assetUrls = instalados.urls;
     imported.assetPreview = pickThemePreview(images, imported.assetUrls);
+    /* o que o ZIP trouxe e não ficou disponível — do corte por tamanho ao erro
+       de upload — sai numa lista só, que é o que a tela mostra */
+    const fora = [...(imported.assetsForaDaInstalacao ?? []), ...instalados.fora];
+    if (fora.length) imported.assetsForaDaInstalacao = fora;
     const result = await importShopifyTheme(viewer, imported);
     if (sourceKey) await registerThemeSource(viewer, result.themeId, imported, sourceKey, file.size);
     return Response.json(result, { status: 201 });
@@ -41,9 +46,18 @@ export async function POST(request: Request) {
   }
 }
 
-/** Instala todos os assets do tema no R2 (CSS, JS, fontes, imagens); sem R2, embute imagens pequenas como data URI. */
+/**
+ * Instala todos os assets do tema no R2 (CSS, JS, fontes, imagens); sem R2,
+ * embute imagens pequenas como data URI.
+ *
+ * Devolve também o que NÃO entrou. O tema continua pedindo esses arquivos ao
+ * desenhar a página, então cada ausência é uma imagem partida na prévia — e uma
+ * imagem partida sem explicação vira caça ao fantasma. Quem sabe o motivo é
+ * aqui.
+ */
 async function installThemeImages(ownerId: string, fingerprint: string, assets: ShopifyThemeImageAsset[]) {
   const urls: Record<string, string> = {};
+  const fora: Array<{ path: string; bytes: number; motivo: string }> = [];
   if (env.MEDIA) {
     for (const asset of assets) {
       try {
@@ -54,19 +68,30 @@ async function installThemeImages(ownerId: string, fingerprint: string, assets: 
         if (asset.contentType.startsWith("image/")) {
           urls[asset.name] = `/api/theme-assets?fp=${fingerprint}&path=${encodeURIComponent(asset.path)}`;
         }
-      } catch { /* asset individual falhou; os demais continuam */ }
+      } catch (error) {
+        const causa = error instanceof Error ? error.message : "falha desconhecida";
+        fora.push({ path: asset.path, bytes: asset.data.byteLength, motivo: `não subiu para o armazenamento: ${causa}`.slice(0, 160) });
+      }
     }
-    return urls;
+    return { urls, fora };
   }
+  /* sem R2 o embutido tem teto de verdade (o HTML carrega tudo junto), então
+     aqui o que sobra também é declarado em vez de sumir */
   let total = 0;
   for (const asset of assets) {
     if (!asset.contentType.startsWith("image/")) continue;
-    if (asset.data.byteLength > DATA_URI_MAX_FILE) continue;
-    if (total + asset.data.byteLength > DATA_URI_MAX_TOTAL) break;
+    if (asset.data.byteLength > DATA_URI_MAX_FILE) {
+      fora.push({ path: asset.path, bytes: asset.data.byteLength, motivo: "sem armazenamento: grande demais para embutir na página" });
+      continue;
+    }
+    if (total + asset.data.byteLength > DATA_URI_MAX_TOTAL) {
+      fora.push({ path: asset.path, bytes: asset.data.byteLength, motivo: "sem armazenamento: o total embutido chegou ao limite" });
+      continue;
+    }
     total += asset.data.byteLength;
     urls[asset.name] = `data:${asset.contentType};base64,${base64FromBytes(asset.data)}`;
   }
-  return urls;
+  return { urls, fora };
 }
 
 /** Elege a imagem mais representativa do tema (banners grandes ganham de ícones). */

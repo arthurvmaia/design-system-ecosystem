@@ -102,6 +102,15 @@ export type ShopifyThemeImport = {
   assetPreview?: string;
   /** Nicho da loja gerada pela área do cliente; decide a vitrine de produtos. */
   orbisNicheId?: string;
+  /**
+   * Arquivos de `assets/` que ficaram de FORA da instalação, com o motivo.
+   *
+   * Cada um destes é uma imagem quebrada esperando na prévia: o Liquid continua
+   * apontando para o arquivo (ele está no ZIP), mas o servidor não o tem para
+   * servir. Ficar em silêncio transforma isso em mistério — foi assim que um
+   * banner de 12 MB virou um ícone de imagem partida sem explicação nenhuma.
+   */
+  assetsForaDaInstalacao?: Array<{ path: string; bytes: number; motivo: string }>;
 };
 
 export type ShopifyThemeImageAsset = {
@@ -130,7 +139,20 @@ export const ASSET_CONTENT_TYPES: Record<string, string> = {
   mp4: "video/mp4", webm: "video/webm", txt: "text/plain; charset=utf-8", liquid: "text/plain; charset=utf-8",
 };
 const MAX_IMAGE_ASSETS = 800;
-const MAX_IMAGE_ASSET_BYTES = 10 * 1024 * 1024;
+/**
+ * Teto por arquivo de `assets/`: 20 MB, o mesmo que a Shopify aceita.
+ *
+ * Era 10 MB, número escolhido no olho — e ele cortava arquivo LEGÍTIMO: um
+ * banner 4k em PNG passa de 11 MB com folga, inclusive os que este app gera. O
+ * arquivo ficava no ZIP, o Liquid continuava apontando para ele e a prévia
+ * abria com a imagem partida. Medido no acervo local: 4 blobs entre 11,0 e
+ * 12,3 MB, todos banners de entrega.
+ *
+ * 20 MB não é palpite: é o limite da própria Shopify para asset de tema. Acima
+ * disso a plataforma recusaria o arquivo de qualquer jeito, então recusar aqui
+ * é dizer a mesma coisa mais cedo — e agora dizendo, não em silêncio.
+ */
+const MAX_IMAGE_ASSET_BYTES = 20 * 1024 * 1024;
 
 export const MAX_THEME_ZIP_BYTES = 100 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 400 * 1024 * 1024;
@@ -290,22 +312,44 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
     sectionSchemas,
     pages,
   };
-  return { theme, images: collectImageAssets(byRelativePath) };
+  const { assets, fora } = collectImageAssets(byRelativePath);
+  if (fora.length) theme.assetsForaDaInstalacao = fora;
+  return { theme, images: assets };
 }
 
-function collectImageAssets(byRelativePath: Map<string, Uint8Array>): ShopifyThemeImageAsset[] {
+/**
+ * Separa os arquivos de `assets/` que serão instalados dos que ficam de fora.
+ *
+ * O que fica de fora é DECLARADO. Um asset descartado não some da página: o
+ * Liquid continua pedindo aquele arquivo e a prévia mostra imagem partida, sem
+ * dizer por quê. Devolver a lista é o que transforma o mistério em recado.
+ */
+function collectImageAssets(byRelativePath: Map<string, Uint8Array>) {
   const assets: ShopifyThemeImageAsset[] = [];
+  const fora: Array<{ path: string; bytes: number; motivo: string }> = [];
+  let excedentes = 0;
   for (const [path, data] of byRelativePath.entries()) {
     if (!path.startsWith("assets/")) continue;
     const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
     const contentType = ASSET_CONTENT_TYPES[extension] ?? "application/octet-stream";
-    if (data.byteLength <= 0 || data.byteLength > MAX_IMAGE_ASSET_BYTES) continue;
     const name = path.split("/").at(-1)?.toLowerCase() ?? "";
     if (!name) continue;
+    if (data.byteLength <= 0) { fora.push({ path, bytes: 0, motivo: "arquivo vazio" }); continue; }
+    if (data.byteLength > MAX_IMAGE_ASSET_BYTES) {
+      const mb = (data.byteLength / (1024 * 1024)).toFixed(1);
+      fora.push({ path, bytes: data.byteLength, motivo: `${mb} MB, acima do limite de 20 MB da Shopify` });
+      continue;
+    }
+    if (assets.length >= MAX_IMAGE_ASSETS) {
+      excedentes++;
+      continue;
+    }
     assets.push({ path, name, contentType, data });
-    if (assets.length >= MAX_IMAGE_ASSETS) break;
   }
-  return assets;
+  /* o excedente do teto de arquivos vira UMA linha com a conta: listar mil
+     caminhos não informa mais que o número, e ainda incha o registro do tema */
+  if (excedentes) fora.push({ path: `assets/ (+${excedentes})`, bytes: 0, motivo: `acima de ${MAX_IMAGE_ASSETS} arquivos instalados` });
+  return { assets, fora };
 }
 
 /* Extensões que o "Editar código" trata como texto editável; o resto (imagens,

@@ -141,3 +141,46 @@ test("a pasta de prévia do pacote entregue não entra no tema", async () => {
     await server.close();
   }
 });
+
+/**
+ * Um asset que não entra na instalação é uma imagem PARTIDA na prévia: o Liquid
+ * continua pedindo o arquivo, porque ele está no ZIP, e o servidor não o tem
+ * para servir. Isso aconteceu de verdade com um banner 4k de 12 MB, cortado por
+ * um teto de 10 MB escolhido no olho, e ninguém tinha como saber o motivo.
+ *
+ * Duas metades, e as duas importam: o teto agora é o da própria Shopify (20 MB),
+ * então arquivo legítimo entra; e o que fica de fora é DECLARADO com o motivo.
+ */
+test("asset que não entra na instalação é declarado, e o banner 4k entra", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemeBytes } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const zip = zipSync({
+      "Tema/layout/theme.liquid": strToU8("<html><body>{{ content_for_layout }}</body></html>"),
+      "Tema/sections/vitrine.liquid": strToU8(section("Vitrine")),
+      "Tema/templates/index.json": strToU8(JSON.stringify({ sections: { vitrine: { type: "vitrine" } }, order: ["vitrine"] })),
+      "Tema/config/settings_schema.json": strToU8(settingsSchema),
+      "Tema/config/settings_data.json": strToU8(JSON.stringify({ current: {} })),
+      /* o banner 4k que era cortado: 12 MB, tamanho real de PNG que este app gera */
+      "Tema/assets/banner-4k.png": new Uint8Array(12 * 1024 * 1024),
+      /* acima do limite da Shopify: fica fora, mas dizendo por quê */
+      "Tema/assets/gigante.png": new Uint8Array(21 * 1024 * 1024),
+      "Tema/assets/vazio.png": new Uint8Array(0),
+    });
+
+    const tema = extractShopifyThemeBytes(zip, "tema.zip");
+    const fora = tema.assetsForaDaInstalacao ?? [];
+    const caminhos = fora.map((item) => item.path);
+
+    assert.ok(!caminhos.includes("assets/banner-4k.png"), "banner 4k de 12 MB tem de ser instalado");
+    assert.ok(caminhos.includes("assets/gigante.png"), "arquivo acima de 20 MB precisa ser declarado");
+    assert.ok(caminhos.includes("assets/vazio.png"), "arquivo vazio precisa ser declarado");
+
+    const gigante = fora.find((item) => item.path === "assets/gigante.png");
+    assert.match(gigante.motivo, /21\.0 MB.*20 MB/, `o motivo precisa dizer o tamanho e o limite: ${gigante.motivo}`);
+    assert.equal(gigante.bytes, 21 * 1024 * 1024);
+  } finally {
+    await server.close();
+  }
+});
+
