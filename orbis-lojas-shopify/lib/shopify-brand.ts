@@ -425,17 +425,24 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
           }
           if (definicao.type === "collection" && colecoes.length) {
             /**
-             * Coleção que o tema já aponta fica como está.
+             * A coleção passa a ser a do NICHO, mesmo por cima da que o tema
+             * trazia.
              *
-             * O handle só resolve na loja onde a coleção existe, e quem sabe
-             * disso é o dono da loja, não nós. Trocar pelo nome do nicho fazia
-             * a seção apontar para uma coleção que ninguém criou — vitrine
-             * vazia na loja publicada. Só preenchemos o que veio em branco.
+             * A regra antiga preservava o que o tema apontava, e tinha um
+             * motivo bom: handle só resolve na loja onde a coleção existe, e
+             * apontar para uma coleção que ninguém criou deixa a vitrine vazia.
+             * Só que o resultado prático era pior — a loja gerada abria com
+             * "Moda Masculina", "Pet Shop", as coleções da loja de ORIGEM do
+             * tema, que não têm nada a ver com o nicho escolhido e também não
+             * existem na loja do cliente.
+             *
+             * O que mudou o fato: o pacote entregue agora leva o CSV de
+             * produtos com a coluna `Collection`, e a Shopify CRIA essas
+             * coleções na importação. Elas passam a existir, com produto
+             * dentro. Apontar para elas deixou de ser chute.
              */
-            if (!atual) {
-              alvo.settings[definicao.id] = colecoes[proximaColecao++ % colecoes.length];
-              marcou(`${secao.type}.${definicao.id}`);
-            }
+            alvo.settings[definicao.id] = colecoes[proximaColecao++ % colecoes.length];
+            marcou(`${secao.type}.${definicao.id}`);
             continue;
           }
           if (definicao.type !== "text" && definicao.type !== "richtext" && definicao.type !== "inline_richtext") continue;

@@ -17,6 +17,16 @@ import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
  * importação falhar inteira.
  */
 export const COLUNAS_CSV = [
+  /**
+   * `Collection` é a ÚNICA coluna que a Shopify aceita fora do template sem
+   * quebrar o formato, e ela cria a coleção durante a importação.
+   *
+   * É o que faz os cartões de coleção da loja pararem de nascer vazios: sem
+   * isso o tema apontava para coleções que ninguém tinha criado. Uma coleção
+   * por produto é o limite da importação nativa — não dá para pôr o mesmo
+   * produto em duas.
+   */
+  "Collection",
   "Title",
   "URL handle",
   "Description",
@@ -57,7 +67,7 @@ function preco(centavos: number | null | undefined): string {
  * handle e a foto, com a posição. Repetir os dados nas linhas de imagem faria
  * a importação criar variante a mais.
  */
-function linhasDoProduto(p: ProdutoDoNicho): string[][] {
+function linhasDoProduto(p: ProdutoDoNicho, colecao: string): string[][] {
   const descricao = [
     `<p>${p.title}</p>`,
     p.rating ? `<p>Nota ${p.rating} na origem${p.sold ? `, ${p.sold}` : ""}.</p>` : "",
@@ -66,6 +76,7 @@ function linhasDoProduto(p: ProdutoDoNicho): string[][] {
     .join("");
   const fotos = p.images.length ? p.images : [""];
   const primeira: string[] = [
+    colecao,
     p.title,
     p.handle,
     descricao,
@@ -87,12 +98,15 @@ function linhasDoProduto(p: ProdutoDoNicho): string[][] {
     "1",
     p.title,
   ];
+  /* pela COLUNA, não por índice: uma coluna nova no começo deslocava tudo em
+     silêncio, e CSV desalinhado não dá erro — importa errado */
+  const emQue = (coluna: (typeof COLUNAS_CSV)[number]) => COLUNAS_CSV.indexOf(coluna);
   const demais = fotos.slice(1).map((src, i) => {
     const linha = COLUNAS_CSV.map(() => "");
-    linha[1] = p.handle; // URL handle
-    linha[17] = src; // Product image URL
-    linha[18] = String(i + 2); // Image position
-    linha[19] = p.title; // Image alt text
+    linha[emQue("URL handle")] = p.handle;
+    linha[emQue("Product image URL")] = src;
+    linha[emQue("Image position")] = String(i + 2);
+    linha[emQue("Image alt text")] = p.title;
     return linha;
   });
   return [primeira, ...demais];
@@ -104,14 +118,19 @@ function linhasDoProduto(p: ProdutoDoNicho): string[][] {
  * Devolve string vazia quando o nicho não existe: loja sem catálogo não ganha
  * um arquivo vazio para confundir quem abre o pacote.
  */
-export function csvDeProdutos(nicheId: string | undefined): string {
+export function csvDeProdutos(nicheId: string | undefined, colecoes: string[] = []): string {
   const chave = String(nicheId ?? "").trim();
   const fonte = chave ? PRODUTOS_POR_NICHO[chave] : undefined;
   if (!fonte?.length) return "";
+  /* rodízio: cada coleção recebe ao menos um produto, senão o cartão dela nasce
+     vazio na loja — que é justamente o defeito que esta coluna existe para
+     resolver */
+  const destinos = colecoes.map((c) => String(c ?? "").trim()).filter(Boolean);
   const linhas = [COLUNAS_CSV.join(",")];
-  for (const p of fonte) {
-    for (const linha of linhasDoProduto(p)) linhas.push(linha.map(campo).join(","));
-  }
+  fonte.forEach((p, i) => {
+    const colecao = destinos.length ? destinos[i % destinos.length] : "";
+    for (const linha of linhasDoProduto(p, colecao)) linhas.push(linha.map(campo).join(","));
+  });
   /* BOM: o Excel abre CSV UTF-8 sem ele com os acentos quebrados, e o arquivo
      passa pela mão de quem vende antes de chegar na Shopify. */
   return `﻿${linhas.join("\r\n")}\r\n`;

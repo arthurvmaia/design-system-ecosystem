@@ -265,7 +265,9 @@ export async function POST(request: Request) {
      * Vai dentro de `previa-local/`, que a Shopify ignora ao subir o tema — um
      * arquivo solto na raiz do pacote é risco de a importação do tema recusar.
      */
-    const csv = csvDeProdutos(parsed.data.nicheId);
+    /* as coleções vão no CSV: é a importação que as CRIA, e é por isso que o
+       tema pode apontar para elas sem deixar cartão vazio */
+    const csv = csvDeProdutos(parsed.data.nicheId, marca.collections ?? []);
     if (csv) {
       arquivos["previa-local/produtos-para-importar.csv"] = strToU8(csv);
       arquivos["previa-local/COMO-SUBIR-OS-PRODUTOS.txt"] = strToU8(
@@ -279,6 +281,10 @@ export async function POST(request: Request) {
           "2. Escolha o arquivo produtos-para-importar.csv, aqui desta pasta.",
           "3. Confirme. A Shopify baixa as fotos sozinha durante a importacao,",
           "   entao nao e preciso subir imagem nenhuma a mao.",
+          "",
+          "A importacao TAMBEM cria as colecoes da loja (a coluna Collection do",
+          "arquivo). Sem esse passo os cartoes de colecao do tema aparecem",
+          "vazios, porque apontam para colecoes que ainda nao existem.",
           "",
           "Depois disso a vitrine do tema mostra os produtos.",
         ].join("\r\n"),
