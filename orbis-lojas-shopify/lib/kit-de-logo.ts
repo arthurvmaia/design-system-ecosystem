@@ -168,28 +168,6 @@ function extenso(marca: MarcaDoKit, fundo: string | null, corDoTexto: string): s
   return moldura(largura, altura, fundo, texto, `${marca.name}: logo por extenso`);
 }
 
-/** Monograma à esquerda, nome à direita: a versão de cabeçalho. */
-function horizontal(marca: MarcaDoKit, fundo: string | null, corDoTexto: string): string {
-  const largura = 1600;
-  const altura = 400;
-  const lado = 280;
-  const margem = 60;
-  const nome = String(marca.name ?? "").trim() || "Minha Marca";
-  const sobra = largura - lado - margem * 3;
-  const corpoDaLetra = Math.max(34, Math.min(88, Math.floor((sobra / Math.max(nome.length, 1)) * 1.9)));
-  const primaria = marca.primaryColor || "#1f2937";
-  const destaque = marca.accentColor || primaria;
-  const escala = lado / 120;
-  const corDoMonograma = textoSobre(primaria);
-  const corpo =
-    `<g transform="translate(${margem} ${(altura - lado) / 2}) scale(${escala})">` +
-    `${formaSvg("circulo", primaria, destaque)}` +
-    `<text x="60" y="60" text-anchor="middle" dominant-baseline="central" font-family="${pilhaDeFonte(marca)}" font-size="34" font-weight="700" fill="${corDoMonograma}">${escapar(iniciaisDe(marca.name))}</text></g>` +
-    `<text x="${margem * 2 + lado}" y="${altura / 2}" text-anchor="start" dominant-baseline="central" ` +
-    `font-family="${pilhaDeFonte(marca)}" font-size="${corpoDaLetra}" font-weight="700" fill="${corDoTexto}">${escapar(nome)}</text>`;
-  return moldura(largura, altura, fundo, corpo, `${marca.name}: logo horizontal`);
-}
-
 /**
  * O kit inteiro.
  *
@@ -211,46 +189,47 @@ export function logoExtensoSvg(marca: MarcaDoKit): string {
   return extenso(marca, null, marca.primaryColor || "#1f2937");
 }
 
+/**
+ * O nome por extenso sobre fundo claro ou escuro.
+ *
+ * As três versões (transparente, clara, escura) saem do MESMO desenho, com a
+ * cor do texto escolhida por contraste medido. É o que garante que sejam a
+ * mesma marca em três situações, e não três marcas.
+ */
+export function extensoEmFundo(marca: MarcaDoKit, tom: "claro" | "escuro"): string {
+  const fundo = tom === "claro" ? CLARO : ESCURO;
+  return extenso(marca, fundo, textoSobre(fundo));
+}
+
 /** O favicon do kit: mesma forma e mesma cor que o pacote entrega. */
 export function faviconSvg(marca: MarcaDoKit): string {
   const primaria = marca.primaryColor || "#1f2937";
   return monograma(marca, "circulo", 512, primaria === CLARO ? ESCURO : null);
 }
 
+/**
+ * O kit da marca: QUATRO logos e um favicon. Nem um arquivo a mais.
+ *
+ * Eram dezessete peças — seis formas de monograma, três lockups horizontais,
+ * três por extenso, duas de rede social. A intenção era dar escolha; o efeito
+ * era a marca em um monte de modelos, e quem abre a pasta não sabe qual é a
+ * logo. Marca não se entrega em catálogo de opções: se entrega decidida.
+ *
+ * Os cinco arquivos são os da referência que o dono apontou, com os mesmos
+ * papéis: a versão principal de fundo transparente, a de fundo claro, a de
+ * fundo escuro, o nome por extenso para o cabeçalho e o ícone da aba.
+ */
 export function kitDeLogo(marca: MarcaDoKit): PecaDoKit[] {
-  const primaria = marca.primaryColor || "#1f2937";
-  const sobreClaro = ESCURO;
-  const sobreEscuro = CLARO;
-  const pecas: PecaDoKit[] = [
-    { arquivo: "logo-extenso", titulo: "Por extenso", uso: "A versão principal: o nome da loja, fundo transparente.", largura: 1200, altura: 300, svg: logoExtensoSvg(marca) },
-    { arquivo: "logo-extenso-fundo-branco", titulo: "Por extenso, fundo branco", uso: "Para onde exigem fundo sólido claro.", largura: 1200, altura: 300, svg: extenso(marca, CLARO, sobreClaro) },
-    { arquivo: "logo-extenso-fundo-preto", titulo: "Por extenso, fundo preto", uso: "Para peça escura e para modo noturno.", largura: 1200, altura: 300, svg: extenso(marca, ESCURO, sobreEscuro) },
-    { arquivo: "logo-horizontal", titulo: "Horizontal", uso: "Símbolo e nome lado a lado: é a que cabe no cabeçalho da loja.", largura: 1600, altura: 400, svg: horizontal(marca, null, primaria) },
-    { arquivo: "logo-horizontal-fundo-branco", titulo: "Horizontal, fundo branco", uso: "A mesma, sobre branco.", largura: 1600, altura: 400, svg: horizontal(marca, CLARO, sobreClaro) },
-    { arquivo: "logo-horizontal-fundo-preto", titulo: "Horizontal, fundo preto", uso: "A mesma, sobre preto.", largura: 1600, altura: 400, svg: horizontal(marca, ESCURO, sobreEscuro) },
-  ];
-
-  /* várias de monograma: uma por forma, para escolher a que combina */
-  for (const forma of FORMAS_DE_MONOGRAMA) {
-    pecas.push({
-      arquivo: `monograma-${forma}`,
-      titulo: `Monograma ${forma}`,
-      uso: "As iniciais no símbolo, fundo transparente.",
-      largura: 1024,
-      altura: 1024,
-      svg: monograma(marca, forma, 1024, null),
-    });
-  }
-  pecas.push(
-    { arquivo: "monograma-fundo-branco", titulo: "Monograma, fundo branco", uso: "Quando o fundo do lugar é claro e o símbolo precisa de moldura.", largura: 1024, altura: 1024, svg: monograma(marca, "circulo", 1024, CLARO) },
-    { arquivo: "monograma-fundo-preto", titulo: "Monograma, fundo preto", uso: "Quando o fundo do lugar é escuro.", largura: 1024, altura: 1024, svg: monograma(marca, "circulo", 1024, ESCURO) },
+  return [
+    { arquivo: "logotipo", titulo: "Logotipo", uso: "A versão principal, fundo transparente. É esta que vai na maioria dos lugares.", largura: 1024, altura: 1024, svg: monograma(marca, "circulo", 1024, null) },
+    { arquivo: "logotipo-fundo-branco", titulo: "Fundo branco", uso: "Onde o fundo é claro ou exigem cor sólida atrás.", largura: 1024, altura: 1024, svg: monograma(marca, "circulo", 1024, CLARO) },
+    { arquivo: "logotipo-fundo-preto", titulo: "Fundo preto", uso: "Peça escura, modo noturno e impressão em uma cor.", largura: 1024, altura: 1024, svg: monograma(marca, "circulo", 1024, ESCURO) },
+    /* o nome por extenso: é a que cabe na barra do menu, onde o símbolo
+       sozinho não diz o nome de ninguém */
+    { arquivo: "menu", titulo: "Nome por extenso", uso: "O nome da loja escrito, para o cabeçalho e o menu.", largura: 1200, altura: 300, svg: logoExtensoSvg(marca) },
     /* favicon: 512 é o que a Shopify pede, e o mesmo arquivo serve de 16 a 512 */
     { arquivo: "favicon", titulo: "Favicon", uso: "O ícone da aba do navegador. Vai em Tema > Configurações > Favicon.", largura: 512, altura: 512, svg: faviconSvg(marca) },
-    /* rede social: quadrado cheio, porque a foto de perfil é recortada em círculo */
-    { arquivo: "rede-social-perfil", titulo: "Foto de perfil", uso: "Instagram, Facebook e WhatsApp. Quadrado cheio: o corte em círculo não come as iniciais.", largura: 1080, altura: 1080, svg: monograma(marca, "circulo", 1080, primaria) },
-    { arquivo: "rede-social-capa", titulo: "Capa de rede social", uso: "Capa do Facebook e cabeçalho do X.", largura: 1600, altura: 400, svg: horizontal(marca, primaria, textoSobre(primaria)) },
-  );
-  return pecas;
+  ];
 }
 
 /** O SVG como data URI, pronto para `<img src>` e para virar arquivo. */

@@ -25,7 +25,7 @@ test("o kit tem todas as variações pedidas, em vetor e com nome estável", asy
     logLevel: "silent",
   });
   try {
-    const { kitDeLogo, iniciaisDe, textoSobre, FORMAS_DE_MONOGRAMA } =
+    const { kitDeLogo, iniciaisDe, textoSobre } =
       await server.ssrLoadModule("/lib/kit-de-logo.ts");
 
     const marca = {
@@ -38,24 +38,21 @@ test("o kit tem todas as variações pedidas, em vetor e com nome estável", asy
     const kit = kitDeLogo(marca);
     const porArquivo = new Map(kit.map((p) => [p.arquivo, p]));
 
-    /* as variações que o dono pediu, uma a uma */
-    for (const esperado of [
-      "logo-extenso",
-      "logo-extenso-fundo-branco",
-      "logo-extenso-fundo-preto",
-      "logo-horizontal",
+    /**
+     * CINCO arquivos, os mesmos papéis da referência que o dono apontou.
+     *
+     * Eram dezessete — seis formas de monograma, três lockups horizontais, três
+     * por extenso, duas de rede social. A intenção era dar escolha; o efeito era
+     * a marca em um monte de modelos, e quem abre a pasta não sabe qual é a
+     * logo. Marca não se entrega em catálogo de opções, se entrega decidida.
+     */
+    assert.deepEqual(kit.map((p) => p.arquivo), [
+      "logotipo",
+      "logotipo-fundo-branco",
+      "logotipo-fundo-preto",
+      "menu",
       "favicon",
-      "rede-social-perfil",
-      "monograma-fundo-branco",
-      "monograma-fundo-preto",
-    ]) {
-      assert.ok(porArquivo.has(esperado), `faltou a peça ${esperado}`);
-    }
-    /* "várias de monograma": uma por forma */
-    for (const forma of FORMAS_DE_MONOGRAMA) {
-      assert.ok(porArquivo.has(`monograma-${forma}`), `faltou o monograma ${forma}`);
-    }
-    assert.ok(kit.length >= 14, `kit curto demais: ${kit.length} peças`);
+    ]);
 
     /* nome de arquivo estável é o que permite automatizar a subida depois */
     for (const p of kit) {
@@ -73,19 +70,19 @@ test("o kit tem todas as variações pedidas, em vetor e com nome estável", asy
 
     /* TRANSPARENTE é o padrão: fundo pintado dentro do arquivo é o defeito que
        este módulo existe para não repetir */
-    for (const nome of ["logo-extenso", "logo-horizontal", ...FORMAS_DE_MONOGRAMA.map((f) => `monograma-${f}`)]) {
+    for (const nome of ["logotipo", "menu"]) {
       const svg = porArquivo.get(nome).svg;
       assert.doesNotMatch(svg, /<rect width="\d+" height="\d+" fill="#(ffffff|101010)"/, `${nome} tem fundo pintado`);
     }
     /* e as versões que PROMETEM fundo, têm fundo */
-    assert.match(porArquivo.get("logo-extenso-fundo-branco").svg, /fill="#ffffff"/);
-    assert.match(porArquivo.get("logo-extenso-fundo-preto").svg, /fill="#101010"/);
+    assert.match(porArquivo.get("logotipo-fundo-branco").svg, /fill="#ffffff"/);
+    assert.match(porArquivo.get("logotipo-fundo-preto").svg, /fill="#101010"/);
 
     /* o nome da loja aparece por extenso, e as iniciais no monograma */
-    assert.match(porArquivo.get("logo-extenso").svg, /Cais Moda/);
+    assert.match(porArquivo.get("menu").svg, /Cais Moda/);
     assert.equal(iniciaisDe("Cais Moda"), "CM");
     assert.equal(iniciaisDe("Volare"), "VO");
-    assert.match(porArquivo.get("monograma-circulo").svg, />CM</);
+    assert.match(porArquivo.get("logotipo").svg, />CM</);
 
     /* contraste: o texto sobre a cor da marca nunca pode sumir */
     assert.equal(textoSobre("#ffffff"), "#101010");
@@ -93,11 +90,11 @@ test("o kit tem todas as variações pedidas, em vetor e com nome estável", asy
 
     /* a fonte da marca vai na frente, mas sempre com reserva: um SVG aberto
        fora do navegador tem de continuar legível */
-    assert.match(porArquivo.get("logo-extenso").svg, /'Playfair Display', Georgia/);
+    assert.match(porArquivo.get("menu").svg, /'Playfair Display', Georgia/);
 
     /* nome comprido não pode transbordar o quadro */
     const comprido = kitDeLogo({ ...marca, name: "Atelier de Roupas e Acessorios Finos" });
-    const corpo = Number(comprido.find((p) => p.arquivo === "logo-extenso").svg.match(/font-size="(\d+)"/)[1]);
+    const corpo = Number(comprido.find((p) => p.arquivo === "menu").svg.match(/font-size="(\d+)"/)[1]);
     assert.ok(corpo <= 96 && corpo >= 38, `corpo de letra fora da faixa: ${corpo}`);
   } finally {
     await server.close();

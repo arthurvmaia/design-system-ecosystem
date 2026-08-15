@@ -141,21 +141,19 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
       /* por CHAVE, não por papel: com cinco peças de logo um mapa por papel
          guarda só a última, e a assertiva passava a olhar o favicon */
       const porChave = new Map(pecas.map((peca) => [peca.chave, peca]));
-      const porPapel = new Map(pecas.map((peca) => [peca.papel, peca]));
       /* logo, banner de desktop e banner de celular, cada um no seu corte */
       assert.equal(porChave.get("logo").aspecto, "square_1_1");
       /* Banner de loja, não formato de vídeo. `widescreen_16_9` é 1,78:1 e a
          arte saía 2752×1536 — quase o dobro da altura de um banner. A Shopify
          recomenda 3:1, que a lista fechada do provedor não tem; 20:9 (2,22:1) é
          o mais largo que ele aceita, e a altura final quem decide é o tema. */
-      const desktop = porPapel.get("banner-desktop").aspecto;
+      const desktop = porChave.get("banner-1").aspecto;
       assert.equal(desktop, "smartphone_horizontal_20_9");
       const [, largo, alto] = desktop.match(/(\d+)_(\d+)$/);
-      assert.ok(Number(largo) / Number(alto) >= 2, "o banner de desktop tem de ser largo, não 16:9");
-      /* 1080×1350, a medida de banner de celular da Shopify */
-      assert.equal(porPapel.get("banner-mobile").aspecto, "social_post_4_5");
-      assert.notEqual(porPapel.get("banner-desktop").aspecto, porPapel.get("banner-mobile").aspecto,
-        "o banner do celular não pode sair no corte do desktop");
+      assert.ok(Number(largo) / Number(alto) >= 2, "o banner tem de ser largo, não 16:9");
+      /* as duas dobras saem no MESMO corte porque são a mesma arte: o que muda
+         entre computador e celular é o recorte, e quem recorta é o tema */
+      assert.equal(porChave.get("banner-2").aspecto, desktop);
       for (const peca of pecas) {
         assert.ok(aspectoValido(peca.aspecto), `${peca.chave} usa enquadramento que a API não aceita`);
         assert.ok(peca.fallbackSvg.startsWith("<svg"), `${peca.chave} sem desenho local`);
@@ -173,14 +171,29 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
        */
       const chaves = pecas.map((peca) => peca.chave);
       assert.deepEqual(chaves, [
-        "logo", "logo-fundo-branco", "logo-fundo-preto", "logo-escrita", "favicon",
-        "banner-desktop", "banner-mobile", "banner-desktop-2", "banner-mobile-2",
+        "logo", "logo-escrita", "logo-escrita-fundo-branco", "logo-escrita-fundo-preto", "favicon",
+        "banner-1", "banner-2",
         "cena-1", "cena-2", "cena-3",
       ], `conjunto de peças de ${nicho.id}`);
       assert.equal(pecas.filter((peca) => peca.papel === "logo").length, 5);
-      assert.equal(pecas.filter((peca) => peca.papel === "banner-desktop").length, 2);
-      assert.equal(pecas.filter((peca) => peca.papel === "banner-mobile").length, 2);
       assert.equal(pecas.filter((peca) => peca.papel === "cena").length, 3);
+
+      /**
+       * UMA geração por arte, e só.
+       *
+       * Era o defeito de fundo das duas queixas do dono: três pedidos do
+       * "mesmo" símbolo devolvem três símbolos diferentes, e o banner de
+       * celular pedido à parte devolve outra campanha. Geração independente
+       * não tem como repetir um desenho. Então o que precisa ser igual entre
+       * versões ou entre formatos sai de UMA geração só, ou é desenhado.
+       */
+      const geradas = pecas.filter((peca) => peca.origem === "gerada").map((peca) => peca.chave);
+      assert.deepEqual(geradas, ["logo", "banner-1", "banner-2", "cena-1", "cena-2", "cena-3"]);
+      /* e o banner pede assunto CENTRALIZADO: é o enquadramento que sobrevive
+         ao corte largo do computador e ao corte alto do celular */
+      for (const chave of ["banner-1", "banner-2"]) {
+        assert.match(porChave.get(chave).prompt, /CENTRALIZAD/, `${chave} sem assunto centralizado`);
+      }
 
       /**
        * Letra é DESENHADA, nunca pedida ao gerador: modelo de imagem inventa
@@ -189,18 +202,14 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
        * pode ter prompt.
        */
       const desenhadas = pecas.filter((peca) => peca.origem === "desenhada").map((peca) => peca.chave);
-      assert.deepEqual(desenhadas, ["logo-escrita", "favicon"]);
+      assert.deepEqual(desenhadas, ["logo-escrita", "logo-escrita-fundo-branco", "logo-escrita-fundo-preto", "favicon"]);
       for (const peca of pecas) {
         assert.equal(peca.prompt === "", peca.origem === "desenhada", `${peca.chave}: prompt e origem discordam`);
       }
-      /* as três versões do símbolo saem do MESMO pedido, senão viram três
-         marcas diferentes em vez de uma marca em três roupas */
-      const simbolos = pecas.filter((peca) => peca.chave.startsWith("logo") && peca.origem === "gerada");
-      assert.equal(simbolos.length, 3);
-      for (const peca of simbolos) assert.match(peca.prompt, /Emblema de marca ilustrado/);
-      /* e a monocromática é monocromática de verdade */
+      /* o símbolo vem UMA vez, e sem letra: modelo de imagem erra texto */
+      assert.equal(pecas.filter((peca) => peca.chave.startsWith("logo") && peca.origem === "gerada").length, 1);
+      assert.match(porChave.get("logo").prompt, /Emblema de marca ilustrado/);
       assert.match(porChave.get("logo").prompt, /[Ss]em letras/);
-      assert.match(porChave.get("logo-fundo-preto").prompt, /silhueta BRANCA CHAPADA/);
       assert.deepEqual(coresDaMarca(marca).slice(0, 1), [marca.primaryColor]);
     }
   } finally {
@@ -428,7 +437,7 @@ test("marca própria é 100% manual; as artes da Orbis só existem no caminho ge
   for (const foto of fotos) assert.ok(foto.slice(0, 700).includes("QUALIDADE"), "toda foto pede qualidade comercial");
   /* os quatro banners existem, e a segunda dobra pede uma cena DIFERENTE da
      primeira: dois pedidos com o mesmo texto voltam praticamente iguais */
-  for (const chave of ["banner-desktop", "banner-mobile", "banner-desktop-2", "banner-mobile-2"]) {
+  for (const chave of ["banner-1", "banner-2"]) {
     assert.match(imagens, new RegExp(`chave: "${chave}"`), `faltou a peça ${chave}`);
   }
   assert.match(imagens, /Segunda cena[\s\S]{0,200}sem pessoas/);

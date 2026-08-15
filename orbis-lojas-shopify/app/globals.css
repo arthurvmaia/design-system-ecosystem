@@ -758,6 +758,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
    discreto. É o mesmo botão, com o peso que o momento pede. */
 .conta-shopify-seguir.seguir-pronto { border-color: rgba(34,211,238,.55); background: rgba(6,182,212,.08); color: var(--green-bright); }
 .conta-shopify-seguir.seguir-pronto:hover, .conta-shopify-seguir.seguir-pronto:focus-visible { background: rgba(6,182,212,.16); }
+.cf-aviso-tamanho { display: inline-flex; align-items: center; gap: 7px; max-width: 560px; padding: 10px 12px; border: 1px solid rgba(255,190,92,.28); background: rgba(255,190,92,.07); color: #ebcd91; font-size: 12px; line-height: 1.5; }
+.cf-aviso-tamanho svg { flex: none; }
 .conta-shopify-aviso { max-width: 460px; color: #ebcd91; font-size: 11px; line-height: 1.5; }
 @media (max-width: 640px) { .conta-shopify-passos { grid-template-columns: 1fr; } }
 

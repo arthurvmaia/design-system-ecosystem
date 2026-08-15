@@ -308,9 +308,24 @@ export async function POST(request: Request) {
      * logo apagado. O sintoma parecia cache do servidor; a causa era ordem de
      * escrita mais uma pasta que nunca deveria ter entrado no tema.
      */
+    /**
+     * A arte da marca NÃO entra em `assets/`.
+     *
+     * A Shopify recusa tema acima de 50 MB, e a arte estava no pacote DUAS
+     * vezes: uma em `assets/` e outra na pasta de upload. Seis imagens em 4k
+     * passam de 12 MB cada, então o ZIP batia em 140 MB e nem chegava a ser
+     * avaliado.
+     *
+     * A cópia em `assets/` não servia a ninguém: o `image_picker` da Shopify só
+     * enxerga o que está em Content → Files, então é de lá que o tema busca a
+     * imagem, pelo nome. O arquivo dentro do tema era peso puro.
+     */
+    const arteDaMarca = (caminho: string) =>
+      /^assets\/orbis-/.test(caminho) && /\.(png|jpe?g|webp|gif|svg|avif)$/i.test(caminho);
     if (tema) {
       for (const [caminho, dados] of Object.entries(tema)) {
         if (caminho.startsWith("previa-local/")) continue;
+        if (arteDaMarca(caminho)) continue;
         arquivos[caminho] = dados;
       }
     }
@@ -330,9 +345,7 @@ export async function POST(request: Request) {
      * embaralhado. Aqui eles saem separados, com o nome que a referência
      * espera, ao lado da instrução.
      */
-    const paraFiles = Object.entries(tema ?? {}).filter(
-      ([caminho]) => /^assets\/orbis-/.test(caminho) && /\.(png|jpe?g|webp|gif|svg|avif)$/i.test(caminho),
-    );
+    const paraFiles = Object.entries(tema ?? {}).filter(([caminho]) => arteDaMarca(caminho));
     if (paraFiles.length) {
       for (const [caminho, dados] of paraFiles) {
         arquivos[`previa-local/imagens-para-a-shopify/${caminho.slice("assets/".length)}`] = dados;
@@ -364,10 +377,24 @@ export async function POST(request: Request) {
     if (parsed.data.nicheId) arquivos[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(parsed.data.nicheId));
 
     const zip = zipSync(arquivos, { level: 6 });
+    /**
+     * O TETO DA SHOPIFY, medido antes de entregar.
+     *
+     * Ela recusa upload de tema acima de 50 MB. Um pacote que passa disso não
+     * dá erro aqui: dá erro lá, no momento em que a pessoa foi subir a loja, e
+     * ela não tem como saber por quê. Medir aqui custa uma subtração.
+     *
+     * O número vai no cabeçalho SEMPRE, não só quando estoura: é assim que dá
+     * para ver a folga encolhendo antes de ela acabar.
+     */
+    const TETO_DA_SHOPIFY = 50 * 1024 * 1024;
+    const megas = (zip.byteLength / (1024 * 1024)).toFixed(1);
     return new Response(zip.slice().buffer, {
       headers: {
         "content-type": "application/zip",
         "content-disposition": `attachment; filename="loja-${site.brand.slug}.zip"`,
+        "x-theme-size-mb": megas,
+        ...(zip.byteLength > TETO_DA_SHOPIFY ? { "x-theme-too-large": megas } : {}),
         "x-site-name": site.brand.slug,
         "x-project-id": projectId,
         "x-theme-id": themeId,

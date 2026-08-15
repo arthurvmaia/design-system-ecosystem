@@ -78,6 +78,8 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   const [erro, setErro] = useState<string | null>(null);
   const [delivery, setDelivery] = useState<Delivery>(null);
   const [zip, setZip] = useState<{ blob: Blob; name: string } | null>(null);
+  /* o pacote passou do teto da Shopify: aviso, não erro. O ZIP existe e serve. */
+  const [avisoDeTamanho, setAvisoDeTamanho] = useState("");
 
   const template = SITE_TEMPLATES.find((entrada) => entrada.id === templateId) ?? SITE_TEMPLATES[0];
   const temaEscolhido = temas.find((tema) => tema.id === themeId) ?? null;
@@ -345,6 +347,10 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       const nome = resposta.headers.get("x-site-name") ?? "minha-marca";
       const pacote = { blob, name: nome };
       setZip(pacote);
+      /* a Shopify recusa tema acima de 50 MB, e ela recusa LÁ, na hora de
+         subir. Saber aqui é a diferença entre um aviso e uma tarde perdida */
+      const grande = resposta.headers.get("x-theme-too-large");
+      setAvisoDeTamanho(grande ? `O pacote saiu com ${grande} MB e a Shopify aceita até 50 MB. Apague algumas imagens da pasta de upload antes de subir o tema.` : "");
 
       const entrega = await fetch(`/local/deliver-site?name=${encodeURIComponent(nome)}`, { method: "POST", body: blob });
       if (entrega.ok) setDelivery(await entrega.json());
@@ -359,7 +365,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   function recomecar() {
     setPasso(0); setPassoMaisLonge(0); setModo(null); setNicheId(""); setGerada(false);
     setMarca(MARCA_VAZIA); setEditadoAMao({});
-    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null);
+    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null); setAvisoDeTamanho("");
     setImagensGeradas({}); setProgressoIa("");
   }
 
@@ -383,6 +389,9 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         <div className="cf-panel cf-center">
           <span className="cf-done-badge"><Check size={26} strokeWidth={2.4} /></span>
           <h2>Loja pronta, senhor.</h2>
+          {/* aviso, não erro: o pacote existe e serve, mas a Shopify vai
+              recusá-lo por tamanho, e ela recusa lá na frente sem dizer por quê */}
+          {avisoDeTamanho && <p className="cf-aviso-tamanho"><CircleAlert size={14} /> {avisoDeTamanho}</p>}
           {delivery ? (
             <>
               <p>
@@ -556,9 +565,9 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                     <div>
                       <strong>Artes da Orbis</strong>
                       <p>
-                        O kit da marca em {pecas.length} peças: símbolo em três versões, nome por extenso e favicon,
-                        {" "}quatro banners (dois de desktop e dois de celular) e três cenas da marca.
-                        {" "}Tudo na paleta e no enquadramento certo de cada lugar.
+                        Quatro logos e um favicon, duas artes de banner que servem o computador e o celular,
+                        {" "}e três cenas da marca. Cada arte é gerada UMA vez: pedir a mesma coisa duas vezes
+                        {" "}devolve duas coisas diferentes, e é isso que fazia o celular abrir outra campanha.
                         {!iaDisponivel && " Provedor de imagem não configurado: a loja sai com a imagem que o tema já traz."}
                       </p>
                     </div>

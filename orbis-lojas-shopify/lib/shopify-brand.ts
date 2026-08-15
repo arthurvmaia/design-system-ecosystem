@@ -117,12 +117,22 @@ function rotuloDeBotao(destino: unknown): string {
 }
 const CAMPO_DE_LISTA = /(collection_list|link_list|menu)/i;
 /**
- * As peças de um papel, em ordem: `banner-desktop`, `banner-desktop-2`, …
+ * As artes de banner, em ordem: `banner-1`, `banner-2`, …
  *
  * Uma lista, e não uma chave só, porque um tema pode ter mais de uma dobra de
- * banner — e repetir a mesma foto em todas faz a loja parecer quebrada.
+ * banner, e repetir a mesma foto em todas faz a loja parecer quebrada.
+ *
+ * A MESMA lista serve o desktop e o celular, de propósito: cada dobra tem UMA
+ * arte, e o que muda entre os dois é o corte, que quem faz é o tema. Quando
+ * eram duas gerações separadas, o computador abria uma campanha e o telefone
+ * abria outra — outra pessoa, outra roupa, outro fundo.
+ *
+ * As chaves antigas (`banner-desktop`, `banner-mobile-2`) continuam sendo
+ * lidas: elas estão nas lojas que já foram entregues.
  */
 function pecasDeBanner(imagens: Record<string, string>, papel: string): string[] {
+  const daArte = Object.keys(imagens).filter((chave) => /^banner-\d+$/.test(chave)).sort();
+  if (daArte.length) return daArte.map((chave) => imagens[chave]);
   const numeradas = Object.keys(imagens)
     .filter((chave) => chave === papel || chave.startsWith(`${papel}-`))
     .sort();

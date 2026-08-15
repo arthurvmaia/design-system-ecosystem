@@ -15,7 +15,7 @@
  * tipografia de verdade — que é como se faz uma logo profissional.
  */
 import { ilustracaoDoNicho, logoDataUri, misturar, nichoPorId, textoSobre } from "./marca-generator.mjs";
-import { faviconSvg, logoExtensoSvg } from "./kit-de-logo";
+import { extensoEmFundo, faviconSvg, logoExtensoSvg } from "./kit-de-logo";
 
 export type PapelDaPeca = "logo" | "banner-desktop" | "banner-mobile" | "colecao" | "cena";
 
@@ -218,36 +218,46 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       prompt: `${simbolo} Fundo liso de cor única, bem separado do símbolo. Paleta: ${cores}.`,
       fallbackSvg: ilustracaoDoNicho(nicho.id),
     },
-    {
-      chave: "logo-fundo-branco",
-      papel: "logo",
-      titulo: "Símbolo em fundo branco",
-      aspecto: ASPECTO.logo,
-      origem: "gerada",
-      prompt: `${simbolo} Fundo branco puro, sem textura e sem sombra. Paleta do símbolo: ${cores}.`,
-      fallbackSvg: ilustracaoDoNicho(nicho.id),
-    },
-    {
-      chave: "logo-fundo-preto",
-      papel: "logo",
-      titulo: "Símbolo monocromático em fundo preto",
-      aspecto: ASPECTO.logo,
-      origem: "gerada",
-      /* monocromática de verdade: a versão colorida sobre preto não é a mesma
-         coisa. É esta que sobrevive a bordado, carimbo e uma cor de impressão */
-      prompt: `${simbolo} O símbolo é uma silhueta BRANCA CHAPADA, sem cor nenhuma e sem degradê, sobre fundo preto puro.`,
-      fallbackSvg: ilustracaoDoNicho(nicho.id),
-    },
+    /**
+     * As outras três da marca são DESENHADAS, e a razão é a queixa do dono.
+     *
+     * Pedir "o símbolo sobre branco" e "o símbolo monocromático" ao gerador são
+     * duas gerações NOVAS: cada uma inventa o próprio símbolo, e a pasta chega
+     * com a marca em três modelos diferentes em vez de uma marca em três
+     * roupas. Não é falta de capricho no texto do pedido; é que geração
+     * independente não tem como devolver o mesmo desenho.
+     *
+     * Então o que precisa ser IGUAL entre versões sai de onde dá para garantir:
+     * o nome da marca, em tipografia, nas mesmas três situações da referência
+     * (transparente, fundo claro, fundo escuro). Mesmo desenho, mesma letra,
+     * mesmo espaçamento, sempre.
+     */
     {
       chave: "logo-escrita",
       papel: "logo",
       titulo: "Nome por extenso",
       aspecto: ASPECTO.logo,
       origem: "desenhada",
-      /* letra não se pede a gerador de imagem: volta torta, com caractere
-         inventado, e o nome da loja da pessoa sai escrito errado */
       prompt: "",
       fallbackSvg: logoExtensoSvg(marca),
+    },
+    {
+      chave: "logo-escrita-fundo-branco",
+      papel: "logo",
+      titulo: "Nome por extenso, fundo branco",
+      aspecto: ASPECTO.logo,
+      origem: "desenhada",
+      prompt: "",
+      fallbackSvg: extensoEmFundo(marca, "claro"),
+    },
+    {
+      chave: "logo-escrita-fundo-preto",
+      papel: "logo",
+      titulo: "Nome por extenso, fundo preto",
+      aspecto: ASPECTO.logo,
+      origem: "desenhada",
+      prompt: "",
+      fallbackSvg: extensoEmFundo(marca, "escuro"),
     },
     {
       chave: "favicon",
@@ -258,75 +268,49 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       prompt: "",
       fallbackSvg: faviconSvg(marca),
     },
+    /**
+     * DUAS artes de banner, QUATRO arquivos.
+     *
+     * O celular era outra geração, com a instrução de repetir a cena do
+     * desktop. Não repete: geração independente devolve outra pessoa, outra
+     * roupa, outro fundo — e a loja abre com uma campanha no computador e outra
+     * no telefone. Era a mesma falha das três logos.
+     *
+     * Agora cada dobra tem UMA arte, e os dois arquivos saem dela. O que muda
+     * entre desktop e celular é o corte, e quem corta é o tema. Por isso o
+     * pedido mudou também: o assunto vai CENTRALIZADO com folga em volta, que é
+     * o enquadramento que sobrevive tanto ao corte largo quanto ao alto. Um
+     * assunto encostado numa borda, como estava, some no outro formato.
+     */
     {
-      chave: "banner-desktop",
+      chave: "banner-1",
       papel: "banner-desktop",
-      titulo: "Banner do desktop",
+      titulo: "Banner 1 (desktop e celular)",
       aspecto: ASPECTO["banner-desktop"],
       origem: "gerada",
       prompt: [
         `Fotografia editorial de campanha de uma loja de ${tema}: uma pessoa real usando o produto, em atitude natural.`,
         `Fundo de papel texturizado em tom quente, na paleta ${cores}, com bastante ar em volta.`,
-        "Pessoa à DIREITA do quadro, metade esquerda vazia e uniforme para o texto entrar por cima.",
+        "Pessoa CENTRALIZADA no quadro, com margem larga dos dois lados e em cima: a mesma foto vai ser cortada larga no computador e alta no celular.",
         QUALIDADE,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
       fallbackSvg: bannerSvg(marca, false),
     },
     {
-      chave: "banner-mobile",
-      papel: "banner-mobile",
-      titulo: "Banner do celular",
-      aspecto: ASPECTO["banner-mobile"],
-      origem: "gerada",
-      prompt: [
-        `A MESMA cena de campanha da loja de ${tema}, recomposta em pé para celular: a pessoa usando o produto.`,
-        `Fundo de papel texturizado em tom quente, na paleta ${cores}.`,
-        "Pessoa na metade de BAIXO do quadro, terço de cima vazio e uniforme para o texto entrar por cima.",
-        QUALIDADE,
-        "Sem letras, sem logotipos, sem marca d'água.",
-      ].join(" "),
-      fallbackSvg: bannerSvg(marca, true),
-    },
-    /**
-     * A SEGUNDA dobra, com outra cena.
-     *
-     * Um tema com duas dobras de banner recebia a mesma foto nas duas — a loja
-     * abria repetindo a imagem, e parecia defeito de carregamento. A segunda
-     * peça existe para ser DIFERENTE da primeira, e o prompt diz isso por
-     * extenso: a primeira é a cena aberta com pessoa, esta é o detalhe do
-     * produto. Sem isso, dois pedidos ao mesmo modelo com o mesmo texto voltam
-     * praticamente iguais.
-     */
-    {
-      chave: "banner-desktop-2",
+      chave: "banner-2",
       papel: "banner-desktop",
-      titulo: "Banner do desktop (segunda dobra)",
+      titulo: "Banner 2 (desktop e celular)",
       aspecto: ASPECTO["banner-desktop"],
       origem: "gerada",
       prompt: [
         `Segunda cena da campanha da loja de ${tema}: o produto em close, com a textura do material bem visível, sem pessoas.`,
         `Fundo de papel envelhecido com grão, na paleta ${cores}.`,
-        "Produto à ESQUERDA do quadro, metade direita vazia e uniforme para o texto entrar por cima.",
+        "Produto CENTRALIZADO no quadro, com margem larga em volta: a mesma foto vai ser cortada larga no computador e alta no celular.",
         QUALIDADE,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
       fallbackSvg: bannerSvg(marca, false),
-    },
-    {
-      chave: "banner-mobile-2",
-      papel: "banner-mobile",
-      titulo: "Banner do celular (segunda dobra)",
-      aspecto: ASPECTO["banner-mobile"],
-      origem: "gerada",
-      prompt: [
-        `A MESMA segunda cena da loja de ${tema}, em pé para celular: o produto em close, sem pessoas.`,
-        `Fundo de papel envelhecido com grão, na paleta ${cores}.`,
-        "Produto na metade de BAIXO do quadro, terço de cima vazio e uniforme para o texto entrar por cima.",
-        QUALIDADE,
-        "Sem letras, sem logotipos, sem marca d'água.",
-      ].join(" "),
-      fallbackSvg: bannerSvg(marca, true),
     },
   ];
 
