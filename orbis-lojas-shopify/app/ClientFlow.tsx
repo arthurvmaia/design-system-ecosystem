@@ -9,6 +9,7 @@ import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
 import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
+import { derivarLogos } from "@/lib/logo-derivar";
 
 /**
  * O balcão do cliente: quatro passos e uma loja na mão.
@@ -283,6 +284,38 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           else if (dados.erro) { falhas[chave] = dados.erro; pendentes.delete(chave); }
         }
         setImagensGeradas({ ...prontas });
+      }
+
+      /**
+       * As versões do símbolo saem do símbolo, aqui, por cálculo.
+       *
+       * Só depois que ele chega, e só uma vez. Pedi-las ao modelo devolveria
+       * outro desenho a cada pedido, que é o que fazia a marca chegar em três
+       * modelos diferentes.
+       */
+      if (prontas.logo && (!prontas["logo-fundo-branco"] || !prontas["logo-fundo-preto"])) {
+        setProgressoIa("recortando o símbolo e montando as versões…");
+        try {
+          const versoes = await derivarLogos(prontas.logo);
+          const subir = async (blob: Blob, nome: string) => {
+            const corpo = new FormData();
+            corpo.append("file", new File([blob], `${nome}.png`, { type: "image/png" }));
+            const resposta = await fetch("/api/media", { method: "POST", body: corpo });
+            if (!resposta.ok) throw new Error("UPLOAD_FALHOU");
+            return (await resposta.json() as { url: string }).url;
+          };
+          prontas.logo = await subir(versoes.transparente, "logotipo");
+          prontas["logo-fundo-branco"] = await subir(versoes.fundoBranco, "logotipo-fundo-branco");
+          prontas["logo-fundo-preto"] = await subir(versoes.fundoPreto, "logotipo-fundo-preto");
+          setImagensGeradas({ ...prontas });
+        } catch {
+          /* o recorte falhou (fundo que não era liso, por exemplo): a loja
+             continua com o símbolo como ele veio, e as versões ficam de fora.
+             Melhor faltar uma versão do que entregar um recorte que comeu
+             metade do desenho. */
+          falhas["logo-fundo-branco"] = "não consegui recortar o fundo do símbolo";
+          falhas["logo-fundo-preto"] = "não consegui recortar o fundo do símbolo";
+        }
       }
 
       /* o que não veio aparece PELO NOME: "faltaram 3" manda a pessoa procurar
@@ -592,7 +625,9 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                             falhou ou de que ainda está na fila */}
                         {peca.origem === "desenhada"
                           ? <i className="cf-peca-ok"><Check size={11} /> desenhada</i>
-                          : imagensGeradas[peca.chave] ? <i className="cf-peca-ok"><Check size={11} /> pronta</i> : null}
+                          : imagensGeradas[peca.chave]
+                            ? <i className="cf-peca-ok"><Check size={11} /> {peca.origem === "derivada" ? "derivada" : "pronta"}</i>
+                            : peca.origem === "derivada" ? <i className="cf-peca-nota">sai do símbolo</i> : null}
                       </span>
                     ))}
                   </div>

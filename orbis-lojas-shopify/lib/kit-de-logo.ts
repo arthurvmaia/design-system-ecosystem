@@ -189,18 +189,6 @@ export function logoExtensoSvg(marca: MarcaDoKit): string {
   return extenso(marca, null, marca.primaryColor || "#1f2937");
 }
 
-/**
- * O nome por extenso sobre fundo claro ou escuro.
- *
- * As três versões (transparente, clara, escura) saem do MESMO desenho, com a
- * cor do texto escolhida por contraste medido. É o que garante que sejam a
- * mesma marca em três situações, e não três marcas.
- */
-export function extensoEmFundo(marca: MarcaDoKit, tom: "claro" | "escuro"): string {
-  const fundo = tom === "claro" ? CLARO : ESCURO;
-  return extenso(marca, fundo, textoSobre(fundo));
-}
-
 /** O favicon do kit: mesma forma e mesma cor que o pacote entrega. */
 export function faviconSvg(marca: MarcaDoKit): string {
   const primaria = marca.primaryColor || "#1f2937";

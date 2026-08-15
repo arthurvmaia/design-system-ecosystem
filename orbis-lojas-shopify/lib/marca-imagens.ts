@@ -15,7 +15,7 @@
  * tipografia de verdade — que é como se faz uma logo profissional.
  */
 import { ilustracaoDoNicho, logoDataUri, misturar, nichoPorId, textoSobre } from "./marca-generator.mjs";
-import { extensoEmFundo, faviconSvg, logoExtensoSvg } from "./kit-de-logo";
+import { faviconSvg, logoExtensoSvg } from "./kit-de-logo";
 
 export type PapelDaPeca = "logo" | "banner-desktop" | "banner-mobile" | "colecao" | "cena";
 
@@ -39,8 +39,12 @@ export type PecaDeImagem = {
    *
    * `gerada` é o que só existe fotografando ou ilustrando: o símbolo, os
    * banners e as cenas da marca.
+   *
+   * `derivada` sai de uma peça gerada, por cálculo: as versões do símbolo em
+   * fundo claro e escuro são o MESMO símbolo recortado e recomposto, e é por
+   * isso que elas não podem ser outro pedido ao modelo.
    */
-  origem: "gerada" | "desenhada";
+  origem: "gerada" | "desenhada" | "derivada";
 };
 
 export type MarcaDeImagem = {
@@ -219,19 +223,36 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       fallbackSvg: ilustracaoDoNicho(nicho.id),
     },
     /**
-     * As outras três da marca são DESENHADAS, e a razão é a queixa do dono.
+     * As duas versões do símbolo são DERIVADAS, não pedidas de novo.
      *
-     * Pedir "o símbolo sobre branco" e "o símbolo monocromático" ao gerador são
-     * duas gerações NOVAS: cada uma inventa o próprio símbolo, e a pasta chega
-     * com a marca em três modelos diferentes em vez de uma marca em três
-     * roupas. Não é falta de capricho no texto do pedido; é que geração
-     * independente não tem como devolver o mesmo desenho.
+     * Era a queixa do dono, e não se conserta caprichando no texto: pedir "o
+     * mesmo símbolo em fundo branco" abre um pedido NOVO, e o modelo desenha
+     * outro símbolo. A marca chegava em três modelos diferentes.
      *
-     * Então o que precisa ser IGUAL entre versões sai de onde dá para garantir:
-     * o nome da marca, em tipografia, nas mesmas três situações da referência
-     * (transparente, fundo claro, fundo escuro). Mesmo desenho, mesma letra,
-     * mesmo espaçamento, sempre.
+     * Elas saem do arquivo gerado, por cálculo, em `logo-derivar.ts`: recorta o
+     * fundo liso (que o pedido já manda vir liso), apara, centraliza com
+     * respiro e recompõe. Mesmo desenho, sempre, e sem custar crédito.
      */
+    {
+      chave: "logo-fundo-branco",
+      papel: "logo",
+      titulo: "Símbolo em fundo branco",
+      aspecto: ASPECTO.logo,
+      origem: "derivada",
+      prompt: "",
+      fallbackSvg: ilustracaoDoNicho(nicho.id),
+    },
+    {
+      chave: "logo-fundo-preto",
+      papel: "logo",
+      titulo: "Símbolo monocromático em fundo preto",
+      aspecto: ASPECTO.logo,
+      origem: "derivada",
+      prompt: "",
+      fallbackSvg: ilustracaoDoNicho(nicho.id),
+    },
+    /* o nome por extenso: é a que cabe na barra do menu, onde o símbolo sozinho
+       não diz o nome de ninguém. Letra é desenhada, nunca gerada. */
     {
       chave: "logo-escrita",
       papel: "logo",
@@ -240,24 +261,6 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       origem: "desenhada",
       prompt: "",
       fallbackSvg: logoExtensoSvg(marca),
-    },
-    {
-      chave: "logo-escrita-fundo-branco",
-      papel: "logo",
-      titulo: "Nome por extenso, fundo branco",
-      aspecto: ASPECTO.logo,
-      origem: "desenhada",
-      prompt: "",
-      fallbackSvg: extensoEmFundo(marca, "claro"),
-    },
-    {
-      chave: "logo-escrita-fundo-preto",
-      papel: "logo",
-      titulo: "Nome por extenso, fundo preto",
-      aspecto: ASPECTO.logo,
-      origem: "desenhada",
-      prompt: "",
-      fallbackSvg: extensoEmFundo(marca, "escuro"),
     },
     {
       chave: "favicon",

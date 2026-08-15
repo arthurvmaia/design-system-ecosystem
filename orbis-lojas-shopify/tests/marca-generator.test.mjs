@@ -171,7 +171,7 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
        */
       const chaves = pecas.map((peca) => peca.chave);
       assert.deepEqual(chaves, [
-        "logo", "logo-escrita", "logo-escrita-fundo-branco", "logo-escrita-fundo-preto", "favicon",
+        "logo", "logo-fundo-branco", "logo-fundo-preto", "logo-escrita", "favicon",
         "banner-1", "banner-2",
         "cena-1", "cena-2", "cena-3",
       ], `conjunto de peças de ${nicho.id}`);
@@ -202,9 +202,16 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
        * pode ter prompt.
        */
       const desenhadas = pecas.filter((peca) => peca.origem === "desenhada").map((peca) => peca.chave);
-      assert.deepEqual(desenhadas, ["logo-escrita", "logo-escrita-fundo-branco", "logo-escrita-fundo-preto", "favicon"]);
+      assert.deepEqual(desenhadas, ["logo-escrita", "favicon"]);
+      /**
+       * As versões do símbolo saem do SÍMBOLO, por cálculo, nunca de outro
+       * pedido ao modelo. Se um dia virarem "gerada", a marca volta a chegar em
+       * três modelos diferentes, que foi a queixa que criou esta regra.
+       */
+      const derivadas = pecas.filter((peca) => peca.origem === "derivada").map((peca) => peca.chave);
+      assert.deepEqual(derivadas, ["logo-fundo-branco", "logo-fundo-preto"]);
       for (const peca of pecas) {
-        assert.equal(peca.prompt === "", peca.origem === "desenhada", `${peca.chave}: prompt e origem discordam`);
+        assert.equal(peca.prompt === "", peca.origem !== "gerada", `${peca.chave}: prompt e origem discordam`);
       }
       /* o símbolo vem UMA vez, e sem letra: modelo de imagem erra texto */
       assert.equal(pecas.filter((peca) => peca.chave.startsWith("logo") && peca.origem === "gerada").length, 1);
@@ -711,4 +718,48 @@ test("o logo é o NOME da loja escrito; arte gerada não ocupa esse campo", asyn
   } finally {
     await server.close();
   }
+});
+
+/**
+ * O recorte que faz as versões da logo serem a MESMA logo.
+ *
+ * Pedir "o mesmo símbolo em fundo branco" ao gerador abre um pedido novo e
+ * devolve outro desenho. Aqui o símbolo é gerado uma vez e as versões saem
+ * dele, por cálculo. Este teste trava as decisões que fazem o recorte parecer
+ * profissional em vez de recorte de tesoura.
+ */
+test("as versões da logo são derivadas do mesmo símbolo, por cálculo", async () => {
+  const fonte = await readFile(new URL("../lib/logo-derivar.ts", import.meta.url), "utf8");
+
+  /* a cor do fundo é lida nas BORDAS, não num canto: um canto pode cair numa
+     sombra e levar o recorte inteiro embora */
+  assert.match(fonte, /function corDoFundo/);
+  assert.match(fonte, /mediana/, "um pixel fora da curva não pode decidir o fundo");
+
+  /* faixa de transição, e não corte seco: corte seco serrilha a borda */
+  const chave = fonte.match(/function tirarOFundo[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(chave, "tirarOFundo sumiu");
+  assert.match(chave, /const dentro/);
+  assert.match(chave, /const fora/);
+  assert.match(chave, /data\[i \+ 3\] = Math\.round/, "a borda precisa de alfa parcial");
+
+  /* apara e centraliza pela FORMA, não pelo quadro: o gerador quase nunca põe
+     o símbolo no meio exato, e uma logo descentrada parece defeito */
+  assert.match(fonte, /function areaDoSimbolo/);
+  assert.match(fonte, /const MARGEM/, "logo encostada na borda não respira");
+
+  /* a monocromática usa o ALFA como máscara: é o que a faz sobreviver a
+     bordado, carimbo e uma tinta só */
+  assert.match(fonte, /globalCompositeOperation = "source-in"/);
+
+  /* recorte que não pegou nada não pode virar entrega: melhor o arquivo como
+     veio do que um corte que comeu metade do desenho */
+  assert.match(fonte, /const util = area \?\?/);
+
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+  /* e a derivação só roda DEPOIS que o símbolo chega, uma vez só */
+  assert.match(flow, /if \(prontas\.logo && \(!prontas\["logo-fundo-branco"\]/);
+  assert.match(flow, /derivarLogos\(prontas\.logo\)/);
+  /* falhou o recorte? a loja segue com o símbolo, e a tela diz o que faltou */
+  assert.match(flow, /não consegui recortar o fundo do símbolo/);
 });
