@@ -106,6 +106,48 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     return () => { ativo = false; };
   }, []);
 
+  /**
+   * A MARCA e a arte dela sobrevivem a fechar a aba.
+   *
+   * As imagens viviam só em memória. Recarregar, sair para ver outra coisa,
+   * voltar no dia seguinte: tudo apagava o mapa, e a loja nascia sem nenhuma
+   * imagem, com os arquivos parados no banco, pagos e intactos. Medido neste
+   * computador: as seis peças geradas às 17:50 e a loja criada às 23:15 com
+   * ZERO imagens, banner no quadro cinza de "conecte esta imagem".
+   *
+   * O cofre guarda a SEMENTE junto, e não é detalhe: a semente é sorteada a
+   * cada escolha de nicho, então guardar só as imagens não bastava — ao voltar,
+   * a marca seria outra (outro nome, outras cores) e a arte da anterior ficaria
+   * órfã de qualquer jeito. Guardando as duas, quem volta encontra a mesma
+   * loja onde deixou.
+   *
+   * Por NICHO, porque é o nicho que a pessoa escolhe ao voltar. Trocar de marca
+   * de propósito continua sendo o botão de gerar outra, que sorteia semente
+   * nova e abre um cofre limpo.
+   */
+  const chaveDoCofre = (nicho: string) => (nicho ? `orbis:marca:${nicho}` : "");
+  const cofre = chaveDoCofre(nicheId);
+  /* a leitura mora onde a marca MUDA, não num efeito: é um evento, e efeito
+     que chama setState na hora provoca render em cascata */
+  const abrirCofre = useCallback((nicho: string): string => {
+    const chave = chaveDoCofre(nicho);
+    if (!chave) return "";
+    try {
+      const salvo = JSON.parse(window.localStorage.getItem(chave) ?? "null") as
+        { semente?: string; imagens?: Record<string, string> } | null;
+      setImagensGeradas(salvo?.imagens ?? {});
+      return typeof salvo?.semente === "string" ? salvo.semente : "";
+    } catch { setImagensGeradas({}); return ""; }
+  }, []);
+  useEffect(() => {
+    if (!cofre || !semente) return;
+    try {
+      if (Object.keys(imagensGeradas).length) {
+        window.localStorage.setItem(cofre, JSON.stringify({ semente, imagens: imagensGeradas }));
+      }
+    } catch { /* sem armazenamento local a sessão continua, só não guarda */ }
+  }, [cofre, semente, imagensGeradas]);
+
   /* o provedor de imagem é opcional: a tela só oferece o que existe */
   useEffect(() => {
     let ativo = true;
@@ -142,6 +184,9 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     setSemente(sementeNova);
     setMarca(marcaGerada(nicheId, sementeNova, editadoAMao));
     setGerada(true);
+    /* marca nova, cofre limpo: a arte da anterior não serve a esta */
+    setImagensGeradas({});
+    try { const c = chaveDoCofre(nicheId); if (c) window.localStorage.removeItem(c); } catch { /* sem armazenamento */ }
   }, [nicheId, editadoAMao]);
 
   function ajustarMarca(parcial: Partial<MarcaCliente>) {
@@ -165,9 +210,12 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
    */
   function escolherNicho(id: string) {
     setNicheId(id);
+    /* o que já existe para este nicho volta: a semente guardada devolve a MESMA
+       marca, e com ela a arte que já foi gerada e paga */
+    const guardada = abrirCofre(id);
     if (modo === "manual") return;
     setModo("gerada");
-    const sementeNova = novaSemente();
+    const sementeNova = guardada || novaSemente();
     setSemente(sementeNova);
     setMarca(marcaGerada(id, sementeNova, editadoAMao));
     setGerada(true);
@@ -399,6 +447,9 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     setPasso(0); setPassoMaisLonge(0); setModo(null); setNicheId(""); setGerada(false);
     setMarca(MARCA_VAZIA); setEditadoAMao({});
     setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null); setAvisoDeTamanho("");
+    /* recomeçar é recomeçar: o cofre da marca antiga sai junto, senão a loja
+       seguinte herdaria a logo de uma marca que não existe mais */
+    try { if (cofre) window.localStorage.removeItem(cofre); } catch { /* sem armazenamento, nada a limpar */ }
     setImagensGeradas({}); setProgressoIa("");
   }
 
@@ -610,9 +661,11 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                           outra e ainda gastaria crédito para isso */}
                       {gerandoImagens
                         ? "Gerando…"
-                        : Object.keys(imagensGeradas).length && Object.keys(imagensGeradas).length < pecasGeradas.length
-                          ? `Gerar as ${pecasGeradas.length - Object.keys(imagensGeradas).length} que faltam`
-                          : `Gerar as ${pecasGeradas.length} imagens`}
+                        : Object.keys(imagensGeradas).length >= pecasGeradas.length
+                          ? "Gerar tudo de novo"
+                          : Object.keys(imagensGeradas).length
+                            ? `Gerar as ${pecasGeradas.length - Object.keys(imagensGeradas).length} que faltam`
+                            : `Gerar as ${pecasGeradas.length} imagens`}
                     </button>
                   </div>
                   <div className="cf-pecas">

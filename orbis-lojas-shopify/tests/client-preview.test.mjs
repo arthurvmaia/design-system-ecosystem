@@ -94,3 +94,32 @@ test("a prévia não fica prometendo uma loja quando não há tema", async () =>
   assert.match(flow, /Nenhum tema importado ainda/);
   assert.match(flow, /Escolha um tema para ver a prévia/);
 });
+
+/**
+ * A arte gerada sobrevive a fechar a aba.
+ *
+ * O mapa das imagens vivia só em memória. Recarregar, sair para ver outra
+ * coisa, voltar depois: tudo apagava, e a loja nascia sem nenhuma imagem, com
+ * os arquivos parados no banco, pagos e intactos. Medido neste computador: as
+ * seis peças geradas às 17:50 e a loja criada às 23:15 com ZERO imagens.
+ */
+test("as imagens geradas sobrevivem ao recarregar, presas à marca que as pediu", async () => {
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+
+  /* o cofre guarda a SEMENTE junto: ela é sorteada a cada escolha de nicho,
+     então guardar só as imagens não bastava — ao voltar, a marca seria outra e
+     a arte da anterior ficaria órfã de qualquer jeito */
+  assert.match(flow, /orbis:marca:\$\{nicho\}/);
+  /* grava sempre que o mapa muda, e some quando ele esvazia */
+  assert.match(flow, /setItem\(cofre, JSON\.stringify\(\{ semente, imagens: imagensGeradas \}\)\)/);
+  /* a leitura é EVENTO, não efeito: efeito com setState síncrono provoca
+     render em cascata, e o lint do projeto reprova */
+  assert.match(flow, /const abrirCofre = useCallback/);
+  assert.match(flow, /const guardada = abrirCofre\(id\)/, "escolher o nicho traz de volta a marca dele");
+  assert.match(flow, /const sementeNova = guardada \|\| novaSemente\(\)/, "a semente guardada devolve a MESMA marca");
+  /* gerar outra marca é decisão deliberada: cofre limpo, arte da anterior fora */
+  assert.match(flow, /marca nova, cofre limpo/);
+  /* recomeçar é recomeçar: o cofre da marca antiga sai junto */
+  const recomecar = flow.match(/function recomecar\(\)[\s\S]*?\n  \}/)?.[0] ?? "";
+  assert.match(recomecar, /removeItem\(cofre\)/);
+});
