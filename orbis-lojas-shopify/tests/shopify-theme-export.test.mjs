@@ -317,3 +317,35 @@ test("edições aplicadas na exportação atualizam somente o necessário", asyn
     await server.close();
   }
 });
+
+/**
+ * O tema exportado sai sabendo de que loja ele é.
+ *
+ * `orbisNicheId` vivia só no banco do app, então quem baixava a própria loja e
+ * a punha de volta no estúdio perdia o nicho: a prévia caía no catálogo de
+ * demonstração e a loja de roupa abria com óculos e panela. O marcador fecha o
+ * ciclo — exportar e importar de volta devolve a mesma vitrine.
+ */
+test("o nicho da loja viaja no ZIP exportado e volta na importação", async () => {
+  const { server, shopifyTheme, themeExport } = await loadModules();
+  try {
+    const original = buildFixtureZip();
+    const theme = shopifyTheme.extractShopifyThemeBytes(original, "fixture.zip");
+    const files = shopifyTheme.themeFilesFromZip(original);
+
+    /* tema sem loja não ganha marcador: ele não é de ninguém ainda */
+    const cru = unzipSync(themeExport.exportThemeZip(theme, files).zip);
+    assert.equal(cru[shopifyTheme.ARQUIVO_DA_LOJA], undefined, "tema sem nicho não pode inventar um");
+
+    const daLoja = { ...theme, orbisNicheId: "roupas" };
+    const { zip } = themeExport.exportThemeZip(daLoja, files);
+    const exportado = unzipSync(zip);
+    assert.ok(exportado[shopifyTheme.ARQUIVO_DA_LOJA], "o ZIP precisa levar o marcador");
+    assert.equal(JSON.parse(strFromU8(exportado[shopifyTheme.ARQUIVO_DA_LOJA])).orbisNicheId, "roupas");
+
+    /* o ciclo inteiro: o que sai daqui volta como a mesma loja */
+    assert.equal(shopifyTheme.extractShopifyThemeBytes(zip, "loja.zip").orbisNicheId, "roupas");
+  } finally {
+    await server.close();
+  }
+});

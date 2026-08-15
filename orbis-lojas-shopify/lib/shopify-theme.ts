@@ -1,4 +1,10 @@
 import { strFromU8, unzipSync, zipSync } from "fflate";
+import { NICHOS } from "./marca-generator.mjs";
+/* só o handle: `shopify-brand` importa daqui apenas TIPOS, que somem na
+   compilação, então não há ciclo em tempo de execução. Reescrever a regra do
+   handle aqui é que seria perigoso — ela tem de casar exatamente com a que a
+   entrega grava, e duas cópias divergem calado. */
+import { handleDeColecao } from "./shopify-brand";
 
 export type ShopifyValue = string | number | boolean | null | ShopifyValue[] | { [key: string]: ShopifyValue };
 
@@ -314,7 +320,59 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   };
   const { assets, fora } = collectImageAssets(byRelativePath);
   if (fora.length) theme.assetsForaDaInstalacao = fora;
+  const nicho = lerNichoDoTema(byRelativePath, pages);
+  if (nicho) theme.orbisNicheId = nicho;
   return { theme, images: assets };
+}
+
+/** Onde um tema entregue pela Orbis guarda de que loja ele é. */
+export const ARQUIVO_DA_LOJA = "assets/orbis-loja.json";
+
+/** O conteúdo do marcador, para quem monta o ZIP da entrega. */
+export function marcadorDaLoja(nicheId: string) {
+  return JSON.stringify({ orbisNicheId: nicheId }, null, 2);
+}
+
+/**
+ * De que loja é este tema.
+ *
+ * `orbisNicheId` decide a vitrine da prévia, e ele vivia SÓ no banco do app.
+ * O ZIP entregue não levava nada disso, então reimportar a própria loja — gesto
+ * natural, "vou pôr minha loja de volta no estúdio" — perdia o nicho e a
+ * vitrine caía no catálogo de demonstração: óculos e panela numa loja de roupa.
+ *
+ * Duas fontes, nesta ordem:
+ *
+ * 1. o marcador que a entrega passa a gravar. Explícito, exato, sobrevive a
+ *    edição no editor.
+ * 2. as COLEÇÕES do tema, para as entregas que saíram antes do marcador
+ *    existir. Elas são do nicho — "Alfaiataria" e "Últimas peças" só aparecem
+ *    em roupas — e já estão gravadas nos templates. Exige maioria (metade das
+ *    seis) para não confundir loja por coincidência de "Novidades".
+ */
+function lerNichoDoTema(byRelativePath: Map<string, Uint8Array>, pages: ShopifyPage[]): string {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (marcador) {
+    const id = text(parseJson<Record<string, unknown>>(marcador, {}).orbisNicheId, "").trim();
+    if (id) return id.slice(0, 40);
+  }
+
+  const handles = new Set<string>();
+  for (const page of pages) {
+    for (const secao of page.sections) {
+      for (const valor of [...Object.values(secao.settings), ...secao.blocks.flatMap((b) => Object.values(b.settings))]) {
+        if (typeof valor === "string" && valor && !valor.includes(" ") && valor.length <= 60) handles.add(valor.toLowerCase());
+      }
+    }
+  }
+  if (!handles.size) return "";
+
+  let melhor = { id: "", acertos: 0 };
+  for (const nicho of NICHOS) {
+    const acertos = nicho.colecoes.filter((nome: string) => handles.has(handleDeColecao(nome))).length;
+    if (acertos > melhor.acertos) melhor = { id: nicho.id, acertos };
+  }
+  return melhor.acertos >= 3 ? melhor.id : "";
 }
 
 /**

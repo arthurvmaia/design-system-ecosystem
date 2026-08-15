@@ -221,3 +221,47 @@ test("os rótulos do editor seguem a escada de idioma: português, inglês, e s�
     await server.close();
   }
 });
+
+/**
+ * De que loja é este tema.
+ *
+ * `orbisNicheId` decide a vitrine da prévia e vivia SÓ no banco do app. O ZIP
+ * entregue não levava nada, então reimportar a própria loja — gesto natural —
+ * perdia o nicho e a vitrine caía no catálogo de demonstração: uma loja de
+ * roupa abria com óculos e panela.
+ */
+test("o tema entregue diz de que loja é, e a importação reconhece pelas coleções quando não diz", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemeBytes, ARQUIVO_DA_LOJA, marcadorDaLoja } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const comColecoes = (handles) => ({
+      "Tema/layout/theme.liquid": strToU8("<html><body>{{ content_for_layout }}</body></html>"),
+      "Tema/sections/lista.liquid": strToU8(section("Lista de coleções", [{ type: "collection", id: "collection", label: "Coleção" }])),
+      "Tema/templates/index.json": strToU8(JSON.stringify({
+        sections: Object.fromEntries(handles.map((h, i) => [`c${i}`, { type: "lista", settings: { collection: h } }])),
+        order: handles.map((_, i) => `c${i}`),
+      })),
+      "Tema/config/settings_schema.json": strToU8(settingsSchema),
+      "Tema/config/settings_data.json": strToU8(JSON.stringify({ current: {} })),
+    });
+    const nicho = (arquivos) => extractShopifyThemeBytes(zipSync(arquivos), "tema.zip").orbisNicheId ?? "";
+
+    /* o marcador é a fonte exata: sobrevive a renomear coleção no editor */
+    assert.equal(nicho({ ...comColecoes([]), [`Tema/${ARQUIVO_DA_LOJA}`]: strToU8(marcadorDaLoja("joias")) }), "joias");
+    /* e vence a dedução, se as duas discordarem */
+    assert.equal(nicho({ ...comColecoes(["novidades", "basicos", "alfaiataria"]), [`Tema/${ARQUIVO_DA_LOJA}`]: strToU8(marcadorDaLoja("joias")) }), "joias");
+
+    /* sem marcador, as coleções entregam o nicho — é o caso das lojas geradas
+       antes deste commit, que já estão no computador de quem usa */
+    assert.equal(nicho(comColecoes(["novidades", "basicos", "colecao-de-estacao", "alfaiataria", "promocoes", "ultimas-pecas"])), "roupas");
+    assert.equal(nicho(comColecoes(["oculos-de-sol", "armacoes-de-grau", "polarizados"])), "oculos");
+
+    /* coincidência não basta: "Novidades" e "Promoções" existem em quase todo
+       nicho, e chutar aqui poria a loja errada na tela com cara de certeza */
+    assert.equal(nicho(comColecoes(["novidades", "promocoes"])), "");
+    /* tema cru continua sem nicho: é ele que abre com a vitrine de demonstração */
+    assert.equal(nicho(comColecoes([])), "");
+  } finally {
+    await server.close();
+  }
+});

@@ -6,7 +6,7 @@ import { ensureDatabase, ensureUser, getD1, saveProject, unlockTheme } from "@/l
 import { brandCustomization, generateClientSite, sanitizeBrand } from "@/lib/site-generator.mjs";
 import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
 import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
-import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
+import { ARQUIVO_DA_LOJA, marcadorDaLoja, themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { collectEditorMediaIds, exportThemeZip, type EditorMediaFile } from "@/lib/theme-export";
 import { pecasDaMarca } from "@/lib/marca-imagens";
 import { csvDeProdutos } from "@/lib/catalogo-csv";
@@ -358,6 +358,10 @@ export async function POST(request: Request) {
         ].join("\r\n"),
       );
     }
+
+    /* o tema sai sabendo de que loja ele é: reimportar a própria loja tem de
+       trazer a vitrine dela de volta, não o catálogo de demonstração */
+    if (parsed.data.nicheId) arquivos[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(parsed.data.nicheId));
 
     const zip = zipSync(arquivos, { level: 6 });
     return new Response(zip.slice().buffer, {

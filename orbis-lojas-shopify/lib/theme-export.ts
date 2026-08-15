@@ -8,6 +8,9 @@
  * próprio render do Orbis resolve por basename no round-trip.
  */
 import { strFromU8, strToU8, zipSync } from "fflate";
+/* relativo, não `@/lib/...`: o alias existe só na build do app, e o `import
+   type` vizinho não denuncia isso porque some na compilação */
+import { ARQUIVO_DA_LOJA, marcadorDaLoja } from "./shopify-theme";
 import type { ShopifyPage, ShopifySectionInstance, ShopifyThemeImport } from "@/lib/shopify-theme";
 
 export type ThemeExportResult = { zip: Uint8Array; modified: string[]; warnings: string[] };
@@ -305,6 +308,16 @@ export function exportThemeZip(
     output[path] = data;
     modified.push(path);
   }
+
+  /**
+   * O tema sai sabendo de que loja ele é.
+   *
+   * Sem isto, reimportar a própria loja perdia o nicho — ele só existia no
+   * banco do app — e a prévia caía no catálogo de demonstração: óculos e panela
+   * numa loja de roupa. O marcador é um JSON de uma linha em `assets/`, que a
+   * Shopify aceita e ignora.
+   */
+  if (theme.orbisNicheId) output[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(theme.orbisNicheId));
 
   return { zip: zipSync(output), modified, warnings };
 }
