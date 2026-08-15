@@ -40,6 +40,7 @@ function paletteOf(shopify: ShopifyThemeImport | null, customization: ReturnType
 
 export function previewFromTheme(theme: Theme): PreviewCardModel {
   const { shopify, customization } = shopifyOf(theme.defaultSettings);
+  const fora = shopify?.assetsForaDaInstalacao ?? [];
   return {
     id: theme.id,
     title: theme.name,
@@ -48,12 +49,26 @@ export function previewFromTheme(theme: Theme): PreviewCardModel {
     renderable: Boolean(shopify?.compatibility?.preservedSource),
     palette: paletteOf(shopify, customization),
     badge: theme.badge ?? undefined,
-    status: shopify
-      ? shopify.compatibility?.preservedSource
-        ? { label: "ZIP preservado", tone: "ok" }
-        : { label: "estrutura preservada", tone: "info" }
-      : undefined,
-    meta: [`v${theme.version}`, `${theme.sectionCount} seções`, ...(shopify ? [`${shopify.summary.templateCount} páginas`] : [])],
+    /* Arquivo do ZIP que não ficou disponível VENCE o "ZIP preservado": é
+       imagem partida na prévia, e dizer que está tudo preservado por cima de
+       uma imagem que falta é o selo mentindo. */
+    status: fora.length
+      ? { label: `${fora.length} ${fora.length === 1 ? "arquivo ausente" : "arquivos ausentes"}`, tone: "warn" }
+      : shopify
+        ? shopify.compatibility?.preservedSource
+          ? { label: "ZIP preservado", tone: "ok" }
+          : { label: "estrutura preservada", tone: "info" }
+        : undefined,
+    meta: [
+      `v${theme.version}`,
+      `${theme.sectionCount} seções`,
+      ...(shopify ? [`${shopify.summary.templateCount} páginas`] : []),
+      /* a miniatura do cartão é render de verdade, e sem nicho ela mostra o
+         catálogo de exemplo: quem olha precisa saber que a mercadoria não é do
+         tema, senão conclui que o tema veio com loja pronta */
+      ...(shopify?.compatibility?.preservedSource && !shopify.orbisNicheId ? ["vitrine de demonstração"] : []),
+      ...(fora.length ? [`não instalado: ${fora[0].path.split("/").at(-1)} (${fora[0].motivo})`] : []),
+    ],
   };
 }
 

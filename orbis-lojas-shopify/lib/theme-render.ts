@@ -201,8 +201,38 @@ function indexarLoja(produtos: ProdutoDaLoja[]): Loja {
  * que ELE traz. Enchendo de catálogo, todo tema ficava igual ao lado — os
  * mesmos produtos e, pior, a mesma foto repetida em cada cartão de coleção. E
  * era mentira: na loja de verdade quem preenche isso é o estoque do dono.
+ *
+ * Continua valendo para quem pede a loja VAZIA de propósito; o que mudou é o
+ * padrão do tema importado — ver `LOJA_DE_DEMONSTRACAO`.
  */
 const LOJA_VAZIA = indexarLoja([]);
+
+/**
+ * O catálogo de DEMONSTRAÇÃO do tema importado.
+ *
+ * A regra de não injetar mercadoria nasceu certa e virou obstáculo: o dono abre
+ * o tema justamente para avaliar como a loja vai ficar depois de gerada, e uma
+ * vitrine vazia não responde essa pergunta — mostra caixas cinzas onde deveria
+ * haver produto, e não dá para julgar nem a grade, nem o cartão, nem o preço.
+ *
+ * As duas objeções da regra antiga têm resposta agora:
+ *
+ * 1. "todo tema fica igual ao lado" — o catálogo é MISTURADO, dois produtos de
+ *    cinco nichos diferentes, então a vitrine tem variedade de forma e de cor
+ *    em vez de dez frascos iguais.
+ * 2. "a mesma foto em cada cartão de coleção" — resolvido em `fotoDaColecao`,
+ *    que dá uma foto diferente para cada coleção.
+ *
+ * A terceira, a que mais importa, é honestidade: isto é DEMONSTRAÇÃO e a prévia
+ * diz isso por extenso no selo. Loja gerada continua mostrando o catálogo do
+ * nicho escolhido, que é mercadoria de verdade da vitrine dela.
+ */
+const LOJA_DE_DEMONSTRACAO = (() => {
+  const nichos = ["roupas", "oculos", "casa", "joias", "gadgets"];
+  const escolhidos: ProdutoDoNicho[] = [];
+  for (const nicho of nichos) escolhidos.push(...(PRODUTOS_POR_NICHO[nicho] ?? []).slice(0, 2));
+  return escolhidos.length ? indexarLoja(escolhidos.map(produtoDoNicho)) : LOJA_VAZIA;
+})();
 
 /**
  * O produto de uma loja sem mercadoria.
@@ -226,8 +256,11 @@ const LOJAS_POR_NICHO = new Map<string, Loja>();
 
 export function lojaDoNicho(nicheId: string | undefined): Loja {
   const chave = String(nicheId ?? "").trim();
-  /* só a loja gerada por nicho recebe vitrine; tema cru fica com a dele */
-  if (!chave) return LOJA_VAZIA;
+  /* Sem nicho é tema importado sendo avaliado: ele abre com o catálogo de
+     DEMONSTRAÇÃO, porque vitrine vazia não deixa julgar grade, cartão nem
+     preço — e é para isso que o dono abre o tema. A prévia declara no selo que
+     a mercadoria é de demonstração. */
+  if (!chave) return LOJA_DE_DEMONSTRACAO;
   const pronta = LOJAS_POR_NICHO.get(chave);
   if (pronta) return pronta;
   const fonte = PRODUTOS_POR_NICHO[chave];

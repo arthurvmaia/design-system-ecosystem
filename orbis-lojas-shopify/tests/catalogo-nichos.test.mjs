@@ -7,8 +7,11 @@ import { strToU8, zipSync } from "fflate";
 
 /**
  * O catálogo dos nichos é a ÚNICA fonte de mercadoria do app: loja gerada por
- * nicho mostra os dez produtos daquele nicho, e tema importado não mostra
- * produto nenhum. Estes testes travam as duas metades.
+ * nicho mostra os dez produtos daquele nicho, e tema importado — que ainda não
+ * é loja de ninguém — abre com um catálogo de DEMONSTRAÇÃO misturado, para dar
+ * para julgar grade, cartão e preço antes de gerar. Estes testes travam as
+ * duas metades e a fronteira entre elas: demonstração não vaza para loja
+ * gerada.
  */
 
 const raiz = fileURLToPath(new URL("..", import.meta.url));
@@ -55,10 +58,11 @@ test("os produtos inventados saíram do render e do fallback", async () => {
   assert.match(catalogo, /aliexpress\.com/);
 });
 
-test("tema sem nicho não recebe produto nem coleção inventados", async () => {
+test("tema sem nicho abre com o catálogo de demonstração, misturado e com capa por coleção", async () => {
   const layout = "<!doctype html><html><body>{{ content_for_layout }}</body></html>";
   const secao = `<p class="quantos">{{ collections.all.products.size }}</p>
 <p class="capa">{{ collections['moda-feminina'].featured_image | default: 'sem-imagem' }}</p>
+<p class="capa2">{{ collections['casa-e-cozinha'].featured_image | default: 'sem-imagem' }}</p>
 <ul>{% for produto in collections.all.products %}<li>{{ produto.title }}</li>{% endfor %}</ul>
 {% schema %}{"name":"Vitrine"}{% endschema %}`;
   const zip = zipSync({
@@ -78,22 +82,42 @@ test("tema sem nicho não recebe produto nem coleção inventados", async () => 
     const base = { theme, files, pageId: "index", assetBase: (path) => `/assets/${path}` };
 
     /**
-     * Tema importado que ainda não virou loja de ninguém aparece com o que ELE
-     * traz. Enchendo de catálogo, todo tema ficava igual ao lado, com os mesmos
-     * produtos e a mesma foto repetida em cada cartão de coleção.
+     * Tema importado ainda não é loja de ninguém — e é aberto justamente para
+     * avaliar como a loja VAI ficar. Vitrine vazia não responde isso: mostrava
+     * caixa cinza onde deveria haver produto. Então ele abre com catálogo de
+     * demonstração, e a prévia declara isso no selo.
      */
     const cru = await renderThemePage(base);
-    assert.match(cru, /<p class="quantos">0<\/p>/, "tema cru não pode ganhar vitrine");
-    assert.match(cru, /<p class="capa">sem-imagem<\/p>/, "coleção não empresta a foto de um produto qualquer");
-    assert.doesNotMatch(cru, /aliexpress-media\.com/, "nenhuma imagem de catálogo no tema cru");
-    for (const produto of PRODUTOS_POR_NICHO.oculos.slice(0, 3)) {
-      assert.ok(!cru.includes(produto.title), `produto injetado no tema cru: ${produto.title}`);
-    }
+    assert.match(cru, /<p class="quantos">10<\/p>/, "tema cru abre com a vitrine de demonstração");
 
-    /* com nicho, a vitrine aparece: é a loja que o cliente mandou gerar */
+    /**
+     * A objeção que criou a regra antiga: "todo tema fica igual ao lado".
+     * A resposta é o catálogo MISTURADO — se algum dia ele encolher para um
+     * nicho só, a variedade some e a objeção volta. Por isso o teste conta
+     * nichos, não produtos.
+     */
+    const nichosNaVitrine = Object.keys(PRODUTOS_POR_NICHO).filter((nicho) =>
+      (PRODUTOS_POR_NICHO[nicho] ?? []).some((produto) => cru.includes(produto.title)),
+    );
+    assert.ok(nichosNaVitrine.length >= 3, `demonstração precisa ser misturada, veio de ${nichosNaVitrine.length} nicho(s)`);
+
+    /* a segunda objeção: a mesma foto repetida em cada cartão de coleção */
+    const capa = cru.match(/<p class="capa">(.*?)<\/p>/)?.[1];
+    const capa2 = cru.match(/<p class="capa2">(.*?)<\/p>/)?.[1];
+    assert.ok(capa && capa !== "sem-imagem", "cartão de coleção precisa de capa");
+    assert.notEqual(capa, capa2, "cada coleção mostra uma foto diferente");
+
+    /**
+     * A fronteira: demonstração NÃO vaza para loja gerada. Quem escolheu óculos
+     * vê o catálogo de óculos — mercadoria de verdade da vitrine dele —, nunca
+     * a mistura de exemplo.
+     */
     const comNicho = await renderThemePage({ ...base, nicheId: "oculos" });
     assert.match(comNicho, /<p class="quantos">10<\/p>/, "a loja gerada por nicho mostra os 10 produtos");
     assert.ok(comNicho.includes(PRODUTOS_POR_NICHO.oculos[0].title));
+    for (const produto of PRODUTOS_POR_NICHO.roupas.slice(0, 2)) {
+      assert.ok(!comNicho.includes(produto.title), `demonstração vazou para a loja gerada: ${produto.title}`);
+    }
   });
 });
 

@@ -198,7 +198,15 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
     <div className="live-render-wrap">
       {status === "loading" && !html && <div className="live-render-loading"><span>ORBIS · RENDERIZANDO O TEMA REAL…</span></div>}
       {html && <iframe ref={frameRef} className="live-render-frame" title="Prévia real do tema" sandbox="allow-scripts allow-same-origin allow-forms" srcDoc={html} onLoad={enviarModo} />}
-      {html && <span className="live-render-badge">RENDER REAL · LIQUID</span>}
+      {/* Sem nicho, a vitrine é catálogo de DEMONSTRAÇÃO — produtos de exemplo
+          para dar para julgar grade, cartão e preço. Precisa estar escrito: a
+          diferença entre "loja com mercadoria" e "loja com exemplo" muda o que
+          a pessoa conclui olhando, e conclusão errada é pior que tela vazia. */}
+      {html && (
+        <span className="live-render-badge">
+          RENDER REAL · LIQUID{shopify.orbisNicheId ? "" : " · PRODUTOS DE DEMONSTRAÇÃO"}
+        </span>
+      )}
     </div>
   );
 }
