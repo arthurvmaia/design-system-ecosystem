@@ -276,9 +276,16 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
     if (typeof valor === "string" && ehImagemDeVerdade(valor)) imagens[chave] = valor;
   }
   const geradasPelaOrbis = new Set(marca.imagensGeradas ?? []);
-  /* as capas de coleção entram na ordem em que as seções as pedem */
+  /**
+   * As capas de coleção entram na ordem em que as seções as pedem.
+   *
+   * Aceita as duas famílias porque o conjunto de peças mudou: eram seis capas
+   * `colecao-N`, uma por coleção, e passaram a ser três CENAS da marca, que
+   * rendem mais e custam menos. Ler as duas mantém de pé a loja gerada antes da
+   * troca, que já está no computador de quem a recebeu.
+   */
   const capas = Object.keys(imagens)
-    .filter((chave) => chave.startsWith("colecao-"))
+    .filter((chave) => chave.startsWith("colecao-") || chave.startsWith("cena-"))
     .sort()
     .map((chave) => imagens[chave]);
   let proximaCapa = 0;

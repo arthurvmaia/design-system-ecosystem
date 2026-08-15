@@ -130,6 +130,9 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
 
   /* as peças que a loja precisa, no enquadramento certo de cada uma */
   const pecas = useMemo(() => pecasDaMarca({ ...marca, nicheId }), [marca, nicheId]);
+  /* as que dependem do provedor. O nome por extenso e o favicon são desenhados
+     aqui, por tipografia e geometria: entram na entrega sem fila e sem crédito */
+  const pecasGeradas = useMemo(() => pecas.filter((peca) => peca.origem === "gerada"), [pecas]);
 
   const gerarMarcaAgora = useCallback((sementeNova: string) => {
     if (!nicheId) return;
@@ -216,7 +219,10 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     try {
       const cores = [marca.primaryColor, marca.accentColor, marca.backgroundColor];
       const tarefas: Array<{ chave: string; taskId: string; modelo: string }> = [];
-      for (const peca of pecas as Array<{ chave: string; prompt: string; aspecto: string }>) {
+      /* peça DESENHADA não vai para a fila: ela já existe, sai de vetor aqui
+         mesmo. E peça que já veio não é pedida de novo: repetir o que está
+         pronto gasta crédito para trocar uma imagem boa por outra. */
+      for (const peca of pecasGeradas.filter((p) => !imagensGeradas[p.chave])) {
         const resposta = await fetch("/api/marca-imagens", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -227,26 +233,62 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         if (dados.taskId && dados.modelo) tarefas.push({ chave: peca.chave, taskId: dados.taskId, modelo: dados.modelo });
       }
 
-      const prontas: Record<string, string> = {};
+      /**
+       * A espera tem de caber no trabalho.
+       *
+       * Eram 40 voltas de 5 s: 200 segundos para um lote de doze imagens em 4k.
+       * Quem não chegasse até lá era DESCARTADO, e o cliente recebia a loja com
+       * o que tivesse dado tempo. Aconteceu de verdade: 3 de 11.
+       *
+       * Agora o teto é de 15 minutos, o intervalo cresce (a fila do provedor
+       * não anda mais rápido por ser perguntada mais vezes), e nada é
+       * abandonado em silêncio: peça que falhou por motivo definitivo sai da
+       * fila DIZENDO o motivo, e o que sobrar no fim aparece pelo nome.
+       */
+      const TETO_MS = 15 * 60 * 1000;
+      const comeco = Date.now();
+      /* as que já estavam prontas continuam prontas: a rodada nova só soma */
+      const prontas: Record<string, string> = { ...imagensGeradas };
+      const falhas: Record<string, string> = {};
       const pendentes = new Map(tarefas.map((tarefa) => [tarefa.chave, tarefa]));
-      for (let volta = 0; volta < 40 && pendentes.size; volta += 1) {
-        setProgressoIa(`${prontas ? Object.keys(prontas).length : 0} de ${tarefas.length} prontas…`);
-        await new Promise((resolve) => window.setTimeout(resolve, 5000));
+      const tituloDe = (chave: string) => pecas.find((peca) => peca.chave === chave)?.titulo ?? chave;
+
+      while (pendentes.size && Date.now() - comeco < TETO_MS) {
+        const decorrido = Date.now() - comeco;
+        setProgressoIa(`${Object.keys(prontas).length} de ${pecasGeradas.length} prontas, ${Math.round(decorrido / 1000)}s…`);
+        /* 5 s no primeiro minuto, 10 s depois: perguntar mais não faz a fila
+           do provedor andar, e cada pergunta é uma consulta paga em tempo */
+        await new Promise((resolve) => window.setTimeout(resolve, decorrido < 60_000 ? 5000 : 10_000));
         for (const [chave, tarefa] of [...pendentes]) {
           const resposta = await fetch("/api/marca-imagens", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ acao: "salvar", papel: "imagem", taskId: tarefa.taskId, modelo: tarefa.modelo, chave }),
           });
-          if (!resposta.ok) continue;
-          const dados = await resposta.json() as { pronta?: boolean; url?: string };
+          if (!resposta.ok) {
+            /* 4xx é definitivo (arquivo grande demais, tarefa inválida):
+               insistir só gasta o relógio das outras. 5xx pode ser passageiro,
+               então esse continua na fila. */
+            if (resposta.status >= 400 && resposta.status < 500) {
+              const corpo = await resposta.json().catch(() => ({})) as { error?: string };
+              falhas[chave] = corpo.error ?? `erro ${resposta.status}`;
+              pendentes.delete(chave);
+            }
+            continue;
+          }
+          const dados = await resposta.json() as { pronta?: boolean; url?: string; erro?: string };
           if (dados.pronta && dados.url) { prontas[chave] = dados.url; pendentes.delete(chave); }
+          else if (dados.erro) { falhas[chave] = dados.erro; pendentes.delete(chave); }
         }
         setImagensGeradas({ ...prontas });
       }
-      setProgressoIa(pendentes.size
-        ? `${Object.keys(prontas).length} de ${tarefas.length} prontas; o resto entra com a arte da Orbis.`
-        : `${tarefas.length} imagens prontas.`);
+
+      /* o que não veio aparece PELO NOME: "faltaram 3" manda a pessoa procurar
+         quais; dizer quais é a diferença entre um aviso e um enigma */
+      const faltando = [...pendentes.keys(), ...Object.keys(falhas)].map(tituloDe);
+      setProgressoIa(faltando.length
+        ? `${Object.keys(prontas).length} de ${pecasGeradas.length} prontas. Sem imagem: ${faltando.join(", ")}. Posso gerar de novo só o que faltou.`
+        : `${pecasGeradas.length} imagens prontas.`);
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Não consegui gerar as imagens agora.");
       setProgressoIa("");
@@ -514,21 +556,34 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                     <div>
                       <strong>Artes da Orbis</strong>
                       <p>
-                        Símbolo da marca, banner de desktop e de celular e as capas das {marca.collections.length || 4} coleções,
-                        {" "}em fotografia profissional, no enquadramento certo e na paleta da marca.
+                        O kit da marca em {pecas.length} peças: símbolo em três versões, nome por extenso e favicon,
+                        {" "}quatro banners (dois de desktop e dois de celular) e três cenas da marca.
+                        {" "}Tudo na paleta e no enquadramento certo de cada lugar.
                         {!iaDisponivel && " Provedor de imagem não configurado: a loja sai com a imagem que o tema já traz."}
                       </p>
                     </div>
                     <button className="primary-button" disabled={gerandoImagens || !iaDisponivel} onClick={() => void gerarImagens()}>
-                      {gerandoImagens ? "Gerando…" : `Gerar as ${pecas.length} imagens`}
+                      {/* com peças já prontas, o botão passa a ser o de
+                          RETOMAR: gerar tudo de novo trocaria imagem boa por
+                          outra e ainda gastaria crédito para isso */}
+                      {gerandoImagens
+                        ? "Gerando…"
+                        : Object.keys(imagensGeradas).length && Object.keys(imagensGeradas).length < pecasGeradas.length
+                          ? `Gerar as ${pecasGeradas.length - Object.keys(imagensGeradas).length} que faltam`
+                          : `Gerar as ${pecasGeradas.length} imagens`}
                     </button>
                   </div>
                   <div className="cf-pecas">
-                    {pecas.map((peca: { chave: string; titulo: string; aspecto: string }) => (
+                    {pecas.map((peca) => (
                       <span key={peca.chave} className="cf-peca">
                         <b>{peca.titulo}</b>
                         <code>{peca.aspecto.replace(/^[a-z_]*?_(\d+)_(\d+)$/, "$1:$2")}</code>
-                        {imagensGeradas[peca.chave] ? <i className="cf-peca-ok"><Check size={11} /> pronta</i> : null}
+                        {/* peça desenhada já nasce pronta: dizer "desenhada" em
+                            vez de deixá-la sem selo evita a leitura de que ela
+                            falhou ou de que ainda está na fila */}
+                        {peca.origem === "desenhada"
+                          ? <i className="cf-peca-ok"><Check size={11} /> desenhada</i>
+                          : imagensGeradas[peca.chave] ? <i className="cf-peca-ok"><Check size={11} /> pronta</i> : null}
                       </span>
                     ))}
                   </div>

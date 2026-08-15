@@ -199,12 +199,30 @@ function horizontal(marca: MarcaDoKit, fundo: string | null, corDoTexto: string)
  * documento), e aí é melhor a gente escolher a cor do que deixar o serviço
  * escolher.
  */
+/**
+ * O nome por extenso, fundo transparente.
+ *
+ * Exportado porque a geração de imagens da loja usa exatamente esta peça: letra
+ * pedida a um gerador volta torta e com caractere inventado, e o nome da loja
+ * de alguém não pode sair escrito errado. Uma definição só, usada nos dois
+ * lugares, para o kit entregue e a tela de geração nunca discordarem.
+ */
+export function logoExtensoSvg(marca: MarcaDoKit): string {
+  return extenso(marca, null, marca.primaryColor || "#1f2937");
+}
+
+/** O favicon do kit: mesma forma e mesma cor que o pacote entrega. */
+export function faviconSvg(marca: MarcaDoKit): string {
+  const primaria = marca.primaryColor || "#1f2937";
+  return monograma(marca, "circulo", 512, primaria === CLARO ? ESCURO : null);
+}
+
 export function kitDeLogo(marca: MarcaDoKit): PecaDoKit[] {
   const primaria = marca.primaryColor || "#1f2937";
   const sobreClaro = ESCURO;
   const sobreEscuro = CLARO;
   const pecas: PecaDoKit[] = [
-    { arquivo: "logo-extenso", titulo: "Por extenso", uso: "A versão principal: o nome da loja, fundo transparente.", largura: 1200, altura: 300, svg: extenso(marca, null, primaria) },
+    { arquivo: "logo-extenso", titulo: "Por extenso", uso: "A versão principal: o nome da loja, fundo transparente.", largura: 1200, altura: 300, svg: logoExtensoSvg(marca) },
     { arquivo: "logo-extenso-fundo-branco", titulo: "Por extenso, fundo branco", uso: "Para onde exigem fundo sólido claro.", largura: 1200, altura: 300, svg: extenso(marca, CLARO, sobreClaro) },
     { arquivo: "logo-extenso-fundo-preto", titulo: "Por extenso, fundo preto", uso: "Para peça escura e para modo noturno.", largura: 1200, altura: 300, svg: extenso(marca, ESCURO, sobreEscuro) },
     { arquivo: "logo-horizontal", titulo: "Horizontal", uso: "Símbolo e nome lado a lado: é a que cabe no cabeçalho da loja.", largura: 1600, altura: 400, svg: horizontal(marca, null, primaria) },
@@ -227,7 +245,7 @@ export function kitDeLogo(marca: MarcaDoKit): PecaDoKit[] {
     { arquivo: "monograma-fundo-branco", titulo: "Monograma, fundo branco", uso: "Quando o fundo do lugar é claro e o símbolo precisa de moldura.", largura: 1024, altura: 1024, svg: monograma(marca, "circulo", 1024, CLARO) },
     { arquivo: "monograma-fundo-preto", titulo: "Monograma, fundo preto", uso: "Quando o fundo do lugar é escuro.", largura: 1024, altura: 1024, svg: monograma(marca, "circulo", 1024, ESCURO) },
     /* favicon: 512 é o que a Shopify pede, e o mesmo arquivo serve de 16 a 512 */
-    { arquivo: "favicon", titulo: "Favicon", uso: "O ícone da aba do navegador. Vai em Tema > Configurações > Favicon.", largura: 512, altura: 512, svg: monograma(marca, "circulo", 512, primaria === CLARO ? ESCURO : null) },
+    { arquivo: "favicon", titulo: "Favicon", uso: "O ícone da aba do navegador. Vai em Tema > Configurações > Favicon.", largura: 512, altura: 512, svg: faviconSvg(marca) },
     /* rede social: quadrado cheio, porque a foto de perfil é recortada em círculo */
     { arquivo: "rede-social-perfil", titulo: "Foto de perfil", uso: "Instagram, Facebook e WhatsApp. Quadrado cheio: o corte em círculo não come as iniciais.", largura: 1080, altura: 1080, svg: monograma(marca, "circulo", 1080, primaria) },
     { arquivo: "rede-social-capa", titulo: "Capa de rede social", uso: "Capa do Facebook e cabeçalho do X.", largura: 1600, altura: 400, svg: horizontal(marca, primaria, textoSobre(primaria)) },

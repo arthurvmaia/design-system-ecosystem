@@ -63,7 +63,22 @@ async function guardarComoMidia(viewerId: string, url: string, nome: string) {
   const resposta = await fetch(url);
   if (!resposta.ok) throw new Error(`DOWNLOAD_${resposta.status}`);
   const dados = new Uint8Array(await resposta.arrayBuffer());
-  if (!dados.byteLength || dados.byteLength > 12 * 1024 * 1024) throw new Error("TAMANHO_INVALIDO");
+  if (!dados.byteLength) throw new Error("ARQUIVO_VAZIO");
+  /**
+   * Teto de 20 MB, o mesmo que a Shopify aceita por asset de tema.
+   *
+   * Era 12 MB, e ele REPROVAVA o trabalho que o app acabou de pagar: um PNG 4k
+   * do provedor tem 11 a 12,3 MB medidos neste acervo, então parte das peças
+   * caía exatamente em cima do corte. A geração terminava, a imagem existia, e
+   * ela era descartada aqui sem nunca chegar ao tema. Foi assim que uma loja
+   * saiu com 3 das 11 imagens.
+   *
+   * Acima de 20 MB a própria Shopify recusaria o arquivo, então recusar aqui é
+   * dizer a mesma coisa mais cedo, e dizendo o tamanho.
+   */
+  if (dados.byteLength > 20 * 1024 * 1024) {
+    throw new Error(`ARQUIVO_GRANDE_${(dados.byteLength / (1024 * 1024)).toFixed(1)}MB`);
+  }
   const tipo = resposta.headers.get("content-type") ?? "image/png";
   if (!/^image\//.test(tipo)) throw new Error("TIPO_INVALIDO");
 

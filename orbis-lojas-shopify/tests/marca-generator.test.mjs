@@ -138,9 +138,12 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
     for (const nicho of NICHOS) {
       const marca = gerarMarca({ nicheId: nicho.id, semente: "img" });
       const pecas = pecasDaMarca({ ...marca, nicheId: nicho.id });
+      /* por CHAVE, não por papel: com cinco peças de logo um mapa por papel
+         guarda só a última, e a assertiva passava a olhar o favicon */
+      const porChave = new Map(pecas.map((peca) => [peca.chave, peca]));
       const porPapel = new Map(pecas.map((peca) => [peca.papel, peca]));
       /* logo, banner de desktop e banner de celular, cada um no seu corte */
-      assert.equal(porPapel.get("logo").aspecto, "square_1_1");
+      assert.equal(porChave.get("logo").aspecto, "square_1_1");
       /* Banner de loja, não formato de vídeo. `widescreen_16_9` é 1,78:1 e a
          arte saía 2752×1536 — quase o dobro da altura de um banner. A Shopify
          recomenda 3:1, que a lista fechada do provedor não tem; 20:9 (2,22:1) é
@@ -158,14 +161,46 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
         assert.ok(peca.fallbackSvg.startsWith("<svg"), `${peca.chave} sem desenho local`);
         assert.ok(fallbackDataUri(peca).startsWith("data:image/svg+xml"));
       }
-      /* uma capa por coleção DO NICHO */
-      const capas = pecas.filter((peca) => peca.papel === "colecao");
-      assert.equal(capas.length, nicho.colecoes.slice(0, 6).length);
-      for (const [indice, nome] of nicho.colecoes.slice(0, 6).entries()) {
-        assert.ok(capas[indice].prompt.includes(nome), `a capa ${indice + 1} de ${nicho.id} não fala da coleção "${nome}"`);
+      /**
+       * O conjunto que a loja recebe, no formato em que uma marca é entregue:
+       * 5 de marca (símbolo, símbolo em branco, símbolo monocromático, nome por
+       * extenso e favicon), 4 banners (2 de desktop e 2 de celular) e 3 cenas.
+       *
+       * Eram 6 capas de coleção, que sozinhas passavam da metade do lote e
+       * devolviam seis variações do mesmo enquadramento. Três cenas de mundo da
+       * marca servem à página inteira e encolhem a fila, que é o que fazia a
+       * espera estourar e a loja sair com três imagens.
+       */
+      const chaves = pecas.map((peca) => peca.chave);
+      assert.deepEqual(chaves, [
+        "logo", "logo-fundo-branco", "logo-fundo-preto", "logo-escrita", "favicon",
+        "banner-desktop", "banner-mobile", "banner-desktop-2", "banner-mobile-2",
+        "cena-1", "cena-2", "cena-3",
+      ], `conjunto de peças de ${nicho.id}`);
+      assert.equal(pecas.filter((peca) => peca.papel === "logo").length, 5);
+      assert.equal(pecas.filter((peca) => peca.papel === "banner-desktop").length, 2);
+      assert.equal(pecas.filter((peca) => peca.papel === "banner-mobile").length, 2);
+      assert.equal(pecas.filter((peca) => peca.papel === "cena").length, 3);
+
+      /**
+       * Letra é DESENHADA, nunca pedida ao gerador: modelo de imagem inventa
+       * caractere, e o nome da loja de alguém não pode sair escrito errado.
+       * Peça desenhada não vai para a fila nem custa crédito, então ela não
+       * pode ter prompt.
+       */
+      const desenhadas = pecas.filter((peca) => peca.origem === "desenhada").map((peca) => peca.chave);
+      assert.deepEqual(desenhadas, ["logo-escrita", "favicon"]);
+      for (const peca of pecas) {
+        assert.equal(peca.prompt === "", peca.origem === "desenhada", `${peca.chave}: prompt e origem discordam`);
       }
-      /* o modelo desenha só o símbolo: letra em imagem gerada sai errada */
-      assert.match(porPapel.get("logo").prompt, /[Ss]em letras/);
+      /* as três versões do símbolo saem do MESMO pedido, senão viram três
+         marcas diferentes em vez de uma marca em três roupas */
+      const simbolos = pecas.filter((peca) => peca.chave.startsWith("logo") && peca.origem === "gerada");
+      assert.equal(simbolos.length, 3);
+      for (const peca of simbolos) assert.match(peca.prompt, /Emblema de marca ilustrado/);
+      /* e a monocromática é monocromática de verdade */
+      assert.match(porChave.get("logo").prompt, /[Ss]em letras/);
+      assert.match(porChave.get("logo-fundo-preto").prompt, /silhueta BRANCA CHAPADA/);
       assert.deepEqual(coresDaMarca(marca).slice(0, 1), [marca.primaryColor]);
     }
   } finally {
@@ -379,19 +414,31 @@ test("marca própria é 100% manual; as artes da Orbis só existem no caminho ge
   /* as fotos são pedidas como fotografia profissional, não como desenho */
   const imagens = await readFile(new URL("../lib/marca-imagens.ts", import.meta.url), "utf8");
   assert.match(imagens, /const QUALIDADE = /);
-  const pedacos = imagens.split("prompt: [").slice(1);
-  const fotos = pedacos.filter((trecho) => /Fotografia|Foto de catálogo/.test(trecho.slice(0, 200)));
-  /* cinco: as DUAS dobras de banner (desktop e celular cada) mais a capa de
-     coleção. A segunda dobra existe porque um tema com dois banners recebia a
-     mesma foto nos dois, e a loja abria repetindo a imagem. */
-  assert.equal(fotos.length, 5, "duas dobras de banner (desktop e celular) e a capa de coleção são fotografia");
-  /* e a segunda dobra tem de pedir uma cena DIFERENTE da primeira: dois
-     pedidos com o mesmo texto voltam praticamente iguais */
-  assert.match(imagens, /chave: "banner-desktop-2"/);
-  assert.match(imagens, /DETALHE[\s\S]{0,200}sem pessoas no quadro/);
-  for (const foto of fotos) assert.ok(foto.slice(0, 600).includes("QUALIDADE"), "toda foto pede qualidade comercial");
-  /* a logo continua sendo símbolo sem letra: modelo de imagem erra texto */
-  assert.match(imagens, /Símbolo de marca minimalista[\s\S]{0,400}Sem letras/);
+  /**
+   * Toda peça fotográfica pede qualidade comercial.
+   *
+   * Contar trechos do arquivo era frágil: as três cenas saem de um laço, então
+   * o mesmo `prompt` no fonte vale por três peças, e o número nunca batia com a
+   * realidade. O que importa não é quantos blocos existem, é que NENHUM bloco
+   * de foto esqueça a linha de qualidade.
+   */
+  const blocos = imagens.split("prompt: [").slice(1);
+  const fotos = blocos.filter((trecho) => /Fotografia|cena da campanha|Segunda cena|MESMA/.test(trecho.slice(0, 240)));
+  assert.ok(fotos.length >= 3, `esperava blocos de foto, achei ${fotos.length}`);
+  for (const foto of fotos) assert.ok(foto.slice(0, 700).includes("QUALIDADE"), "toda foto pede qualidade comercial");
+  /* os quatro banners existem, e a segunda dobra pede uma cena DIFERENTE da
+     primeira: dois pedidos com o mesmo texto voltam praticamente iguais */
+  for (const chave of ["banner-desktop", "banner-mobile", "banner-desktop-2", "banner-mobile-2"]) {
+    assert.match(imagens, new RegExp(`chave: "${chave}"`), `faltou a peça ${chave}`);
+  }
+  assert.match(imagens, /Segunda cena[\s\S]{0,200}sem pessoas/);
+  /* e as três cenas da marca, que substituíram as seis capas de coleção */
+  for (const chave of ["cena-1", "cena-2", "cena-3"]) {
+    assert.match(imagens, new RegExp(`chave: "${chave}"`), `faltou a cena ${chave}`);
+  }
+  /* o símbolo continua sem letra nenhuma: modelo de imagem erra texto, e o nome
+     entra depois em tipografia de verdade */
+  assert.match(imagens, /const JEITO_DO_SIMBOLO[\s\S]{0,600}Sem letras/);
 });
 
 test("cada nicho tem foto real de produto, com o desenho como reserva", async () => {

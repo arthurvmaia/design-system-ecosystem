@@ -15,8 +15,9 @@
  * tipografia de verdade — que é como se faz uma logo profissional.
  */
 import { ilustracaoDoNicho, logoDataUri, misturar, nichoPorId, textoSobre } from "./marca-generator.mjs";
+import { faviconSvg, logoExtensoSvg } from "./kit-de-logo";
 
-export type PapelDaPeca = "logo" | "banner-desktop" | "banner-mobile" | "colecao";
+export type PapelDaPeca = "logo" | "banner-desktop" | "banner-mobile" | "colecao" | "cena";
 
 export type PecaDeImagem = {
   /** Identificador estável: vira nome do asset e chave do resultado. */
@@ -28,6 +29,18 @@ export type PecaDeImagem = {
   prompt: string;
   /** Desenho local usado enquanto não há provedor de IA. */
   fallbackSvg: string;
+  /**
+   * De onde a peça VEM.
+   *
+   * `desenhada` é resolvida aqui, por geometria e tipografia: o nome por
+   * extenso e o favicon são letra e forma, e letra pedida a um gerador de
+   * imagem volta torta, com caractere inventado. Estas não custam crédito, não
+   * entram na fila e ficam prontas na hora.
+   *
+   * `gerada` é o que só existe fotografando ou ilustrando: o símbolo, os
+   * banners e as cenas da marca.
+   */
+  origem: "gerada" | "desenhada";
 };
 
 export type MarcaDeImagem = {
@@ -76,7 +89,23 @@ const ASPECTO: Record<PapelDaPeca, string> = {
   "banner-desktop": "smartphone_horizontal_20_9",
   "banner-mobile": "social_post_4_5",
   colecao: "square_1_1",
+  cena: "square_1_1",
 };
+
+/**
+ * O JEITO da marca, dito uma vez e usado em toda peça ilustrada.
+ *
+ * Um símbolo, três variações dele e quatro banners saem do mesmo pedido sem
+ * nenhuma frase em comum: o resultado eram oito peças que não pareciam da
+ * mesma casa. Esta linha é o que costura, e ela descreve o padrão que o dono
+ * apontou como referência: emblema cheio, contorno forte, poucas cores, com
+ * cara de marca desenhada à mão e não de ícone de sistema.
+ */
+const JEITO_DO_SIMBOLO = [
+  "Emblema de marca ilustrado, vetorial, formas cheias e sólidas, silhueta forte que se reconhece pequena,",
+  "contorno grosso, poucas cores chapadas com um degradê discreto no volume, composição centralizada e simétrica.",
+  "Sem letras, sem palavras, sem números, sem marca d'água, sem sombra projetada, sem moldura de app.",
+].join(" ");
 
 /** Coleções que servem a qualquer loja, para quem trouxe a própria marca. */
 const COLECOES_NEUTRAS = ["Novidades", "Mais vendidos", "Ofertas", "Todos os produtos"];
@@ -165,30 +194,80 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
     : marca.nicheId ? nicho.colecoes : COLECOES_NEUTRAS
   ).slice(0, 6);
 
+  /**
+   * O KIT DA MARCA, no formato em que uma marca de verdade é entregue.
+   *
+   * Era um símbolo só. Uma marca não vive com um arquivo: ela precisa da versão
+   * de fundo transparente, da que vai sobre claro, da monocromática para peça
+   * escura, do nome por extenso e do ícone miúdo. Sem isso, a pessoa recebe uma
+   * imagem bonita e trava no primeiro lugar em que ela não serve.
+   *
+   * As três primeiras saem do MESMO símbolo, dito com as mesmas palavras: é o
+   * que faz as três parecerem a mesma marca em roupas diferentes, e não três
+   * marcas. As duas últimas são desenhadas aqui, porque são letra e forma.
+   */
+  const simbolo = `${JEITO_DO_SIMBOLO} O símbolo representa uma loja de ${tema}.`;
   const pecas: PecaDeImagem[] = [
     {
       chave: "logo",
       papel: "logo",
       titulo: "Símbolo da marca",
       aspecto: ASPECTO.logo,
+      origem: "gerada",
       /* sem letra nenhuma: o nome entra depois, em tipografia de verdade */
-      prompt: [
-        `Símbolo de marca minimalista para uma loja de ${tema}.`,
-        "Forma geométrica simples, cheia, vetorial, centralizada, fundo liso de cor única.",
-        `Paleta: ${cores}.`,
-        "Sem letras, sem palavras, sem números, sem marca d'água, sem sombra, sem gradiente complexo.",
-      ].join(" "),
+      prompt: `${simbolo} Fundo liso de cor única, bem separado do símbolo. Paleta: ${cores}.`,
       fallbackSvg: ilustracaoDoNicho(nicho.id),
+    },
+    {
+      chave: "logo-fundo-branco",
+      papel: "logo",
+      titulo: "Símbolo em fundo branco",
+      aspecto: ASPECTO.logo,
+      origem: "gerada",
+      prompt: `${simbolo} Fundo branco puro, sem textura e sem sombra. Paleta do símbolo: ${cores}.`,
+      fallbackSvg: ilustracaoDoNicho(nicho.id),
+    },
+    {
+      chave: "logo-fundo-preto",
+      papel: "logo",
+      titulo: "Símbolo monocromático em fundo preto",
+      aspecto: ASPECTO.logo,
+      origem: "gerada",
+      /* monocromática de verdade: a versão colorida sobre preto não é a mesma
+         coisa. É esta que sobrevive a bordado, carimbo e uma cor de impressão */
+      prompt: `${simbolo} O símbolo é uma silhueta BRANCA CHAPADA, sem cor nenhuma e sem degradê, sobre fundo preto puro.`,
+      fallbackSvg: ilustracaoDoNicho(nicho.id),
+    },
+    {
+      chave: "logo-escrita",
+      papel: "logo",
+      titulo: "Nome por extenso",
+      aspecto: ASPECTO.logo,
+      origem: "desenhada",
+      /* letra não se pede a gerador de imagem: volta torta, com caractere
+         inventado, e o nome da loja da pessoa sai escrito errado */
+      prompt: "",
+      fallbackSvg: logoExtensoSvg(marca),
+    },
+    {
+      chave: "favicon",
+      papel: "logo",
+      titulo: "Favicon",
+      aspecto: ASPECTO.logo,
+      origem: "desenhada",
+      prompt: "",
+      fallbackSvg: faviconSvg(marca),
     },
     {
       chave: "banner-desktop",
       papel: "banner-desktop",
       titulo: "Banner do desktop",
       aspecto: ASPECTO["banner-desktop"],
+      origem: "gerada",
       prompt: [
-        `Fotografia publicitária profissional de ${tema}, para o topo de uma loja.`,
-        `Paleta dominante: ${cores}.`,
-        "Assunto à direita do quadro, metade esquerda limpa e desocupada para o texto entrar por cima.",
+        `Fotografia editorial de campanha de uma loja de ${tema}: uma pessoa real usando o produto, em atitude natural.`,
+        `Fundo de papel texturizado em tom quente, na paleta ${cores}, com bastante ar em volta.`,
+        "Pessoa à DIREITA do quadro, metade esquerda vazia e uniforme para o texto entrar por cima.",
         QUALIDADE,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
@@ -199,10 +278,11 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "banner-mobile",
       titulo: "Banner do celular",
       aspecto: ASPECTO["banner-mobile"],
+      origem: "gerada",
       prompt: [
-        `Fotografia publicitária profissional de ${tema}, em enquadramento vertical para celular.`,
-        `Paleta dominante: ${cores}.`,
-        "Assunto na metade de cima do quadro, metade de baixo limpa para o texto entrar por cima.",
+        `A MESMA cena de campanha da loja de ${tema}, recomposta em pé para celular: a pessoa usando o produto.`,
+        `Fundo de papel texturizado em tom quente, na paleta ${cores}.`,
+        "Pessoa na metade de BAIXO do quadro, terço de cima vazio e uniforme para o texto entrar por cima.",
         QUALIDADE,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
@@ -223,11 +303,11 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "banner-desktop",
       titulo: "Banner do desktop (segunda dobra)",
       aspecto: ASPECTO["banner-desktop"],
+      origem: "gerada",
       prompt: [
-        `Fotografia publicitária de DETALHE de ${tema}, em close, para a segunda dobra de uma loja.`,
-        "Enquadramento fechado no produto e na textura do material, sem pessoas no quadro.",
-        `Paleta dominante: ${cores}.`,
-        "Assunto à esquerda do quadro, metade direita limpa e desocupada para o texto entrar por cima.",
+        `Segunda cena da campanha da loja de ${tema}: o produto em close, com a textura do material bem visível, sem pessoas.`,
+        `Fundo de papel envelhecido com grão, na paleta ${cores}.`,
+        "Produto à ESQUERDA do quadro, metade direita vazia e uniforme para o texto entrar por cima.",
         QUALIDADE,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
@@ -238,11 +318,11 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "banner-mobile",
       titulo: "Banner do celular (segunda dobra)",
       aspecto: ASPECTO["banner-mobile"],
+      origem: "gerada",
       prompt: [
-        `Fotografia publicitária de DETALHE de ${tema}, em close e enquadramento vertical para celular.`,
-        "Enquadramento fechado no produto e na textura do material, sem pessoas no quadro.",
-        `Paleta dominante: ${cores}.`,
-        "Assunto na metade de cima do quadro, metade de baixo limpa para o texto entrar por cima.",
+        `A MESMA segunda cena da loja de ${tema}, em pé para celular: o produto em close, sem pessoas.`,
+        `Fundo de papel envelhecido com grão, na paleta ${cores}.`,
+        "Produto na metade de BAIXO do quadro, terço de cima vazio e uniforme para o texto entrar por cima.",
         QUALIDADE,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
@@ -250,20 +330,37 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
     },
   ];
 
-  for (const [indice, nome] of colecoes.entries()) {
+  /**
+   * As TRÊS cenas da marca, no lugar de seis capas de coleção.
+   *
+   * Eram seis capas, uma por coleção, e elas custavam mais da metade do lote
+   * inteiro para entregar seis fotos de produto sobre fundo liso — variações do
+   * mesmo enquadramento. Três cenas de MUNDO da marca (quem usa, do que é
+   * feito, onde vive) valem mais: aparecem na página inteira, no rodapé, no
+   * "sobre" e nas próprias capas de coleção, que passam a rodar entre elas.
+   *
+   * E o lote encolhe, o que não é detalhe: era com doze pedidos simultâneos que
+   * a fila estourava a espera e a loja saía com três imagens.
+   */
+  const CENAS: Array<{ chave: string; titulo: string; direcao: string }> = [
+    { chave: "cena-1", titulo: "Cena da marca: quem usa", direcao: "uma pessoa real em situação cotidiana usando o produto, luz natural, ambiente com pouca informação atrás" },
+    { chave: "cena-2", titulo: "Cena da marca: o material", direcao: "close no material e no acabamento do produto, mãos entrando no quadro, textura evidente" },
+    { chave: "cena-3", titulo: "Cena da marca: o mundo dela", direcao: "o produto no ambiente onde a marca vive, plano aberto, sem pessoas, clima de fim de tarde" },
+  ];
+  for (const cena of CENAS) {
     pecas.push({
-      chave: `colecao-${indice + 1}`,
-      papel: "colecao",
-      titulo: `Capa da coleção ${nome}`,
-      aspecto: ASPECTO.colecao,
+      chave: cena.chave,
+      papel: "cena",
+      titulo: cena.titulo,
+      aspecto: ASPECTO.cena,
+      origem: "gerada",
       prompt: [
-        `Foto de catálogo para a coleção "${nome}" de uma loja de ${tema}.`,
-        `Paleta dominante: ${cores}.`,
-        "Produto único centralizado sobre fundo liso na cor da marca, com sombra suave sob o produto.",
+        `Fotografia de campanha para uma loja de ${tema}: ${cena.direcao}.`,
+        `Paleta dominante: ${cores}, com fundo texturizado em tom quente.`,
         QUALIDADE,
-        "Sem letras e sem marca d'água.",
+        "Sem letras, sem logotipos e sem marca d'água.",
       ].join(" "),
-      fallbackSvg: colecaoSvg(marca, nome, indice),
+      fallbackSvg: colecaoSvg(marca, colecoes[0] ?? cena.titulo, CENAS.indexOf(cena)),
     });
   }
 
