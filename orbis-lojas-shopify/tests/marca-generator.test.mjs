@@ -466,10 +466,20 @@ test("marca própria é 100% manual; as artes da Orbis só existem no caminho ge
     assert.match(imagens, new RegExp(`chave: "${chave}"`), `faltou a peça ${chave}`);
   }
   assert.match(imagens, /Segunda cena[\s\S]{0,200}sem pessoas/);
-  /* e a capa de cada coleção, com o nome dela dentro do pedido: é o nome que
-     diz o que aquela coleção vende, e foi a pessoa que o escreveu */
+  /* e a capa de cada coleção ABRE pelo nome dela. O nome já estava no pedido
+     antes e mesmo assim a capa de "Colares" veio com anéis: o que decide não é
+     estar escrito, é o peso — e o pedido começava pela descrição larga da loja */
   assert.match(imagens, /chave: `colecao-\$\{indice \+ 1\}`/);
-  assert.match(imagens, /Mostre o que essa coleção vende: \$\{nome\}/);
+  assert.match(imagens, /`\$\{nome\}\.`/, "o nome da coleção abre o pedido, sozinho");
+  assert.match(imagens, /O que aparece na imagem é \$\{nome\}/);
+  const pedidoDaCapa = imagens.match(/papel: "colecao"[\s\S]*?fallbackSvg: colecaoSvg/)?.[0] ?? "";
+  assert.ok(pedidoDaCapa, "não achei o pedido da capa de coleção");
+  assert.doesNotMatch(pedidoDaCapa, /\$\{tema\}/, "a capa não pede pelo resumo largo da loja");
+  assert.match(pedidoDaCapa, /\$\{produto\}/, "e sim pelo assunto curto do nicho");
+  /* a dobra de close é conferida no PROMPT montado, não no arquivo: aqui o
+     texto antigo ainda aparece — dentro do comentário que explica por que ele
+     saiu. Ver "o pedido da capa abre pelo nome da coleção" em
+     `geracao-de-artes.test.mjs`. */
   /* a variedade é CALCULADA: pedir "faça diferente" ao modelo devolve o mesmo
      enquadramento com outra cor */
   assert.match(imagens, /const ENQUADRAMENTOS = \[/);
@@ -612,7 +622,7 @@ test("o provedor de imagem por IA é opcional e só aceita modelo da lista", asy
   }
 });
 
-test("cada dobra de banner tem foto própria, e nenhuma recebe texto", async () => {
+test("cada dobra de banner tem foto própria; a primeira fica calada e a segunda escreve", async () => {
   const raiz = fileURLToPath(new URL("..", import.meta.url));
   const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
   try {
@@ -667,14 +677,22 @@ test("cada dobra de banner tem foto própria, e nenhuma recebe texto", async () 
     assert.equal(a.image, "/api/media/1111111111111111aaaa");
     assert.equal(b.image, "/api/media/2222222222222222bbbb");
 
-    /* SEM TEXTO no banner, decisão do dono: "não quero o texto". O campo é
-       limpo mesmo quando o tema trouxe um padrão em inglês, senão a loja abre
-       com "Image slide" escrito por cima da foto. */
+    /* A PRIMEIRA dobra fica calada, decisão do dono: "não quero o texto". O
+       campo é limpo mesmo quando o tema trouxe um padrão em inglês, senão a
+       loja abre com "Image slide" escrito por cima da foto. */
+    assert.equal(a.heading, "", "a primeira dobra não recebe título");
     for (const bloco of [a, b]) {
-      assert.equal(bloco.heading, "", "banner não recebe título");
-      assert.equal(bloco.subheading, "", "nem subtítulo");
+      assert.equal(bloco.subheading, "", "dobra nenhuma recebe subtítulo");
       assert.equal(bloco.button_label, "", "nem rótulo de botão");
     }
+
+    /* A SEGUNDA escreve, e também é pedido do dono. A frase é o SLOGAN da
+       marca, que sai das manchetes do nicho: combina com o que a loja vende e
+       é a mesma que a pessoa aprovou na etapa da marca — nada inventado aqui.
+       É a mesma dobra que recebe a arte `banner-2`, porque o índice que
+       escolhe a foto é o que decide a frase. */
+    assert.ok(marca.slogan.trim(), "a marca do nicho tem de trazer uma frase");
+    assert.equal(b.heading, marca.slogan, "a segunda dobra recebe a frase da marca");
 
     /* o texto pousa NA imagem, na paleta da marca — nada de caixa branca */
     for (const bloco of [a, b]) {
@@ -818,25 +836,26 @@ test("o banner sai como arquivo fechado: foto, véu medido e tipografia", async 
   assert.match(flow, /não consegui escrever o texto na arte deste banner/);
 
   const marca = await readFile(new URL("../lib/shopify-brand.ts", import.meta.url), "utf8");
-  /* com a arte composta, o tema fica CALADO no banner: deixá-lo escrever põe a
-     frase duas vezes na mesma foto, e é a segunda que escorrega para fora */
-  assert.match(marca, /if \(dobraDeBanner && \(PAPEL_TITULO/, "o banner não recebe texto em condição nenhuma");
+  /* o texto da dobra passa por UM lugar só, e é ele que decide qual dobra
+     escreve: a primeira fica calada e a segunda recebe a frase da marca */
+  assert.match(marca, /if \(dobraDeBanner && \(PAPEL_TITULO/, "o texto da dobra é decidido num ponto só");
+  assert.match(marca, /indiceDaDobra === DOBRA_COM_FRASE/, "e a dobra que escreve é declarada, não adivinhada");
   /* e o campo do celular recebe o arquivo do CELULAR, não o corte largo */
   assert.match(marca, /const doCelular = \/mobile\|celular\/i\.test\(papel\)/);
 });
 
 /**
- * O banner é a FOTO. Sem frase, no computador e no celular.
+ * A PRIMEIRA dobra é a FOTO. Sem frase, no computador e no celular.
  *
- * Decisão do dono, dita por extenso: "não quero o texto". Quem quiser escrever
- * ali escreve no editor da Shopify depois, que é onde a decisão é de quem
- * vende.
+ * Decisão do dono, dita por extenso: "não quero o texto". Vale para a dobra do
+ * topo, que é a que ele estava vendo; a segunda ele pediu com frase depois, e
+ * quem cobra isso é o teste das duas dobras.
  *
  * O outro lado é o corte: o arquivo do celular (`<peça>-mobile`) nasce da
  * composição no navegador e não está na lista de peças, então a rota o
  * descartava calado — e o campo do celular ficava com o corte largo.
  */
-test("o banner nunca recebe texto, e cada formato recebe o corte dele", async () => {
+test("a primeira dobra nunca recebe texto, e cada formato recebe o corte dele", async () => {
   const rota = await readFile(new URL("../app/api/client-request/route.ts", import.meta.url), "utf8");
   /* o acompanhante passa pela porta, e a lista continua fechada */
   assert.match(rota, /const acompanhante = parsed\.data\.imagens\?\.\[`\$\{peca\.chave\}-mobile`\]/);
@@ -866,9 +885,9 @@ test("o banner nunca recebe texto, e cada formato recebe o corte dele", async ()
     const marca = { name: "Elo", slogan: "Brilho no detalhe", description: "Semijoias.", primaryColor: "#2f3d2f", backgroundColor: "#f6f4ef" };
     const bloco = (t) => t.pages[0].sections[0].blocks[0].settings;
 
-    /* SEM texto, sempre: mesmo com só a foto, o banner não ganha frase */
+    /* SEM texto na dobra do topo: mesmo com só a foto, ela não ganha frase */
     const semTexto = aplicarMarcaNoTema(tema, { ...marca, imagens: { "banner-1": "/api/media/aaaaaaaa-1111-4000-8000-000000000001" }, imagensGeradas: ["banner-1"] });
-    assert.equal(bloco(semTexto.theme).heading, "", "banner não recebe título em hipótese nenhuma");
+    assert.equal(bloco(semTexto.theme).heading, "", "a dobra do topo não recebe título");
     assert.equal(bloco(semTexto.theme).button_label, "", "nem rótulo de botão");
     assert.equal(bloco(semTexto.theme).image, bloco(semTexto.theme).mobile_image, "sem corte alto, o celular repete o largo");
 

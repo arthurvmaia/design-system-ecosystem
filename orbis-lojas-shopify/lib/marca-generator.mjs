@@ -66,6 +66,16 @@ export const NICHOS = Object.freeze([
     id: "roupas",
     nome: "Roupas e moda",
     resumo: "Peças de vestuário, básicos e coleções de estação.",
+    /**
+     * O que a loja vende, em DUAS palavras — para o pedido de imagem.
+     *
+     * `resumo` é a frase de vitrine e serve à tela; num pedido a um gerador de
+     * imagem ela vira ruído. "Semijoias, bijuterias e acessórios de uso diário"
+     * fez a capa de "Pulseiras" voltar como BOLSA: o modelo pesou "acessórios",
+     * que estava escrito no pedido, e ignorou a palavra que importava. O
+     * assunto de uma capa é a coleção; o nicho entra curto e só como contexto.
+     */
+    produto: "roupas",
     raizes: ["Alma", "Trama", "Linho", "Volare", "Aurora", "Cais", "Verso", "Norte"],
     sufixos: ["Atelier", "Studio", "Wear", "Co.", "Moda"],
     paletas: [
@@ -92,6 +102,7 @@ export const NICHOS = Object.freeze([
     id: "oculos",
     nome: "Óculos e eyewear",
     resumo: "Óculos de sol e armações de grau.",
+    produto: "óculos",
     raizes: ["Vista", "Lente", "Solar", "Íris", "Miró", "Claro", "Zenite"],
     sufixos: ["Eyewear", "Optics", "Studio", "Co."],
     paletas: [
@@ -118,6 +129,7 @@ export const NICHOS = Object.freeze([
     id: "relogios",
     nome: "Relógios",
     resumo: "Relógios analógicos, digitais e smartwatches.",
+    produto: "relógios",
     raizes: ["Hora", "Cronos", "Meridiano", "Vento", "Órbita", "Aço"],
     sufixos: ["Watches", "Relojoaria", "Time", "Co."],
     paletas: [
@@ -144,6 +156,7 @@ export const NICHOS = Object.freeze([
     id: "beleza",
     nome: "Beleza e skincare",
     resumo: "Cuidados com a pele, cabelo e maquiagem.",
+    produto: "cosméticos",
     raizes: ["Pele", "Aura", "Sereno", "Flor", "Rotina", "Lume"],
     sufixos: ["Beauty", "Skin", "Cosméticos", "Care"],
     paletas: [
@@ -170,6 +183,7 @@ export const NICHOS = Object.freeze([
     id: "casa",
     nome: "Casa e decoração",
     resumo: "Utilidades, organização e decoração para o lar.",
+    produto: "objetos de decoração para casa",
     raizes: ["Casa", "Ninho", "Terra", "Abrigo", "Varanda", "Lar"],
     sufixos: ["Home", "Casa", "Decor", "Studio"],
     paletas: [
@@ -196,6 +210,7 @@ export const NICHOS = Object.freeze([
     id: "pet",
     nome: "Pet",
     resumo: "Acessórios, brinquedos e cuidados para cães e gatos.",
+    produto: "produtos para cães e gatos",
     raizes: ["Patas", "Focinho", "Late", "Bicho", "Amigo", "Ronrom"],
     sufixos: ["Pet", "Petshop", "Store", "Co."],
     paletas: [
@@ -222,6 +237,7 @@ export const NICHOS = Object.freeze([
     id: "fitness",
     nome: "Fitness e esportes",
     resumo: "Equipamentos, acessórios e roupa de treino.",
+    produto: "artigos de treino",
     raizes: ["Força", "Pulso", "Ritmo", "Fibra", "Movi", "Ápice"],
     sufixos: ["Fit", "Sports", "Training", "Co."],
     paletas: [
@@ -248,6 +264,7 @@ export const NICHOS = Object.freeze([
     id: "gadgets",
     nome: "Eletrônicos e gadgets",
     resumo: "Acessórios de tecnologia, áudio e casa conectada.",
+    produto: "eletrônicos",
     raizes: ["Pulso", "Circuito", "Nova", "Volt", "Sinal", "Núcleo"],
     sufixos: ["Tech", "Labs", "Gadgets", "Store"],
     paletas: [
@@ -274,6 +291,7 @@ export const NICHOS = Object.freeze([
     id: "infantil",
     nome: "Infantil e bebê",
     resumo: "Enxoval, brinquedos e acessórios para crianças.",
+    produto: "artigos infantis",
     raizes: ["Nino", "Balão", "Pequeno", "Céu", "Colo", "Bem-me-quer"],
     sufixos: ["Kids", "Baby", "Infantil", "Store"],
     paletas: [
@@ -300,6 +318,7 @@ export const NICHOS = Object.freeze([
     id: "joias",
     nome: "Joias e acessórios",
     resumo: "Semijoias, bijuterias e acessórios de uso diário.",
+    produto: "joias",
     raizes: ["Brilho", "Prata", "Elo", "Luz", "Camélia", "Ouro"],
     sufixos: ["Joias", "Acessórios", "Studio", "Co."],
     paletas: [

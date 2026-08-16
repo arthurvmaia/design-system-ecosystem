@@ -141,6 +141,57 @@ test("arte gerada tem teto próprio, e o limite da Shopify vira aviso", async ()
 });
 
 /**
+ * O PEDIDO DA CAPA é liderado pelo nome da coleção.
+ *
+ * Medido numa loja de joias entregue: a capa de "Colares" veio com anéis, a de
+ * "Brincos" com um anel e a de "Pulseiras" com duas BOLSAS. O nome da coleção
+ * já estava escrito no pedido — não era falta de menção, era peso. O pedido
+ * abria com "uma loja de semijoias, bijuterias e acessórios de uso diário", e o
+ * modelo obedeceu ao que se repetia: a loja, e a palavra "acessórios" dentro
+ * dela. A coleção aparecia uma vez, no meio de quinhentos caracteres.
+ */
+test("o pedido da capa abre pelo nome da coleção, e o nicho entra curto", async () => {
+  await comServidor(async (server) => {
+    const { pecasDaMarca } = await server.ssrLoadModule("/lib/marca-imagens.ts");
+    const pecas = pecasDaMarca({
+      name: "Prata Studio", primaryColor: "#3f3529", backgroundColor: "#faf7f2", accentColor: "#c9a227",
+      nicheId: "joias", collections: ["Colares", "Brincos", "Pulseiras"],
+    });
+    const capa = (n) => pecas.find((peca) => peca.chave === `colecao-${n}`);
+
+    /* o nome abre o pedido e volta logo depois: duas menções a ele contra uma
+       ao nicho, que é o contrário da conta que produziu a bolsa */
+    assert.ok(capa(1).prompt.startsWith("Colares."), `abriu com: ${capa(1).prompt.slice(0, 40)}`);
+    assert.ok((capa(1).prompt.match(/Colares/g) ?? []).length >= 2, "o nome tem de aparecer duas vezes");
+
+    for (const n of [1, 2, 3]) {
+      /* a descrição LARGA da loja fica fora, e com ela a palavra que roubou a
+         capa de "Pulseiras" */
+      assert.doesNotMatch(capa(n).prompt, /acessórios/i, "o pedido não pode carregar 'acessórios'");
+      assert.doesNotMatch(capa(n).prompt, /bijuterias/i);
+      assert.match(capa(n).prompt, /loja de joias/, "o nicho entra curto, como contexto");
+      /* e o pedido cabe no teto da rota: cortado, ele perde o fim, que é onde
+         mora "sem letras" — e a peça voltaria com texto escrito dentro */
+      assert.ok(capa(n).prompt.length <= 1200, `pedido com ${capa(n).prompt.length} caracteres`);
+      assert.match(capa(n).prompt, /Sem letras/);
+    }
+
+    /* cada capa continua com o enquadramento dela: sem isso saem seis fotos
+       iguais com cores diferentes */
+    const enquadramento = (n) => capa(n).prompt.match(/Enquadramento: ([^.]+)/)[1];
+    assert.notEqual(enquadramento(1), enquadramento(2));
+
+    /* e a segunda dobra pede o PRODUTO antes do fundo. O pedido antigo abria
+       por "o produto em close, com a textura do material bem visível" e
+       terminava em "fundo de papel envelhecido com grão": voltou a foto de um
+       papel, sem produto nenhum no quadro. Duas menções a textura contra uma. */
+    const dobraDeClose = pecas.find((peca) => peca.chave === "banner-2");
+    assert.ok(dobraDeClose.prompt.startsWith("joias em close"), dobraDeClose.prompt.slice(0, 40));
+    assert.doesNotMatch(dobraDeClose.prompt, /papel envelhecido/);
+  });
+});
+
+/**
  * A CAPA DE CADA COLEÇÃO chega ao cartão daquela coleção.
  *
  * Gerar uma capa por coleção não resolve nada se ela não chegar ao cartão. E o

@@ -156,6 +156,15 @@ function pecasDeBanner(imagens: Record<string, string>, papel: string): string[]
 const ALTURA_DE_BANNER = /^(slide_height|image_height|banner_height|height)$/i;
 /** Só em seção de dobra do topo: em cartão ou galeria a altura adaptativa é o certo. */
 const SECAO_DE_BANNER = /(slideshow|image.?banner|hero|banner)/i;
+/**
+ * A dobra que RECEBE a frase, contada como as fotos são contadas: 0 é a
+ * primeira, 1 é a segunda.
+ *
+ * A primeira dobra é a foto e mais nada — é a regra do dono. A segunda é a que
+ * ele pediu com frase, e é a mesma dobra que recebe a arte `banner-2`, porque
+ * o índice que escolhe a foto é este. Texto e foto casam por construção.
+ */
+const DOBRA_COM_FRASE = 1;
 
 /**
  * As famílias que o `font_picker` da Shopify aceita.
@@ -554,26 +563,36 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
            * em inglês e o que é comprido demais para caber num botão.
            */
           /**
-           * NA DOBRA DE BANNER não entra texto. Nenhum, em formato nenhum.
+           * NA DOBRA DE BANNER não entra texto — com UMA exceção, e ela é
+           * pedida: a SEGUNDA dobra escreve uma frase.
            *
-           * É decisão do dono, dita por extenso: "não quero o texto". O banner
-           * é a foto, e só. Quem quiser escrever ali escreve no editor da
-           * Shopify depois, que é onde a decisão é dele e não nossa.
+           * A regra do dono continua valendo na primeira: "não quero o texto",
+           * o banner é a foto, e quem quiser escrever ali escreve no editor da
+           * Shopify. Na segunda ele pediu o contrário, e a frase é o SLOGAN da
+           * marca — que nasce das manchetes do nicho escolhido
+           * (`marca-generator.mjs`) e por isso combina com o que a loja vende.
+           * Não é frase inventada aqui: é a mesma que a pessoa viu e aprovou na
+           * etapa da marca, e que ela pode trocar por lá.
            *
-           * E limpa o que já estiver escrito, inclusive o que o tema trouxe:
+           * Só o TÍTULO, e só nessa dobra. Subtítulo e botão continuam vazios:
+           * três textos empilhados sobre a foto foi o que poluiu a dobra da
+           * primeira vez. E o subtítulo é conferido ANTES do título, senão
+           * `subheading` casaria com `heading` e ganharia a frase também.
+           *
+           * O resto limpa o que estiver escrito, inclusive o que o tema trouxe:
            * deixar a frase antiga era o "Brilho no detalhe" reaparecendo por
-           * cima da foto nova, que é exatamente o que se quer evitar.
-           *
-           * Vale no desktop E no celular, porque o campo é o mesmo: o texto do
-           * bloco serve os dois cortes, e apagar só um lado deixaria o outro
-           * falando sozinho.
+           * cima da foto nova. Vale no desktop E no celular, porque o campo é o
+           * mesmo — o texto do bloco serve os dois cortes.
            */
           if (dobraDeBanner && (PAPEL_TITULO.test(pista) || CAMPO_DE_SUBTITULO.test(pista) || CAMPO_DE_BOTAO.test(pista))) {
+            const ehTituloDaDobra = !CAMPO_DE_SUBTITULO.test(pista) && !CAMPO_DE_BOTAO.test(pista) && PAPEL_TITULO.test(pista);
+            const frase = ehTituloDaDobra && indiceDaDobra === DOBRA_COM_FRASE ? (marca.slogan ?? "").trim() : "";
             /* vazio EXPLÍCITO, não ausente: campo ausente faz o Liquid cair no
                padrão do schema, e o padrão do Dawn é "Image slide" e "Button
                label" — a loja abriria com placeholder em inglês sobre a foto */
-            if (alvo.settings[definicao.id] !== "") {
-              alvo.settings[definicao.id] = "";
+            const valor = frase ? valorDeTexto(definicao, frase) : "";
+            if (alvo.settings[definicao.id] !== valor) {
+              alvo.settings[definicao.id] = valor;
               marcou(`${secao.type}.${definicao.id}`);
             }
             continue;

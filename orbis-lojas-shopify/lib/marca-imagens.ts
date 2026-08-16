@@ -170,6 +170,19 @@ function assunto(nicheId: string | undefined) {
   return nichoPorId(nicheId).resumo.replace(/\.$/, "").toLowerCase();
 }
 
+/**
+ * O que a loja vende, em DUAS palavras. É esta que vai no pedido de imagem.
+ *
+ * `assunto` devolve o resumo de vitrine — "semijoias, bijuterias e acessórios
+ * de uso diário" —, e num pedido a um gerador ele COMPETE com o assunto da
+ * peça. Medido numa loja real de joias: a capa de "Pulseiras" voltou com duas
+ * BOLSAS, porque "acessórios" estava escrito no pedido e "Pulseiras" era uma
+ * palavra só no meio de quinhentos caracteres. Ganhou a que se repetia.
+ */
+function produtoDoNicho(nicheId: string | undefined) {
+  return nichoPorId(nicheId).produto || assunto(nicheId);
+}
+
 /* ------------------------------------------------------- desenhos locais */
 
 function moldura(largura: number, altura: number, corpo: string, fundo: string) {
@@ -232,6 +245,9 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
   const nicho = nichoPorId(marca.nicheId);
   const cores = coresDaMarca(marca).join(", ");
   const tema = assunto(marca.nicheId);
+  /* o assunto ESTREITO, para os pedidos em que a peça tem um produto certo
+     para mostrar: capa de coleção e a dobra de close. Ver `produtoDoNicho`. */
+  const produto = produtoDoNicho(marca.nicheId);
   /* sem nicho escolhido (marca própria), as coleções são as de qualquer loja:
      herdar as de "roupas" faria uma loja de ferramentas pedir "Alfaiataria" */
   const colecoes = (marca.collections?.length
@@ -354,10 +370,19 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       aspecto: ASPECTO["banner-desktop"],
       resolucao: resolucaoDaPeca("banner-desktop"),
       origem: "gerada",
+      /**
+       * O PRODUTO primeiro, e o fundo depois — nesta ordem, e não por gosto.
+       *
+       * O pedido antigo abria com "o produto em close, com a textura do
+       * material bem visível" e terminava em "fundo de papel envelhecido com
+       * grão". Voltou uma foto de PAPEL: nenhum produto no quadro. Duas
+       * menções a textura contra uma ao produto, e o modelo somou os votos.
+       */
       prompt: [
-        `Segunda cena da campanha da loja de ${tema}: o produto em close, com a textura do material bem visível, sem pessoas.`,
-        `Fundo de papel envelhecido com grão, na paleta ${cores}.`,
+        `${produto} em close, ocupando o centro do quadro.`,
+        `Segunda cena da campanha de uma loja de ${produto}: só o produto, sem pessoas.`,
         "Produto CENTRALIZADO no quadro, com margem larga em volta: a mesma foto vai ser cortada larga no computador e alta no celular.",
+        `Fundo liso e discreto na paleta ${cores}, sem textura que dispute com o produto.`,
         QUALIDADE,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
@@ -405,9 +430,22 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       aspecto: ASPECTO.colecao,
       resolucao: resolucaoDaPeca("colecao"),
       origem: "gerada",
+      /**
+       * O NOME DA COLEÇÃO abre o pedido, sozinho, e volta logo depois.
+       *
+       * Ele já estava no pedido antes, e mesmo assim a capa de "Colares" veio
+       * com anéis e a de "Pulseiras" com bolsas. Não era falta de menção: era
+       * peso. O pedido começava por "uma loja de semijoias, bijuterias e
+       * acessórios de uso diário", e o modelo obedeceu ao que se repetia — a
+       * loja — em vez da palavra que aparecia uma vez só.
+       *
+       * Agora o nicho entra CURTO (`produtoDoNicho`) e como contexto, depois
+       * do assunto. Duas menções ao nome contra uma ao nicho.
+       */
       prompt: [
-        `Fotografia de campanha para a coleção "${nome}" de uma loja de ${tema}.`,
-        `Mostre o que essa coleção vende: ${nome}.`,
+        `${nome}.`,
+        `Fotografia de campanha mostrando ${nome} de uma loja de ${produto}.`,
+        `O que aparece na imagem é ${nome}, e nenhum outro tipo de produto.`,
         `Enquadramento: ${ENQUADRAMENTOS[indice % ENQUADRAMENTOS.length]}.`,
         `Paleta dominante: ${cores}.`,
         QUALIDADE,

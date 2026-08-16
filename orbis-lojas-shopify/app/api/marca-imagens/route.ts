@@ -176,9 +176,17 @@ export async function POST(request: Request) {
   const papel = papelDe(corpo.papel ?? null);
   const modelo = typeof corpo.modelo === "string" && modeloValido(papel, corpo.modelo) ? corpo.modelo : modeloPadrao(papel);
   const paleta = Array.isArray(corpo.paleta) ? corpo.paleta.filter((cor): cor is string => typeof cor === "string").slice(0, 4) : [];
-  /* o texto sai do gerador de marca; o do cliente é aceito, mas curto */
+  /**
+   * O texto sai do gerador de marca; o teto existe contra pedido desgovernado.
+   *
+   * Eram 600 caracteres, e o pedido de capa de coleção mede ~560 com um nome
+   * curto: um nome comprido ("Coleção de estação") passava do teto e o corte
+   * comia o FIM da frase, que é onde mora "sem letras, sem logotipos e sem
+   * marca d'água". A peça voltaria com texto escrito dentro, e ninguém saberia
+   * por quê. O teto sobe para o dobro, que ainda é teto e já não corta o nosso.
+   */
   const prompt = typeof corpo.prompt === "string" && corpo.prompt.trim()
-    ? corpo.prompt.trim().slice(0, 600)
+    ? corpo.prompt.trim().slice(0, 1200)
     : promptDaVitrine({ nicho: String(corpo.nicho ?? "produtos"), marca: String(corpo.marca ?? "a loja"), paleta });
 
   try {
