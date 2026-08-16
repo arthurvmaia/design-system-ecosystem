@@ -121,7 +121,7 @@ test("o fluxo grava o ponto de parada e restaura dele, e o servidor fecha o proj
   /* a leitura é valor INICIAL de useState, não efeito: efeito com setState
      síncrono provoca render em cascata e faria a tela piscar no passo 1 antes
      de pular para o 3 */
-  assert.match(flow, /const \[ponto\] = useState\(lerPonto\)/);
+  assert.match(flow, /const \[pontoNoDisco\] = useState\(lerPonto\)/);
   assert.doesNotMatch(flow, /useEffect\(\(\) => \{\s*set(Passo|Modo|NicheId)\(/);
   assert.match(flow, /useState\(\(\) => passoRestauravel\(ponto/);
   assert.match(flow, /useState<Modo \| null>\(\(\) => \(ponto\.modo/);
@@ -147,4 +147,44 @@ test("o fluxo grava o ponto de parada e restaura dele, e o servidor fecha o proj
   assert.match(rota, /UPDATE projects SET status = 'completed'/);
   const antes = rota.indexOf("UPDATE projects SET status = 'completed'");
   assert.ok(antes > rota.indexOf("const zip ="), "marcar como pronto antes do ZIP existir é mentir sobre o resultado");
+});
+
+/**
+ * LOJA ENTREGUE não é ponto de parada: é fim.
+ *
+ * O ponto de parada existe para quem PAROU no meio. Quem terminou não tem onde
+ * continuar — o ZIP já está no disco. Restaurar uma loja entregue fazia a pior
+ * coisa possível para quem monta loja para os outros: o cliente SEGUINTE abria
+ * o fluxo e caía na etapa 04 da loja do cliente ANTERIOR, com as artes daquele
+ * aprovadas, e o passo das artes dizia "nada a gerar" — porque arte aprovada
+ * não se refaz. O ciclo travava justamente onde deveria recomeçar.
+ */
+test("entregou, some: a loja pronta não volta para o próximo cliente", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+
+  /* o estado lido do disco e o estado USADO são coisas diferentes: entregue
+     abre do zero */
+  assert.match(flow, /const \[pontoNoDisco\] = useState\(lerPonto\)/);
+  assert.match(flow, /const ponto = pontoNoDisco\.estado === "completed" \? PONTO_INICIAL : pontoNoDisco/);
+
+  /**
+   * E o disco é APAGADO, não só ignorado.
+   *
+   * Ignorar resolveria aquela abertura e deixaria a bomba armada: bastava
+   * escolher de novo o mesmo nicho para a marca e as artes do cliente anterior
+   * voltarem, porque o cofre é por nicho.
+   */
+  assert.match(flow, /function encerrarLojaEntregue/);
+  assert.match(flow, /ponto\.estado !== "completed"\) return/);
+  assert.match(flow, /removeItem\(`orbis:marca:\$\{ponto\.nicheId\}`\)/);
+  assert.match(flow, /useEffect\(\(\) => \{ encerrarLojaEntregue\(pontoNoDisco\); \}, \[pontoNoDisco\]\)/);
+  /* o efeito NÃO chama setState: o estado inicial já nasceu limpo, e setState
+     síncrono em efeito é o que o lint do projeto reprova */
+  const efeito = flow.match(/useEffect\(\(\) => \{ encerrarLojaEntregue[^\n]*/)?.[0] ?? "";
+  assert.doesNotMatch(efeito, /set[A-Z]/);
+
+  /* e quem parou no MEIO continua sendo restaurado: é para isso que o ponto
+     existe, e confundir as duas coisas jogaria trabalho fora */
+  assert.match(flow, /const \[artesGuardadas\] = useState\(\(\) => lerArtes\(ponto\.nicheId\)\)/);
 });

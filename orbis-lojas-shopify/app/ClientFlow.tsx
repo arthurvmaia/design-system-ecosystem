@@ -17,7 +17,7 @@ import {
 } from "@/lib/artes-da-loja";
 import { comporBanner } from "@/lib/banner-compor";
 import {
-  ROTULO_DO_PROJETO, estadoDoProjeto, passoRestauravel, pontoLido, type EstadoDoProjeto,
+  PONTO_INICIAL, ROTULO_DO_PROJETO, estadoDoProjeto, passoRestauravel, pontoLido, type EstadoDoProjeto,
 } from "@/lib/estado-do-projeto";
 
 /**
@@ -145,6 +145,31 @@ function lerEdicoes(nicho: string): Partial<MarcaCliente> {
   } catch { return {}; }
 }
 
+/**
+ * LOJA ENTREGUE não é ponto de parada: é fim.
+ *
+ * O ponto de parada existe para quem PAROU no meio: fechou a aba escolhendo
+ * cores, voltou no dia seguinte, continua de onde estava. Quem terminou não tem
+ * onde continuar — o ZIP já está na Área de Trabalho e a loja é dele.
+ *
+ * Sem esta distinção, o app fazia a pior coisa possível para quem monta loja
+ * para os outros: o cliente SEGUINTE abria o fluxo e caía na etapa 04 da loja
+ * do cliente ANTERIOR, com as artes daquele aprovadas, e o passo das artes
+ * dizia "nada a gerar" — porque arte aprovada não se refaz. O ciclo travava
+ * justamente onde ele deveria recomeçar.
+ *
+ * Então: entregou, some. O cofre daquele nicho sai junto, senão escolher o
+ * mesmo nicho devolveria a marca e as artes do cliente passado. Nada se perde
+ * de verdade — as imagens continuam no acervo do app e o pacote, no disco.
+ */
+function encerrarLojaEntregue(ponto: { estado: string; nicheId: string }) {
+  if (typeof window === "undefined" || ponto.estado !== "completed") return;
+  try {
+    if (ponto.nicheId) window.localStorage.removeItem(`orbis:marca:${ponto.nicheId}`);
+    window.localStorage.removeItem(CHAVE_DO_PONTO);
+  } catch { /* sem armazenamento local não há o que apagar */ }
+}
+
 export function ClientFlow({ onExit }: { onExit: () => void }) {
   /**
    * O PONTO DE PARADA, restaurado.
@@ -154,8 +179,19 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
    * digitou à mão — coleções, principalmente — não voltavam de lugar nenhum:
    * não são sorteáveis a partir da semente, então eram trabalho jogado fora.
    */
-  const [ponto] = useState(lerPonto);
+  const [pontoNoDisco] = useState(lerPonto);
+  /* a loja entregue não é restaurada: quem terminou começa outra, do zero */
+  const ponto = pontoNoDisco.estado === "completed" ? PONTO_INICIAL : pontoNoDisco;
   const [artesGuardadas] = useState(() => lerArtes(ponto.nicheId));
+  /**
+   * E o que ficou no disco é apagado, não só ignorado.
+   *
+   * Ignorar resolveria esta abertura e deixaria a bomba armada: bastava a
+   * pessoa escolher de novo o mesmo nicho para a marca e as artes do cliente
+   * anterior voltarem. Apagar é efeito, então mora num efeito — e não chama
+   * `setState`, porque o estado inicial já nasceu limpo.
+   */
+  useEffect(() => { encerrarLojaEntregue(pontoNoDisco); }, [pontoNoDisco]);
   const [passo, setPasso] = useState(() => passoRestauravel(ponto, Object.keys(artesGuardadas).length > 0));
   /* até onde a pessoa já chegou: o que ficou para trás é clicável, o que vem
      depois não, senão daria para pular um passo que ainda nem foi preenchido */
