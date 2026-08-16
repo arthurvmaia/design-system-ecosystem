@@ -131,6 +131,19 @@ const CAMPO_DE_LISTA = /(collection_list|link_list|menu)/i;
  * lidas: elas estão nas lojas que já foram entregues.
  */
 function pecasDeBanner(imagens: Record<string, string>, papel: string): string[] {
+  /**
+   * O banner do celular é o ARQUIVO do celular, quando ele existe.
+   *
+   * A arte de cada dobra é composta duas vezes, uma por formato: 3000×1000 e
+   * 1080×1350, da mesma foto. O corte e a escrita são decididos na composição,
+   * então mandar o arquivo largo para o campo do celular jogaria fora
+   * exatamente o trabalho que faz o texto caber lá.
+   */
+  const doCelular = /mobile|celular/i.test(papel);
+  const compostas = Object.keys(imagens)
+    .filter((chave) => (doCelular ? /^banner-\d+-mobile$/ : /^banner-\d+$/).test(chave))
+    .sort();
+  if (compostas.length) return compostas.map((chave) => imagens[chave]);
   const daArte = Object.keys(imagens).filter((chave) => /^banner-\d+$/.test(chave)).sort();
   if (daArte.length) return daArte.map((chave) => imagens[chave]);
   const numeradas = Object.keys(imagens)
@@ -294,6 +307,9 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
    * rendem mais e custam menos. Ler as duas mantém de pé a loja gerada antes da
    * troca, que já está no computador de quem a recebeu.
    */
+  /* houve composição com texto assado? é o que decide se o tema ainda precisa
+     escrever no banner ou se deve ficar calado para não duplicar a frase */
+  const temArteComTexto = Object.keys(imagens).some((chave) => /^banner-\d+-mobile$/.test(chave));
   const capas = Object.keys(imagens)
     .filter((chave) => chave.startsWith("colecao-") || chave.startsWith("cena-"))
     .sort()
@@ -524,6 +540,25 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
            * escreveu continua intocado; só entra aqui o vazio, o placeholder
            * em inglês e o que é comprido demais para caber num botão.
            */
+          /**
+           * NA DOBRA DE BANNER, o tema não escreve nada.
+           *
+           * O título, o subtítulo e o botão são assados na própria arte agora
+           * (`banner-compor.ts`), como na referência que o dono apontou. Deixar
+           * o tema escrever também põe a frase DUAS vezes na mesma foto, uma
+           * composta e outra flutuando — e é a flutuante que escorrega para
+           * fora da imagem em tela estreita, que foi a queixa.
+           *
+           * Só quando a arte composta chegou. Sem ela o banner é foto limpa, e
+           * aí o texto do tema é o que salva a dobra de ficar muda.
+           */
+          if (dobraDeBanner && temArteComTexto && (PAPEL_TITULO.test(pista) || CAMPO_DE_SUBTITULO.test(pista) || CAMPO_DE_BOTAO.test(pista))) {
+            if (typeof atual === "string" && atual.trim() !== "") {
+              alvo.settings[definicao.id] = "";
+              marcou(`${secao.type}.${definicao.id}`);
+            }
+            continue;
+          }
           if (CAMPO_DE_BOTAO.test(pista)) {
             const texto = typeof atual === "string" ? atual : "";
             const rotuloDeVerdade = texto.trim() !== "" && texto.length <= 28 && texto !== definicao.default;

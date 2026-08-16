@@ -763,3 +763,45 @@ test("as versões da logo são derivadas do mesmo símbolo, por cálculo", async
   /* falhou o recorte? a loja segue com o símbolo, e a tela diz o que faltou */
   assert.match(flow, /não consegui recortar o fundo do símbolo/);
 });
+
+/**
+ * O TEXTO DO BANNER é assado na arte, não escrito pelo tema por cima.
+ *
+ * O tema desenhava título, subtítulo e botão na hora de renderizar, e a
+ * composição não era nossa: em tela estreita o bloco escorregava para fora da
+ * foto, e o banner virava dois pedaços que às vezes se encontravam. Agora cada
+ * dobra vira UM arquivo fechado por formato, da mesma foto.
+ */
+test("o banner sai como arquivo fechado: foto, véu medido e tipografia", async () => {
+  const compositor = await readFile(new URL("../lib/banner-compor.ts", import.meta.url), "utf8");
+
+  /* as duas medidas que a Shopify recomenda, e não um palpite */
+  assert.match(compositor, /desktop: \{ largura: 3000, altura: 1000 \}/);
+  assert.match(compositor, /mobile: \{ largura: 1080, altura: 1350 \}/);
+
+  /* o véu é MEDIDO: barra escura fixa estraga foto que já era escura e não
+     salva foto clara demais */
+  assert.match(compositor, /const brilho = soma/);
+  assert.match(compositor, /getImageData/);
+  /* e a letra nunca fica sem reserva de fonte: canvas não avisa quando a
+     família não existe, ele desenha na padrão e segue */
+  assert.match(compositor, /function pilha/);
+  assert.match(compositor, /Georgia, 'Times New Roman', serif/);
+  /* texto que não cabe ganha reticências em vez de sumir no corte */
+  assert.match(compositor, /linhas\[linhas\.length - 1\] = `\$\{ultima\}…`/);
+
+  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+  /* os dois formatos saem da MESMA foto, que foi o pedido do dono */
+  assert.match(flow, /comporBanner\(prontas\[chave\], texto, cores, "desktop", fontes\)/);
+  assert.match(flow, /comporBanner\(prontas\[chave\], texto, cores, "mobile", fontes\)/);
+  /* falhou a composição? o banner continua sendo a foto limpa, e é dito */
+  assert.match(flow, /não consegui escrever o texto na arte deste banner/);
+
+  const marca = await readFile(new URL("../lib/shopify-brand.ts", import.meta.url), "utf8");
+  /* com a arte composta, o tema fica CALADO no banner: deixá-lo escrever põe a
+     frase duas vezes na mesma foto, e é a segunda que escorrega para fora */
+  assert.match(marca, /const temArteComTexto = /);
+  assert.match(marca, /if \(dobraDeBanner && temArteComTexto &&/);
+  /* e o campo do celular recebe o arquivo do CELULAR, não o corte largo */
+  assert.match(marca, /const doCelular = \/mobile\|celular\/i\.test\(papel\)/);
+});

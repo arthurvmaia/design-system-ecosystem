@@ -7,10 +7,11 @@ import { ClientPreviaReal } from "@/app/ClientPreviaReal";
 import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada";
 import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
-import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
+import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente, textoSobre } from "@/lib/marca-generator.mjs";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
-import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
+import { coresDaMarca, fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
 import { derivarLogos } from "@/lib/logo-derivar";
+import { comporBanner } from "@/lib/banner-compor";
 
 /**
  * O balcão do cliente: quatro passos e uma loja na mão.
@@ -342,17 +343,59 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
        * outro desenho a cada pedido, que é o que fazia a marca chegar em três
        * modelos diferentes.
        */
+      const subir = async (blob: Blob, nome: string, tipo = "image/png") => {
+        const corpo = new FormData();
+        corpo.append("file", new File([blob], `${nome}.${tipo === "image/jpeg" ? "jpg" : "png"}`, { type: tipo }));
+        const resposta = await fetch("/api/media", { method: "POST", body: corpo });
+        if (!resposta.ok) throw new Error("UPLOAD_FALHOU");
+        return (await resposta.json() as { url: string }).url;
+      };
+
+      /**
+       * O TEXTO DO BANNER é assado na arte, aqui.
+       *
+       * O tema desenhava título, subtítulo e botão por cima da foto na hora de
+       * renderizar, e a composição não era nossa: em tela estreita o bloco
+       * escorregava para fora da imagem, e o banner virava dois pedaços que às
+       * vezes se encontravam.
+       *
+       * Cada arte vira DOIS arquivos fechados, um por formato — 3000×1000 e
+       * 1080×1350 — a partir da MESMA foto. É a mesma cena nos dois, que foi o
+       * outro pedido do dono, e agora o corte e a escrita são decididos aqui em
+       * vez de no navegador de quem visita.
+       */
+      const comBanner = ["banner-1", "banner-2"].filter((chave) => prontas[chave] && !prontas[`${chave}-mobile`]);
+      if (comBanner.length) {
+        setProgressoIa("escrevendo o texto nos banners…");
+        const paleta = coresDaMarca({ ...marca, nicheId });
+        const veu = marca.primaryColor || "#101010";
+        const cores = { veu, texto: textoSobre(veu), destaque: marca.accentColor || paleta[1] || textoSobre(veu) };
+        const fontes = { titulo: marca.headingFont || undefined, corpo: marca.bodyFont || undefined };
+        for (const chave of comBanner) {
+          try {
+            const texto = {
+              titulo: marca.slogan || marca.name || "",
+              subtitulo: marca.description || "",
+              cta: chave === "banner-1" ? "Ver a coleção" : "Ver a loja",
+            };
+            if (!texto.titulo.trim()) continue;
+            const largo = await comporBanner(prontas[chave], texto, cores, "desktop", fontes);
+            const alto = await comporBanner(prontas[chave], texto, cores, "mobile", fontes);
+            prontas[chave] = await subir(largo, chave, "image/jpeg");
+            prontas[`${chave}-mobile`] = await subir(alto, `${chave}-mobile`, "image/jpeg");
+            setImagensGeradas({ ...prontas });
+          } catch {
+            /* sem a composição o banner continua sendo a foto limpa, e o tema
+               volta a escrever por cima: pior que o ideal, melhor que vazio */
+            falhas[chave] = "não consegui escrever o texto na arte deste banner";
+          }
+        }
+      }
+
       if (prontas.logo && (!prontas["logo-fundo-branco"] || !prontas["logo-fundo-preto"])) {
         setProgressoIa("recortando o símbolo e montando as versões…");
         try {
           const versoes = await derivarLogos(prontas.logo);
-          const subir = async (blob: Blob, nome: string) => {
-            const corpo = new FormData();
-            corpo.append("file", new File([blob], `${nome}.png`, { type: "image/png" }));
-            const resposta = await fetch("/api/media", { method: "POST", body: corpo });
-            if (!resposta.ok) throw new Error("UPLOAD_FALHOU");
-            return (await resposta.json() as { url: string }).url;
-          };
           prontas.logo = await subir(versoes.transparente, "logotipo");
           prontas["logo-fundo-branco"] = await subir(versoes.fundoBranco, "logotipo-fundo-branco");
           prontas["logo-fundo-preto"] = await subir(versoes.fundoPreto, "logotipo-fundo-preto");
