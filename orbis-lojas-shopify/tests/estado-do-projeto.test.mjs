@@ -190,6 +190,46 @@ test("entregou, some: a loja pronta não volta para o próximo cliente", async (
 });
 
 /**
+ * O TEMA ARQUIVADO ficava num estado do qual não se saía.
+ *
+ * O botão antigo arquivava em vez de apagar. `bootstrap` só devolve publicados,
+ * então o arquivado era INVISÍVEL; e a remoção exigia `status = 'published'`,
+ * então era INDELETÁVEL. Medido neste computador: quatro linhas assim.
+ *
+ * E elas não ficavam quietas. `importShopifyTheme` grava com
+ * `ON CONFLICT(id) DO UPDATE SET status = 'published'`: importar um tema que
+ * caia no mesmo id ressuscita o zumbi, e o modelo nativo dele vira a base do
+ * tema novo por `currentDefaults`. É assim que o conteúdo de uma loja apagada
+ * reaparecia dentro de uma importação recém-feita.
+ */
+test("tema arquivado pode ser apagado, e o que sobrou some sozinho", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const data = await readFile(new URL("../lib/data.ts", import.meta.url), "utf8");
+  const fn = data.match(/export async function deleteTheme[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(fn, "deleteTheme sumiu");
+
+  /* existir basta para sair: a guarda por 'published' trancava a porta
+     justamente para quem mais precisava dela */
+  assert.doesNotMatch(fn, /FROM themes WHERE id = \? AND status = 'published'/,
+    "exigir publicado deixa o arquivado preso para sempre");
+  assert.match(fn, /SELECT id FROM themes WHERE id = \?/);
+
+  const limpeza = data.match(/async function removerTemasZumbis[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(limpeza, "a limpeza dos zumbis sumiu");
+  /* cada condição existe por um motivo, e afrouxar qualquer uma faz estrago */
+  assert.match(limpeza, /status = 'archived'/, "só o que o botão antigo arquivou");
+  assert.match(limpeza, /id NOT IN \(SELECT DISTINCT theme_id FROM projects\)/,
+    "apagar o tema de um projeto vivo deixaria o projeto órfão na tela");
+  assert.match(limpeza, /id NOT IN \(\$\{marcadores\}\)/,
+    "id semeado voltaria oco, sem os dados Shopify");
+  for (const tabela of ["favorites", "theme_imports", "theme_unlocks"]) {
+    assert.match(limpeza, new RegExp(`DELETE FROM ${tabela} WHERE theme_id`), `${tabela} ficaria apontando para um tema que não existe`);
+  }
+  /* e ela roda na preparação do banco: sem isso o zumbi espera para sempre */
+  assert.match(data, /await removerTemasZumbis\(db, themes\.map/);
+});
+
+/**
  * A LIXEIRA apaga; ela não arquivava.
  *
  * O tema sumia da tela e continuava no banco para sempre. Medido neste

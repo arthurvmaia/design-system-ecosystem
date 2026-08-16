@@ -256,6 +256,47 @@ async function initializeDatabase() {
     shrinePro.price,
     shrinePro.badge,
   ).run();
+
+  await removerTemasZumbis(db, themes.map((theme) => theme.id));
+}
+
+/**
+ * OS ZUMBIS DO BOTÃO ANTIGO, que arquivava em vez de apagar.
+ *
+ * Um tema `archived` não sai por caminho nenhum: o `bootstrap` só devolve
+ * publicados, então ele é invisível, e a remoção pedia `status = 'published'`,
+ * então era indeletável. Ficava no banco para sempre.
+ *
+ * E não ficava quieto. `importShopifyTheme` grava com
+ * `ON CONFLICT(id) DO UPDATE SET status = 'published'`: importar qualquer tema
+ * que caia no mesmo id RESSUSCITA o zumbi — e o modelo nativo dele vira a base
+ * do tema novo, via `currentDefaults`. É assim que o conteúdo de uma loja
+ * apagada reaparecia dentro de uma importação recém-feita.
+ *
+ * A limpeza é estreita de propósito, e cada condição tem motivo:
+ *
+ * - só `archived`, porque nada no código de hoje arquiva tema: quem está assim
+ *   veio do botão antigo, e o usuário já mandou apagar uma vez;
+ * - só sem projeto apontando, porque apagar o tema de um projeto vivo deixaria
+ *   o projeto órfão na tela — pior que o zumbi;
+ * - nunca um id SEMEADO: o seed o recriaria oco, sem os dados Shopify, e um
+ *   tema vazio de volta na lista é mais confuso que um invisível fora dela.
+ */
+async function removerTemasZumbis(db: ReturnType<typeof getD1>, semeados: string[]) {
+  const marcadores = semeados.map(() => "?").join(", ");
+  const alvos = await db.prepare(`SELECT id FROM themes
+    WHERE status = 'archived'
+      AND id NOT IN (${marcadores})
+      AND id NOT IN (SELECT DISTINCT theme_id FROM projects)`)
+    .bind(...semeados).all<{ id: string }>();
+  for (const alvo of alvos.results ?? []) {
+    await db.batch([
+      db.prepare("DELETE FROM favorites WHERE theme_id = ?").bind(alvo.id),
+      db.prepare("DELETE FROM theme_imports WHERE theme_id = ?").bind(alvo.id),
+      db.prepare("DELETE FROM theme_unlocks WHERE theme_id = ?").bind(alvo.id),
+      db.prepare("DELETE FROM themes WHERE id = ?").bind(alvo.id),
+    ]);
+  }
 }
 
 export async function ensureUser(identity: Identity): Promise<Viewer> {
@@ -458,7 +499,16 @@ async function apagarMidiaDosProjetos(projectIds: string[]) {
 
 export async function deleteTheme(viewer: Viewer, themeId: string) {
   const db = getD1();
-  const theme = await db.prepare("SELECT id FROM themes WHERE id = ? AND status = 'published'")
+  /**
+   * Existe é o bastante para ser apagado — publicado ou não.
+   *
+   * A guarda pedia `status = 'published'`, e isso trancava a porta justamente
+   * para quem mais precisava dela: os temas ARQUIVADOS pelo botão antigo, que
+   * arquivava em vez de apagar. Eles são invisíveis (o `bootstrap` só devolve
+   * publicados) E indeletáveis — a rota responde THEME_NOT_FOUND. Um estado do
+   * qual não se sai por caminho nenhum.
+   */
+  const theme = await db.prepare("SELECT id FROM themes WHERE id = ?")
     .bind(themeId).first<{ id: string }>();
   if (!theme) throw new Error("THEME_NOT_FOUND");
 
