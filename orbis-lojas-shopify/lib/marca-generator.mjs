@@ -493,7 +493,21 @@ export function gerarMarca({ nicheId, semente = "orbis", sobrescritas = {} } = {
   const forma = escolher(sorteio, FORMAS);
   /* as coleções são as DO NICHO, na ordem dele: quem escolheu óculos quer
      "Óculos de sol" e "Armações de grau", não um sorteio a cada geração */
-  const colecoes = nicho.colecoes.slice(0, 6);
+  /**
+   * As coleções do CLIENTE vencem as do nicho.
+   *
+   * O nicho é um ponto de partida bom ("Novidades", "Alfaiataria"), mas quem
+   * sabe as categorias da própria loja é quem vende: uma loja de roupa pode
+   * querer "Moda Fitness" e outra "Verão". Sem esta linha o que a pessoa
+   * digitava na bancada era regerado por cima aqui e sumia sem aviso.
+   *
+   * Vazio ou só espaço não conta: apagar tudo devolve as do nicho, em vez de
+   * entregar uma loja sem categoria nenhuma.
+   */
+  const escolhidas = Array.isArray(sobrescritas.collections)
+    ? sobrescritas.collections.map((nome) => String(nome ?? "").trim()).filter(Boolean)
+    : [];
+  const colecoes = escolhidas.length ? escolhidas.slice(0, 12) : nicho.colecoes.slice(0, 6);
 
   const nome = texto(sobrescritas.name) || nomeGerado;
   const primaria = cor(sobrescritas.primaryColor) || paleta.primaria;

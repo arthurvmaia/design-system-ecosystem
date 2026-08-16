@@ -315,6 +315,9 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 /* Prévia do fluxo do cliente (Fase 5) */
 .cf-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; width: min(1180px, 100%); margin: 0 auto; }
 .cf-layout > .cf-panel { width: 100%; }
+/* sem a coluna da prévia, o conteúdo ocupa a largura em vez de deixar um vão:
+   uma coluna reservada e vazia é pior que não ter coluna */
+.cf-layout-cheio { grid-template-columns: minmax(0, 1fr); width: min(980px, 100%); }
 .cf-preview { position: sticky; top: 18px; display: grid; gap: 8px; }
 .cf-preview-title { font: 600 10px var(--font-geist-mono); letter-spacing: 0.1em; color: #7f9797; text-transform: uppercase; }
 .client-site-preview { border: 1px solid #1d3232; background: #0a1414; padding: 10px; display: grid; gap: 8px; }
@@ -759,6 +762,17 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .conta-shopify-seguir.seguir-pronto { border-color: rgba(34,211,238,.55); background: rgba(6,182,212,.08); color: var(--green-bright); }
 .conta-shopify-seguir.seguir-pronto:hover, .conta-shopify-seguir.seguir-pronto:focus-visible { background: rgba(6,182,212,.16); }
 .cf-peca-nota { color: var(--muted); font-size: 9.5px; font-style: normal; letter-spacing: .06em; text-transform: uppercase; }
+.cf-colecoes-nova { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.cf-colecoes-nova .cf-field { flex: 1 1 260px; }
+.cf-colecoes-nova .secondary-button { flex: none; }
+.cf-colecoes-aviso { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: #ebcd91; font-size: 11.5px; }
+.cf-colecoes { display: grid; gap: 8px; margin: 4px 0 0; padding: 0; list-style: none; }
+/* uma linha por coleção, com o nome editável na hora: abrir um formulário só
+   para trocar uma palavra transforma um ajuste de dois segundos numa tarefa */
+.cf-colecao { display: flex; align-items: center; gap: 8px; }
+.cf-colecao input { flex: 1; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 13px; }
+.cf-colecao input:focus-visible { border-color: rgba(34,211,238,.5); outline: none; }
+.cf-colecao .icon-button { flex: none; }
 .cf-aviso-tamanho { display: inline-flex; align-items: center; gap: 7px; max-width: 560px; padding: 10px 12px; border: 1px solid rgba(255,190,92,.28); background: rgba(255,190,92,.07); color: #ebcd91; font-size: 12px; line-height: 1.5; }
 .cf-aviso-tamanho svg { flex: none; }
 .conta-shopify-aviso { max-width: 460px; color: #ebcd91; font-size: 11px; line-height: 1.5; }

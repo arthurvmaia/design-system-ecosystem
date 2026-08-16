@@ -67,6 +67,16 @@ const requestSchema = z.object({
     instagram: z.string().max(60).optional(),
     email: z.string().max(120).optional(),
     logoDataUri: z.string().max(2_000_000).optional(),
+    /**
+     * As coleções que o cliente escreveu na bancada.
+     *
+     * Sem este campo elas eram descartadas na porta: o servidor regerava a
+     * marca a partir do nicho e devolvia as coleções PADRÃO dele, então
+     * "Moda Fitness" digitado na tela virava "Alfaiataria" no pacote, sem
+     * nenhum aviso. Elas decidem as categorias do CSV, os cartões da vitrine e
+     * quantas capas a arte precisa cobrir.
+     */
+    collections: z.array(z.string().max(40)).max(12).optional(),
   }),
   /**
    * Imagens já geradas pelo provedor de IA, por chave de peça, como id de mídia
@@ -151,7 +161,7 @@ export async function POST(request: Request) {
     const criarMarca = parsed.data.criarMarca ?? Boolean(parsed.data.nicheId);
     const marca = criarMarca && parsed.data.nicheId
       ? gerarMarca({ nicheId: parsed.data.nicheId, semente: parsed.data.seed ?? "orbis", sobrescritas: parsed.data.brand })
-      : { ...parsed.data.brand, collections: [] as string[], announcement: "" };
+      : { ...parsed.data.brand, collections: parsed.data.brand.collections ?? [], announcement: "" };
     /* toda loja sai com logo, inclusive a preenchida à mão: sem isto o
        cabeçalho do site entregue ficava com o espaço da marca vazio */
     if (!marca.logoDataUri) marca.logoDataUri = logoDaMarca(marca).dataUri;

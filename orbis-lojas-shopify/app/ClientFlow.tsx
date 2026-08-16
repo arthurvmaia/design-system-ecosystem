@@ -451,6 +451,9 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
             headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
             whatsapp: marca.whatsapp, instagram: marca.instagram, email: marca.email,
+            /* as coleções que a pessoa escreveu vencem as do nicho: o servidor
+               regera a marca, e sem isto ele devolveria as padrão por cima */
+            collections: marca.collections.map((nome) => nome.trim()).filter(Boolean).slice(0, 12),
           },
           /* só vai o que a IA realmente gerou; o resto o servidor desenha */
           imagens: { ...marca.imagens, ...(modo === "gerada" ? imagensGeradas : {}) },
@@ -546,7 +549,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   return (
     <main className="client-flow">
       <div className="entry-gate-brilho" aria-hidden="true" />
-      <div className="cf-layout">
+      <div className={`cf-layout ${passo === 1 ? "cf-layout-cheio" : ""}`}>
         <div className="cf-panel">
           <header className="cf-head">
             <Orbis tamanho={40} alt="" />
@@ -779,6 +782,18 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           </footer>
         </div>
 
+        {/**
+         * A PRÉVIA não acompanha o passo da MARCA.
+         *
+         * Ali a pessoa está escrevendo nome, cores, coleções e contato — nada
+         * disso se julga olhando uma miniatura de 340px, e a coluna tirava
+         * largura de onde a decisão acontece. Decisão do dono: nesta etapa a
+         * tela é só a configuração.
+         *
+         * Nos outros passos ela fica: escolher tema e revisar são justamente
+         * as horas em que ver a loja é a pergunta.
+         */}
+        {passo !== 1 && (
         <aside className="cf-preview" aria-label="Prévia da loja">
           <span className="cf-preview-title">Prévia ao vivo</span>
           {/* a home REAL do tema com a marca aplicada, não um desenho de caixas */}
@@ -803,6 +818,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             </div>
           )}
         </aside>
+        )}
       </div>
     </main>
   );

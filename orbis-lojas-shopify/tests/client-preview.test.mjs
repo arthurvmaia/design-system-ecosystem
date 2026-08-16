@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { createServer } from "vite";
 
 /** Fase 5: prévia no fluxo do cliente, alimentada pela marca que o gerador usa. */
 
@@ -122,4 +125,80 @@ test("as imagens geradas sobrevivem ao recarregar, presas à marca que as pediu"
   /* recomeçar é recomeçar: o cofre da marca antiga sai junto */
   const recomecar = flow.match(/function recomecar\(\)[\s\S]*?\n  \}/)?.[0] ?? "";
   assert.match(recomecar, /removeItem\(cofre\)/);
+});
+
+/**
+ * AS COLEÇÕES são escritas por quem vende, e chegam inteiras ao pacote.
+ *
+ * O nicho sugere um ponto de partida, mas quem sabe as categorias da própria
+ * loja é o dono dela: uma loja de roupa pode querer "Moda Fitness" e outra
+ * "Verão", e nenhuma lista nossa acerta as duas.
+ *
+ * O caminho é longo e tinha um buraco na porta: `collections` não estava no
+ * schema da rota, então o que a pessoa digitava era descartado e o servidor
+ * regerava as coleções PADRÃO do nicho por cima. "Moda Fitness" virava
+ * "Alfaiataria" no pacote, sem nenhum aviso.
+ */
+test("as coleções que o cliente escreve vencem as do nicho e chegam ao pacote", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const bancada = await readFile(join(raiz, "app/ClientMarcaBancada.tsx"), "utf8");
+
+  /* a opção fica logo abaixo de Marca e ANTES das imagens: é ela que decide
+     quantas capas a arte precisa cobrir */
+  const ordem = bancada.match(/const INSTRUMENTOS[\s\S]*?\];/)?.[0] ?? "";
+  const ids = [...ordem.matchAll(/id: "([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ids, ["marca", "colecoes", "imagens", "voz", "paleta", "tipografia", "contato", "redes"]);
+
+  /* nome vazio e nome repetido são barrados na ENTRADA, não três telas adiante
+     quando já viraram arquivo */
+  assert.match(bancada, /Escreva o nome da coleção/);
+  assert.match(bancada, /já está na lista/);
+  assert.match(bancada, /const jaExiste = /);
+  /* e o resumo da linha conta quantas existem */
+  assert.match(bancada, /coleções definidas/);
+
+  const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
+  assert.match(flow, /collections: marca\.collections\.map/, "o navegador precisa ENVIAR as coleções");
+  const rota = await readFile(join(raiz, "app/api/client-request/route.ts"), "utf8");
+  assert.match(rota, /collections: z\.array\(z\.string\(\)\.max\(40\)\)\.max\(12\)\.optional\(\)/, "e a rota precisa ACEITAR");
+
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { gerarMarca } = await server.ssrLoadModule("/lib/marca-generator.mjs");
+    const { csvDeProdutos } = await server.ssrLoadModule("/lib/catalogo-csv.ts");
+    const minhas = ["Vestidos", "Bolsas", "Calçados", "Moda Fitness"];
+
+    /* o que a pessoa escreveu vence o nicho */
+    const comEscolha = gerarMarca({ nicheId: "roupas", semente: "x", sobrescritas: { collections: [...minhas, "  ", ""] } });
+    assert.deepEqual(comEscolha.collections, minhas, "vazio e espaço em branco não entram");
+    /* apagar tudo devolve as do nicho: loja sem categoria nenhuma é pior */
+    const semNada = gerarMarca({ nicheId: "roupas", semente: "x", sobrescritas: { collections: ["  "] } });
+    assert.deepEqual(semNada.collections, gerarMarca({ nicheId: "roupas", semente: "x" }).collections);
+
+    /* e elas chegam ao CSV, que é o que a Shopify lê para CRIAR as coleções */
+    const csv = csvDeProdutos("roupas", minhas);
+    const naPrimeiraColuna = [...new Set(csv.split(/\r?\n/).slice(1).filter(Boolean).map((l) => l.split(",")[0].replace(/^"|"$/g, "")))].filter(Boolean);
+    assert.deepEqual(naPrimeiraColuna, minhas, "a coluna Collection do CSV precisa ter as coleções do cliente");
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * A PRÉVIA sai do passo da marca.
+ *
+ * Ali a pessoa escreve nome, cores, coleções e contato, e nada disso se julga
+ * numa miniatura de 340px — a coluna só tirava largura de onde a decisão
+ * acontece. Nos outros passos ela fica: escolher tema e revisar são justamente
+ * as horas em que ver a loja é a pergunta.
+ */
+test("o passo da marca não tem coluna de prévia, e usa a largura que sobra", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
+  assert.match(flow, /\{passo !== 1 && \(\s*<aside className="cf-preview"/, "a prévia não pode aparecer no passo 02");
+  assert.match(flow, /passo === 1 \? "cf-layout-cheio" : ""/);
+
+  const css = await readFile(join(raiz, "app/globals.css"), "utf8");
+  /* uma coluna reservada e vazia é pior que não ter coluna */
+  assert.match(css, /\.cf-layout-cheio \{ grid-template-columns: minmax\(0, 1fr\)/);
 });
