@@ -146,6 +146,14 @@ export type ShopifyThemeImport = {
    */
   orbisCustomizacao?: Record<string, unknown>;
   /**
+   * Os nomes de arquivo das ARTES que vieram dentro do pacote entregue.
+   *
+   * É por eles que a reconexão sabe quais assets instalados são da loja, em vez
+   * de casar um `shopify://shop_images/<nome>` com qualquer arquivo do tema que
+   * por acaso tenha o mesmo nome.
+   */
+  orbisArtes?: string[];
+  /**
    * Arquivos de `assets/` que ficaram de FORA da instalação, com o motivo.
    *
    * Cada um destes é uma imagem quebrada esperando na prévia: o Liquid continua
@@ -233,6 +241,9 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
 
   const rootPrefix = normalizedPath(settingsSchemaEntry[0]).slice(0, -"config/settings_schema.json".length);
   const byRelativePath = new Map<string, Uint8Array>();
+  /* as artes da loja, que a entrega guarda fora de `assets/` para caber no teto
+     da Shopify; entram como asset na instalação, não como arquivo do tema */
+  const artesDaEntrega = new Map<string, Uint8Array>();
   for (const [path, value] of entries) {
     const normalized = normalizedPath(path);
     if (!normalized.startsWith(rootPrefix)) continue;
@@ -255,7 +266,28 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
      * Aqui se corta na raiz: prévia não é arquivo de tema, e a Shopify também
      * não a reconheceria.
      */
-    if (relativo.startsWith("previa-local/")) continue;
+    /**
+     * COM UMA EXCEÇÃO, e é ela que faz a loja voltar inteira.
+     *
+     * As artes da loja não estão em `assets/`: a entrega as MOVE para
+     * `imagens-para-a-shopify/`, porque a Shopify recusa tema acima de 50 MB e
+     * seis imagens em 4k passam disso sozinhas. Elas continuam dentro do
+     * pacote — só não no lugar onde um tema guarda imagem.
+     *
+     * Enquanto esta pasta era descartada junto com o resto, a loja só voltava
+     * com imagem se o id da mídia ainda existisse no banco DESTA máquina. Em
+     * outro computador ela importava sem banner e sem logo — e o arquivo estava
+     * ali o tempo todo, dentro do próprio ZIP.
+     */
+    if (relativo.startsWith("previa-local/")) {
+      if (relativo.startsWith(ARTES_DA_ENTREGA)) {
+        const nome = relativo.slice(ARTES_DA_ENTREGA.length);
+        if (nome && !nome.includes("/") && IMAGE_EXTENSIONS[nome.split(".").at(-1)?.toLowerCase() ?? ""]) {
+          artesDaEntrega.set(`assets/${nome}`, value);
+        }
+      }
+      continue;
+    }
     byRelativePath.set(relativo, value);
   }
 
@@ -356,7 +388,24 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
     pages,
   };
   const { assets, fora } = collectImageAssets(byRelativePath);
-  if (fora.length) theme.assetsForaDaInstalacao = fora;
+  /**
+   * As artes da entrega entram como asset — sem apagar nada do tema.
+   *
+   * Elas recebem o caminho `assets/<arquivo>`, que é onde o tema procuraria a
+   * imagem se ela tivesse ficado lá. O nome é `orbis-<8 do id>-<arquivo>`, então
+   * colisão com asset do tema é remotíssima; ainda assim quem já existe vence,
+   * porque sobrescrever arquivo do tema com arte da loja seria trocar uma coisa
+   * certa por outra.
+   */
+  const nomesDoTema = new Set(assets.map((asset) => asset.name));
+  const daEntrega = collectImageAssets(artesDaEntrega);
+  const artes = daEntrega.assets.filter((asset) => !nomesDoTema.has(asset.name));
+  if (artes.length) {
+    assets.push(...artes);
+    theme.orbisArtes = artes.map((asset) => asset.name);
+  }
+  const foraDeTudo = [...fora, ...daEntrega.fora];
+  if (foraDeTudo.length) theme.assetsForaDaInstalacao = foraDeTudo;
   const nicho = lerNichoDoTema(byRelativePath, pages);
   if (nicho) theme.orbisNicheId = nicho;
   const capas = lerCapasDoTema(byRelativePath);
@@ -370,6 +419,19 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
 
 /** Onde um tema entregue pela Orbis guarda de que loja ele é. */
 export const ARQUIVO_DA_LOJA = "assets/orbis-loja.json";
+
+/**
+ * Onde a entrega guarda as ARTES da loja.
+ *
+ * Fora de `assets/` de propósito: a Shopify recusa tema acima de 50 MB, e a
+ * arte estava no pacote duas vezes — uma em `assets/` e outra na pasta de
+ * upload —, o que levava o ZIP a 140 MB. Ela ficou só aqui, com o nome que a
+ * referência do tema espera, para a pessoa subir em Content › Files.
+ *
+ * E é daqui que a importação as recupera: o arquivo viaja no pacote, então a
+ * loja volta inteira em qualquer computador, não só naquele que a gerou.
+ */
+export const ARTES_DA_ENTREGA = "previa-local/imagens-para-a-shopify/";
 
 /** O conteúdo do marcador, para quem monta o ZIP da entrega. */
 export function marcadorDaLoja(

@@ -408,18 +408,120 @@ test("percorrerValores alcança global, seção E bloco, que é onde mora a imag
   }
 });
 
-test("só religa imagem da Orbis cujo id existe: o resto fica como está", async () => {
-  const rota = await readFile(new URL("../app/api/theme-import/route.ts", import.meta.url), "utf8");
+/**
+ * A LOJA VOLTA INTEIRA — inclusive fora da máquina que a gerou.
+ *
+ * A reconexão tinha uma fonte só: o id da mídia no banco DESTE computador.
+ * Funcionava em casa e falhava em qualquer outro lugar, porque o arquivo da
+ * arte não está em `assets/` — a entrega o move para
+ * `previa-local/imagens-para-a-shopify/` para o pacote caber no teto de 50 MB
+ * da Shopify, e o importador descartava essa pasta inteira. A loja abria sem
+ * banner e sem logo, com o arquivo dentro do próprio ZIP que acabara de abrir.
+ */
+test("a imagem da loja volta do acervo ou do próprio pacote, e o resto fica como está", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { reconectarImagens, prefixosDeMidia } = await server.ssrLoadModule("/lib/theme-export.ts");
 
-  /* o padrão exige o prefixo orbis- E oito dígitos de id: sem os dois, não é
-     arquivo nosso e não há o que religar */
-  assert.ok(rota.includes("orbis-([0-9a-f]{8})-"), "o padrão de reconexão sumiu ou afrouxou");
-  /* a busca é escopada ao DONO: mídia de um usuário não pode aparecer na loja
-     de outro por coincidência de id */
+    const idLocal = "aaaaaaaa-1111-2222-3333-444444444444";
+    const tema = () => ({
+      globalValues: { logo: "shopify://shop_images/orbis-aaaaaaaa-logo.png" },
+      pages: [{
+        id: "index",
+        sections: [{
+          id: "hero",
+          settings: { fundo: "shopify://shop_images/orbis-bbbbbbbb-banner.png" },
+          blocks: [{ id: "b1", settings: { foto: "shopify://shop_images/de-outra-loja.png", titulo: "Oi" } }],
+        }],
+      }],
+      orbisCapas: {
+        "oculos-de-sol": `/api/media/${idLocal}`,
+        polarizados: "/api/media/bbbbbbbb-1111-2222-3333-444444444444",
+      },
+    });
+
+    /* os prefixos varridos alcançam settings, blocos E capas */
+    assert.deepEqual(prefixosDeMidia(tema()).sort(), ["aaaaaaaa", "bbbbbbbb"]);
+
+    const acervo = new Map([["aaaaaaaa", idLocal]]);
+    const pacote = new Map([["orbis-bbbbbbbb-banner.png", "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png"]]);
+
+    const t = tema();
+    const contagem = reconectarImagens(t, acervo, pacote);
+
+    /* 1. o que está no acervo volta para a biblioteca do editor, onde dá para trocar */
+    assert.equal(t.globalValues.logo, `/api/media/${idLocal}`);
+    /* 2. o que não está volta do PACOTE — é isto que faz a loja abrir em outra máquina */
+    assert.equal(t.pages[0].sections[0].settings.fundo, "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png");
+    /* 3. o que não é nosso não é inventado: quadro vazio avisa, imagem errada não */
+    assert.equal(t.pages[0].sections[0].blocks[0].settings.foto, "shopify://shop_images/de-outra-loja.png");
+    assert.equal(t.pages[0].sections[0].blocks[0].settings.titulo, "Oi", "texto que não casa fica intacto");
+    assert.deepEqual(contagem, { doAcervo: 1, doPacote: 2 }, "a capa também conta");
+
+    /* as CAPAS seguem o mesmo caminho: sem isso a vitrine volta a cair na foto
+       de produto sorteada pelo handle, que é o defeito que elas corrigem */
+    assert.equal(t.orbisCapas["oculos-de-sol"], `/api/media/${idLocal}`, "capa que existe aqui fica como está");
+    assert.equal(t.orbisCapas.polarizados, "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png");
+
+    /* sem acervo nenhum — outra máquina — o pacote sozinho ainda entrega */
+    const fora = tema();
+    const soPacote = reconectarImagens(fora, new Map(), pacote);
+    assert.equal(fora.globalValues.logo, "shopify://shop_images/orbis-aaaaaaaa-logo.png", "sem arquivo, nada é inventado");
+    assert.equal(fora.pages[0].sections[0].settings.fundo, "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png");
+    assert.equal(soPacote.doAcervo, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test("a busca de mídia continua escopada ao dono", async () => {
+  const rota = await readFile(new URL("../app/api/theme-import/route.ts", import.meta.url), "utf8");
+  /* mídia de um usuário não pode aparecer na loja de outro por coincidência de id */
   assert.match(rota, /WHERE user_id = \? AND/);
-  /* nada é inventado: sem correspondência no banco, o valor não muda */
-  assert.match(rota, /return completo \? `\/api\/media\/\$\{completo\}` : null/);
-  assert.match(rota, /if \(!porPrefixo\.size\) return 0;/);
-  /* e a resposta diz quantas voltaram, para a tela poder contar */
-  assert.match(rota, /imagensReligadas: religadas/);
+  /* e a resposta diz quantas voltaram, e de onde */
+  assert.match(rota, /imagensDoAcervo: religadas\.doAcervo/);
+  assert.match(rota, /imagensDoPacote: religadas\.doPacote/);
+});
+
+/**
+ * A ARTE que viaja no pacote entra como asset instalável.
+ *
+ * Ela não está em `assets/` porque a Shopify recusa tema acima de 50 MB. Estava
+ * sendo descartada com o resto de `previa-local/`, e sem ela a loja importada
+ * fora desta máquina não tinha imagem nenhuma para mostrar.
+ */
+test("as artes da entrega viram asset da loja, sem deixar a prévia entrar no tema", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemePackage } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const png = strToU8("conteudo-de-imagem");
+    const zip = zipSync({
+      "Tema/config/settings_schema.json": strToU8(settingsSchema),
+      "Tema/config/settings_data.json": strToU8(JSON.stringify({ current: {} })),
+      "Tema/layout/theme.liquid": strToU8("{{ content_for_layout }}"),
+      "Tema/sections/hero.liquid": strToU8(section("Hero")),
+      "Tema/templates/index.json": strToU8(JSON.stringify({ sections: { hero: { type: "hero", settings: {} } }, order: ["hero"] })),
+      "Tema/assets/base.css": strToU8("body{}"),
+      "Tema/previa-local/index.html": strToU8("<html></html>"),
+      "Tema/previa-local/produtos-para-importar.csv": strToU8("Title\nvelho"),
+      "Tema/previa-local/imagens-para-a-shopify/orbis-aaaaaaaa-banner.png": png,
+      "Tema/previa-local/imagens-para-a-shopify/COMO-SUBIR-AS-IMAGENS.txt": strToU8("instrucoes"),
+      "Tema/previa-local/logo-da-marca/logo-extenso.svg": strToU8("<svg></svg>"),
+    });
+
+    const { theme, images } = extractShopifyThemePackage(zip, "loja.zip");
+    assert.deepEqual(theme.orbisArtes, ["orbis-aaaaaaaa-banner.png"]);
+    const arte = images.find((img) => img.name === "orbis-aaaaaaaa-banner.png");
+    assert.ok(arte, "a arte da entrega precisa ser instalada");
+    assert.equal(arte.path, "assets/orbis-aaaaaaaa-banner.png", "entra onde o tema procuraria a imagem");
+
+    /* e nada mais da prévia atravessa: nem o txt de instruções, nem o CSV, nem
+       o kit de logo — foi isso que fez cada loja nova nascer com o catálogo de
+       uma loja velha */
+    assert.equal(theme.sourceFiles.filter((f) => f.path.startsWith("previa-local/")).length, 0);
+    assert.equal(images.filter((img) => img.name.endsWith(".txt")).length, 0);
+    assert.equal(images.some((img) => img.name === "logo-extenso.svg"), false, "o kit de logo não é asset do tema");
+  } finally {
+    await server.close();
+  }
 });
