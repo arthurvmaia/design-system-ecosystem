@@ -736,7 +736,15 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     ancora.href = url;
     ancora.download = `loja-${atual.name}.zip`;
     ancora.click();
-    URL.revokeObjectURL(url);
+    /**
+     * O endereço do arquivo é solto DEPOIS, não na linha seguinte.
+     *
+     * Soltar na hora funcionava enquanto o app segurava o pacote em memória de
+     * qualquer jeito. Agora ele é dispensado logo após o download, e as duas
+     * coisas juntas tirariam o chão do arquivo antes de o navegador terminar
+     * de gravá-lo.
+     */
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   async function pedirLoja() {
@@ -852,7 +860,18 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             <p>Não consegui gravar direto na Área de Trabalho, então baixei o ZIP pelo navegador. Ele é o tema Shopify completo: suba em <b>Temas → Adicionar tema → Enviar arquivo ZIP</b>.</p>
           )}
           <div className="cf-actions">
-            <button className="secondary-button" onClick={() => baixarZip(zip)}><Download size={15} /> Baixar o ZIP</button>
+            {/**
+              * Baixou, acabou: o fluxo volta ao começo.
+              *
+              * O pacote é o fim da linha, e a tela de "pronto" não tem mais
+              * nada a fazer depois que o arquivo saiu. Ficar nela era o que
+              * deixava a loja anterior acumulada no app, esperando alguém
+              * lembrar de apertar "fazer outra".
+              *
+              * O que foi entregue não se perde: o ZIP está na pasta de
+              * downloads, a pasta está no disco e o projeto ficou registrado.
+              */}
+            <button className="secondary-button" onClick={() => { baixarZip(zip); recomecar(); }}><Download size={15} /> Baixar o ZIP</button>
             <button className="secondary-button" onClick={recomecar}><RefreshCw size={15} /> Fazer outra loja</button>
             <button className="primary-button" onClick={onExit}>Concluir <ArrowRight size={15} /></button>
           </div>

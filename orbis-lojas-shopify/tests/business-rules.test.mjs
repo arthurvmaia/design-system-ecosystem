@@ -93,7 +93,10 @@ test("interface expõe ShrinePro, importação local e não possui área Admin",
   assert.doesNotMatch(source, /WalletView|Confirmar desbloqueio|Adicionar tokens/);
   const dataSource = await readFile(new URL("../lib/data.ts", import.meta.url), "utf8");
   assert.match(dataSource, /id: "shrine-pro"[\s\S]*?price: 0/);
-  assert.match(dataSource, /UPDATE themes SET status = 'archived'/);
+  /* apagar um tema APAGA. Arquivar deixava a linha no banco para sempre, e o
+     ZIP de origem já saía do R2 junto: sobrava um zumbi que não renderiza, não
+     exporta e não volta. A regra completa está em estado-do-projeto.test.mjs. */
+  assert.match(dataSource, /DELETE FROM themes WHERE id = \?/);
   const importerSource = await readFile(new URL("../lib/shopify-theme.ts", import.meta.url), "utf8");
   assert.match(importerSource, /disabled: raw\.disabled === true/);
   const previewSource = await readFile(new URL("../app/ShopifyStorePreview.tsx", import.meta.url), "utf8");

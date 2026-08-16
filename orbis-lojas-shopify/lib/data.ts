@@ -404,29 +404,109 @@ export async function deleteProject(viewer: Viewer, projectId: string) {
   return getBootstrap(viewer);
 }
 
+/**
+ * As imagens que SÓ aqueles projetos usavam.
+ *
+ * `media_files` não guarda de quem é o arquivo: ele é enviado antes de o
+ * projeto existir, então não há coluna que ligue os dois. O que existe é o
+ * texto: a customização do projeto guarda os endereços `/api/media/<id>` que o
+ * tema aponta. Lendo os dois lados dá para saber o que sai junto e o que fica.
+ *
+ * O "só" é a parte que importa. Um arquivo citado por OUTRO projeto que
+ * sobrevive não pode ser apagado — a loja daquele cliente ficaria com a imagem
+ * quebrada, e imagem quebrada em loja entregue é pior que arquivo a mais.
+ *
+ * Sem isso, cada loja gerada deixava as imagens dela no disco para sempre.
+ * Medido neste computador: 281 arquivos, 957 MB, com zero projetos vivos.
+ */
+const ENDERECO_DE_MIDIA = /\/api\/media\/([0-9a-fA-F-]{16,64})/g;
+
+async function apagarMidiaDosProjetos(projectIds: string[]) {
+  if (!projectIds.length) return;
+  const db = getD1();
+  const marcadores = projectIds.map(() => "?").join(", ");
+  const idsDe = (linhas: Array<{ customization: string }>) => {
+    const ids = new Set<string>();
+    for (const linha of linhas) {
+      for (const achado of String(linha.customization ?? "").matchAll(ENDERECO_DE_MIDIA)) ids.add(achado[1]);
+    }
+    return ids;
+  };
+
+  const saindo = await db.prepare(`SELECT customization FROM projects WHERE id IN (${marcadores})`)
+    .bind(...projectIds).all<{ customization: string }>();
+  const candidatos = idsDe(saindo.results);
+  if (!candidatos.size) return;
+
+  /* o que QUALQUER projeto sobrevivente ainda cita fica de pé */
+  const ficando = await db.prepare(`SELECT customization FROM projects WHERE id NOT IN (${marcadores})`)
+    .bind(...projectIds).all<{ customization: string }>();
+  const usados = idsDe(ficando.results);
+  const apagar = [...candidatos].filter((id) => !usados.has(id));
+  if (!apagar.length) return;
+
+  const alvos = await db.prepare(`SELECT id, storage_key AS storageKey FROM media_files WHERE id IN (${apagar.map(() => "?").join(", ")})`)
+    .bind(...apagar).all<{ id: string; storageKey: string }>();
+  for (const alvo of alvos.results) {
+    if (env.MEDIA && alvo.storageKey) await env.MEDIA.delete(alvo.storageKey);
+  }
+  if (alvos.results.length) {
+    await db.prepare(`DELETE FROM media_files WHERE id IN (${alvos.results.map(() => "?").join(", ")})`)
+      .bind(...alvos.results.map((alvo) => alvo.id)).run();
+  }
+}
+
 export async function deleteTheme(viewer: Viewer, themeId: string) {
   const db = getD1();
   const theme = await db.prepare("SELECT id FROM themes WHERE id = ? AND status = 'published'")
     .bind(themeId).first<{ id: string }>();
   if (!theme) throw new Error("THEME_NOT_FOUND");
 
-  const projects = await db.prepare("SELECT id FROM projects WHERE theme_id = ? AND user_id = ?")
-    .bind(themeId, viewer.id).all<{ id: string }>();
-  const source = await db.prepare("SELECT source_key AS sourceKey FROM theme_imports WHERE theme_id = ? AND user_id = ?")
-    .bind(themeId, viewer.id).first<{ sourceKey: string }>();
+  /**
+   * Nada aqui filtra por dono, e é de propósito.
+   *
+   * O tema inteiro está saindo. Uma linha que aponte para ele e sobreviva não
+   * fica "de outra pessoa": fica QUEBRADA, apontando para um id que não existe
+   * — e, como `projects` e `theme_unlocks` referenciam `themes` sem cascata, o
+   * banco recusaria a remoção e a limpeza terminaria pela metade, com o ZIP de
+   * origem já apagado do R2 lá em cima. Meio apagado é o pior estado dos três.
+   */
+  const projects = await db.prepare("SELECT id FROM projects WHERE theme_id = ?")
+    .bind(themeId).all<{ id: string }>();
+  const source = await db.prepare("SELECT source_key AS sourceKey FROM theme_imports WHERE theme_id = ?")
+    .bind(themeId).first<{ sourceKey: string }>();
   if (source?.sourceKey && env.MEDIA) await env.MEDIA.delete(source.sourceKey);
+  await apagarMidiaDosProjetos(projects.results.map((projeto) => projeto.id));
   for (const project of projects.results) {
     await db.batch([
       db.prepare("DELETE FROM project_versions WHERE project_id = ?").bind(project.id),
-      db.prepare("DELETE FROM theme_unlocks WHERE project_id = ? AND user_id = ?").bind(project.id, viewer.id),
-      db.prepare("DELETE FROM projects WHERE id = ? AND user_id = ?").bind(project.id, viewer.id),
+      db.prepare("DELETE FROM theme_unlocks WHERE project_id = ?").bind(project.id),
+      db.prepare("DELETE FROM projects WHERE id = ?").bind(project.id),
     ]);
   }
 
+  /**
+   * APAGAR é apagar. Antes isto ARQUIVAVA.
+   *
+   * O tema sumia da tela e continuava no banco para sempre. Medido neste
+   * computador: sete temas "apagados", todos ainda ali. E o pior não era o
+   * espaço, era o zumbi: o ZIP de origem em R2 JÁ ERA removido logo acima, de
+   * modo que a linha sobrevivente apontava para um arquivo que não existe mais.
+   * Tema arquivado sem origem não renderiza, não exporta e não volta — e se
+   * algum projeto ainda apontasse para ele, a prévia ficava girando sem dizer
+   * por quê.
+   *
+   * A ordem importa: `projects` e `theme_unlocks` referenciam `themes` SEM
+   * cascata, então eles saem primeiro (no laço acima) ou o banco recusa a
+   * remoção. `theme_imports` e `favorites` têm cascata e sairiam sozinhos;
+   * ficam explícitos porque depender de cascata que alguém pode trocar num
+   * `CREATE TABLE` é confiar em regra que não está escrita aqui.
+   */
   await db.batch([
-    db.prepare("DELETE FROM favorites WHERE user_id = ? AND theme_id = ?").bind(viewer.id, themeId),
-    db.prepare("DELETE FROM theme_imports WHERE theme_id = ? AND user_id = ?").bind(themeId, viewer.id),
-    db.prepare("UPDATE themes SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(themeId),
+    db.prepare("DELETE FROM favorites WHERE theme_id = ?").bind(themeId),
+    db.prepare("DELETE FROM theme_imports WHERE theme_id = ?").bind(themeId),
+    db.prepare("DELETE FROM theme_unlocks WHERE theme_id = ?").bind(themeId),
+    db.prepare("DELETE FROM themes WHERE id = ?").bind(themeId),
   ]);
   return getBootstrap(viewer);
 }

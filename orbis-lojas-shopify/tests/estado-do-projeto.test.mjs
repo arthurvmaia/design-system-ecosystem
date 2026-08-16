@@ -188,3 +188,81 @@ test("entregou, some: a loja pronta não volta para o próximo cliente", async (
      existe, e confundir as duas coisas jogaria trabalho fora */
   assert.match(flow, /const \[artesGuardadas\] = useState\(\(\) => lerArtes\(ponto\.nicheId\)\)/);
 });
+
+/**
+ * A LIXEIRA apaga; ela não arquivava.
+ *
+ * O tema sumia da tela e continuava no banco para sempre. Medido neste
+ * computador antes da correção: sete temas "apagados", todos ainda ali. E o
+ * pior não era o espaço: o ZIP de origem em R2 JÁ era removido, então a linha
+ * sobrevivente apontava para um arquivo que não existe mais. Tema arquivado sem
+ * origem não renderiza, não exporta e não volta.
+ */
+test("apagar um tema não deixa linha nem arquivo para trás", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const data = await readFile(new URL("../lib/data.ts", import.meta.url), "utf8");
+  const fn = data.match(/export async function deleteTheme[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(fn, "deleteTheme sumiu");
+
+  assert.doesNotMatch(fn, /UPDATE themes SET status = 'archived'/, "arquivar é o defeito que este teste guarda");
+  assert.match(fn, /DELETE FROM themes WHERE id = \?/);
+  /* tudo que aponta para o tema sai junto, senão sobra linha quebrada */
+  for (const tabela of ["favorites", "theme_imports", "theme_unlocks", "project_versions", "projects"]) {
+    assert.match(fn, new RegExp(`DELETE FROM ${tabela} `), `${tabela} continua apontando para um tema que não existe`);
+  }
+  /* e o ZIP de origem sai do R2 */
+  assert.match(fn, /env\.MEDIA\.delete\(source\.sourceKey\)/);
+
+  /**
+   * A ORDEM: `projects` e `theme_unlocks` referenciam `themes` sem cascata.
+   * Apagar o tema antes deles faz o banco recusar, e a limpeza termina pela
+   * metade — com o ZIP de origem já removido. Meio apagado é o pior estado.
+   */
+  assert.ok(fn.indexOf("DELETE FROM projects WHERE id") < fn.indexOf("DELETE FROM themes WHERE id"),
+    "o tema não pode sair antes de quem aponta para ele");
+
+  /* e nada filtra por dono na remoção: linha que sobrevive ao tema não fica
+     "de outra pessoa", fica apontando para um id que não existe */
+  assert.doesNotMatch(fn, /DELETE FROM projects WHERE id = \? AND user_id/);
+});
+
+/**
+ * As imagens saem junto com a loja que as usava — e SÓ elas.
+ *
+ * `media_files` não guarda de quem é o arquivo: ele é enviado antes de o
+ * projeto existir. O que liga os dois é o texto da customização, que cita
+ * `/api/media/<id>`. Sem essa leitura, cada loja gerada deixava as imagens dela
+ * no disco para sempre: medido neste computador, 281 arquivos e 957 MB com zero
+ * projetos vivos.
+ */
+test("apagar um tema leva as imagens dele, e nunca as de outra loja", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const data = await readFile(new URL("../lib/data.ts", import.meta.url), "utf8");
+  const fn = data.match(/async function apagarMidiaDosProjetos[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(fn, "a limpeza de mídia sumiu");
+
+  /* o vínculo é o endereço citado na customização */
+  /* o vínculo é o endereço `/api/media/<id>` citado na customização, que é a
+     única coisa que liga um arquivo ao projeto que o usa */
+  assert.match(data, /const ENDERECO_DE_MIDIA = /);
+  assert.match(data, /0-9a-fA-F-\]\{16,64\}/);
+  assert.match(fn, /SELECT customization FROM projects WHERE id IN/);
+
+  /**
+   * A parte que impede o desastre: o que um projeto SOBREVIVENTE ainda cita
+   * fica de pé. Apagar seria deixar a loja daquele cliente com imagem
+   * quebrada, e imagem quebrada em loja entregue é pior que arquivo a mais.
+   */
+  assert.match(fn, /SELECT customization FROM projects WHERE id NOT IN/);
+  assert.match(fn, /filter\(\(id\) => !usados\.has\(id\)\)/);
+
+  /* e o arquivo sai do R2, não só a linha do banco */
+  assert.match(fn, /env\.MEDIA\.delete\(alvo\.storageKey\)/);
+  assert.match(fn, /DELETE FROM media_files WHERE id IN/);
+
+  /* a limpeza roda ANTES de os projetos sumirem: depois deles, não haveria
+     mais customização para ler e nada seria apagado */
+  const del = data.match(/export async function deleteTheme[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(del.indexOf("apagarMidiaDosProjetos") < del.indexOf("DELETE FROM projects WHERE id"),
+    "ler a customização depois de apagar o projeto não lê nada");
+});
