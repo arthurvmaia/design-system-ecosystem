@@ -987,10 +987,29 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                     <span className="cf-modo-icone"><Sparkles size={20} strokeWidth={1.6} /></span>
                     <div>
                       <strong>Artes da Orbis</strong>
+                      {/**
+                       * O QUE ESTA CAIXA DIZ ao cliente.
+                       *
+                       * Ela contava o processo: quantos logos, quantos banners,
+                       * por que cada peça é gerada uma vez só. Era a explicação
+                       * de uma decisão INTERNA, escrita para quem construiu o
+                       * app, na tela de quem contratou uma loja. Quem chega
+                       * aqui não está comprando um método de geração, está
+                       * comprando a identidade da marca dele.
+                       *
+                       * A contagem das peças, aliás, já está logo abaixo: cada
+                       * arte tem o próprio nome e o próprio estado na lista.
+                       * Dizer o número em prosa era repetir o que a tela mostra.
+                       *
+                       * O aviso do provedor FICA. Ele não é detalhe de processo:
+                       * é a diferença entre a loja sair com a marca do cliente
+                       * ou com as imagens que o tema já trazia, e quem não for
+                       * avisado fica esperando arte que não vem.
+                       */}
                       <p>
-                        Quatro logos e um favicon, duas artes de banner que servem o computador e o celular,
-                        {" "}e três cenas da marca. Cada arte é gerada UMA vez: pedir a mesma coisa duas vezes
-                        {" "}devolve duas coisas diferentes, e é isso que fazia o celular abrir outra campanha.
+                        Sua identidade visual, criada para valorizar a sua marca.
+                        {" "}A Orbis prepara artes consistentes com o estilo, o posicionamento e a
+                        {" "}personalidade do seu negócio.
                         {!iaDisponivel && " Provedor de imagem não configurado: a loja sai com a imagem que o tema já traz."}
                       </p>
                     </div>
