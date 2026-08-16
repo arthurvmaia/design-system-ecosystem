@@ -1,9 +1,95 @@
 # HANDOFF — Orbis · Criação de lojas Shopify
 
-> Documento de passagem de trabalho. Última atualização: **2026-08-14
-> (limpeza do catálogo, interação da prévia e cópia atualizada do
-> repositório)**. Mora em `orbis-lojas-shopify/`, dentro do repositório
-> `design-system-ecosystem`. Sessões conduzidas com Claude no Claude Code.
+> Documento de passagem de trabalho. Última atualização: **2026-08-15 (o
+> caminho das imagens da marca, de ponta a ponta)**. Mora em
+> `orbis-lojas-shopify/`, dentro do repositório `design-system-ecosystem`.
+> Sessões conduzidas com Claude no Claude Code.
+
+---
+
+## 🔄 RETOMADA — 2026-08-15: o caminho das imagens, de ponta a ponta
+
+Dezesseis commits. O fio que liga quase todos: **a arte da marca sumia entre
+onde nascia e onde deveria aparecer**, e cada trecho do caminho tinha o próprio
+buraco. Nenhum deles dava erro — todos falhavam em silêncio, que é o que fez a
+caçada demorar.
+
+### O caminho, e onde vazava
+
+| trecho | o que acontecia | commit |
+| --- | --- | --- |
+| geração → banco | PNG 4k tem 11 a 17 MB; `guardarComoMidia` recusava acima de **12 MB**. O app pagava a imagem e a jogava fora ao salvar | `e4b4f8f` |
+| fila → tela | a espera eram 40 voltas de 5 s (200 s) para um lote em 4k; quem não chegasse era **descartado**, calado | `e4b4f8f` |
+| tela → loja | o mapa das imagens vivia só em memória. Recarregar apagava, e a loja nascia com zero | `c96e5e2` |
+| loja → ZIP | a arte ia **duas vezes** no pacote (`assets/` + pasta de upload): 140 MB, e a Shopify recusa acima de 50 | `d291eea` |
+| ZIP → reimportação | o teto por asset era 10 MB; os banners de entrega ficavam de fora e a prévia abria com imagem partida | `de1a22c` |
+
+Medido no acervo desta máquina, e é o número que resume tudo: uma loja entregue
+saiu com **3 das 11 imagens**, e as outras oito existiam.
+
+### A decisão que apareceu duas vezes
+
+O dono reclamou de duas coisas que pareciam distintas: as três versões da logo
+saíam **marcas diferentes**, e o banner do celular abria **outra campanha** que
+o do computador. É o mesmo defeito: cada peça era uma geração independente, e
+geração independente não repete desenho. Não se conserta caprichando no prompt.
+
+- **Logo** (`ee1bf9e`): o símbolo é gerado UMA vez; fundo branco e monocromático
+  saem dele por recorte em canvas (`lib/logo-derivar.ts`). Lê a cor do fundo nas
+  bordas com mediana, recorta com faixa de transição em vez de corte seco, apara
+  e recentra com 10% de respiro, e a monocromática usa o alfa como máscara.
+  Medido: canto com alfa 0, caixa 104,104→920,920, 50,8% branco / 48,4% preto.
+- **Banner** (`d291eea`): duas artes, quatro arquivos. O corte entre computador
+  e celular é do tema, e por isso o pedido mudou junto — assunto CENTRALIZADO
+  com folga, que é o enquadramento que sobrevive aos dois cortes.
+
+De 10 gerações para 6, e o que precisa ser igual é igual por construção.
+
+### Outros defeitos fechados
+
+- `75d2e74` — **comprar não mexia na tela**. O item entrava (`/cart.js` dizia
+  `item_count: 1`) e o contador ficava em 0. A lista de seções a redesenhar saía
+  de `sectionSchemas`, e a gaveta e o contador do Dawn são seções ESTÁTICAS, sem
+  schema. E o alvo era procurado só como `shopify-section-*`, quando a gaveta é
+  um `<cart-drawer>` filho do body e o contador um `<a id="cart-icon-bubble">`.
+- `9c18148` — **o tema entregue leva o nicho** (`assets/orbis-loja.json`), e a
+  importação também o deduz pelas coleções, para as lojas já entregues.
+- `15643dc` — **o editor abria em tcheco**. O `dawn8.zip` traz
+  `pt-BR.default.schema.json`; o código procurava dois nomes que não existem ali
+  e caía no primeiro locale do ZIP, `cs`.
+- `9cf1d3e` — tema importado abre com **vitrine de demonstração**, declarada no
+  selo. Reverte `e521030`, cujas duas objeções têm resposta agora.
+- `31307ad` — a prévia do cliente **parou de prometer** uma loja que nunca vem.
+  Medido: zero chamadas a `/api/theme-render` em 4 s, zero timers em 3.
+- `08ad494` / `38c1c9d` — passo da conta Shopify entre o portão e a criação,
+  com o link de indicação como ÚNICA saída.
+
+### O que NÃO foi verificado (o buraco honesto)
+
+**Nunca acompanhei uma geração real pelo Magnific do início ao fim.** Tudo no
+caminho das imagens foi provado por teste e por medição sintética — o teto de
+20 MB, a espera de 15 min, o recorte da logo, o corte dos 50 MB. A fila de
+verdade, com seis imagens em 4k, não rodou sob observação. É o primeiro teste a
+fazer na próxima sessão.
+
+Junto disso: **o app chama a Magnific direto pela REST**, sem passar pelo motor
+`orbis-suite` nem pelo contrato de orçamento declarado que o `CLAUDE.md` exige.
+Isso continua em aberto.
+
+### Armadilhas desta rodada
+
+- **Backtick dentro de template literal.** O bridge do carrinho é uma string
+  gigante em `theme-render.ts`; um comentário com `` `sections/x.liquid` ``
+  encerra o literal e o erro de parse aponta para o lugar errado. Custou duas
+  idas.
+- **Lint reprova `setState` síncrono em efeito**, e com razão. Duas vezes a
+  saída foi melhor que o código original: derivar o estado em vez de guardá-lo.
+- **Lint passa e a tela quebra.** Deixei uma referência a uma variável removida
+  e só o navegador denunciou (`estado is not defined`). Olhar a tela continua
+  sendo obrigatório.
+- **`deleteTheme` apaga o ZIP de origem no R2.** Um tema arquivado por engano
+  não volta: desarquivar devolve um tema que não renderiza. Aconteceu com os
+  sete temas desta máquina.
 
 ---
 
