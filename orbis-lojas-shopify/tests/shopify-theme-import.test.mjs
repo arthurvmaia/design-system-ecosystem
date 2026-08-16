@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { strToU8, zipSync } from "fflate";
@@ -264,4 +265,67 @@ test("o tema entregue diz de que loja é, e a importação reconhece pelas cole�
   } finally {
     await server.close();
   }
+});
+
+/**
+ * A foto que ESTE app produziu volta sozinha na reimportação.
+ *
+ * Um tema exportado da Shopify aponta as fotos como `shopify://shop_images/…`
+ * e o arquivo não viaja no ZIP: ele mora nos Arquivos da loja. Por isso
+ * reimportar a própria loja trazia o banner em branco.
+ *
+ * Só que a exportação daqui grava o nome como `orbis-<8 do id>-<arquivo>`, e
+ * esse id é o da mídia. Se ela ainda está no banco, o arquivo é o MESMO e não
+ * há nada a adivinhar. Medido no acervo desta máquina: o Dawn importado pedia
+ * três imagens assim, e as três estavam guardadas.
+ */
+test("percorrerValores alcança global, seção E bloco, que é onde mora a imagem do slide", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { percorrerValores } = await server.ssrLoadModule("/lib/theme-export.ts");
+    const tema = {
+      globalValues: { logo: "shopify://shop_images/orbis-aaaaaaaa-logo.png", cor: "#fff" },
+      pages: [{
+        id: "index",
+        sections: [{
+          settings: { fundo: "shopify://shop_images/orbis-bbbbbbbb-fundo.png" },
+          /* o bloco é o nível que os laços copiados esqueciam, e é onde o
+             slideshow guarda a imagem do banner */
+          blocks: [{ settings: { image: "shopify://shop_images/orbis-cccccccc-banner.png", titulo: "Oi" } }],
+        }],
+      }],
+    };
+
+    /* primeiro só LÊ: devolver null não pode trocar nada */
+    const vistos = [];
+    const semTroca = percorrerValores(tema, (v) => { vistos.push(v); return null; });
+    assert.equal(semTroca, 0, "devolver null não troca valor nenhum");
+    assert.equal(vistos.length, 5, "todo texto é visitado, dos globais aos blocos");
+
+    /* agora troca, e os três níveis têm de ser alcançados */
+    const trocados = percorrerValores(tema, (v) => (v.startsWith("shopify://") ? `/api/media/${v.slice(-13, -4)}` : null));
+    assert.equal(trocados, 3);
+    assert.match(tema.globalValues.logo, /^\/api\/media\//);
+    assert.match(tema.pages[0].sections[0].settings.fundo, /^\/api\/media\//);
+    assert.match(tema.pages[0].sections[0].blocks[0].settings.image, /^\/api\/media\//, "o bloco não pode ficar de fora");
+    assert.equal(tema.pages[0].sections[0].blocks[0].settings.titulo, "Oi", "texto que não casa fica intacto");
+  } finally {
+    await server.close();
+  }
+});
+
+test("só religa imagem da Orbis cujo id existe: o resto fica como está", async () => {
+  const rota = await readFile(new URL("../app/api/theme-import/route.ts", import.meta.url), "utf8");
+
+  /* o padrão exige o prefixo orbis- E oito dígitos de id: sem os dois, não é
+     arquivo nosso e não há o que religar */
+  assert.ok(rota.includes("orbis-([0-9a-f]{8})-"), "o padrão de reconexão sumiu ou afrouxou");
+  /* a busca é escopada ao DONO: mídia de um usuário não pode aparecer na loja
+     de outro por coincidência de id */
+  assert.match(rota, /WHERE user_id = \? AND/);
+  /* nada é inventado: sem correspondência no banco, o valor não muda */
+  assert.match(rota, /return completo \? `\/api\/media\/\$\{completo\}` : null/);
+  assert.match(rota, /if \(!porPrefixo\.size\) return 0;/);
+  /* e a resposta diz quantas voltaram, para a tela poder contar */
+  assert.match(rota, /imagensReligadas: religadas/);
 });

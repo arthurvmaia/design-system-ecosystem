@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { getIdentity } from "@/lib/auth";
-import { ensureUser, importShopifyTheme, registerThemeSource } from "@/lib/data";
-import { extractShopifyThemePackage, type ShopifyThemeImageAsset } from "@/lib/shopify-theme";
+import { ensureUser, getD1, importShopifyTheme, registerThemeSource } from "@/lib/data";
+import { extractShopifyThemePackage, type ShopifyThemeImageAsset, type ShopifyThemeImport } from "@/lib/shopify-theme";
+import { percorrerValores } from "@/lib/theme-export";
 
 const DATA_URI_MAX_FILE = 120 * 1024;
 const DATA_URI_MAX_TOTAL = 2 * 1024 * 1024;
@@ -36,14 +37,61 @@ export async function POST(request: Request) {
        de upload — sai numa lista só, que é o que a tela mostra */
     const fora = [...(imported.assetsForaDaInstalacao ?? []), ...instalados.fora];
     if (fora.length) imported.assetsForaDaInstalacao = fora;
+    /* as fotos que este app produziu voltam sozinhas: a Shopify não as põe no
+       ZIP, mas o nome delas carrega o id da mídia, e o arquivo está aqui */
+    const religadas = await religarImagensDaOrbis(viewer.id, imported);
     const result = await importShopifyTheme(viewer, imported);
     if (sourceKey) await registerThemeSource(viewer, result.themeId, imported, sourceKey, file.size);
-    return Response.json(result, { status: 201 });
+    return Response.json({ ...result, imagensReligadas: religadas }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "SHOPIFY_IMPORT_FAILED";
     const invalid = message.startsWith("SHOPIFY_");
     return Response.json({ error: message }, { status: invalid ? 400 : 500 });
   }
+}
+
+/**
+ * RECONECTA as imagens que este app já produziu.
+ *
+ * Um tema exportado da Shopify aponta as fotos como `shopify://shop_images/…`,
+ * e o arquivo NÃO viaja no ZIP: ele mora nos Arquivos da loja, e a Shopify não
+ * o coloca no pacote. Por isso reimportar a própria loja trazia o banner em
+ * branco, com o quadro de "conecte esta imagem".
+ *
+ * Só que quando a foto saiu DAQUI, o nome dela carrega a identidade: a
+ * exportação grava `orbis-<8 primeiros do id>-<arquivo>`. Se esse id ainda está
+ * em `media_files`, o arquivo continua nesta máquina e é o MESMO. Aí não há
+ * nada a adivinhar: é procurar e religar.
+ *
+ * O limite é esse, e é de propósito. Só religa imagem com o prefixo `orbis-`
+ * cujo id existe no banco DESTE usuário. Foto que veio de outra loja continua
+ * como está — inventar uma imagem no lugar de outra seria pior que o quadro
+ * vazio, porque o quadro vazio pelo menos avisa.
+ */
+async function religarImagensDaOrbis(viewerId: string, tema: ShopifyThemeImport) {
+  const REFERENCIA = /^shopify:\/\/shop_images\/orbis-([0-9a-f]{8})-/i;
+  const prefixos = new Set<string>();
+  percorrerValores(tema, (valor) => {
+    const id = REFERENCIA.exec(valor)?.[1];
+    if (id) prefixos.add(id.toLowerCase());
+    return null;
+  });
+  if (!prefixos.size) return 0;
+
+  const lista = [...prefixos].slice(0, 60);
+  const condicoes = lista.map(() => "id LIKE ?").join(" OR ");
+  const linhas = await getD1()
+    .prepare(`SELECT id FROM media_files WHERE user_id = ? AND (${condicoes})`)
+    .bind(viewerId, ...lista.map((prefixo) => `${prefixo}%`))
+    .all<{ id: string }>();
+  const porPrefixo = new Map((linhas.results ?? []).map((linha) => [linha.id.slice(0, 8).toLowerCase(), linha.id]));
+  if (!porPrefixo.size) return 0;
+
+  return percorrerValores(tema, (valor) => {
+    const id = REFERENCIA.exec(valor)?.[1]?.toLowerCase();
+    const completo = id ? porPrefixo.get(id) : undefined;
+    return completo ? `/api/media/${completo}` : null;
+  });
 }
 
 /**

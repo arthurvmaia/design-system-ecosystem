@@ -22,6 +22,35 @@ const INLINE_EXTENSION: Record<string, string> = { png: "png", jpg: "jpg", jpeg:
 /* o draft vem do cliente: decodificar data URI sem teto é convite a estourar a memória do worker */
 const MAX_INLINE_BYTES = 20 * 1024 * 1024;
 
+/**
+ * Percorre TODO valor de configuração do tema, deixando trocar cada texto.
+ *
+ * Globais, seções e blocos. Existia como três laços copiados em cada lugar que
+ * precisava mexer nos settings, e cada cópia esquecia um nível diferente — o
+ * mais comum era esquecer os blocos, que é justamente onde mora a imagem do
+ * slide. Um percurso só, usado por quem lê e por quem reescreve.
+ */
+export function percorrerValores(theme: ShopifyThemeImport, trocar: (valor: string) => string | null): number {
+  let trocados = 0;
+  const visit = (alvo: unknown) => {
+    if (!alvo || typeof alvo !== "object") return;
+    for (const [chave, valor] of Object.entries(alvo as Record<string, unknown>)) {
+      if (typeof valor === "string") {
+        const novo = trocar(valor);
+        if (novo !== null && novo !== valor) { (alvo as Record<string, unknown>)[chave] = novo; trocados += 1; }
+      } else visit(valor);
+    }
+  };
+  visit(theme.globalValues);
+  for (const page of theme.pages) {
+    for (const section of page.sections) {
+      visit(section.settings);
+      for (const block of section.blocks) visit(block.settings);
+    }
+  }
+  return trocados;
+}
+
 /** IDs de mídia do editor referenciados nos valores editados (globais, seções e blocos). */
 export function collectEditorMediaIds(theme: ShopifyThemeImport): string[] {
   const ids = new Set<string>();

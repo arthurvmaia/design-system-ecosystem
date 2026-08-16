@@ -246,7 +246,13 @@ export function AppShell({ identity }: { identity: Identity }) {
                 setTab("themes");
                 const loadedTheme = payload.data.themes.find((theme) => theme.id === payload.themeId);
                 if (loadedTheme) setPreviewTheme(loadedTheme);
-                setToast(`${payload.compatibility.architecture} carregado, senhor. A prévia aguarda suas ordens.`);
+                /* dizer quantas fotos voltaram: quem reimporta a própria loja
+                   precisa saber que a arte foi reencontrada, senão vai procurar
+                   os arquivos achando que perdeu */
+                const religadas = payload.imagensReligadas ?? 0;
+                setToast(religadas
+                  ? `${payload.compatibility.architecture} carregado, senhor. Reencontrei ${religadas} ${religadas === 1 ? "imagem sua" : "imagens suas"} e já as reconectei.`
+                  : `${payload.compatibility.architecture} carregado, senhor. A prévia aguarda suas ordens.`);
               }} />}
               {tab === "code" && <ThemeCodeView data={data} initialThemeId={codeThemeId} onMessage={setToast} />}
               {tab === "themes" && <ThemesView data={data} onPreview={setPreviewTheme} onUse={(theme) => void openTheme(theme)} onEditCode={(theme) => { setCodeThemeId(theme.id); setTab("code"); }} onFavorite={async (themeId, favorite) => {
@@ -297,7 +303,7 @@ function SignedOutLanding() {
   );
 }
 
-function ExtractThemeView({ onImported }: { onImported: (payload: { data: BootstrapData; themeId: string; summary: ShopifyThemeImport["summary"]; compatibility: ShopifyThemeImport["compatibility"] }) => void }) {
+function ExtractThemeView({ onImported }: { onImported: (payload: { data: BootstrapData; themeId: string; summary: ShopifyThemeImport["summary"]; compatibility: ShopifyThemeImport["compatibility"]; imagensReligadas?: number }) => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);
