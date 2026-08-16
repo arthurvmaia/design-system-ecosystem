@@ -25,6 +25,15 @@ export type RenderOptions = {
   handle?: string;
   /** Variante pedida na rota (?variant=), como o seletor de opções faz. */
   variantId?: number;
+  /**
+   * A capa de cada coleção, por handle.
+   *
+   * Sem isto a prévia escolhia uma foto de produto pelo hash do handle, e dois
+   * handles caíam no mesmo produto: a vitrine mostrava a mesma foto em duas
+   * coleções. Agora existe uma capa GERADA por coleção, e ela é a resposta
+   * certa — a foto sorteada vira só a reserva.
+   */
+  capasDeColecao?: Record<string, string>;
   /** Nicho da loja gerada: define quais produtos abastecem a vitrine. */
   nicheId?: string;
 };
@@ -415,7 +424,7 @@ function fotoDaColecao(loja: Loja, handle: string) {
   return produto?.featured_image ?? produto?.images?.[0] ?? null;
 }
 
-function demoCollection(loja: Loja, handle: string) {
+function demoCollection(loja: Loja, handle: string, capas: Record<string, string> = {}) {
   const title = handle ? handle.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Coleção em destaque";
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
@@ -435,7 +444,9 @@ function demoCollection(loja: Loja, handle: string) {
      * imagem para loja sem mercadoria seria mentir sobre o que ela tem.
      */
     ...(() => {
-      const foto = fotoDaColecao(loja, handle);
+      /* a capa GERADA daquela coleção vem primeiro: ela foi pedida com o nome
+         da coleção dentro, então é a única que combina com o cartão */
+      const foto = capas[handle] ?? fotoDaColecao(loja, handle);
       return { image: foto, featured_image: foto };
     })(),
     all_tags: [...new Set(loja.produtos.flatMap((produto) => produto.tags))],
@@ -475,7 +486,7 @@ function flattenTranslations(source: Record<string, unknown>, prefix = "", out: 
 function resolveSettingValues(
   values: Record<string, ShopifyValue>,
   definitions: ShopifySettingDefinition[],
-  helpers: { loja: Loja; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
+  helpers: { loja: Loja; capas?: Record<string, string>; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
   /* O tipo da seção (ou do bloco) chega até aqui só por causa do placeholder:
      é o par seção+campo que diz qual FORMATO o vazio deve ter. */
   secao?: string,
@@ -497,9 +508,20 @@ function resolveSettingValues(
     }
     if (type === "image_picker") { resolved[id] = helpers.imageFor(value, secao, id); continue; }
     if (type === "color_scheme") { resolved[id] = helpers.schemeFor(value); continue; }
-    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : ""); continue; }
+    /* AQUI é por onde o cartão de coleção passa de verdade: o `settings` do
+       bloco guarda o handle, e era este caminho que ficava sem as capas — o
+       proxy de `collections[...]` só atende busca por handle escrita no Liquid */
+    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}); continue; }
     if (type === "product") { resolved[id] = demoProduct(helpers.loja, typeof value === "string" ? value : "", 2); continue; }
-    if (type === "collection_list") { resolved[id] = ["colecao-1", "colecao-2", "colecao-3", "colecao-4"].map((handle) => demoCollection(helpers.loja, handle)); continue; }
+    if (type === "collection_list") {
+      /* as coleções DA LOJA quando elas existem: a lista fixa de "colecao-1..4"
+         mostrava quatro cartões inventados no lugar das coleções que a pessoa
+         escreveu */
+      const daLoja = Object.keys(helpers.capas ?? {});
+      const lista = daLoja.length ? daLoja : ["colecao-1", "colecao-2", "colecao-3", "colecao-4"];
+      resolved[id] = lista.map((handle) => demoCollection(helpers.loja, handle, helpers.capas ?? {}));
+      continue;
+    }
     if (type === "product_list") { resolved[id] = helpers.loja.produtos; continue; }
     if (type === "link_list" || type === "menu") { resolved[id] = { title: "Menu", handle: String(value ?? "main-menu"), links: DEMO_LINKS, levels: 1 }; continue; }
     if (type === "blog") { const blogHandle = String(value ?? "blog"); resolved[id] = { title: "Blog", handle: blogHandle, url: `/blogs/${blogHandle}`, articles: [], articles_count: 0, all_tags: [] }; continue; }
@@ -651,7 +673,7 @@ function argPairs(args: unknown[]): Record<string, unknown> {
   return named;
 }
 
-export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId, nicheId }: RenderOptions): Promise<string> {
+export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId, nicheId, capasDeColecao }: RenderOptions): Promise<string> {
   /* a vitrine desta renderização: os produtos do nicho, ou o catálogo padrão */
   const loja = lojaDoNicho(nicheId);
   const assetPathByName = new Map<string, string>();
@@ -721,7 +743,9 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   };
 
   const allGlobalDefinitions = theme.globalGroups.flatMap((group) => group.settings);
-  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, imageFor, schemeFor, registerFont });
+  /* as capas geradas, uma por coleção, na mão de quem resolve os settings */
+  const capas = capasDeColecao ?? {};
+  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, capas, imageFor, schemeFor, registerFont });
   if (schemeList.length) settings.color_schemes = schemeCollection;
 
   const localeFile =
@@ -752,14 +776,14 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   }
   const resolveSection = (section: ShopifySectionInstance) => {
     const schema = schemaByType.get(section.type);
-    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, imageFor, schemeFor, registerFont }, section.type);
+    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, capas, imageFor, schemeFor, registerFont }, section.type);
     const blocks = section.blocks.map((block, index) => {
       const blockSchema = schema?.blocks.find((item) => item.type === block.type);
       return {
         id: block.id, type: block.type,
         /* o formato do placeholder é da SEÇÃO: no Dawn a imagem do banner mora
            num bloco `slide`, cujo nome não diz que aquilo é um banner */
-        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, imageFor, schemeFor, registerFont }, section.type),
+        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, capas, imageFor, schemeFor, registerFont }, section.type),
         shopify_attributes: `data-block-id="${block.id}"`,
         index: index + 1, index0: index,
       };
@@ -767,7 +791,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     return { id: section.id, settings: resolvedSettings, blocks, index: 1, index0: 0, location: "template", type: section.type, disabled: section.disabled === true };
   };
 
-  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle));
+  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle, capas));
   const productsProxy = proxyWithFallback<unknown>({}, (handle) => demoProduct(loja, handle, 2));
   const linklistsProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: "Menu", handle, links: DEMO_LINKS, levels: 1 }));
   const pagesProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: handle, handle, content: "", url: `/pages/${handle}` }));
@@ -831,7 +855,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     /* o handle da rota escolhe o produto/coleção: é o que faz cada cartão
        clicado abrir o SEU produto, e o quick-add mostrar o certo */
     product: comVarianteSelecionada(demoProduct(loja, pageId.startsWith("product") ? handle ?? "" : ""), variantId),
-    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo"),
+    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo", capas),
     article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "/blogs/news/artigo-demo", tags: [], comments: [], comments_count: 0, comments_enabled: false },
     blog: { title: "Blog", url: "/blogs/news", articles: [], articles_count: 0, all_tags: [] },
     page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "/pages/pagina" },

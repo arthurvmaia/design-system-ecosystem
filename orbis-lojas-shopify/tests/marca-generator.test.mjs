@@ -160,23 +160,40 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
         assert.ok(fallbackDataUri(peca).startsWith("data:image/svg+xml"));
       }
       /**
-       * O conjunto que a loja recebe, no formato em que uma marca é entregue:
-       * 5 de marca (símbolo, símbolo em branco, símbolo monocromático, nome por
-       * extenso e favicon), 4 banners (2 de desktop e 2 de celular) e 3 cenas.
+       * O conjunto que a loja recebe: 5 de marca (símbolo, símbolo em branco,
+       * símbolo monocromático, nome por extenso e favicon), 2 banners e UMA
+       * CAPA POR COLEÇÃO.
        *
-       * Eram 6 capas de coleção, que sozinhas passavam da metade do lote e
-       * devolviam seis variações do mesmo enquadramento. Três cenas de mundo da
-       * marca servem à página inteira e encolhem a fila, que é o que fazia a
-       * espera estourar e a loja sair com três imagens.
+       * Já foram três cenas genéricas que RODAVAM entre as coleções. Com sete
+       * coleções e três fotos, a terceira reaparecia na quarta vaga, e
+       * "Alfaiataria" e "Promoções" recebiam a mesma imagem — nenhuma das duas
+       * com relação com o que vende. Uma capa por coleção acaba com a volta.
        */
+      const colecoes = marca.collections.slice(0, 6);
       const chaves = pecas.map((peca) => peca.chave);
       assert.deepEqual(chaves, [
         "logo", "logo-fundo-branco", "logo-fundo-preto", "logo-escrita", "favicon",
         "banner-1", "banner-2",
-        "cena-1", "cena-2", "cena-3",
+        ...colecoes.map((_, i) => `colecao-${i + 1}`),
       ], `conjunto de peças de ${nicho.id}`);
       assert.equal(pecas.filter((peca) => peca.papel === "logo").length, 5);
-      assert.equal(pecas.filter((peca) => peca.papel === "cena").length, 3);
+      assert.equal(pecas.filter((peca) => peca.papel === "colecao").length, colecoes.length);
+
+      /**
+       * Cada capa carrega o NOME da coleção dela, e nenhum enquadramento se
+       * repete entre vizinhas.
+       *
+       * O nome é a única fonte que sabe o que aquela coleção é, porque foi a
+       * pessoa que a escreveu. E "faça diferente" pedido ao modelo devolve o
+       * mesmo enquadramento com outra cor, então a variedade é escolhida aqui.
+       */
+      const capas = pecas.filter((peca) => peca.papel === "colecao");
+      capas.forEach((capa, i) => {
+        assert.ok(capa.prompt.includes(colecoes[i]), `${capa.chave} não cita "${colecoes[i]}"`);
+        assert.ok(capa.titulo.includes(colecoes[i]), `${capa.chave} sem o nome no título`);
+      });
+      const molduras = capas.map((capa) => capa.prompt.match(/Enquadramento: ([^.]+)\./)?.[1]);
+      assert.equal(new Set(molduras).size, capas.length, "duas capas com o mesmo enquadramento");
 
       /**
        * UMA geração por arte, e só.
@@ -188,7 +205,7 @@ test("as imagens da loja saem no enquadramento certo, e as coleções são do ni
        * versões ou entre formatos sai de UMA geração só, ou é desenhado.
        */
       const geradas = pecas.filter((peca) => peca.origem === "gerada").map((peca) => peca.chave);
-      assert.deepEqual(geradas, ["logo", "banner-1", "banner-2", "cena-1", "cena-2", "cena-3"]);
+      assert.deepEqual(geradas, ["logo", "banner-1", "banner-2", ...colecoes.map((_, i) => `colecao-${i + 1}`)]);
       /* e o banner pede assunto CENTRALIZADO: é o enquadramento que sobrevive
          ao corte largo do computador e ao corte alto do celular */
       for (const chave of ["banner-1", "banner-2"]) {
@@ -449,10 +466,14 @@ test("marca própria é 100% manual; as artes da Orbis só existem no caminho ge
     assert.match(imagens, new RegExp(`chave: "${chave}"`), `faltou a peça ${chave}`);
   }
   assert.match(imagens, /Segunda cena[\s\S]{0,200}sem pessoas/);
-  /* e as três cenas da marca, que substituíram as seis capas de coleção */
-  for (const chave of ["cena-1", "cena-2", "cena-3"]) {
-    assert.match(imagens, new RegExp(`chave: "${chave}"`), `faltou a cena ${chave}`);
-  }
+  /* e a capa de cada coleção, com o nome dela dentro do pedido: é o nome que
+     diz o que aquela coleção vende, e foi a pessoa que o escreveu */
+  assert.match(imagens, /chave: `colecao-\$\{indice \+ 1\}`/);
+  assert.match(imagens, /Mostre o que essa coleção vende: \$\{nome\}/);
+  /* a variedade é CALCULADA: pedir "faça diferente" ao modelo devolve o mesmo
+     enquadramento com outra cor */
+  assert.match(imagens, /const ENQUADRAMENTOS = \[/);
+  assert.match(imagens, /ENQUADRAMENTOS\[indice % ENQUADRAMENTOS\.length\]/);
   /* o símbolo continua sem letra nenhuma: modelo de imagem erra texto, e o nome
      entra depois em tipografia de verdade */
   assert.match(imagens, /const JEITO_DO_SIMBOLO[\s\S]{0,600}Sem letras/);

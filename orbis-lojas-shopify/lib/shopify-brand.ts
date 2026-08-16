@@ -313,6 +313,9 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
     .map((chave) => imagens[chave]);
   let proximaCapa = 0;
   let proximaColecao = 0;
+  /* os cartões de coleção que ficaram sem coleção: some com eles no fim, em vez
+     de repetir uma que já apareceu */
+  const vagasSobrando: Array<{ secao: { blocks: Array<unknown> }; alvo: unknown }> = [];
 
   /* 1. esquemas de cor: a loja inteira se pinta por aqui */
   const esquemas = valores.color_schemes;
@@ -513,7 +516,20 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
              * coleções na importação. Elas passam a existir, com produto
              * dentro. Apontar para elas deixou de ser chute.
              */
-            alvo.settings[definicao.id] = colecoes[proximaColecao++ % colecoes.length];
+            /**
+             * SEM dar a volta na lista.
+             *
+             * Era `% colecoes.length`, e o resto da divisão fazia a sétima vaga
+             * receber a primeira coleção de novo. Medido na tela: o Dawn tem
+             * sete cartões em "Nossas Coleções", a loja tinha seis coleções, e
+             * "Novidades" aparecia duas vezes na mesma vitrine — com fotos
+             * diferentes, o que é pior, porque parece duas coleções.
+             *
+             * Acabaram as coleções, acabou o preenchimento: a vaga sobrando é
+             * apagada logo abaixo, e a vitrine mostra o que a loja tem.
+             */
+            if (proximaColecao >= colecoes.length) { vagasSobrando.push({ secao, alvo }); continue; }
+            alvo.settings[definicao.id] = colecoes[proximaColecao++];
             marcou(`${secao.type}.${definicao.id}`);
             continue;
           }
@@ -642,6 +658,24 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
       }
       if (dobraDeBanner) indiceDaDobra++;
     }
+  }
+
+  /**
+   * O CARTÃO SEM COLEÇÃO é apagado, não preenchido de novo.
+   *
+   * O tema traz um número fixo de cartões — o Dawn traz sete —, e a loja tem as
+   * coleções que a pessoa escreveu. Quando sobra vaga, repetir uma coleção que
+   * já apareceu é o pior dos três caminhos: parece duas coleções diferentes,
+   * ainda mais porque cada cartão recebe a foto da sua vez. Deixar o cartão
+   * apontando para a coleção que o tema trazia é igualmente ruim, porque aquela
+   * coleção não existe na loja do cliente e o cartão abre vazio.
+   *
+   * Some com ele. A vitrine passa a mostrar exatamente o que a loja tem, que é
+   * a única das três respostas que é verdade.
+   */
+  for (const { secao, alvo } of vagasSobrando) {
+    const indice = secao.blocks.indexOf(alvo as never);
+    if (indice >= 0) secao.blocks.splice(indice, 1);
   }
 
   /* último passo: nada sai daqui num formato que a Shopify recusaria */

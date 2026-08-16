@@ -366,39 +366,56 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
   ];
 
   /**
-   * As TRÊS cenas da marca, no lugar de seis capas de coleção.
+   * UMA CAPA POR COLEÇÃO, com o assunto da coleção dentro.
    *
-   * Eram seis capas, uma por coleção, e elas custavam mais da metade do lote
-   * inteiro para entregar seis fotos de produto sobre fundo liso — variações do
-   * mesmo enquadramento. Três cenas de MUNDO da marca (quem usa, do que é
-   * feito, onde vive) valem mais: aparecem na página inteira, no rodapé, no
-   * "sobre" e nas próprias capas de coleção, que passam a rodar entre elas.
+   * A versão anterior gerava três cenas genéricas da marca e as fazia RODAR
+   * entre as coleções. Com sete coleções e três fotos, a terceira volta a
+   * aparecer na quarta vaga: a vitrine mostrava a mesma imagem duas vezes, e
+   * "Alfaiataria" e "Promoções" ganhavam a mesma foto sem nenhuma relação com o
+   * que cada uma vende.
    *
-   * E o lote encolhe, o que não é detalhe: era com doze pedidos simultâneos que
-   * a fila estourava a espera e a loja saía com três imagens.
+   * Agora o assunto sai do NOME que a pessoa escreveu. "Moda Fitness" pede uma
+   * foto de moda fitness; "Bolsas" pede bolsa. É a única fonte que sabe o que
+   * aquela coleção é, porque foi ela que a inventou.
+   *
+   * ## A variedade é calculada, não pedida
+   *
+   * Pedir "faça diferente" ao modelo devolve o mesmo enquadramento com outra
+   * cor. Então o enquadramento é escolhido AQUI, por índice: a primeira capa é
+   * um plano de conjunto, a segunda um close, a terceira uma cena com pessoa, e
+   * assim por diante. Duas capas vizinhas nunca caem no mesmo tratamento, e o
+   * resultado é estável — a mesma loja gerada de novo dá as mesmas escolhas.
    */
-  const CENAS: Array<{ chave: string; titulo: string; direcao: string }> = [
-    { chave: "cena-1", titulo: "Cena da marca: quem usa", direcao: "uma pessoa real em situação cotidiana usando o produto, luz natural, ambiente com pouca informação atrás" },
-    { chave: "cena-2", titulo: "Cena da marca: o material", direcao: "close no material e no acabamento do produto, mãos entrando no quadro, textura evidente" },
-    { chave: "cena-3", titulo: "Cena da marca: o mundo dela", direcao: "o produto no ambiente onde a marca vive, plano aberto, sem pessoas, clima de fim de tarde" },
+  const ENQUADRAMENTOS = [
+    "plano de conjunto sobre superfície lisa, peças organizadas com respiro entre elas, luz difusa de estúdio",
+    "close no detalhe e no acabamento, profundidade de campo curta, textura evidente",
+    "uma pessoa real usando a peça em situação cotidiana, luz natural, fundo com pouca informação",
+    "composição vista de cima, poucas peças bem espaçadas, sombra suave",
+    "a peça no ambiente onde ela é usada, plano aberto, clima de fim de tarde",
+    "peça única centralizada em fundo de cor sólida da marca, iluminação lateral marcada",
   ];
-  for (const cena of CENAS) {
+
+  colecoes.forEach((colecao, indice) => {
+    const nome = colecao.trim();
+    if (!nome) return;
     pecas.push({
-      chave: cena.chave,
-      papel: "cena",
-      titulo: cena.titulo,
-      aspecto: ASPECTO.cena,
-      resolucao: resolucaoDaPeca("cena"),
+      chave: `colecao-${indice + 1}`,
+      papel: "colecao",
+      titulo: `Capa da coleção: ${nome}`,
+      aspecto: ASPECTO.colecao,
+      resolucao: resolucaoDaPeca("colecao"),
       origem: "gerada",
       prompt: [
-        `Fotografia de campanha para uma loja de ${tema}: ${cena.direcao}.`,
-        `Paleta dominante: ${cores}, com fundo texturizado em tom quente.`,
+        `Fotografia de campanha para a coleção "${nome}" de uma loja de ${tema}.`,
+        `Mostre o que essa coleção vende: ${nome}.`,
+        `Enquadramento: ${ENQUADRAMENTOS[indice % ENQUADRAMENTOS.length]}.`,
+        `Paleta dominante: ${cores}.`,
         QUALIDADE,
         "Sem letras, sem logotipos e sem marca d'água.",
       ].join(" "),
-      fallbackSvg: colecaoSvg(marca, colecoes[0] ?? cena.titulo, CENAS.indexOf(cena)),
+      fallbackSvg: colecaoSvg(marca, nome, indice),
     });
-  }
+  });
 
   return pecas;
 }

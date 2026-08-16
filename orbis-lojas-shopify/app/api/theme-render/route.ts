@@ -3,11 +3,11 @@ import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
 import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { renderThemePage, type PreviewCartItem } from "@/lib/theme-render";
-import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
+import { aplicarMarcaNoTema, handleDeColecao } from "@/lib/shopify-brand";
 
 const FINGERPRINT = /^[0-9a-f]{16}$/;
 
-type RenderExtras = { cartItems?: PreviewCartItem[]; onlySections?: string[]; handle?: string; variantId?: number; nicheId?: string };
+type RenderExtras = { cartItems?: PreviewCartItem[]; onlySections?: string[]; handle?: string; variantId?: number; nicheId?: string; capasDeColecao?: Record<string, string> };
 
 async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pageId: string, extras: RenderExtras = {}) {
   const fingerprint = shopify.sourceFingerprint;
@@ -28,6 +28,7 @@ async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pag
     /* o nicho viaja dentro do tema salvo no projeto: a vitrine da loja gerada
        precisa dos produtos daquele nicho em qualquer rota de render */
     nicheId: extras.nicheId ?? shopify.orbisNicheId,
+    capasDeColecao: extras.capasDeColecao,
   });
   /* pedido de seções soltas volta como JSON (Section Rendering API) */
   if (extras.onlySections?.length) {
@@ -121,7 +122,23 @@ export async function POST(request: Request) {
       if (!base) return Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 404 });
       const marca = body.marca as Parameters<typeof aplicarMarcaNoTema>[1];
       const { theme } = aplicarMarcaNoTema(base, marca);
+      /**
+       * A capa de cada coleção, casada pelo HANDLE.
+       *
+       * `colecao-1` é a capa da primeira coleção, `colecao-2` da segunda: a
+       * ordem é a mesma em que as peças foram pedidas, e é ela que garante que
+       * a foto de "Bolsas" vá para o cartão de "Bolsas". Casar por posição só
+       * funciona porque as duas listas saem da MESMA lista de nomes.
+       */
+      const nomes = Array.isArray(marca.collections) ? marca.collections : [];
+      const capasDeColecao: Record<string, string> = {};
+      nomes.forEach((nome, indice) => {
+        const capa = (marca.imagens as Record<string, string> | undefined)?.[`colecao-${indice + 1}`];
+        const chave = handleDeColecao(String(nome));
+        if (capa && chave) capasDeColecao[chave] = capa;
+      });
       const resposta = await renderResponse(viewer.id, theme, String(body.page ?? "index"), {
+        capasDeColecao,
         nicheId: typeof (body.marca as { nicheId?: unknown }).nicheId === "string" ? (body.marca as { nicheId: string }).nicheId : undefined,
       });
       return resposta ?? Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 404 });
