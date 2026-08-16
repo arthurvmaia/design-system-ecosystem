@@ -6,6 +6,7 @@ import {
   canAccessProject,
   normalizeCustomization,
   validateUpload,
+  MAX_UPLOAD_BYTES,
 } from "../lib/business-rules.mjs";
 
 test("desbloqueio calcula saldo sem permitir valor negativo", () => {
@@ -49,10 +50,26 @@ test("autorização mantém projetos isolados", () => {
   assert.equal(canAccessProject("owner-a", "admin", true), true);
 });
 
-test("upload aceita somente imagens seguras de até 5 MB", () => {
+/**
+ * O teto do upload é o da SHOPIFY, e não um número nosso.
+ *
+ * Eram 5 MB, sem justificativa escrita em lugar nenhum, e isso recusava foto
+ * que a Shopify aceita sem reclamar: quem tentava trocar o banner pelo editor
+ * ouvia que o arquivo era grande demais e ia conferir na Shopify, onde ele
+ * passava. 20 MB é o limite dela, tanto em Content > Files quanto em asset de
+ * tema — acima disso ela recusaria de qualquer jeito.
+ *
+ * O SVG continua barrado, e isso não é sobre tamanho: SVG carrega script, e
+ * arquivo de terceiro entra por este mesmo caminho.
+ */
+test("upload aceita imagem segura até o teto da Shopify, e recusa acima", () => {
   assert.equal(validateUpload("image/webp", 1024), true);
+  assert.equal(validateUpload("image/png", 13 * 1024 * 1024), true, "13 MB é foto de banner, não abuso");
+  assert.equal(validateUpload("image/jpeg", MAX_UPLOAD_BYTES), true, "o teto em cima da linha passa");
   assert.throws(() => validateUpload("image/svg+xml", 1024), /INVALID_FILE_TYPE/);
-  assert.throws(() => validateUpload("image/png", 6 * 1024 * 1024), /INVALID_FILE_SIZE/);
+  assert.throws(() => validateUpload("image/png", MAX_UPLOAD_BYTES + 1), /INVALID_FILE_SIZE/);
+  assert.throws(() => validateUpload("image/png", 0), /INVALID_FILE_SIZE/);
+  assert.equal(MAX_UPLOAD_BYTES, 20 * 1024 * 1024);
 });
 
 test("operações financeiras têm idempotência e gatilhos atômicos", async () => {

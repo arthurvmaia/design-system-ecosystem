@@ -1,4 +1,5 @@
 import { strFromU8, unzipSync, zipSync } from "fflate";
+import { MAX_UPLOAD_BYTES } from "./business-rules.mjs";
 import { NICHOS } from "./marca-generator.mjs";
 /* só o handle: `shopify-brand` importa daqui apenas TIPOS, que somem na
    compilação, então não há ciclo em tempo de execução. Reescrever a regra do
@@ -158,7 +159,7 @@ const MAX_IMAGE_ASSETS = 800;
  * disso a plataforma recusaria o arquivo de qualquer jeito, então recusar aqui
  * é dizer a mesma coisa mais cedo — e agora dizendo, não em silêncio.
  */
-const MAX_IMAGE_ASSET_BYTES = 20 * 1024 * 1024;
+const MAX_IMAGE_ASSET_BYTES = MAX_UPLOAD_BYTES;
 
 export const MAX_THEME_ZIP_BYTES = 100 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 400 * 1024 * 1024;

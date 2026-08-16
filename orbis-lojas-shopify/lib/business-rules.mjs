@@ -1,6 +1,25 @@
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const ALLOWED_UPLOADS = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+/**
+ * A MAIOR imagem que o app aceita: 20 MB, o mesmo que a Shopify.
+ *
+ * Era 5 MB aqui, 20 MB no asset de tema e 20 MB ao salvar o que o gerador
+ * devolve — três tetos para a mesma coisa. O de 5 MB recusava foto que a
+ * Shopify aceita sem reclamar, e o motivo dele nunca foi escrito em lugar
+ * nenhum: um número inventado barrando material bom.
+ *
+ * 20 MB não é palpite: é o limite da Shopify por arquivo de imagem, tanto em
+ * Content > Files quanto em asset de tema. Acima disso ela recusaria de
+ * qualquer jeito, e recusar aqui é dizer a mesma coisa mais cedo.
+ *
+ * Uma constante só, exportada, porque teto duplicado é como esta discordância
+ * nasceu: alguém sobe um e esquece o outro, e o app passa a discordar de si
+ * mesmo sem nenhum erro na tela.
+ */
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+export const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / (1024 * 1024);
+
 export const DEFAULT_CUSTOMIZATION = Object.freeze({
   global: {
     font: "Inter",
@@ -311,7 +330,7 @@ export function canAccessProject(ownerId, viewerId, isAdmin = false) {
 
 export function validateUpload(contentType, size) {
   if (!ALLOWED_UPLOADS.has(contentType)) throw new Error("INVALID_FILE_TYPE");
-  if (!Number.isFinite(size) || size <= 0 || size > 5 * 1024 * 1024) throw new Error("INVALID_FILE_SIZE");
+  if (!Number.isFinite(size) || size <= 0 || size > MAX_UPLOAD_BYTES) throw new Error("INVALID_FILE_SIZE");
   return true;
 }
 

@@ -8,6 +8,7 @@ import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada"
 import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
 import { derivarLogos } from "@/lib/logo-derivar";
 
@@ -236,11 +237,11 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
    * prévia local e o site estático precisam dela embutida.
    */
   async function enviarImagem(chave: string, arquivo: File) {
-    if (arquivo.size > 5 * 1024 * 1024) throw new Error("A imagem precisa ter até 5 MB.");
+    if (arquivo.size > MAX_UPLOAD_BYTES) throw new Error(`A imagem precisa ter até ${MAX_UPLOAD_MB} MB.`);
     const formulario = new FormData();
     formulario.append("file", arquivo);
     const resposta = await fetch("/api/media", { method: "POST", body: formulario });
-    if (!resposta.ok) throw new Error("Não consegui guardar essa imagem. Tente PNG, JPG ou WebP de até 5 MB.");
+    if (!resposta.ok) throw new Error(`Não consegui guardar essa imagem. Tente PNG, JPG ou WebP de até ${MAX_UPLOAD_MB} MB.`);
     const { url } = await resposta.json() as { url: string };
     setMarca((atual) => ({ ...atual, imagens: { ...atual.imagens, [chave]: url } }));
     setEditadoAMao((atual) => ({ ...atual, imagens: { ...(atual.imagens ?? {}), [chave]: url } }));

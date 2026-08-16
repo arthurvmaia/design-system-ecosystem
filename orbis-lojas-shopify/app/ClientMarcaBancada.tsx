@@ -3,6 +3,7 @@
 import { Check, ChevronRight, Sparkles, RefreshCw, X } from "lucide-react";
 import { useState } from "react";
 import { NICHOS } from "@/lib/marca-generator.mjs";
+import { MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 
 /**
  * A etapa "Marca" como bancada: uma coluna de instrumentos fechados, e um
@@ -207,7 +208,7 @@ function PainelImagens({
   return (
     <div className="cf-painel">
       <p className="cf-painel-nota">
-        PNG, JPG ou WebP de até 5 MB. O que ficar sem envio entra com a arte da Orbis, na paleta da marca.
+        PNG, JPG ou WebP de até {MAX_UPLOAD_MB} MB. O que ficar sem envio entra com a arte da Orbis, na paleta da marca.
       </p>
       {falha && <p className="cf-painel-erro">{falha}</p>}
       <div className="cf-galeria">

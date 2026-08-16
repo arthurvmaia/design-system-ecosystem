@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { BootstrapData, Project, Theme, Viewer } from "@/lib/types";
-import { normalizeCustomization } from "@/lib/business-rules.mjs";
+import { MAX_UPLOAD_MB, normalizeCustomization } from "@/lib/business-rules.mjs";
 import { enderecoDoPortal } from "@/app/portal";
 import { DesligarOrbis } from "@/app/DesligarOrbis";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySectionSchema, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
@@ -1609,7 +1609,7 @@ function MediaField({ label = "Imagem principal", value, assetUrls, onUploaded }
       if (!response.ok) throw new Error(payload.error);
       onUploaded(payload.url);
     } catch {
-      setError("Use PNG, JPG ou WebP de até 5 MB.");
+      setError(`Use PNG, JPG ou WebP de até ${MAX_UPLOAD_MB} MB.`);
     } finally {
       setUploading(false);
     }

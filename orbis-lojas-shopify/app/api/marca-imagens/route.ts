@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 import { consultarTarefa, magnificDisponivel, modeloPadrao, modeloValido, pedirGeracao, promptDaVitrine, type PapelMagnific } from "@/lib/magnific";
 
 /**
@@ -76,8 +77,8 @@ async function guardarComoMidia(viewerId: string, url: string, nome: string) {
    * Acima de 20 MB a própria Shopify recusaria o arquivo, então recusar aqui é
    * dizer a mesma coisa mais cedo, e dizendo o tamanho.
    */
-  if (dados.byteLength > 20 * 1024 * 1024) {
-    throw new Error(`ARQUIVO_GRANDE_${(dados.byteLength / (1024 * 1024)).toFixed(1)}MB`);
+  if (dados.byteLength > MAX_UPLOAD_BYTES) {
+    throw new Error(`ARQUIVO_GRANDE_${(dados.byteLength / (1024 * 1024)).toFixed(1)}MB_TETO_${MAX_UPLOAD_MB}MB`);
   }
   const tipo = resposta.headers.get("content-type") ?? "image/png";
   if (!/^image\//.test(tipo)) throw new Error("TIPO_INVALIDO");
