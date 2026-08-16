@@ -23,9 +23,21 @@ test("a prévia ao vivo só aparece na revisão, e lá aparece inteira", async (
   const raiz = fileURLToPath(new URL("..", import.meta.url));
   const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
 
-  /* a coluna fixa não volta: era ela o problema, não a prévia */
-  assert.doesNotMatch(flow, /cf-preview/, "a coluna de 340px ao lado de todo passo não pode voltar");
-  assert.match(flow, /className="cf-layout cf-layout-cheio"/);
+  /**
+   * A coluna da direita existe, mas NÃO é a prévia da loja.
+   *
+   * A antiga acompanhava todo passo mostrando a loja inteira em 340px, e não
+   * ajudava nenhuma das decisões que aqueles passos cobram. A de agora aparece
+   * só no passo das artes e mostra AS ARTES — que é a pergunta daquele passo, e
+   * cabe nesse tamanho: para escolher entre "essa serve" e "essa não",
+   * miniatura basta.
+   */
+  assert.doesNotMatch(flow, /cf-preview/, "a coluna da prévia da loja não pode voltar");
+  assert.match(flow, /const temGaleria = passo === 2 && modo === "gerada" && galeria\.length > 0/);
+  assert.match(flow, /cf-layout \$\{temGaleria \? "" : "cf-layout-cheio"\}/, "sem galeria, uma coluna só");
+  /* e ela mostra IMAGEM, que é o que a lista de nomes não mostrava */
+  assert.match(flow, /className="cf-galeria"/);
+  assert.match(flow, /<img src=\{url\} alt=\{peca\.titulo\}/);
 
   /* e ela está DENTRO do passo 3, que é o único lugar onde o componente é
      citado — se aparecesse duas vezes, uma delas estaria em outra etapa */

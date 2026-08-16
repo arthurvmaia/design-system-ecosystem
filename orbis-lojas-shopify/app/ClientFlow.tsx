@@ -349,6 +349,23 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     [pecas],
   );
   const placar = useMemo(() => placarDasArtes(artes, obrigatorias), [artes, obrigatorias]);
+
+  /**
+   * As peças que a galeria mostra, na ordem em que a loja as usa.
+   *
+   * Entram as que TÊM imagem: as geradas e derivadas que já chegaram, e as
+   * desenhadas, que são desenho local e existem desde sempre. Peça sem imagem
+   * ficaria como um retângulo vazio prometendo algo que não está lá.
+   */
+  const galeria = useMemo(() => pecas
+    .map((peca) => ({
+      peca,
+      arte: artes[peca.chave],
+      /* a desenhada não tem versão nem aprovação: ela é vetor, feito aqui */
+      url: artes[peca.chave]?.url ?? (peca.origem === "desenhada" ? fallbackDataUri(peca) : ""),
+    }))
+    .filter((item) => Boolean(item.url)), [pecas, artes]);
+  const temGaleria = passo === 2 && modo === "gerada" && galeria.length > 0;
   const quantasPodemGerar = useMemo(
     () => pecasGeradas.filter((peca) => podeGerar(artes[peca.chave])).length,
     [pecasGeradas, artes],
@@ -890,7 +907,19 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           </div>
         );
       })()}
-      <div className="cf-layout cf-layout-cheio">
+      {/**
+       * A COLUNA DA DIREITA volta, com outro conteúdo.
+       *
+       * Ela existiu para a prévia ao vivo da loja e saiu por não ajudar
+       * decisão nenhuma numa miniatura de 340px. Aqui a pergunta é outra e cabe
+       * exatamente nesse tamanho: "gostei desta arte?". A lista de NOMES não
+       * respondia isso — obrigava a abrir peça por peça só para descobrir o que
+       * era cada uma, e era isso que ficava estranho e desorganizado.
+       *
+       * Só no passo das artes, e só quando existe arte. Nos outros a coluna
+       * ficaria reservada e vazia, tirando largura de onde o trabalho acontece.
+       */}
+      <div className={`cf-layout ${temGaleria ? "" : "cf-layout-cheio"}`}>
         <div className="cf-panel">
           <header className="cf-head">
             <Orbis tamanho={40} alt="" />
@@ -1071,32 +1100,24 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                             : `Gerar as ${pecasGeradas.length} imagens`}
                     </button>
                   </div>
-                  {/* cada arte é um botão: clicar abre o visualizador dela, com
-                      a versão, o que resta de alteração e as duas decisões */}
-                  <div className="cf-pecas">
-                    {pecas.map((peca) => {
-                      const arte = artes[peca.chave];
-                      const estado = peca.origem === "desenhada" ? "desenhada" : estadoDaArte(arte);
-                      const abre = peca.origem !== "desenhada" && Boolean(arte);
-                      return (
-                        <button
-                          key={peca.chave}
-                          type="button"
-                          className={`cf-peca cf-peca-${estado}`}
-                          disabled={!abre}
-                          onClick={() => abre && setArteAberta(peca.chave)}
-                        >
+                  {/**
+                   * A lista de NOMES só aparece enquanto não há o que ver.
+                   *
+                   * Depois que as artes existem, quem mostra é a galeria da
+                   * direita: nome sem imagem obriga a abrir peça por peça só
+                   * para descobrir o que é cada uma.
+                   */}
+                  {!temGaleria && (
+                    <div className="cf-pecas">
+                      {pecas.map((peca) => (
+                        <span key={peca.chave} className={`cf-peca cf-peca-${peca.origem === "desenhada" ? "desenhada" : "ausente"}`}>
                           <b>{peca.titulo}</b>
-                          {arte && <code>V{arte.versao}</code>}
-                          {estado === "desenhada" && <i className="cf-peca-ok"><Check size={11} /> desenhada</i>}
-                          {estado === "aprovada" && <i className="cf-peca-ok"><Check size={11} /> aprovada</i>}
-                          {estado === "aguardando" && <i className="cf-peca-nota">aguardando aprovação</i>}
-                          {estado === "limite" && <i className="cf-peca-limite">limite de alterações</i>}
-                          {estado === "ausente" && peca.origem === "derivada" && <i className="cf-peca-nota">sai do símbolo</i>}
-                        </button>
-                      );
-                    })}
-                  </div>
+                          {peca.origem === "desenhada" && <i className="cf-peca-ok"><Check size={11} /> desenhada</i>}
+                          {peca.origem === "derivada" && <i className="cf-peca-nota">sai do símbolo</i>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {(() => {
                     const placar = placarDasArtes(artes, obrigatorias);
                     if (!placar.total || !Object.keys(artes).length) return null;
@@ -1198,6 +1219,53 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           </footer>
         </div>
 
+        {/**
+         * A GALERIA DAS ARTES, na coluna da direita.
+         *
+         * Clicar num nome não diz se a arte ficou boa. A miniatura diz, e a
+         * decisão que esta etapa cobra — aprovar ou pedir outra — é uma
+         * decisão de olho, não de leitura. Por isso cada peça aparece com a
+         * cara dela, o número da versão e o estado, e o clique abre grande.
+         *
+         * Cabe em 340px porque é o que a pergunta pede: para escolher entre
+         * "essa serve" e "essa não", miniatura basta; para decidir de verdade,
+         * abre-se a peça.
+         */}
+        {temGaleria && (
+          <aside className="cf-galeria">
+            <header>
+              <strong>Prévia das artes</strong>
+              <span>Abra cada uma para ver de perto, aprovar ou pedir alteração.</span>
+            </header>
+            <div className="cf-galeria-grade">
+              {galeria.map(({ peca, arte, url }) => {
+                const estado = peca.origem === "desenhada" ? "desenhada" : estadoDaArte(arte);
+                const abre = peca.origem !== "desenhada" && Boolean(arte);
+                return (
+                  <button
+                    key={peca.chave}
+                    type="button"
+                    className={`cf-arte-card cf-peca-${estado}`}
+                    disabled={!abre}
+                    title={abre ? `Abrir ${peca.titulo}` : peca.titulo}
+                    onClick={() => abre && setArteAberta(peca.chave)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- mídia do próprio usuário ou desenho local. */}
+                    <img src={url} alt={peca.titulo} loading="lazy" />
+                    <b>{peca.titulo}</b>
+                    <small>
+                      {arte && <code>V{arte.versao}</code>}
+                      {estado === "desenhada" && <i className="cf-peca-ok"><Check size={10} /> desenhada</i>}
+                      {estado === "aprovada" && <i className="cf-peca-ok"><Check size={10} /> aprovada</i>}
+                      {estado === "aguardando" && <i className="cf-peca-nota">aguardando</i>}
+                      {estado === "limite" && <i className="cf-peca-limite">no limite</i>}
+                    </small>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+        )}
         {/**
          * A prévia ao vivo SÓ existe na revisão.
          *
