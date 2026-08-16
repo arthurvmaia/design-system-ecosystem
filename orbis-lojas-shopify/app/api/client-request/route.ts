@@ -414,6 +414,20 @@ export async function POST(request: Request) {
      */
     const TETO_DA_SHOPIFY = 50 * 1024 * 1024;
     const megas = (zip.byteLength / (1024 * 1024)).toFixed(1);
+
+    /**
+     * O projeto fica FINALIZADO — e só aqui.
+     *
+     * Não quando o cliente confirma, não quando a montagem começa: quando o
+     * pacote existe e está saindo. Marcar antes seria dizer "pronto" sobre uma
+     * loja que ainda pode falhar na linha seguinte, e o `catch` abaixo não teria
+     * como desdizer sem sobrescrever um estado que talvez já fosse outro.
+     */
+    await getD1()
+      .prepare("UPDATE projects SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?")
+      .bind(projectId, viewer.id)
+      .run();
+
     return new Response(zip.slice().buffer, {
       headers: {
         "content-type": "application/zip",

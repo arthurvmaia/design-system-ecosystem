@@ -120,7 +120,11 @@ test("as imagens geradas sobrevivem ao recarregar, presas à marca que as pediu"
      a arte da anterior ficaria órfã de qualquer jeito */
   assert.match(flow, /orbis:marca:\$\{nicho\}/);
   /* grava sempre que o mapa muda, e some quando ele esvazia */
-  assert.match(flow, /setItem\(cofre, JSON\.stringify\(\{ semente, artes \}\)\)/);
+  assert.match(flow, /setItem\(cofre, JSON\.stringify\(\{ semente, artes, editadoAMao \}\)\)/);
+  /* o que a pessoa DIGITOU vai junto, e é o que mais custa a refazer: nome,
+     cores e principalmente as coleções não saem de semente nenhuma. Guardar só
+     quando existisse arte perdia justamente quem parou antes de gerar. */
+  assert.match(flow, /Object\.keys\(artes\)\.length \|\| Object\.keys\(editadoAMao\)\.length/);
   /* e guarda a VIDA de cada peça, não só a URL: sem versão e aprovação no
      disco, recarregar a página devolvia duas alterações novas de presente */
   assert.match(flow, /salvo\?\.artes \?\? salvo\?\.imagens/, "o formato antigo continua sendo lido");

@@ -16,6 +16,9 @@ import {
   placarDasArtes, podeGerar, podePedirAlteracao, urlsAprovadas, type ArteDaLoja,
 } from "@/lib/artes-da-loja";
 import { comporBanner } from "@/lib/banner-compor";
+import {
+  ROTULO_DO_PROJETO, estadoDoProjeto, passoRestauravel, pontoLido, type EstadoDoProjeto,
+} from "@/lib/estado-do-projeto";
 
 /**
  * O balcão do cliente: quatro passos e uma loja na mão.
@@ -64,20 +67,94 @@ function marcaGerada(nicheId: string, semente: string, sobrescritas: Partial<Mar
   };
 }
 
+/**
+ * ONDE A PESSOA PAROU, lido do disco.
+ *
+ * Vive fora do componente e é chamado como valor inicial de `useState`, não num
+ * efeito: efeito que chama `setState` na hora provoca render em cascata e o
+ * lint do projeto reprova — e, pior, faria a tela piscar no passo 1 antes de
+ * pular para o 3.
+ *
+ * Ler no primeiro render é seguro AQUI porque este componente só existe depois
+ * de um clique: a página serve o portão de entrada, não o fluxo. Não há
+ * primeiro render no servidor para divergir.
+ */
+const CHAVE_DO_PONTO = "orbis:projeto";
+function lerPonto() {
+  if (typeof window === "undefined") return pontoLido(null);
+  try { return pontoLido(JSON.parse(window.localStorage.getItem(CHAVE_DO_PONTO) ?? "null")); }
+  catch { return pontoLido(null); }
+}
+
+/** As artes guardadas de um nicho, já passadas pela leitura que impõe os limites. */
+function lerArtes(nicho: string): Record<string, ArteDaLoja> {
+  if (typeof window === "undefined" || !nicho) return {};
+  try {
+    const salvo = JSON.parse(window.localStorage.getItem(`orbis:marca:${nicho}`) ?? "null") as
+      { artes?: Record<string, unknown>; imagens?: Record<string, string> } | null;
+    /* `imagens` é o formato antigo, de antes das versões: uma URL por peça.
+       Ler os dois mantém de pé a loja que ficou pela metade ontem. */
+    const bruto = salvo?.artes ?? salvo?.imagens ?? {};
+    const lidas: Record<string, ArteDaLoja> = {};
+    for (const [peca, valor] of Object.entries(bruto)) {
+      const arte = arteLida(valor);
+      if (arte) lidas[peca] = arte;
+    }
+    return lidas;
+  } catch { return {}; }
+}
+
+/** A semente guardada: é ela que devolve a MESMA marca, não uma parecida. */
+function lerSemente(nicho: string): string {
+  if (typeof window === "undefined" || !nicho) return "";
+  try {
+    const salvo = JSON.parse(window.localStorage.getItem(`orbis:marca:${nicho}`) ?? "null") as { semente?: string } | null;
+    return typeof salvo?.semente === "string" ? salvo.semente : "";
+  } catch { return ""; }
+}
+
+/** O que a pessoa digitou por cima da marca gerada — o que não é sorteável. */
+function lerEdicoes(nicho: string): Partial<MarcaCliente> {
+  if (typeof window === "undefined" || !nicho) return {};
+  try {
+    const salvo = JSON.parse(window.localStorage.getItem(`orbis:marca:${nicho}`) ?? "null") as
+      { editadoAMao?: Partial<MarcaCliente> } | null;
+    const edicoes = salvo?.editadoAMao;
+    return edicoes && typeof edicoes === "object" ? edicoes : {};
+  } catch { return {}; }
+}
+
 export function ClientFlow({ onExit }: { onExit: () => void }) {
-  const [passo, setPasso] = useState(0);
+  /**
+   * O PONTO DE PARADA, restaurado.
+   *
+   * Antes, recarregar devolvia a pessoa ao passo 1 com tudo em branco. As artes
+   * voltavam ao escolher o nicho de novo, mas o tema escolhido e o que ela
+   * digitou à mão — coleções, principalmente — não voltavam de lugar nenhum:
+   * não são sorteáveis a partir da semente, então eram trabalho jogado fora.
+   */
+  const [ponto] = useState(lerPonto);
+  const [artesGuardadas] = useState(() => lerArtes(ponto.nicheId));
+  const [passo, setPasso] = useState(() => passoRestauravel(ponto, Object.keys(artesGuardadas).length > 0));
   /* até onde a pessoa já chegou: o que ficou para trás é clicável, o que vem
      depois não, senão daria para pular um passo que ainda nem foi preenchido */
-  const [passoMaisLonge, setPassoMaisLonge] = useState(0);
-  const [modo, setModo] = useState<Modo | null>(null);
-  const [nicheId, setNicheId] = useState("");
-  const [semente, setSemente] = useState("orbis");
-  const [gerada, setGerada] = useState(false);
-  const [marca, setMarca] = useState<MarcaCliente>(MARCA_VAZIA);
-  const [editadoAMao, setEditadoAMao] = useState<Partial<MarcaCliente>>({});
+  const [passoMaisLonge, setPassoMaisLonge] = useState(() => passoRestauravel(ponto, Object.keys(artesGuardadas).length > 0));
+  const [modo, setModo] = useState<Modo | null>(() => (ponto.modo === "gerada" || ponto.modo === "manual" ? ponto.modo : null));
+  const [nicheId, setNicheId] = useState(() => ponto.nicheId);
+  const [semente, setSemente] = useState(() => lerSemente(ponto.nicheId) || "orbis");
+  const [gerada, setGerada] = useState(() => ponto.modo === "gerada" && Boolean(ponto.nicheId));
+  /* a marca é RECONSTRUÍDA da semente guardada, não gravada: a mesma semente
+     devolve o mesmo nome, as mesmas cores e a mesma voz, e o que foi digitado
+     à mão entra por cima */
+  const [marca, setMarca] = useState<MarcaCliente>(() => (
+    ponto.modo === "gerada" && ponto.nicheId
+      ? marcaGerada(ponto.nicheId, lerSemente(ponto.nicheId) || "orbis", lerEdicoes(ponto.nicheId))
+      : { ...MARCA_VAZIA, ...lerEdicoes(ponto.nicheId) }
+  ));
+  const [editadoAMao, setEditadoAMao] = useState<Partial<MarcaCliente>>(() => lerEdicoes(ponto.nicheId));
   const [temas, setTemas] = useState<TemaDisponivel[]>([]);
   const [temasCarregando, setTemasCarregando] = useState(true);
-  const [themeId, setThemeId] = useState("");
+  const [themeId, setThemeId] = useState(() => ponto.themeId);
   const [templateId, setTemplateId] = useState<string>(SITE_TEMPLATES[0].id);
   /* as artes da Orbis saem do provedor de imagem; sem ele, o tema fica com
      as imagens que já traz. Marca própria não passa por aqui. */
@@ -89,7 +166,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
    * refeita, quantas vezes, nem se o cliente disse sim. Sem isso não há limite
    * de alteração que se sustente: recarregar a página zerava tudo.
    */
-  const [artes, setArtes] = useState<Record<string, ArteDaLoja>>({});
+  const [artes, setArtes] = useState<Record<string, ArteDaLoja>>(artesGuardadas);
   /* a peça aberta no visualizador; null = a lista */
   const [arteAberta, setArteAberta] = useState<string | null>(null);
   const [gerandoImagens, setGerandoImagens] = useState(false);
@@ -155,7 +232,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     if (!chave) return "";
     try {
       const salvo = JSON.parse(window.localStorage.getItem(chave) ?? "null") as
-        { semente?: string; artes?: Record<string, unknown>; imagens?: Record<string, string> } | null;
+        { semente?: string; artes?: Record<string, unknown>; imagens?: Record<string, string>; editadoAMao?: Partial<MarcaCliente> } | null;
       /* `imagens` é o formato antigo, de antes das versões: uma URL por peça.
          Ler os dois mantém de pé a loja que ficou pela metade ontem. */
       const bruto = salvo?.artes ?? salvo?.imagens ?? {};
@@ -165,17 +242,49 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         if (arte) lidas[peca] = arte;
       }
       setArtes(lidas);
+      /* o que foi digitado à mão volta junto: sem isso, escolher o nicho de
+         novo devolvia a arte e apagava as coleções escritas */
+      if (salvo?.editadoAMao && typeof salvo.editadoAMao === "object") setEditadoAMao(salvo.editadoAMao);
       return typeof salvo?.semente === "string" ? salvo.semente : "";
     } catch { setArtes({}); return ""; }
   }, []);
   useEffect(() => {
     if (!cofre || !semente) return;
     try {
-      if (Object.keys(artes).length) {
-        window.localStorage.setItem(cofre, JSON.stringify({ semente, artes }));
+      /* grava mesmo sem arte nenhuma: o que a pessoa DIGITOU (coleções, nome,
+         cores) é o trabalho que não se refaz sozinho, e esperar a primeira
+         imagem para começar a guardar perdia justamente esse */
+      if (Object.keys(artes).length || Object.keys(editadoAMao).length) {
+        window.localStorage.setItem(cofre, JSON.stringify({ semente, artes, editadoAMao }));
       }
     } catch { /* sem armazenamento local a sessão continua, só não guarda */ }
-  }, [cofre, semente, artes]);
+  }, [cofre, semente, artes, editadoAMao]);
+
+  /**
+   * O ESTADO DO PROJETO, derivado do caminho percorrido.
+   *
+   * Não é um campo que alguém escreve: é uma leitura do que já existe. Guardado
+   * à parte, ele viraria a segunda verdade sobre a mesma coisa, e bastaria uma
+   * gravação falhar no meio para o projeto dizer que está aprovando artes com
+   * as artes todas aprovadas.
+   */
+  const estado: EstadoDoProjeto = estadoDoProjeto({
+    passo, artes, gerando: gerandoImagens, entrega: status,
+  });
+
+  /**
+   * O PONTO DE PARADA vai para o disco a cada mudança.
+   *
+   * O estado vai junto como registro — para o resumo e para o servidor —, mas
+   * quem manda é a derivação acima: ao reabrir, ele é recalculado do zero.
+   */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CHAVE_DO_PONTO, JSON.stringify({
+        passo, modo: modo ?? "", nicheId, themeId, estado,
+      }));
+    } catch { /* sem armazenamento local a sessão continua, só não guarda */ }
+  }, [passo, modo, nicheId, themeId, estado]);
 
   /* o provedor de imagem é opcional: a tela só oferece o que existe */
   useEffect(() => {
@@ -595,8 +704,12 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     setMarca(MARCA_VAZIA); setEditadoAMao({});
     setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null); setAvisoDeTamanho(""); setDispositivo("desktop"); setConfirmando(false);
     /* recomeçar é recomeçar: o cofre da marca antiga sai junto, senão a loja
-       seguinte herdaria a logo de uma marca que não existe mais */
-    try { if (cofre) window.localStorage.removeItem(cofre); } catch { /* sem armazenamento, nada a limpar */ }
+       seguinte herdaria a logo de uma marca que não existe mais — e o ponto de
+       parada também, senão a próxima abertura voltaria para a loja recomeçada */
+    try {
+      if (cofre) window.localStorage.removeItem(cofre);
+      window.localStorage.removeItem(CHAVE_DO_PONTO);
+    } catch { /* sem armazenamento, nada a limpar */ }
     setArtes({}); setArteAberta(null); setProgressoIa("");
   }
 
@@ -996,6 +1109,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                 {marca.collections.length > 0 && <div><dt>Coleções</dt><dd>{marca.collections.join(" · ")}</dd></div>}
                 {(marca.whatsapp || marca.instagram || marca.email) && <div><dt>Contato</dt><dd>{[marca.whatsapp, marca.instagram && `@${marca.instagram}`, marca.email].filter(Boolean).join(" · ")}</dd></div>}
                 {obrigatorias.length > 0 && <div><dt>Artes</dt><dd>{placar.aprovadas}/{placar.total} aprovadas</dd></div>}
+                <div><dt>Estado</dt><dd>{ROTULO_DO_PROJETO[estado]}</dd></div>
                 <div><dt>Entrega</dt><dd>ZIP e pasta na sua Área de Trabalho, e o projeto no estúdio com a marca aplicada ao tema.</dd></div>
               </dl>
             </div>
