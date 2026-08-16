@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, FolderOpen, PenLine, RefreshCw, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, PenLine, RefreshCw, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Orbis } from "@/app/Orbis";
 import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada";
@@ -36,7 +36,6 @@ import {
  */
 
 type Modo = "gerada" | "manual";
-type Delivery = { zipPath: string; folderPath: string; entryPath: string } | null;
 type Status = "idle" | "working" | "done" | "error";
 type TemaDisponivel = { id: string; name: string; description?: string; sectionCount?: number };
 
@@ -150,7 +149,7 @@ function lerEdicoes(nicho: string): Partial<MarcaCliente> {
  *
  * O ponto de parada existe para quem PAROU no meio: fechou a aba escolhendo
  * cores, voltou no dia seguinte, continua de onde estava. Quem terminou não tem
- * onde continuar — o ZIP já está na Área de Trabalho e a loja é dele.
+ * onde continuar — o pacote já saiu e a loja é dele.
  *
  * Sem esta distinção, o app fazia a pior coisa possível para quem monta loja
  * para os outros: o cliente SEGUINTE abria o fluxo e caía na etapa 04 da loja
@@ -160,7 +159,7 @@ function lerEdicoes(nicho: string): Partial<MarcaCliente> {
  *
  * Então: entregou, some. O cofre daquele nicho sai junto, senão escolher o
  * mesmo nicho devolveria a marca e as artes do cliente passado. Nada se perde
- * de verdade — as imagens continuam no acervo do app e o pacote, no disco.
+ * de verdade — as imagens continuam no acervo do app e o projeto, no estúdio.
  */
 function encerrarLojaEntregue(ponto: { estado: string; nicheId: string }) {
   if (typeof window === "undefined" || ponto.estado !== "completed") return;
@@ -230,13 +229,14 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   const [progressoIa, setProgressoIa] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [erro, setErro] = useState<string | null>(null);
-  const [delivery, setDelivery] = useState<Delivery>(null);
   const [zip, setZip] = useState<{ blob: Blob; name: string } | null>(null);
   /* o pacote passou do teto da Shopify: aviso, não erro. O ZIP existe e serve. */
   const [avisoDeTamanho, setAvisoDeTamanho] = useState("");
   /* como a loja é conferida na revisão, e a confirmação de finalizar */
   const [dispositivo, setDispositivo] = useState<Dispositivo>("desktop");
   const [confirmando, setConfirmando] = useState(false);
+  /* e o aviso de quem tenta sair da tela de "pronto" sem ter baixado o ZIP */
+  const [saidaSemZip, setSaidaSemZip] = useState<"outra" | "sair" | null>(null);
 
   const temaEscolhido = temas.find((tema) => tema.id === themeId) ?? null;
 
@@ -795,9 +795,18 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       const grande = resposta.headers.get("x-theme-too-large");
       setAvisoDeTamanho(grande ? `O pacote saiu com ${grande} MB e a Shopify aceita até 50 MB. Apague algumas imagens da pasta de upload antes de subir o tema.` : "");
 
-      const entrega = await fetch(`/local/deliver-site?name=${encodeURIComponent(nome)}`, { method: "POST", body: blob });
-      if (entrega.ok) setDelivery(await entrega.json());
-      else { setDelivery(null); baixarZip(pacote); }
+      /**
+       * O pacote fica AQUI, em memória, até a pessoa baixar.
+       *
+       * O app gravava uma pasta na Área de Trabalho com o ZIP e a prévia
+       * extraída ao lado. Só que quem usa baixa o arquivo pelo navegador — e aí
+       * a mesma loja existia em dois lugares: uma cópia em Downloads e uma
+       * pasta que ninguém abria, sobrando a cada loja gerada.
+       *
+       * Nada se perde: a prévia local e as imagens para subir em Conteúdo →
+       * Arquivos viajam DENTRO do ZIP, na pasta `previa-local`. O que saiu é a
+       * segunda cópia, não o conteúdo.
+       */
       setStatus("done");
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Não consegui gerar a loja agora.");
@@ -808,7 +817,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   function recomecar() {
     setPasso(0); setPassoMaisLonge(0); setModo(null); setNicheId(""); setGerada(false);
     setMarca(MARCA_VAZIA); setEditadoAMao({});
-    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null); setAvisoDeTamanho(""); setDispositivo("desktop"); setConfirmando(false);
+    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setZip(null); setAvisoDeTamanho(""); setDispositivo("desktop"); setConfirmando(false); setSaidaSemZip(null);
     /* recomeçar é recomeçar: o cofre da marca antiga sai junto, senão a loja
        seguinte herdaria a logo de uma marca que não existe mais — e o ponto de
        parada também, senão a próxima abertura voltaria para a loja recomeçada */
@@ -842,22 +851,36 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           {/* aviso, não erro: o pacote existe e serve, mas a Shopify vai
               recusá-lo por tamanho, e ela recusa lá na frente sem dizer por quê */}
           {avisoDeTamanho && <p className="cf-aviso-tamanho"><CircleAlert size={14} /> {avisoDeTamanho}</p>}
-          {delivery ? (
-            <>
-              <p>
-                Deixei <b>uma pasta</b> na sua Área de Trabalho, com duas coisas dentro. O <b>ZIP é o
-                tema</b>: suba em <b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo
-                ZIP</b> e clique em Publicar. A pasta <b>previa</b> é só para olhar aqui, com dois
-                cliques no index.html. Tem um LEIA-ME lá dentro repetindo isso.
-              </p>
-              <div className="cf-paths">
-                <div><FolderOpen size={15} /> <span>{delivery.folderPath}</span></div>
-                <div><Download size={15} /> <span>{delivery.zipPath}</span></div>
-                <div><FolderOpen size={15} /> <span>{delivery.entryPath}</span></div>
-              </div>
-            </>
-          ) : (
-            <p>Não consegui gravar direto na Área de Trabalho, então baixei o ZIP pelo navegador. Ele é o tema Shopify completo: suba em <b>Temas → Adicionar tema → Enviar arquivo ZIP</b>.</p>
+          <p>
+            O ZIP é o tema Shopify completo. Clique em <b>Baixar o ZIP</b> e ele vai para a sua
+            pasta de downloads. Depois suba em{" "}
+            <b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo ZIP</b> e clique em
+            Publicar.
+          </p>
+          {/* a prévia local e as imagens para subir em Conteúdo → Arquivos vão
+              DENTRO do ZIP: dizer onde evita a pergunta de sempre */}
+          <p className="cf-painel-nota">
+            Dentro do ZIP, a pasta <b>previa-local</b> tem a loja para olhar aqui e as imagens para
+            subir em Conteúdo → Arquivos.
+          </p>
+          {/**
+            * SAIR SEM O ZIP não pode custar um clique só.
+            *
+            * Enquanto o app gravava a loja na Área de Trabalho, sair daqui era
+            * inofensivo: o pacote já estava no disco de qualquer jeito. Agora
+            * ele só existe nesta tela, em memória, até alguém clicar em baixar
+            * — e as duas outras saídas apagam a loja entregue junto.
+            *
+            * Então o primeiro clique avisa e o segundo decide. Dizer o que fica
+            * para trás importa: o projeto continua no estúdio, mas a prévia e
+            * as imagens da pasta `previa-local` só existem dentro do ZIP.
+            */}
+          {saidaSemZip && (
+            <p className="cf-aviso-saida">
+              <CircleAlert size={14} /> Você ainda não baixou o ZIP. Sair agora deixa a loja só no
+              estúdio, sem a prévia e sem as imagens da pasta <b>previa-local</b>. Clique de novo
+              para {saidaSemZip === "outra" ? "fazer outra loja" : "concluir"} mesmo assim.
+            </p>
           )}
           <div className="cf-actions">
             {/**
@@ -868,12 +891,12 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
               * deixava a loja anterior acumulada no app, esperando alguém
               * lembrar de apertar "fazer outra".
               *
-              * O que foi entregue não se perde: o ZIP está na pasta de
-              * downloads, a pasta está no disco e o projeto ficou registrado.
+              * O que foi entregue não se perde: o ZIP vai para a pasta de
+              * downloads e o projeto fica registrado no estúdio.
               */}
             <button className="secondary-button" onClick={() => { baixarZip(zip); recomecar(); }}><Download size={15} /> Baixar o ZIP</button>
-            <button className="secondary-button" onClick={recomecar}><RefreshCw size={15} /> Fazer outra loja</button>
-            <button className="primary-button" onClick={onExit}>Concluir <ArrowRight size={15} /></button>
+            <button className="secondary-button" onClick={() => (saidaSemZip === "outra" ? recomecar() : setSaidaSemZip("outra"))}><RefreshCw size={15} /> Fazer outra loja</button>
+            <button className="primary-button" onClick={() => (saidaSemZip === "sair" ? onExit() : setSaidaSemZip("sair"))}>Concluir <ArrowRight size={15} /></button>
           </div>
         </div>
       </main>
@@ -1250,7 +1273,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                 {(marca.whatsapp || marca.instagram || marca.email) && <div><dt>Contato</dt><dd>{[marca.whatsapp, marca.instagram && `@${marca.instagram}`, marca.email].filter(Boolean).join(" · ")}</dd></div>}
                 {obrigatorias.length > 0 && <div><dt>Artes</dt><dd>{placar.aprovadas}/{placar.total} aprovadas</dd></div>}
                 <div><dt>Estado</dt><dd>{ROTULO_DO_PROJETO[estado]}</dd></div>
-                <div><dt>Entrega</dt><dd>ZIP e pasta na sua Área de Trabalho, e o projeto no estúdio com a marca aplicada ao tema.</dd></div>
+                <div><dt>Entrega</dt><dd>ZIP para baixar, com o tema e a pasta <b>previa-local</b> dentro, e o projeto no estúdio com a marca aplicada ao tema.</dd></div>
               </dl>
             </div>
           )}

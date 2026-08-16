@@ -1,9 +1,38 @@
 # HANDOFF — Orbis · Criação de lojas Shopify
 
-> Documento de passagem de trabalho. Última atualização: **2026-08-15 (o
-> caminho das imagens da marca, de ponta a ponta)**. Mora em
-> `orbis-lojas-shopify/`, dentro do repositório `design-system-ecosystem`.
-> Sessões conduzidas com Claude no Claude Code.
+> Documento de passagem de trabalho. Última atualização: **2026-08-16 (a loja
+> entregue sai pelo download, e só)**. Mora em `orbis-lojas-shopify/`, dentro do
+> repositório `design-system-ecosystem`. Sessões conduzidas com Claude no Claude
+> Code.
+
+---
+
+## 🔄 RETOMADA — 2026-08-16: a loja entregue sai pelo download, e só
+
+**A ENTREGA EM DISCO SAIU.** O app gravava uma pasta na Área de Trabalho a cada
+loja gerada — o ZIP do tema e a prévia extraída ao lado — enquanto quem usa
+baixava o arquivo pelo navegador do mesmo jeito. A mesma loja passava a existir
+em dois lugares, e a pasta que ninguém abria sobrava a cada geração.
+
+- `app/ClientFlow.tsx`: o `POST /local/deliver-site` sumiu do fluxo. O pacote
+  fica em memória até a pessoa clicar em **Baixar o ZIP**, e a tela de "pronto"
+  diz onde o arquivo cai e o que vai dentro dele.
+- `build/local-delivery-plugin.ts` → **`build/desligar-plugin.ts`**
+  (`localDelivery()` → `desligarSuite()`). O middleware perdeu a rota de
+  gravação; sobrou o desligamento da suíte, que é o que ele faz hoje. O nome
+  passou a dizer isso.
+- **Nada se perdeu de conteúdo**: a prévia local, o CSV de produtos, o kit de
+  logo e as imagens para subir em Conteúdo → Arquivos sempre viajaram DENTRO do
+  ZIP, na pasta `previa-local/`. O que saiu foi a segunda cópia.
+- **Sair sem baixar agora avisa.** Enquanto a pasta era escrita sozinha, sair da
+  tela de "pronto" era inofensivo; agora o pacote só existe ali. "Fazer outra
+  loja" e "Concluir" pedem um segundo clique, dizendo que o projeto continua no
+  estúdio mas a prévia e as imagens só existem dentro do ZIP.
+
+As dezesseis rodadas entre este handoff e o de 2026-08-15 (artes com versão e
+aprovação, ponto de parada do projeto, capa por coleção, contagem igual à do
+Liquid) estão nos commits e ainda não têm seção aqui — `git log 275931b..` conta
+a sequência.
 
 ---
 
@@ -512,6 +541,8 @@ Trabalho**, junto da pasta extraída, para abrir o `index.html` com um clique.
   API rodam em workerd e não enxergam filesystem; em dev, o middleware grava o
   ZIP e a pasta extraída na Área de Trabalho. Fora do dev, o fallback é o
   download normal do navegador.
+  **Superado em 2026-08-16**: a gravação em disco saiu inteira e o ZIP passa a
+  sair só pelo download do navegador (ver a retomada no topo).
 - **A solicitação do cliente cria projeto de verdade** via `unlockTheme`
   (ShrinePro é grátis; os triggers SQLite criam o projeto atomicamente) e
   `saveProject` com a customização da marca aplicada. O ADM enxerga tudo.
@@ -533,10 +564,11 @@ Trabalho**, junto da pasta extraída, para abrir o `index.html` com um clique.
 - Rota [POST /api/client-request](app/api/client-request/route.ts): cria o
   projeto real via `unlockTheme` + `saveProject` (aparece na aba Projetos do
   ADM com o nome "Site de <marca> · <modelo>") e devolve o ZIP.
-- Entrega local ([build/local-delivery-plugin.ts](build/local-delivery-plugin.ts)):
-  grava `site-<marca>.zip` e a pasta extraída na Área de Trabalho; se a pasta
-  estiver presa por outro processo, sobrescreve por cima; se a gravação falhar,
-  o front baixa o ZIP pelo navegador.
+- Entrega local (`build/local-delivery-plugin.ts`): grava `site-<marca>.zip` e a
+  pasta extraída na Área de Trabalho; se a pasta estiver presa por outro
+  processo, sobrescreve por cima; se a gravação falhar, o front baixa o ZIP pelo
+  navegador. **Removida em 2026-08-16**; o arquivo virou
+  [build/desligar-plugin.ts](build/desligar-plugin.ts), só com o desligamento.
 - Orbis oficial em PNG no shell (sidebar, loading, vazios, dropzone, portão) e
   favicon `mascote-64.png` (o 404 antigo morreu).
 - Testes: [tests/site-generator.test.mjs](tests/site-generator.test.mjs), 7
@@ -694,8 +726,9 @@ Pontos de atenção deixados pela rodada:
 - Ficaram dois projetos "Site de Verde Vivo · vitrine" no banco porque o site
   foi regenerado uma segunda vez para corrigir um check duplicado na seção de
   comparação. Cada solicitação cria um projeto; pode apagar um deles pela UI.
-- A entrega em disco (`/local/deliver-site`) só existe com `npm run dev` de pé;
-  fora dele o front baixa o ZIP pelo navegador.
+- A entrega em disco saiu (2026-08-16). O ZIP vai para a pasta de downloads pelo
+  navegador, e a prévia local, o CSV e as imagens para a Shopify viajam dentro
+  dele, em `previa-local/`. Nada é escrito na Área de Trabalho.
 - Os erros de fonte no console do app (preload de Geist/Orbitron por caminho
   file://) são do modo dev do vinext, anteriores à rodada e sem efeito.
 - Ponto antigo que segue valendo: projetos criados antes de uma reimportação de

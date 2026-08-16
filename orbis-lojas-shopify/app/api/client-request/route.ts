@@ -17,9 +17,9 @@ import { kitDeLogo } from "@/lib/kit-de-logo";
  *
  * Conversa com o backend admin de verdade: desbloqueia o tema escolhido (os
  * triggers criam o projeto atomicamente), salva a customização com a marca
- * aplicada e devolve o site em ZIP. A gravação na Área de Trabalho acontece
- * depois, no middleware Node do dev server, porque aqui é workerd e não há
- * filesystem.
+ * aplicada e devolve o site em ZIP. O ZIP vai para o navegador e é ele quem
+ * grava: aqui é workerd, sem filesystem, e o app não escreve mais nada em
+ * disco por fora do download.
  *
  * ## A marca é regerada aqui, não recebida pronta
  *
