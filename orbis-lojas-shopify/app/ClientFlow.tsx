@@ -3,10 +3,9 @@
 import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, FolderOpen, PenLine, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Orbis } from "@/app/Orbis";
-import { ClientPreviaReal } from "@/app/ClientPreviaReal";
 import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada";
 import { RealHomeThumbnail } from "@/app/PreviewCard";
-import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
+import { SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente, textoSobre } from "@/lib/marca-generator.mjs";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 import { coresDaMarca, fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
@@ -84,7 +83,6 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   /* o pacote passou do teto da Shopify: aviso, não erro. O ZIP existe e serve. */
   const [avisoDeTamanho, setAvisoDeTamanho] = useState("");
 
-  const template = SITE_TEMPLATES.find((entrada) => entrada.id === templateId) ?? SITE_TEMPLATES[0];
   const temaEscolhido = temas.find((tema) => tema.id === themeId) ?? null;
 
   /* a lista de temas é a MESMA da área Temas do estúdio: o que estiver lá,
@@ -549,7 +547,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   return (
     <main className="client-flow">
       <div className="entry-gate-brilho" aria-hidden="true" />
-      <div className={`cf-layout ${passo === 1 ? "cf-layout-cheio" : ""}`}>
+      <div className="cf-layout cf-layout-cheio">
         <div className="cf-panel">
           <header className="cf-head">
             <Orbis tamanho={40} alt="" />
@@ -731,20 +729,6 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                 </>
               )}
 
-              <span className="cf-secao-titulo">Composição das páginas</span>
-              <div className="cf-templates">
-                {SITE_TEMPLATES.map((entrada) => (
-                  <button key={entrada.id} className={`cf-template ${templateId === entrada.id ? "selected" : ""}`} onClick={() => setTemplateId(entrada.id)}>
-                    <span className="cf-template-thumb" aria-hidden="true">
-                      {entrada.sections.filter((secao: string) => secao !== "announcement").slice(0, 6).map((secao: string) => <i key={secao} data-kind={secao} />)}
-                    </span>
-                    <strong>{entrada.name}</strong>
-                    <p>{entrada.tagline}</p>
-                    <span className="cf-template-sections">{entrada.sections.map((secao: string) => SECTION_LABELS[secao as keyof typeof SECTION_LABELS]).join(" · ")}</span>
-                    {templateId === entrada.id && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
@@ -763,7 +747,6 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                 <div><dt>Cores</dt><dd><i className="cf-swatch" style={{ background: marca.primaryColor }} /> {marca.primaryColor} · <i className="cf-swatch" style={{ background: marca.backgroundColor }} /> {marca.backgroundColor}</dd></div>
                 {marca.headingFont && <div><dt>Tipografia</dt><dd>{marca.headingFont} + {marca.bodyFont}</dd></div>}
                 <div><dt>Tema</dt><dd>{temaEscolhido?.name ?? "Nenhum escolhido"}</dd></div>
-                <div><dt>Modelo</dt><dd>{template.name}: {template.tagline}</dd></div>
                 {marca.collections.length > 0 && <div><dt>Coleções</dt><dd>{marca.collections.join(" · ")}</dd></div>}
                 {(marca.whatsapp || marca.instagram || marca.email) && <div><dt>Contato</dt><dd>{[marca.whatsapp, marca.instagram && `@${marca.instagram}`, marca.email].filter(Boolean).join(" · ")}</dd></div>}
                 <div><dt>Entrega</dt><dd>ZIP e pasta na sua Área de Trabalho, e o projeto no estúdio com a marca aplicada ao tema.</dd></div>
@@ -783,42 +766,17 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         </div>
 
         {/**
-         * A PRÉVIA não acompanha o passo da MARCA.
+         * A prévia ao vivo SAIU do fluxo do cliente.
          *
-         * Ali a pessoa está escrevendo nome, cores, coleções e contato — nada
-         * disso se julga olhando uma miniatura de 340px, e a coluna tirava
-         * largura de onde a decisão acontece. Decisão do dono: nesta etapa a
-         * tela é só a configuração.
+         * Ela ocupava uma coluna de 340px em todo passo, e nenhum deles se
+         * decide olhando uma miniatura desse tamanho: escolher nicho, escrever
+         * a marca, escolher tema e revisar são decisões de conteúdo, não de
+         * aparência em ponto pequeno. Quem quiser ver a loja vê no editor, em
+         * tamanho de gente.
          *
-         * Nos outros passos ela fica: escolher tema e revisar são justamente
-         * as horas em que ver a loja é a pergunta.
+         * Decisão do dono, e ela libera a largura da página para onde o
+         * trabalho acontece.
          */}
-        {passo !== 1 && (
-        <aside className="cf-preview" aria-label="Prévia da loja">
-          <span className="cf-preview-title">Prévia ao vivo</span>
-          {/* a home REAL do tema com a marca aplicada, não um desenho de caixas */}
-          {/* o motivo vai junto: sem tema a prévia não pode ficar prometendo
-              uma loja que nunca vem, e "escolha um tema" seria mentira quando
-              não há nenhum importado */}
-          <ClientPreviaReal themeId={themeId} nicheId={nicheId} semTema={
-            temasCarregando ? "Procurando os temas do estúdio…"
-              : temas.length === 0 ? "Nenhum tema importado ainda. Importe um em Importar temas e a prévia aparece aqui."
-                : "Escolha um tema para ver a prévia."
-          } marca={{
-            name: marca.name || "Minha Marca", slogan: marca.slogan, description: marca.description,
-            primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
-            headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
-            collections: marca.collections, imagens: { ...marca.imagens, ...imagensGeradas },
-          }} />
-          {marca.logoDataUri && (
-            <div className="cf-preview-logo">
-              {/* eslint-disable-next-line @next/next/no-img-element -- data URI gerado localmente. */}
-              <img src={marca.logoDataUri} alt="Logo gerada" />
-              <span>Logo gerada pela Orbis</span>
-            </div>
-          )}
-        </aside>
-        )}
       </div>
     </main>
   );

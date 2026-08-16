@@ -7,20 +7,28 @@ import { createServer } from "vite";
 
 /** Fase 5: prévia no fluxo do cliente, alimentada pela marca que o gerador usa. */
 
-test("a prévia do cliente é a home real do tema, com a marca aplicada", async () => {
-  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
-  const previa = await readFile(new URL("../app/ClientPreviaReal.tsx", import.meta.url), "utf8");
-  const rota = await readFile(new URL("../app/api/theme-render/route.ts", import.meta.url), "utf8");
+/**
+ * A PRÉVIA AO VIVO saiu do fluxo do cliente, inteira.
+ *
+ * Ela ocupava uma coluna de 340px em todo passo, e nenhum deles se decide
+ * olhando uma miniatura desse tamanho: escolher nicho, escrever a marca,
+ * escolher tema e revisar são decisões de conteúdo. Quem quiser ver a loja vê
+ * no editor, em tamanho de gente.
+ *
+ * O componente foi APAGADO, não só escondido: código que ninguém chama é o que
+ * volta sozinho num merge distraído, e a coluna reservada tirava largura de
+ * onde o trabalho acontece.
+ */
+test("o fluxo do cliente não tem prévia em passo nenhum", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
+  assert.doesNotMatch(flow, /cf-preview/, "a coluna da prévia não pode voltar");
+  assert.doesNotMatch(flow, /ClientPreviaReal/, "nem o componente dela");
+  /* uma coluna só, em todo passo: reservar espaço vazio é pior que não ter */
+  assert.match(flow, /className="cf-layout cf-layout-cheio"/);
 
-  assert.match(flow, /className="cf-preview"/, "coluna de prévia presente");
-  /* a prévia recebe o tema escolhido e a MESMA marca que vai ao gerador */
-  assert.match(flow, /<ClientPreviaReal themeId=\{themeId\} nicheId=\{nicheId\}/);
-  /* e renderiza o tema de verdade, pelo mesmo motor da entrega */
-  assert.match(previa, /\/api\/theme-render/);
-  assert.match(rota, /aplicarMarcaNoTema\(base, marca\)/, "o servidor aplica a marca antes de renderizar");
-  /* vitrine, não editor: o quadro não navega nem compra */
-  const sandbox = previa.match(/sandbox="([^"]*)"/)?.[1] ?? "";
-  assert.equal(sandbox, "allow-same-origin", `o quadro da prévia não pode ganhar mais permissão que ler: veio "${sandbox}"`);
+  const css = await readFile(join(raiz, "app/globals.css"), "utf8");
+  assert.doesNotMatch(css, /\.cf-preview|\.cpr-/, "estilo órfão de recurso removido vira lixo que ninguém ousa apagar");
 });
 
 test("a prévia só usa dados da marca; sem copy inventada", async () => {
@@ -78,26 +86,6 @@ test("o nicho é o CATÁLOGO e vale nos dois caminhos; a marca é outra pergunta
  * Foi o que aconteceu quando os temas do estúdio foram apagados: a área do
  * cliente não tinha o que renderizar e não contava isso a ninguém.
  */
-test("a prévia não fica prometendo uma loja quando não há tema", async () => {
-  const previa = await readFile(new URL("../app/ClientPreviaReal.tsx", import.meta.url), "utf8");
-
-  /* o estado é DERIVADO: sem tema é indisponível por construção, e ninguém
-     precisa lembrar de corrigir isso dentro de um efeito */
-  assert.match(previa, /const indisponivel = !themeId \|\| falhou;/);
-  /* e o HTML de um tema antigo não fica na tela depois que o tema sai */
-  assert.match(previa, /const paraMostrar = themeId && !falhou \? html : null;/);
-  /* e o texto do vazio vem de fora: só quem chamou sabe se falta escolher um
-     tema ou se não existe nenhum importado */
-  assert.match(previa, /semTema\?: string/);
-  assert.match(previa, /semTema \|\|/);
-
-  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
-  /* os três motivos são distintos: procurando, nenhum importado, nenhum escolhido */
-  assert.match(flow, /Procurando os temas do estúdio/);
-  assert.match(flow, /Nenhum tema importado ainda/);
-  assert.match(flow, /Escolha um tema para ver a prévia/);
-});
-
 /**
  * A arte gerada sobrevive a fechar a aba.
  *
@@ -185,20 +173,20 @@ test("as coleções que o cliente escreve vencem as do nicho e chegam ao pacote"
 });
 
 /**
- * A PRÉVIA sai do passo da marca.
+ * A COMPOSIÇÃO DAS PÁGINAS saiu do fluxo.
  *
- * Ali a pessoa escreve nome, cores, coleções e contato, e nada disso se julga
- * numa miniatura de 340px — a coluna só tirava largura de onde a decisão
- * acontece. Nos outros passos ela fica: escolher tema e revisar são justamente
- * as horas em que ver a loja é a pergunta.
+ * Era uma escolha entre dois modelos que só mudava o site estático da pasta de
+ * prévia, não a loja que vai para a Shopify. Pedir uma decisão dessas a quem
+ * está criando a marca é cobrar atenção por algo que quase não muda o
+ * resultado. O modelo padrão continua valendo.
  */
-test("o passo da marca não tem coluna de prévia, e usa a largura que sobra", async () => {
+test("o fluxo não pede escolha de composição de página", async () => {
   const raiz = fileURLToPath(new URL("..", import.meta.url));
   const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
-  assert.match(flow, /\{passo !== 1 && \(\s*<aside className="cf-preview"/, "a prévia não pode aparecer no passo 02");
-  assert.match(flow, /passo === 1 \? "cf-layout-cheio" : ""/);
-
-  const css = await readFile(join(raiz, "app/globals.css"), "utf8");
-  /* uma coluna reservada e vazia é pior que não ter coluna */
-  assert.match(css, /\.cf-layout-cheio \{ grid-template-columns: minmax\(0, 1fr\)/);
+  assert.doesNotMatch(flow, /Composição das páginas/);
+  assert.doesNotMatch(flow, /cf-template/, "o seletor de modelo não pode voltar");
+  /* e a revisão não anuncia uma escolha que ninguém fez */
+  assert.doesNotMatch(flow, /<dt>Modelo<\/dt>/);
+  /* o modelo padrão continua indo no pedido, senão a entrega perde o site */
+  assert.match(flow, /templateId,/);
 });

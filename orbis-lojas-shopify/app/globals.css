@@ -318,8 +318,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 /* sem a coluna da prévia, o conteúdo ocupa a largura em vez de deixar um vão:
    uma coluna reservada e vazia é pior que não ter coluna */
 .cf-layout-cheio { grid-template-columns: minmax(0, 1fr); width: min(980px, 100%); }
-.cf-preview { position: sticky; top: 18px; display: grid; gap: 8px; }
-.cf-preview-title { font: 600 10px var(--font-geist-mono); letter-spacing: 0.1em; color: #7f9797; text-transform: uppercase; }
 .client-site-preview { border: 1px solid #1d3232; background: #0a1414; padding: 10px; display: grid; gap: 8px; }
 .csp-browser { display: flex; gap: 4px; align-items: center; padding: 4px 6px; background: #10201f; }
 .csp-browser span { width: 6px; height: 6px; border-radius: 50%; background: #2b4040; }
@@ -347,7 +345,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .csp-footer p { font-size: 8px; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .csp-placeholder { opacity: 0.5; font-style: italic; }
 .csp-note { font-size: 10px; color: #7f9797; line-height: 1.5; }
-@media (max-width: 900px) { .cf-layout { grid-template-columns: 1fr; } .cf-preview { position: static; } }
 
 .editor-project-switch { height: 30px; max-width: 260px; padding: 0 8px; font-size: 11px; }
 
@@ -908,12 +905,6 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-peca code { color: var(--muted-2); font-size: 10.5px; }
 .cf-peca-ok { display: inline-flex; align-items: center; gap: 3px; color: var(--green-bright); font: 700 9px var(--font-geist-mono); letter-spacing: .1em; text-transform: uppercase; font-style: normal; }
 .cf-foot-dica { color: var(--muted); font-size: 12px; text-align: right; flex: 1; }
-.cpr-host { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--line-soft); background: #fff; }
-.cpr-frame { position: absolute; top: 0; left: 0; border: 0; transform-origin: top left; pointer-events: none; }
-.cpr-vazio { position: absolute; inset: 0; display: grid; place-content: center; background: var(--panel-2); color: var(--muted-2); font-size: 11.5px; text-align: center; padding: 20px; }
-.cf-preview-logo { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--line-soft); }
-.cf-preview-logo img { width: 34px; height: 34px; object-fit: contain; background: #fff; border: 1px solid var(--line); }
-.cf-preview-logo span { color: var(--muted-2); font-size: 11px; }
 @media (max-width: 720px) { .cf-modos { grid-template-columns: 1fr; } .cf-bancada-resumo { display: none; } }
 
 .cf-review { display: grid; gap: 10px; margin: 0; }
