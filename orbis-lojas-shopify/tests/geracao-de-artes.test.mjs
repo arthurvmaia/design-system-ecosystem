@@ -202,18 +202,46 @@ test("o pedido da capa abre pelo nome da coleção, e o nicho entra curto", asyn
 test("a capa vai para o cartão pelo settings, que é por onde o tema pergunta", async () => {
   const fonte = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
 
-  assert.match(fonte, /if \(type === "collection"\) \{ resolved\[id\] = demoCollection\(helpers\.loja, typeof value === "string" \? value : "", helpers\.capas \?\? \{\}\); continue; \}/);
+  assert.match(fonte, /if \(type === "collection"\) \{ resolved\[id\] = demoCollection\(helpers\.loja, typeof value === "string" \? value : "", helpers\.capas \?\? \{\}, helpers\.vaga\); continue; \}/);
   /* e a lista de coleções mostra as DA LOJA: a lista fixa de colecao-1..4
      inventava quatro cartões no lugar das que a pessoa escreveu */
   assert.match(fonte, /const daLoja = Object\.keys\(helpers\.capas \?\? \{\}\)/);
   /* a capa gerada vence a foto sorteada, que vira só a reserva */
-  assert.match(fonte, /const foto = capas\[handle\] \?\? fotoDaColecao\(loja, handle\)/);
+  assert.match(fonte, /const foto = capas\[handle\] \?\? fotoDaColecao\(loja, handle, vaga\)/);
 
   /* e a rota casa capa com coleção pela POSIÇÃO, que é o que liga colecao-2 a
      "Básicos": as duas listas saem da mesma lista de nomes */
   const rota = await readFile(new URL("../app/api/theme-render/route.ts", import.meta.url), "utf8");
   assert.match(rota, /`colecao-\$\{indice \+ 1\}`/);
   assert.match(rota, /handleDeColecao\(String\(nome\)\)/);
+});
+
+/**
+ * A CAPA SOBREVIVE AO FLUXO, senão ela só existe na tela que a criou.
+ *
+ * Medido numa loja de óculos aberta no Editor: seis cartões, nenhum com a capa
+ * gerada, e o mesmo estojo repetido em TRÊS deles. O mapa handle → capa era
+ * montado na hora, a partir da marca em memória do fluxo do cliente, e morria
+ * com o pedido. O Editor abre o tema salvo e não tem marca nenhuma: caía na
+ * foto de produto sorteada pelo hash do handle, que com poucos produtos
+ * colide.
+ */
+test("a capa fica gravada no tema, e é dela que o editor lê", async () => {
+  const cliente = await readFile(new URL("../app/api/client-request/route.ts", import.meta.url), "utf8");
+  /* a entrega grava o mapa no tema do projeto, casado por handle */
+  assert.match(cliente, /orbisCapas: capasDeColecao/);
+  assert.match(cliente, /handleDeColecao\(String\(nome\)\)/);
+
+  const render = await readFile(new URL("../app/api/theme-render/route.ts", import.meta.url), "utf8");
+  /* e quem não traz capa no pedido — o Editor — lê a do tema */
+  assert.match(render, /capasDeColecao: extras\.capasDeColecao \?\? shopify\.orbisCapas/);
+
+  const renderizador = await readFile(new URL("../lib/theme-render.ts", import.meta.url), "utf8");
+  /* sem capa nenhuma, a reserva usa a VAGA do cartão e não o hash do handle:
+     é o que impede a mesma foto de aparecer em três cartões vizinhos */
+  assert.match(renderizador, /function fotoDaColecao\(loja: Loja, handle: string, vaga\?: number\)/);
+  assert.match(renderizador, /typeof vaga === "number" \? vaga :/);
+  assert.match(renderizador, /vaga: index, imageFor/);
 });
 
 /**

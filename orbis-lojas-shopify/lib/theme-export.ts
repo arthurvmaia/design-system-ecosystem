@@ -346,7 +346,11 @@ export function exportThemeZip(
    * numa loja de roupa. O marcador é um JSON de uma linha em `assets/`, que a
    * Shopify aceita e ignora.
    */
-  if (theme.orbisNicheId) output[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(theme.orbisNicheId));
+  /* e as capas de coleção viajam no mesmo marcador: sem elas, reimportar a
+     própria loja devolve a vitrine com foto de produto sorteada pelo handle */
+  if (theme.orbisNicheId || theme.orbisCapas) {
+    output[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(theme.orbisNicheId ?? "", theme.orbisCapas ?? {}));
+  }
 
   return { zip: zipSync(output), modified, warnings };
 }

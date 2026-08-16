@@ -714,7 +714,7 @@ test("cada dobra de banner tem foto própria; a primeira fica calada e a segunda
   }
 });
 
-test("o logo é o NOME da loja escrito; arte gerada não ocupa esse campo", async () => {
+test("o símbolo gerado só ocupa o campo de logo depois de recortado", async () => {
   const raiz = fileURLToPath(new URL("..", import.meta.url));
   const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
   try {
@@ -729,16 +729,49 @@ test("o logo é o NOME da loja escrito; arte gerada não ocupa esse campo", asyn
       sectionSchemas: [], pages: [],
     });
 
-    /* A QUEIXA: a arte de logo da IA é um PNG quadrado com fundo próprio, e no
-       cabeçalho vira um retângulo cinza colado sobre a cor da página. Nenhum
-       recorte conserta: o fundo está pintado dentro do arquivo. Campo vazio =
-       o tema escreve o nome da loja, na tipografia da marca. */
+    /* A QUEIXA ORIGINAL: a arte de logo da IA é um PNG quadrado com fundo
+       próprio, e no cabeçalho vira um retângulo cinza colado sobre a cor da
+       página. Sem recorte continua valendo: campo vazio, e o tema escreve o
+       nome da loja na tipografia da marca. */
     const gerada = aplicarMarcaNoTema(base(), {
       ...marca,
       imagens: { logo: "/api/media/aaaaaaaaaaaaaaaaaaaa" },
       imagensGeradas: ["logo", "banner-desktop"],
     });
-    assert.equal(gerada.theme.globalValues.logo, "", "arte gerada não pode ocupar o campo de logo");
+    assert.equal(gerada.theme.globalValues.logo, "", "símbolo com fundo não pode ocupar o campo de logo");
+
+    /* MAS O RECORTE PASSOU A EXISTIR, e o guarda tinha sobrevivido ao motivo
+       dele: `derivarLogos` corta o fundo e o ClientFlow troca `logo` pela
+       versão TRANSPARENTE antes de guardar. A prova de que isso aconteceu é a
+       derivada estar ali — as três nascem no mesmo bloco, e o recorte que falha
+       não grava nenhuma. Sem isto a loja abria e FECHAVA sem logo, com o rodapé
+       mostrando a moldura vazia do editor. */
+    const recortada = aplicarMarcaNoTema(base(), {
+      ...marca,
+      imagens: { logo: "/api/media/cccccccccccccccccccc", "logo-fundo-branco": "/api/media/dddddddddddddddddddd" },
+      imagensGeradas: ["logo", "banner-desktop"],
+    });
+    assert.equal(recortada.theme.globalValues.logo, "/api/media/cccccccccccccccccccc", "símbolo recortado entra");
+
+    /* e o RODAPÉ segue a mesma regra: era ele que aparecia vazio na queixa */
+    const comRodape = {
+      ...base(),
+      sectionSchemas: [{ type: "footer", name: "Rodapé", presets: [], blocks: [],
+        settings: [{ id: "footer_image", type: "image_picker", label: "Imagem" }] }],
+      pages: [{ id: "index", name: "Início", template: "templates/index.json",
+        sections: [{ id: "f1", type: "footer", name: "Rodapé", settings: {}, blocks: [] }] }],
+    };
+    const rodape = (tema) => tema.pages[0].sections[0].settings.footer_image;
+    assert.equal(rodape(aplicarMarcaNoTema(comRodape, {
+      ...marca,
+      imagens: { logo: "/api/media/cccccccccccccccccccc", "logo-fundo-branco": "/api/media/dddddddddddddddddddd" },
+      imagensGeradas: ["logo"],
+    }).theme), "/api/media/cccccccccccccccccccc", "o rodapé fecha a loja com a marca");
+    assert.equal(rodape(aplicarMarcaNoTema(comRodape, {
+      ...marca,
+      imagens: { logo: "/api/media/aaaaaaaaaaaaaaaaaaaa" },
+      imagensGeradas: ["logo"],
+    }).theme), "", "sem recorte, vazio: melhor o nome escrito do que um quadrado");
 
     /* e o valor herdado do tema importado some junto: ele aponta para um
        arquivo que não existe na loja do cliente, e ficaria um vazio no lugar

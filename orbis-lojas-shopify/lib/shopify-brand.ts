@@ -309,6 +309,25 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
   }
   const geradasPelaOrbis = new Set(marca.imagensGeradas ?? []);
   /**
+   * O SÍMBOLO GERADO pode ocupar o campo de logo do tema — desde que já venha
+   * recortado. E hoje ele vem.
+   *
+   * O campo era zerado sempre que a arte fosse nossa, e a razão era boa na
+   * época: o símbolo saía do modelo com fundo quadrado próprio, e o cabeçalho
+   * ficava com um retângulo colado sobre a página. Só que `derivarLogos` passou
+   * a recortar esse fundo, e `ClientFlow` troca `logo` pela versão
+   * TRANSPARENTE antes de guardar. O guarda sobreviveu ao motivo dele — e o
+   * resultado era a loja abrir e FECHAR sem logo, com o rodapé mostrando a
+   * moldura vazia do editor.
+   *
+   * A prova de que o recorte aconteceu é a versão derivada estar ali: as três
+   * nascem juntas, no mesmo bloco, e o recorte que falha não grava nenhuma. Sem
+   * ela, o campo continua vazio — é melhor o rodapé escrever o nome do que
+   * pendurar um quadrado.
+   */
+  const logoRecortada = Boolean(imagens["logo-fundo-branco"]);
+  const logoDoTema = imagens.logo && (!geradasPelaOrbis.has("logo") || logoRecortada) ? imagens.logo : "";
+  /**
    * As capas de coleção entram na ordem em que as seções as pedem.
    *
    * Aceita as duas famílias porque o conjunto de peças mudou: eram seis capas
@@ -378,9 +397,8 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
      * Logo enviado pelo cliente vence sempre: quem já tem marca tem logo.
      */
     if (definicao.type === "image_picker" && IMAGEM_DE_LOGO.test(`${definicao.id} ${definicao.label ?? ""}`)) {
-      const doCliente = imagens.logo && !geradasPelaOrbis.has("logo") ? imagens.logo : "";
-      if (valores[definicao.id] !== doCliente) {
-        valores[definicao.id] = doCliente;
+      if (valores[definicao.id] !== logoDoTema) {
+        valores[definicao.id] = logoDoTema;
         marcou(definicao.id);
       }
       continue;
@@ -461,19 +479,19 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
              *
              * O rodapé do Dawn tem um `image_picker` que não diz "logo" no id,
              * então ele caía na sobra e recebia uma FOTO DE PRODUTO: a loja
-             * fechava com um frasco onde deveria estar a marca. Como o campo de
-             * marca agora fica vazio de propósito (o tema escreve o nome), aqui
-             * também: vazio, e o rodapé mostra o nome da loja.
+             * fechava com um frasco onde deveria estar a marca. Aqui ele recebe
+             * a MARCA — a mesma regra do campo de logo do tema, e pelo mesmo
+             * motivo: o símbolo já vem recortado (ver `logoDoTema`). Sem marca
+             * para pôr, fica vazio e o rodapé escreve o nome da loja.
              */
             if (/footer|rodape/i.test(secao.type)) {
-              const doCliente = imagens.logo && !geradasPelaOrbis.has("logo") ? imagens.logo : "";
-              if (alvo.settings[definicao.id] !== doCliente) {
-                alvo.settings[definicao.id] = doCliente;
+              if (alvo.settings[definicao.id] !== logoDoTema) {
+                alvo.settings[definicao.id] = logoDoTema;
                 marcou(`${secao.type}.${definicao.id}`);
               }
               continue;
             }
-            const escolhida = IMAGEM_DE_LOGO.test(pista) ? imagens.logo
+            const escolhida = IMAGEM_DE_LOGO.test(pista) ? logoDoTema || imagens.logo
               : IMAGEM_DE_CELULAR.test(pista2)
                 ? bannersCelular[indiceDaDobra % Math.max(bannersCelular.length, 1)]
               : ehBanner

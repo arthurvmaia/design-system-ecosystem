@@ -110,6 +110,19 @@ export type ShopifyThemeImport = {
   /** Nicho da loja gerada pela área do cliente; decide a vitrine de produtos. */
   orbisNicheId?: string;
   /**
+   * A capa de cada coleção, por handle — a que a Orbis gerou para aquele nome.
+   *
+   * Ela nascia e MORRIA no pedido de prévia: o fluxo do cliente montava o mapa
+   * na hora, a partir da marca em memória, e nada disso ficava no tema. Quem
+   * abrisse a mesma loja no Editor via a vitrine com foto de produto sorteada
+   * pelo handle — e, com poucos produtos, a MESMA foto em três cartões.
+   *
+   * Guardar aqui é o que faz a capa sobreviver ao fim do fluxo: o tema salvo no
+   * projeto já leva o mapa, e o marcador `assets/orbis-loja.json` o leva no ZIP,
+   * como já fazia com o nicho.
+   */
+  orbisCapas?: Record<string, string>;
+  /**
    * Arquivos de `assets/` que ficaram de FORA da instalação, com o motivo.
    *
    * Cada um destes é uma imagem quebrada esperando na prévia: o Liquid continua
@@ -323,6 +336,8 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   if (fora.length) theme.assetsForaDaInstalacao = fora;
   const nicho = lerNichoDoTema(byRelativePath, pages);
   if (nicho) theme.orbisNicheId = nicho;
+  const capas = lerCapasDoTema(byRelativePath);
+  if (Object.keys(capas).length) theme.orbisCapas = capas;
   return { theme, images: assets };
 }
 
@@ -330,8 +345,12 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
 export const ARQUIVO_DA_LOJA = "assets/orbis-loja.json";
 
 /** O conteúdo do marcador, para quem monta o ZIP da entrega. */
-export function marcadorDaLoja(nicheId: string) {
-  return JSON.stringify({ orbisNicheId: nicheId }, null, 2);
+export function marcadorDaLoja(nicheId: string, capas: Record<string, string> = {}) {
+  const corpo: Record<string, unknown> = { orbisNicheId: nicheId };
+  /* as capas só aparecem quando existem: marcador com campo vazio faz quem lê
+     achar que a loja declarou "sem capa", e o certo é ele nem perguntar */
+  if (Object.keys(capas).length) corpo.orbisCapas = capas;
+  return JSON.stringify(corpo, null, 2);
 }
 
 /**
@@ -351,6 +370,25 @@ export function marcadorDaLoja(nicheId: string) {
  *    em roupas — e já estão gravadas nos templates. Exige maioria (metade das
  *    seis) para não confundir loja por coincidência de "Novidades".
  */
+/**
+ * As capas de coleção que a entrega gravou no marcador.
+ *
+ * Só o marcador, e sem palpite: capa de coleção não se deduz do resto do tema,
+ * e o palpite disponível — sortear uma foto de produto pelo handle — é
+ * exatamente o defeito que ela existe para corrigir.
+ */
+function lerCapasDoTema(byRelativePath: Map<string, Uint8Array>): Record<string, string> {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return {};
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisCapas;
+  if (!cru || typeof cru !== "object" || Array.isArray(cru)) return {};
+  const capas: Record<string, string> = {};
+  for (const [handle, url] of Object.entries(cru as Record<string, unknown>)) {
+    if (handle && typeof url === "string" && url) capas[handle.slice(0, 80)] = url.slice(0, 300);
+  }
+  return capas;
+}
+
 function lerNichoDoTema(byRelativePath: Map<string, Uint8Array>, pages: ShopifyPage[]): string {
   const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
   if (marcador) {

@@ -5,7 +5,7 @@ import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1, saveProject, unlockTheme } from "@/lib/data";
 import { brandCustomization, generateClientSite, sanitizeBrand } from "@/lib/site-generator.mjs";
 import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
-import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
+import { aplicarMarcaNoTema, handleDeColecao } from "@/lib/shopify-brand";
 import { ARQUIVO_DA_LOJA, marcadorDaLoja, themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { collectEditorMediaIds, exportThemeZip, type EditorMediaFile } from "@/lib/theme-export";
 import { pecasDaMarca } from "@/lib/marca-imagens";
@@ -204,6 +204,23 @@ export async function POST(request: Request) {
     /* a customização base vem do gerador do site; quando o tema tem Shopify
        importado, ela leva junto o tema com a marca já aplicada */
     const customizacao = brandCustomization(marca) as unknown as Record<string, unknown>;
+    /**
+     * A capa de cada coleção, casada por HANDLE — e gravada, não só usada.
+     *
+     * Este mapa era montado na hora, dentro do pedido de prévia do fluxo do
+     * cliente, e morria com ele. Quem abrisse a MESMA loja no Editor via a
+     * vitrine com foto de produto sorteada pelo handle — e, com poucos
+     * produtos, a mesma foto repetida em três cartões.
+     *
+     * A posição é o que liga `colecao-2` a "Armações de grau": as duas listas
+     * saem da mesma lista de nomes, na mesma ordem.
+     */
+    const capasDeColecao: Record<string, string> = {};
+    for (const [indice, nome] of (marca.collections ?? []).entries()) {
+      const capa = imagens[`colecao-${indice + 1}`];
+      const handle = handleDeColecao(String(nome));
+      if (capa && handle) capasDeColecao[handle] = capa;
+    }
     let alterados: string[] = [];
     let temaComMarca: ShopifyThemeImport | null = null;
     if (escolhido) {
@@ -215,9 +232,13 @@ export async function POST(request: Request) {
           imagens,
           imagensGeradas: parsed.data.imagensGeradas ?? [],
         });
-        /* o nicho fica gravado no tema do projeto: é o que faz a vitrine da
-           loja mostrar os produtos daquele nicho em toda rota de render */
-        temaComMarca = { ...resultado.theme, orbisNicheId: parsed.data.nicheId };
+        /* o nicho faz a vitrine mostrar os produtos daquele nicho em toda rota
+           de render; as capas fazem cada cartão mostrar a coleção dele */
+        temaComMarca = {
+          ...resultado.theme,
+          orbisNicheId: parsed.data.nicheId,
+          ...(Object.keys(capasDeColecao).length ? { orbisCapas: capasDeColecao } : {}),
+        };
         customizacao.shopify = temaComMarca;
         alterados = resultado.alterados;
       }
@@ -399,7 +420,9 @@ export async function POST(request: Request) {
 
     /* o tema sai sabendo de que loja ele é: reimportar a própria loja tem de
        trazer a vitrine dela de volta, não o catálogo de demonstração */
-    if (parsed.data.nicheId) arquivos[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(parsed.data.nicheId));
+    if (parsed.data.nicheId || Object.keys(capasDeColecao).length) {
+      arquivos[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(parsed.data.nicheId ?? "", capasDeColecao));
+    }
 
     const zip = zipSync(arquivos, { level: 6 });
     /**

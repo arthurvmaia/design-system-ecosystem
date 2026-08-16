@@ -28,7 +28,17 @@ async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pag
     /* o nicho viaja dentro do tema salvo no projeto: a vitrine da loja gerada
        precisa dos produtos daquele nicho em qualquer rota de render */
     nicheId: extras.nicheId ?? shopify.orbisNicheId,
-    capasDeColecao: extras.capasDeColecao,
+    /**
+     * A capa vem do TEMA quando o pedido não a traz.
+     *
+     * O fluxo do cliente monta o mapa na hora, a partir da marca que ele tem em
+     * memória, e por isso a prévia dele sempre teve capa. O Editor não tem
+     * marca nenhuma — ele abre o tema salvo — e caía na foto de produto
+     * sorteada pelo handle: a mesma loja mostrava capa certa num lugar e foto
+     * repetida no outro. Agora o tema carrega o mapa (`orbisCapas`), e as duas
+     * telas leem da mesma fonte.
+     */
+    capasDeColecao: extras.capasDeColecao ?? shopify.orbisCapas,
   });
   /* pedido de seções soltas volta como JSON (Section Rendering API) */
   if (extras.onlySections?.length) {

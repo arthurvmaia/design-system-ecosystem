@@ -337,14 +337,26 @@ test("o nicho da loja viaja no ZIP exportado e volta na importação", async () 
     const cru = unzipSync(themeExport.exportThemeZip(theme, files).zip);
     assert.equal(cru[shopifyTheme.ARQUIVO_DA_LOJA], undefined, "tema sem nicho não pode inventar um");
 
-    const daLoja = { ...theme, orbisNicheId: "roupas" };
+    /* e as CAPAS viajam no mesmo marcador. Elas nasciam e morriam no pedido de
+       prévia do fluxo do cliente: o Editor, que abre o tema salvo e não tem
+       marca nenhuma, caía na foto de produto sorteada pelo handle. */
+    const daLoja = { ...theme, orbisNicheId: "roupas", orbisCapas: { basicos: "/api/media/aaaaaaaaaaaaaaaaaaaa" } };
     const { zip } = themeExport.exportThemeZip(daLoja, files);
     const exportado = unzipSync(zip);
     assert.ok(exportado[shopifyTheme.ARQUIVO_DA_LOJA], "o ZIP precisa levar o marcador");
-    assert.equal(JSON.parse(strFromU8(exportado[shopifyTheme.ARQUIVO_DA_LOJA])).orbisNicheId, "roupas");
+    const marcador = JSON.parse(strFromU8(exportado[shopifyTheme.ARQUIVO_DA_LOJA]));
+    assert.equal(marcador.orbisNicheId, "roupas");
+    assert.deepEqual(marcador.orbisCapas, { basicos: "/api/media/aaaaaaaaaaaaaaaaaaaa" });
 
-    /* o ciclo inteiro: o que sai daqui volta como a mesma loja */
-    assert.equal(shopifyTheme.extractShopifyThemeBytes(zip, "loja.zip").orbisNicheId, "roupas");
+    /* o ciclo inteiro: o que sai daqui volta como a mesma loja, com as capas */
+    const devolta = shopifyTheme.extractShopifyThemeBytes(zip, "loja.zip");
+    assert.equal(devolta.orbisNicheId, "roupas");
+    assert.deepEqual(devolta.orbisCapas, { basicos: "/api/media/aaaaaaaaaaaaaaaaaaaa" });
+
+    /* loja sem capa não declara capa: marcador com campo vazio faz quem lê
+       achar que a loja disse "sem capa", e o certo é ele nem perguntar */
+    const semCapa = unzipSync(themeExport.exportThemeZip({ ...theme, orbisNicheId: "roupas" }, files).zip);
+    assert.equal(JSON.parse(strFromU8(semCapa[shopifyTheme.ARQUIVO_DA_LOJA])).orbisCapas, undefined);
   } finally {
     await server.close();
   }

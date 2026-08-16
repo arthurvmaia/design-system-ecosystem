@@ -417,14 +417,23 @@ function buildCart(loja: Loja, items: PreviewCartItem[] | undefined) {
  * estável entre renders, senão a prévia troca de imagem a cada tecla digitada
  * no editor.
  */
-function fotoDaColecao(loja: Loja, handle: string) {
+function fotoDaColecao(loja: Loja, handle: string, vaga?: number) {
   if (!loja.produtos.length) return null;
-  const semente = [...String(handle ?? "")].reduce((n, c) => n + c.charCodeAt(0), 0);
+  /**
+   * Na LISTA, quem escolhe é a vaga; solta, é o handle.
+   *
+   * O hash do handle é determinístico mas não é distribuído: com sete coleções
+   * e dez produtos, três cartões vizinhos caíam no mesmo produto e a vitrine
+   * abria com a mesma foto repetida — o que parece defeito de carregamento.
+   * Numa lista a posição existe e resolve isso sem sorteio: enquanto houver
+   * produto, cada vaga pega um diferente.
+   */
+  const semente = typeof vaga === "number" ? vaga : [...String(handle ?? "")].reduce((n, c) => n + c.charCodeAt(0), 0);
   const produto = loja.produtos[semente % loja.produtos.length];
   return produto?.featured_image ?? produto?.images?.[0] ?? null;
 }
 
-function demoCollection(loja: Loja, handle: string, capas: Record<string, string> = {}) {
+function demoCollection(loja: Loja, handle: string, capas: Record<string, string> = {}, vaga?: number) {
   const title = handle ? handle.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Coleção em destaque";
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
@@ -446,7 +455,7 @@ function demoCollection(loja: Loja, handle: string, capas: Record<string, string
     ...(() => {
       /* a capa GERADA daquela coleção vem primeiro: ela foi pedida com o nome
          da coleção dentro, então é a única que combina com o cartão */
-      const foto = capas[handle] ?? fotoDaColecao(loja, handle);
+      const foto = capas[handle] ?? fotoDaColecao(loja, handle, vaga);
       return { image: foto, featured_image: foto };
     })(),
     all_tags: [...new Set(loja.produtos.flatMap((produto) => produto.tags))],
@@ -486,7 +495,9 @@ function flattenTranslations(source: Record<string, unknown>, prefix = "", out: 
 function resolveSettingValues(
   values: Record<string, ShopifyValue>,
   definitions: ShopifySettingDefinition[],
-  helpers: { loja: Loja; capas?: Record<string, string>; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
+  /* `vaga` é a posição do BLOCO na seção: no Dawn cada cartão da vitrine é um
+     bloco com o handle dentro, e é ela que impede a foto de reserva de repetir */
+  helpers: { loja: Loja; capas?: Record<string, string>; vaga?: number; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
   /* O tipo da seção (ou do bloco) chega até aqui só por causa do placeholder:
      é o par seção+campo que diz qual FORMATO o vazio deve ter. */
   secao?: string,
@@ -511,7 +522,7 @@ function resolveSettingValues(
     /* AQUI é por onde o cartão de coleção passa de verdade: o `settings` do
        bloco guarda o handle, e era este caminho que ficava sem as capas — o
        proxy de `collections[...]` só atende busca por handle escrita no Liquid */
-    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}); continue; }
+    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}, helpers.vaga); continue; }
     if (type === "product") { resolved[id] = demoProduct(helpers.loja, typeof value === "string" ? value : "", 2); continue; }
     if (type === "collection_list") {
       /* as coleções DA LOJA quando elas existem: a lista fixa de "colecao-1..4"
@@ -519,7 +530,7 @@ function resolveSettingValues(
          escreveu */
       const daLoja = Object.keys(helpers.capas ?? {});
       const lista = daLoja.length ? daLoja : ["colecao-1", "colecao-2", "colecao-3", "colecao-4"];
-      resolved[id] = lista.map((handle) => demoCollection(helpers.loja, handle, helpers.capas ?? {}));
+      resolved[id] = lista.map((handle, vaga) => demoCollection(helpers.loja, handle, helpers.capas ?? {}, vaga));
       continue;
     }
     if (type === "product_list") { resolved[id] = helpers.loja.produtos; continue; }
@@ -783,7 +794,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
         id: block.id, type: block.type,
         /* o formato do placeholder é da SEÇÃO: no Dawn a imagem do banner mora
            num bloco `slide`, cujo nome não diz que aquilo é um banner */
-        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, capas, imageFor, schemeFor, registerFont }, section.type),
+        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, capas, vaga: index, imageFor, schemeFor, registerFont }, section.type),
         shopify_attributes: `data-block-id="${block.id}"`,
         index: index + 1, index0: index,
       };
