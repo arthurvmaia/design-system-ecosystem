@@ -8,27 +8,45 @@ import { createServer } from "vite";
 /** Fase 5: prévia no fluxo do cliente, alimentada pela marca que o gerador usa. */
 
 /**
- * A PRÉVIA AO VIVO saiu do fluxo do cliente, inteira.
+ * A PRÉVIA AO VIVO existe em UMA etapa só: a revisão.
  *
  * Ela ocupava uma coluna de 340px em todo passo, e nenhum deles se decide
- * olhando uma miniatura desse tamanho: escolher nicho, escrever a marca,
- * escolher tema e revisar são decisões de conteúdo. Quem quiser ver a loja vê
- * no editor, em tamanho de gente.
+ * olhando uma miniatura desse tamanho: escolher nicho, escrever a marca e
+ * escolher tema são decisões de conteúdo. A coluna ficava lá tirando largura
+ * de onde o trabalho acontece, para responder uma pergunta que ninguém tinha
+ * feito ainda.
  *
- * O componente foi APAGADO, não só escondido: código que ninguém chama é o que
- * volta sozinho num merge distraído, e a coluna reservada tirava largura de
- * onde o trabalho acontece.
+ * Na etapa 04 a pergunta é exatamente essa, então a prévia volta — em largura
+ * cheia, com o tema DE VERDADE e o par computador/celular.
  */
-test("o fluxo do cliente não tem prévia em passo nenhum", async () => {
+test("a prévia ao vivo só aparece na revisão, e lá aparece inteira", async () => {
   const raiz = fileURLToPath(new URL("..", import.meta.url));
   const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
-  assert.doesNotMatch(flow, /cf-preview/, "a coluna da prévia não pode voltar");
-  assert.doesNotMatch(flow, /ClientPreviaReal/, "nem o componente dela");
-  /* uma coluna só, em todo passo: reservar espaço vazio é pior que não ter */
+
+  /* a coluna fixa não volta: era ela o problema, não a prévia */
+  assert.doesNotMatch(flow, /cf-preview/, "a coluna de 340px ao lado de todo passo não pode voltar");
   assert.match(flow, /className="cf-layout cf-layout-cheio"/);
 
+  /* e ela está DENTRO do passo 3, que é o único lugar onde o componente é
+     citado — se aparecesse duas vezes, uma delas estaria em outra etapa */
+  assert.equal((flow.match(/<ClientPreviaReal/g) ?? []).length, 1, "uma prévia, uma etapa");
+  const revisao = flow.slice(flow.indexOf("{passo === 3 && ("));
+  assert.match(revisao.slice(0, revisao.indexOf("<footer")), /<ClientPreviaReal/, "a prévia mora na etapa 04");
+
+  /* o par computador/celular, que é o que a revisão pede */
+  assert.match(flow, /Computador/);
+  assert.match(flow, /Celular/);
+  const previa = await readFile(join(raiz, "app/ClientPreviaReal.tsx"), "utf8");
+  assert.match(previa, /desktop: 1280, mobile: 390/, "as duas larguras são de telas reais");
+
+  /* SÓ o aprovado entra na prévia: mostrar versão em análise seria prometer
+     uma loja diferente da que vai ser entregue */
+  assert.match(flow, /imagens: \{ \.\.\.marca\.imagens, \.\.\.urlsAprovadas\(artes\) \}/);
+
+  /* o quadro é para CONFERIR, não para usar: sem formulário e sem clique */
+  assert.match(previa, /sandbox="allow-same-origin"/);
   const css = await readFile(join(raiz, "app/globals.css"), "utf8");
-  assert.doesNotMatch(css, /\.cf-preview|\.cpr-/, "estilo órfão de recurso removido vira lixo que ninguém ousa apagar");
+  assert.match(css, /\.cpr-frame \{[^}]*pointer-events: none/);
 });
 
 test("a prévia só usa dados da marca; sem copy inventada", async () => {
@@ -102,7 +120,11 @@ test("as imagens geradas sobrevivem ao recarregar, presas à marca que as pediu"
      a arte da anterior ficaria órfã de qualquer jeito */
   assert.match(flow, /orbis:marca:\$\{nicho\}/);
   /* grava sempre que o mapa muda, e some quando ele esvazia */
-  assert.match(flow, /setItem\(cofre, JSON\.stringify\(\{ semente, imagens: imagensGeradas \}\)\)/);
+  assert.match(flow, /setItem\(cofre, JSON\.stringify\(\{ semente, artes \}\)\)/);
+  /* e guarda a VIDA de cada peça, não só a URL: sem versão e aprovação no
+     disco, recarregar a página devolvia duas alterações novas de presente */
+  assert.match(flow, /salvo\?\.artes \?\? salvo\?\.imagens/, "o formato antigo continua sendo lido");
+  assert.match(flow, /const arte = arteLida\(valor\)/, "e passa pela leitura que impõe os limites");
   /* a leitura é EVENTO, não efeito: efeito com setState síncrono provoca
      render em cascata, e o lint do projeto reprova */
   assert.match(flow, /const abrirCofre = useCallback/);

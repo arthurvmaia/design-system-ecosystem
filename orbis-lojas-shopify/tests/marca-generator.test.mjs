@@ -425,7 +425,8 @@ test("marca própria é 100% manual; as artes da Orbis só existem no caminho ge
 
   /* quem já tem marca não vê botão de gerar, e nada gerado é enviado */
   assert.match(flow, /modo === "manual" \? \(/, "o passo do tema separa os dois caminhos");
-  assert.match(flow, /imagens: \{ \.\.\.marca\.imagens, \.\.\.\(modo === "gerada" \? imagensGeradas : \{\}\) \}/);
+  /* e só as APROVADAS viajam: versão em análise não é decisão tomada */
+  assert.match(flow, /imagens: \{ \.\.\.marca\.imagens, \.\.\.\(modo === "gerada" \? urlsAprovadas\(artes\) : \{\}\) \}/);
 
   /* as fotos são pedidas como fotografia profissional, não como desenho */
   const imagens = await readFile(new URL("../lib/marca-imagens.ts", import.meta.url), "utf8");
