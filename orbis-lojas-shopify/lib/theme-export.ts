@@ -70,6 +70,16 @@ export function collectEditorMediaIds(theme: ShopifyThemeImport): string[] {
       for (const block of section.blocks) visit(block.settings);
     }
   }
+  /**
+   * As CAPAS também, e elas não estão em setting nenhum.
+   *
+   * O mapa mora no marcador. Na prática cada capa costuma acabar num cartão de
+   * coleção e ser vista pelo percurso acima — mas "costuma" não é garantia:
+   * sobrando capa para vaga, ou num tema sem vitrine de coleção, o arquivo
+   * ficava de fora do pacote e a capa virava um endereço morto assim que saía
+   * desta máquina.
+   */
+  for (const capa of Object.values(theme.orbisCapas ?? {})) visit(capa);
   return Array.from(ids);
 }
 

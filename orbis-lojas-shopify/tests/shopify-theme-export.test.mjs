@@ -406,6 +406,21 @@ test("o nome próprio da loja e o modelo do estúdio sobrevivem à exportação"
     /* e o tema cru continua sem marcador nenhum: ele não é de ninguém */
     const cru = unzipSync(themeExport.exportThemeZip(theme, files).zip);
     assert.equal(cru[shopifyTheme.ARQUIVO_DA_LOJA], undefined);
+
+    /**
+     * A CAPA conta como imagem a empacotar, mesmo sem estar em setting nenhum.
+     *
+     * Ela mora no marcador. Na prática cai num cartão de coleção e o percurso a
+     * encontra — mas "na prática" não é garantia: sobrando capa para vaga, o
+     * arquivo ficava fora do pacote e a capa virava endereço morto fora desta
+     * máquina.
+     */
+    const idSoNaCapa = "cccccccc-1111-2222-3333-444444444444";
+    const ids = themeExport.collectEditorMediaIds({
+      ...theme,
+      orbisCapas: { polarizados: `/api/media/${idSoNaCapa}` },
+    });
+    assert.ok(ids.includes(idSoNaCapa), "capa fora dos settings precisa entrar na lista de mídia a empacotar");
   } finally {
     await server.close();
   }
