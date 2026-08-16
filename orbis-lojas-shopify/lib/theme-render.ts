@@ -895,6 +895,69 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   });
 
   /* ---------- filtros Shopify ---------- */
+
+  /**
+   * ARITMÉTICA DE INTEIRO, como no Liquid da Shopify.
+   *
+   * O Liquid da Shopify é Ruby: `divided_by` entre dois INTEIROS devolve
+   * inteiro. O LiquidJS devolve float. A diferença não é acadêmica — ela
+   * apareceu na tela, no selo de oferta do tema:
+   *
+   *     assign delta = compare | minus: current | times: 100
+   *     assign percentage = delta | divided_by: compare
+   *
+   * Na Shopify isso dá `73`. Aqui dava `73.95709177592371`, e o selo do produto
+   * saía escrito "73.95709177592371% OFF". O tema está certo; quem contava
+   * errado era o motor.
+   *
+   * Isto vale para QUALQUER tema, não só para este selo: divisão inteira é uma
+   * das contas mais comuns em Liquid de loja (porcentagem, coluna de grade,
+   * parcela). Um render que não a reproduz mostra uma loja que não é a que vai
+   * ao ar.
+   *
+   * Basta um dos lados ser fracionário para a conta voltar a ser em ponto
+   * flutuante, que é exatamente a regra do Ruby — e é por isso que os temas
+   * escrevem `divided_by: 100.0` quando querem casa decimal.
+   */
+  const numero = (valor: unknown): number => {
+    const n = typeof valor === "number" ? valor : parseFloat(String(valor ?? 0));
+    return Number.isFinite(n) ? n : 0;
+  };
+  /**
+   * O ARGUMENTO foi escrito como fracionário no tema?
+   *
+   * Esta é a parte que só o texto original responde. `divided_by: 100.0` chega
+   * ao filtro como o número 100, idêntico a `divided_by: 100` — e a diferença
+   * entre os dois é justamente o que decide se a conta é inteira. Os temas
+   * escrevem o `.0` de propósito quando querem casa decimal: é assim que o Dawn
+   * calcula escala de fonte e opacidade. Ler o número não bastaria; ler o
+   * TEXTO, sim.
+   *
+   * A comparação é com um literal numérico, não com "tem ponto": `divided_by:
+   * settings.body_scale` também tem ponto, e ali ele é caminho de propriedade.
+   */
+  const argumentoFracionario = (contexto: unknown): boolean => {
+    const token = (contexto as { token?: { getText?: () => string } } | undefined)?.token;
+    const texto = typeof token?.getText === "function" ? token.getText() : "";
+    return /:\s*-?\d+\.\d+\s*$/.test(texto);
+  };
+  const ehInteiro = (valor: unknown): boolean => Number.isInteger(numero(valor));
+  engine.registerFilter("divided_by", function (this: unknown, esquerda: unknown, direita: unknown) {
+    const a = numero(esquerda), b = numero(direita);
+    /* dividir por zero não pode derrubar a página: a Shopify devolve nada ali */
+    if (b === 0) return 0;
+    const inteira = ehInteiro(esquerda) && ehInteiro(direita) && !argumentoFracionario(this);
+    /* `Math.floor` e não `trunc`: Ruby arredonda para BAIXO, então -7/2 é -4 */
+    return inteira ? Math.floor(a / b) : a / b;
+  });
+  engine.registerFilter("modulo", function (this: unknown, esquerda: unknown, direita: unknown) {
+    const a = numero(esquerda), b = numero(direita);
+    if (b === 0) return 0;
+    /* o resto acompanha o SINAL DO DIVISOR, como em Ruby: -7 % 3 é 2, não -1 */
+    const resto = ((a % b) + b) % b;
+    return ehInteiro(esquerda) && ehInteiro(direita) && !argumentoFracionario(this) ? Math.floor(resto) : resto;
+  });
+
   const moneyFormat = (cents: unknown) => {
     const value = typeof cents === "number" ? cents / 100 : parseFloat(String(cents ?? 0)) / 100;
     return `R$ ${(Number.isFinite(value) ? value : 0).toFixed(2).replace(".", ",")}`;

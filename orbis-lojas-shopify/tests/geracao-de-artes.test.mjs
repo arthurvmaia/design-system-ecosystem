@@ -178,3 +178,58 @@ test("cartão sem coleção é apagado, nunca preenchido com uma repetida", asyn
   assert.match(brand, /if \(proximaColecao >= colecoes\.length\) \{ vagasSobrando\.push/);
   assert.match(brand, /secao\.blocks\.splice\(indice, 1\)/);
 });
+
+/**
+ * ARITMÉTICA DE INTEIRO: o motor tem de contar como a Shopify conta.
+ *
+ * O Liquid da Shopify é Ruby, e `divided_by` entre dois inteiros devolve
+ * inteiro. O LiquidJS devolve float. A diferença apareceu na tela, no selo de
+ * oferta: o tema faz `delta | divided_by: compare`, a Shopify mostra "73% OFF"
+ * e a prévia mostrava "73.95709177592371% OFF".
+ *
+ * O tema estava certo. Quem contava errado era o motor, e isso vale para
+ * qualquer tema: divisão inteira é uma das contas mais comuns em Liquid de
+ * loja.
+ */
+test("divided_by entre inteiros devolve inteiro, como no Liquid da Shopify", async () => {
+  const { zipSync, strToU8 } = await import("fflate");
+  const layout = "<!doctype html><html><body>{{ content_for_layout }}</body></html>";
+  /* os números da tela: 5034 e 1311 centavos, que davam 73.95709177592371 */
+  const secao = `<p class="selo">{{ 5034 | minus: 1311 | times: 100 | divided_by: 5034 }}</p>
+<p class="meio">{{ 5 | divided_by: 3 }}</p>
+<p class="float">{{ 5 | divided_by: 2.0 }}</p>
+<p class="escala">{{ 100 | divided_by: 100.0 }}</p>
+<p class="negativo">{{ 0 | minus: 7 | divided_by: 2 }}</p>
+<p class="resto">{{ 0 | minus: 7 | modulo: 3 }}</p>
+<p class="zero">{{ 9 | divided_by: 0 }}</p>
+{% schema %}{"name":"Selo"}{% endschema %}`;
+  const zip = zipSync({
+    "layout/theme.liquid": strToU8(layout),
+    "sections/selo.liquid": strToU8(secao),
+    "templates/index.json": strToU8(JSON.stringify({ sections: { selo: { type: "selo" } }, order: ["selo"] })),
+    "config/settings_schema.json": strToU8(JSON.stringify([{ name: "theme_info", theme_name: "Conta", theme_version: "1.0" }])),
+    "config/settings_data.json": strToU8(JSON.stringify({ current: {} })),
+  });
+
+  await comServidor(async (server) => {
+    const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
+    const theme = await extractShopifyThemeBytes(zip, "conta.zip");
+    const html = await renderThemePage({ theme, files: themeFilesFromZip(zip), pageId: "index", assetBase: (p) => `/assets/${p}` });
+    const ler = (classe) => html.match(new RegExp(`<p class="${classe}">(.*?)</p>`))?.[1];
+
+    assert.equal(ler("selo"), "73", "o selo de oferta é o caso que trouxe este defeito");
+    assert.equal(ler("meio"), "1", "5/3 é 1 na Shopify, não 1.6666666666666667");
+    /* basta um lado fracionário para a conta voltar a ser em ponto flutuante:
+       é por isso que os temas escrevem `divided_by: 100.0` quando querem casa
+       decimal, e quebrar isso estragaria toda escala de fonte do tema */
+    assert.equal(ler("float"), "2.5");
+    assert.equal(ler("escala"), "1");
+    /* Ruby arredonda para BAIXO, não trunca */
+    assert.equal(ler("negativo"), "-4");
+    /* e o resto acompanha o sinal do divisor */
+    assert.equal(ler("resto"), "2");
+    /* dividir por zero não pode derrubar a página inteira */
+    assert.equal(ler("zero"), "0");
+  });
+});
