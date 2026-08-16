@@ -24,10 +24,9 @@ em dois lugares, e a pasta que ninguém abria sobrava a cada geração.
 - **Nada se perdeu de conteúdo**: a prévia local, o CSV de produtos, o kit de
   logo e as imagens para subir em Conteúdo → Arquivos sempre viajaram DENTRO do
   ZIP, na pasta `previa-local/`. O que saiu foi a segunda cópia.
-- **Sair sem baixar agora avisa.** Enquanto a pasta era escrita sozinha, sair da
-  tela de "pronto" era inofensivo; agora o pacote só existe ali. "Fazer outra
-  loja" e "Concluir" pedem um segundo clique, dizendo que o projeto continua no
-  estúdio mas a prévia e as imagens só existem dentro do ZIP.
+- **Sair sem baixar não avisa, e é decisão do dono.** Um aviso de dois cliques
+  chegou a existir e foi retirado: o pedido é o ZIP indo para Downloads no botão
+  de baixar, e nada além disso na tela de "pronto".
 
 As dezesseis rodadas entre este handoff e o de 2026-08-15 (artes com versão e
 aprovação, ponto de parada do projeto, capa por coleção, contagem igual à do

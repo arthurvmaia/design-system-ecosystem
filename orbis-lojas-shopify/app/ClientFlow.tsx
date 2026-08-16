@@ -235,8 +235,6 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   /* como a loja é conferida na revisão, e a confirmação de finalizar */
   const [dispositivo, setDispositivo] = useState<Dispositivo>("desktop");
   const [confirmando, setConfirmando] = useState(false);
-  /* e o aviso de quem tenta sair da tela de "pronto" sem ter baixado o ZIP */
-  const [saidaSemZip, setSaidaSemZip] = useState<"outra" | "sair" | null>(null);
 
   const temaEscolhido = temas.find((tema) => tema.id === themeId) ?? null;
 
@@ -817,7 +815,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   function recomecar() {
     setPasso(0); setPassoMaisLonge(0); setModo(null); setNicheId(""); setGerada(false);
     setMarca(MARCA_VAZIA); setEditadoAMao({});
-    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setZip(null); setAvisoDeTamanho(""); setDispositivo("desktop"); setConfirmando(false); setSaidaSemZip(null);
+    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setZip(null); setAvisoDeTamanho(""); setDispositivo("desktop"); setConfirmando(false);
     /* recomeçar é recomeçar: o cofre da marca antiga sai junto, senão a loja
        seguinte herdaria a logo de uma marca que não existe mais — e o ponto de
        parada também, senão a próxima abertura voltaria para a loja recomeçada */
@@ -863,25 +861,6 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             Dentro do ZIP, a pasta <b>previa-local</b> tem a loja para olhar aqui e as imagens para
             subir em Conteúdo → Arquivos.
           </p>
-          {/**
-            * SAIR SEM O ZIP não pode custar um clique só.
-            *
-            * Enquanto o app gravava a loja na Área de Trabalho, sair daqui era
-            * inofensivo: o pacote já estava no disco de qualquer jeito. Agora
-            * ele só existe nesta tela, em memória, até alguém clicar em baixar
-            * — e as duas outras saídas apagam a loja entregue junto.
-            *
-            * Então o primeiro clique avisa e o segundo decide. Dizer o que fica
-            * para trás importa: o projeto continua no estúdio, mas a prévia e
-            * as imagens da pasta `previa-local` só existem dentro do ZIP.
-            */}
-          {saidaSemZip && (
-            <p className="cf-aviso-saida">
-              <CircleAlert size={14} /> Você ainda não baixou o ZIP. Sair agora deixa a loja só no
-              estúdio, sem a prévia e sem as imagens da pasta <b>previa-local</b>. Clique de novo
-              para {saidaSemZip === "outra" ? "fazer outra loja" : "concluir"} mesmo assim.
-            </p>
-          )}
           <div className="cf-actions">
             {/**
               * Baixou, acabou: o fluxo volta ao começo.
@@ -895,8 +874,8 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
               * downloads e o projeto fica registrado no estúdio.
               */}
             <button className="secondary-button" onClick={() => { baixarZip(zip); recomecar(); }}><Download size={15} /> Baixar o ZIP</button>
-            <button className="secondary-button" onClick={() => (saidaSemZip === "outra" ? recomecar() : setSaidaSemZip("outra"))}><RefreshCw size={15} /> Fazer outra loja</button>
-            <button className="primary-button" onClick={() => (saidaSemZip === "sair" ? onExit() : setSaidaSemZip("sair"))}>Concluir <ArrowRight size={15} /></button>
+            <button className="secondary-button" onClick={recomecar}><RefreshCw size={15} /> Fazer outra loja</button>
+            <button className="primary-button" onClick={onExit}>Concluir <ArrowRight size={15} /></button>
           </div>
         </div>
       </main>

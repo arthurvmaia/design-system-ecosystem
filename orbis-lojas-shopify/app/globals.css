@@ -846,8 +846,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-colecao input { flex: 1; min-height: 38px; padding: 0 11px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 13px; }
 .cf-colecao input:focus-visible { border-color: rgba(34,211,238,.5); outline: none; }
 .cf-colecao .icon-button { flex: none; }
-.cf-aviso-tamanho, .cf-aviso-saida { display: inline-flex; align-items: center; gap: 7px; max-width: 560px; padding: 10px 12px; border: 1px solid rgba(255,190,92,.28); background: rgba(255,190,92,.07); color: #ebcd91; font-size: 12px; line-height: 1.5; }
-.cf-aviso-tamanho svg, .cf-aviso-saida svg { flex: none; }
+.cf-aviso-tamanho { display: inline-flex; align-items: center; gap: 7px; max-width: 560px; padding: 10px 12px; border: 1px solid rgba(255,190,92,.28); background: rgba(255,190,92,.07); color: #ebcd91; font-size: 12px; line-height: 1.5; }
+.cf-aviso-tamanho svg { flex: none; }
 .conta-shopify-aviso { max-width: 460px; color: #ebcd91; font-size: 11px; line-height: 1.5; }
 @media (max-width: 640px) { .conta-shopify-passos { grid-template-columns: 1fr; } }
 
