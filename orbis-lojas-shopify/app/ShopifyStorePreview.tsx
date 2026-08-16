@@ -198,13 +198,20 @@ export function ShopifyLiveRender({ shopify, pageId, onSelectSection, onSelectBl
     <div className="live-render-wrap">
       {status === "loading" && !html && <div className="live-render-loading"><span>ORBIS · RENDERIZANDO O TEMA REAL…</span></div>}
       {html && <iframe ref={frameRef} className="live-render-frame" title="Prévia real do tema" sandbox="allow-scripts allow-same-origin allow-forms" srcDoc={html} onLoad={enviarModo} />}
-      {/* Sem nicho, a vitrine é catálogo de DEMONSTRAÇÃO — produtos de exemplo
-          para dar para julgar grade, cartão e preço. Precisa estar escrito: a
-          diferença entre "loja com mercadoria" e "loja com exemplo" muda o que
-          a pessoa conclui olhando, e conclusão errada é pior que tela vazia. */}
+      {/**
+       * O selo diz DE ONDE vem a mercadoria, e agora só há duas respostas.
+       *
+       * Tema importado abre como veio, sem produto emprestado: o que aparece na
+       * vitrine é o vazio do próprio tema, o mesmo que uma loja Shopify recém
+       * aberta mostra. Dizer "produtos de demonstração" ali passou a ser
+       * mentira no instante em que a demonstração saiu, e selo que mente é pior
+       * que selo nenhum.
+       *
+       * Loja gerada declara o nicho, e aí a vitrine é a mercadoria dela.
+       */}
       {html && (
         <span className="live-render-badge">
-          RENDER REAL · LIQUID{shopify.orbisNicheId ? "" : " · PRODUTOS DE DEMONSTRAÇÃO"}
+          RENDER REAL · LIQUID{shopify.orbisNicheId ? "" : " · TEMA SEM PRODUTOS"}
         </span>
       )}
     </div>
