@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
+import { MAX_ARTE_GERADA_BYTES, MAX_ARTE_GERADA_MB, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 import { consultarTarefa, magnificDisponivel, modeloPadrao, modeloValido, pedirGeracao, promptDaVitrine, type PapelMagnific } from "@/lib/magnific";
 
 /**
@@ -66,19 +66,23 @@ async function guardarComoMidia(viewerId: string, url: string, nome: string) {
   const dados = new Uint8Array(await resposta.arrayBuffer());
   if (!dados.byteLength) throw new Error("ARQUIVO_VAZIO");
   /**
-   * Teto de 20 MB, o mesmo que a Shopify aceita por asset de tema.
+   * Recusar aqui é a ÚLTIMA linha, não a primeira.
    *
-   * Era 12 MB, e ele REPROVAVA o trabalho que o app acabou de pagar: um PNG 4k
-   * do provedor tem 11 a 12,3 MB medidos neste acervo, então parte das peças
-   * caía exatamente em cima do corte. A geração terminava, a imagem existia, e
-   * ela era descartada aqui sem nunca chegar ao tema. Foi assim que uma loja
-   * saiu com 3 das 11 imagens.
+   * Este teto já foi 12 MB e já foi 20 MB, e nas duas vezes ele reprovava o
+   * trabalho que o app acabou de mandar gerar e PAGAR. Com 20 MB, medido numa
+   * rodada real deste computador: cenas de 17,9 e 19,8 MB passando raspando, e
+   * a rodada de seis terminando com quatro. O cliente ficava sem a peça e sem
+   * saber por quê.
    *
-   * Acima de 20 MB a própria Shopify recusaria o arquivo, então recusar aqui é
-   * dizer a mesma coisa mais cedo, e dizendo o tamanho.
+   * A causa foi atacada onde ela nasce: a peça agora pede a resolução do
+   * DESTINO dela, e cena e símbolo caem para 2k. Aqui sobra o papel de barreira
+   * contra resposta desgovernada, e por isso o número é folgado.
+   *
+   * Os 20 MB da Shopify continuam existindo, como AVISO logo abaixo: eles valem
+   * na hora de subir o arquivo em Conteúdo → Arquivos, não na hora de guardar.
    */
-  if (dados.byteLength > MAX_UPLOAD_BYTES) {
-    throw new Error(`ARQUIVO_GRANDE_${(dados.byteLength / (1024 * 1024)).toFixed(1)}MB_TETO_${MAX_UPLOAD_MB}MB`);
+  if (dados.byteLength > MAX_ARTE_GERADA_BYTES) {
+    throw new Error(`ARQUIVO_GRANDE_${(dados.byteLength / (1024 * 1024)).toFixed(1)}MB_TETO_${MAX_ARTE_GERADA_MB}MB`);
   }
   const tipo = resposta.headers.get("content-type") ?? "image/png";
   if (!/^image\//.test(tipo)) throw new Error("TIPO_INVALIDO");
@@ -93,8 +97,29 @@ async function guardarComoMidia(viewerId: string, url: string, nome: string) {
     VALUES (?, ?, ?, ?, ?, ?)`)
     .bind(id, viewerId, storageKey, arquivo, tipo, dados.byteLength)
     .run();
-  return { id, url: `/api/media/${id}` };
+  const megas = dados.byteLength / (1024 * 1024);
+  return {
+    id,
+    url: `/api/media/${id}`,
+    /* passou do que a Shopify aceita por arquivo: a peça existe e serve na
+       prévia, mas quem for subir precisa saber antes de descobrir lá */
+    ...(megas > MAX_UPLOAD_MB
+      ? { aviso: `${megas.toFixed(1)} MB: acima dos ${MAX_UPLOAD_MB} MB que a Shopify aceita por arquivo. Comprima antes de subir.` }
+      : {}),
+  };
 }
+
+/** As resoluções que o provedor aceita. Fora daqui, ele decide. */
+const RESOLUCOES = new Set(["1k", "2k", "4k"]);
+
+/**
+ * Os fins de linha do provedor: daqui não sai imagem, por mais que se pergunte.
+ *
+ * A lista é generosa de propósito. Um status novo que ninguém previu volta a
+ * cair no caminho de "ainda trabalhando", que é o comportamento seguro; o que
+ * não pode acontecer é o contrário, dar por perdida uma tarefa que ia chegar.
+ */
+const TERMINOU_MAL = new Set(["FAILED", "ERROR", "CANCELED", "CANCELLED", "REJECTED", "EXPIRED", "TIMEOUT"]);
 
 export async function POST(request: Request) {
   const identity = await getIdentity();
@@ -107,6 +132,7 @@ export async function POST(request: Request) {
   const corpo = await request.json().catch(() => ({})) as {
     acao?: string; taskId?: string; chave?: string;
     papel?: string; modelo?: string; nicho?: string; marca?: string; paleta?: unknown; prompt?: string; aspecto?: string;
+    resolucao?: string;
   };
 
   /* segunda etapa: a tarefa terminou, a imagem vira mídia do usuário */
@@ -115,13 +141,36 @@ export async function POST(request: Request) {
     const modelo = typeof corpo.modelo === "string" && modeloValido(papel, corpo.modelo) ? corpo.modelo : modeloPadrao(papel);
     try {
       const tarefa = await consultarTarefa(apiKey as string, papel, modelo, String(corpo.taskId ?? ""));
+      /**
+       * TAREFA MORTA é resposta, não silêncio.
+       *
+       * O código só reconhecia `COMPLETED`; qualquer outro status virava
+       * "ainda não". Uma tarefa que o provedor já deu por perdida ficava sendo
+       * perguntada de dez em dez segundos até o orçamento de 15 minutos
+       * acabar. Medido numa rodada real: 05:56:51 a última imagem chegou,
+       * 06:10:35 o laço desistiu. Quatorze minutos perguntando a um morto.
+       */
+      if (TERMINOU_MAL.has(tarefa.status.toUpperCase())) {
+        return Response.json({ disponivel: true, status: tarefa.status, pronta: false, erro: `o provedor encerrou como ${tarefa.status}` });
+      }
       if (tarefa.status !== "COMPLETED" || !tarefa.imagens.length) {
         return Response.json({ disponivel: true, status: tarefa.status, pronta: false });
       }
       const midia = await guardarComoMidia(viewer.id, tarefa.imagens[0], String(corpo.chave ?? "peca"));
       return Response.json({ disponivel: true, status: tarefa.status, pronta: true, ...midia });
     } catch (erro) {
-      return Response.json({ error: erro instanceof Error ? erro.message : "SALVAR_FALHOU" }, { status: 502 });
+      const motivo = erro instanceof Error ? erro.message : "SALVAR_FALHOU";
+      /**
+       * Falha DEFINITIVA sai como 4xx, e é o que faz o cliente parar.
+       *
+       * Arquivo grande demais, tipo errado, resposta vazia: perguntar de novo
+       * devolve exatamente a mesma coisa, porque a imagem já existe e não muda.
+       * Enquanto tudo saía como 502, o cliente tratava como passageiro e
+       * insistia até o teto de tempo — gastando o orçamento das peças que
+       * ainda tinham chance.
+       */
+      const definitivo = /^(ARQUIVO_GRANDE|ARQUIVO_VAZIO|TIPO_INVALIDO|URL_INVALIDA)/.test(motivo);
+      return Response.json({ error: motivo, definitivo }, { status: definitivo ? 422 : 502 });
     }
   }
   const papel = papelDe(corpo.papel ?? null);
@@ -137,6 +186,10 @@ export async function POST(request: Request) {
       papel, modelo, prompt,
       aspecto: typeof corpo.aspecto === "string" ? corpo.aspecto : undefined,
       cores: paleta,
+      /* a resolução vem da PEÇA: banner precisa de 4k porque é recomposto em
+         3000×1000, cena e símbolo não usam mais que 2k. Pedir 4k para tudo
+         fazia arquivo de 20 MB que arrastava a rodada e estourava o teto. */
+      resolucao: RESOLUCOES.has(String(corpo.resolucao)) ? String(corpo.resolucao) : undefined,
     });
     return Response.json({ disponivel: true, papel, ...tarefa });
   } catch (erro) {

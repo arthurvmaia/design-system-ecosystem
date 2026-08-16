@@ -26,6 +26,8 @@ export type PecaDeImagem = {
   titulo: string;
   /** Enquadramento no vocabulário da Magnific (aspect_ratio). */
   aspecto: string;
+  /** Resolução pedida ao provedor: sai do DESTINO da peça (ver `RESOLUCAO`). */
+  resolucao: string;
   prompt: string;
   /** Desenho local usado enquanto não há provedor de IA. */
   fallbackSvg: string;
@@ -88,6 +90,45 @@ const QUALIDADE = "Fotografia comercial de alta qualidade, iluminação de estú
  *
  * O celular já estava certo: `social_post_4_5` é 1080×1350.
  */
+/**
+ * A RESOLUÇÃO que cada peça precisa, e nem uma a mais.
+ *
+ * Pedir 4k para tudo custava caro em dois lugares que não apareciam na conta:
+ * o arquivo e o relógio. Medido numa geração real deste computador, tudo em 4k:
+ * símbolo 3,5 MB, banner 12,4 MB, cenas 17,9 e 19,8 MB. Cada um desses é
+ * baixado do provedor e regravado antes de virar imagem da loja, e a rodada
+ * inteira arrastava por isso.
+ *
+ * Pior: com peças roçando os 20 MB, as que passavam do teto eram DESCARTADAS
+ * depois de geradas e pagas. Foi assim que uma rodada de seis terminou com
+ * quatro.
+ *
+ * O número certo sai do DESTINO de cada peça, não de um gosto por nitidez:
+ *
+ * - **banner: 4k, e continua 4k.** Ele é recomposto em 3000×1000 por
+ *   `comporBanner`. De uma fonte 2k (2048 px de lado) isso é AMPLIAR, e aí a
+ *   pixelização é real, não teórica. Abaixar aqui estragaria a peça mais
+ *   visível da loja.
+ * - **cena: 2k.** Ela entra como imagem de seção, no tamanho que o tema der.
+ *   2048 px cobre qualquer seção com folga, e o arquivo cai para perto de um
+ *   quarto: sai da faixa onde as peças estavam sendo perdidas.
+ * - **símbolo: 2k.** Ele é recortado e recentrado por `derivarLogos`, e sai de
+ *   lá com 0,13 a 0,18 MB. Baixar 3,5 MB para produzir 180 KB é pagar banda e
+ *   tempo por pixel que é jogado fora no passo seguinte.
+ */
+const RESOLUCAO: Record<PapelDaPeca, string> = {
+  logo: "2k",
+  "banner-desktop": "4k",
+  "banner-mobile": "4k",
+  colecao: "2k",
+  cena: "2k",
+};
+
+/** A resolução pedida ao provedor para uma peça daquele papel. */
+export function resolucaoDaPeca(papel: PapelDaPeca): string {
+  return RESOLUCAO[papel] ?? "2k";
+}
+
 const ASPECTO: Record<PapelDaPeca, string> = {
   logo: "square_1_1",
   "banner-desktop": "smartphone_horizontal_20_9",
@@ -217,6 +258,7 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "logo",
       titulo: "Símbolo da marca",
       aspecto: ASPECTO.logo,
+      resolucao: resolucaoDaPeca("logo"),
       origem: "gerada",
       /* sem letra nenhuma: o nome entra depois, em tipografia de verdade */
       prompt: `${simbolo} Fundo liso de cor única, bem separado do símbolo. Paleta: ${cores}.`,
@@ -238,6 +280,7 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "logo",
       titulo: "Símbolo em fundo branco",
       aspecto: ASPECTO.logo,
+      resolucao: resolucaoDaPeca("logo"),
       origem: "derivada",
       prompt: "",
       fallbackSvg: ilustracaoDoNicho(nicho.id),
@@ -247,6 +290,7 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "logo",
       titulo: "Símbolo monocromático em fundo preto",
       aspecto: ASPECTO.logo,
+      resolucao: resolucaoDaPeca("logo"),
       origem: "derivada",
       prompt: "",
       fallbackSvg: ilustracaoDoNicho(nicho.id),
@@ -258,6 +302,7 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "logo",
       titulo: "Nome por extenso",
       aspecto: ASPECTO.logo,
+      resolucao: resolucaoDaPeca("logo"),
       origem: "desenhada",
       prompt: "",
       fallbackSvg: logoExtensoSvg(marca),
@@ -267,6 +312,7 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "logo",
       titulo: "Favicon",
       aspecto: ASPECTO.logo,
+      resolucao: resolucaoDaPeca("logo"),
       origem: "desenhada",
       prompt: "",
       fallbackSvg: faviconSvg(marca),
@@ -290,6 +336,7 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "banner-desktop",
       titulo: "Banner 1 (desktop e celular)",
       aspecto: ASPECTO["banner-desktop"],
+      resolucao: resolucaoDaPeca("banner-desktop"),
       origem: "gerada",
       prompt: [
         `Fotografia editorial de campanha de uma loja de ${tema}: uma pessoa real usando o produto, em atitude natural.`,
@@ -305,6 +352,7 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "banner-desktop",
       titulo: "Banner 2 (desktop e celular)",
       aspecto: ASPECTO["banner-desktop"],
+      resolucao: resolucaoDaPeca("banner-desktop"),
       origem: "gerada",
       prompt: [
         `Segunda cena da campanha da loja de ${tema}: o produto em close, com a textura do material bem visível, sem pessoas.`,
@@ -340,6 +388,7 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       papel: "cena",
       titulo: cena.titulo,
       aspecto: ASPECTO.cena,
+      resolucao: resolucaoDaPeca("cena"),
       origem: "gerada",
       prompt: [
         `Fotografia de campanha para uma loja de ${tema}: ${cena.direcao}.`,

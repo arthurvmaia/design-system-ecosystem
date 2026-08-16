@@ -46,6 +46,27 @@ const PASSOS = ["Projeto", "Marca", "Tema", "Revisão"] as const;
    regra de pureza do compilador do React reprova com razão */
 const agora = () => Date.now();
 
+/**
+ * O motivo da falha, em português.
+ *
+ * O servidor fala em código — `ARQUIVO_GRANDE_23.4MB_TETO_40MB` — porque código
+ * é o que serve para decidir o que fazer. Só que quem lê a tela é o dono da
+ * loja, e para ele isso não é um motivo: é um susto. Traduzir aqui deixa as
+ * duas coisas certas, cada uma no seu lugar.
+ */
+function motivoLegivel(bruto: string): string {
+  const grande = bruto.match(/^ARQUIVO_GRANDE_([\d.]+)MB/);
+  if (grande) return `a imagem veio com ${grande[1]} MB, acima do que eu guardo`;
+  if (/^ARQUIVO_VAZIO/.test(bruto)) return "o provedor devolveu um arquivo vazio";
+  if (/^TIPO_INVALIDO/.test(bruto)) return "o provedor devolveu algo que não é imagem";
+  if (/^URL_INVALIDA/.test(bruto)) return "o endereço da imagem veio inválido";
+  if (/^DOWNLOAD_/.test(bruto)) return "não consegui baixar a imagem do provedor";
+  if (/^MEDIA_STORAGE/.test(bruto)) return "não consegui guardar a imagem aqui";
+  /* frase que já veio pronta (a de tarefa encerrada) passa direto; código
+     desconhecido aparece como veio, porque esconder atrapalha o conserto */
+  return bruto;
+}
+
 const MARCA_VAZIA: MarcaCliente = {
   name: "", slogan: "", description: "",
   primaryColor: "#0e7490", backgroundColor: "#f6f8f7", accentColor: "#0e7490",
@@ -456,7 +477,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         const resposta = await fetch("/api/marca-imagens", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ papel: "imagem", prompt: peca.prompt, aspecto: peca.aspecto, paleta: cores }),
+          body: JSON.stringify({ papel: "imagem", prompt: peca.prompt, aspecto: peca.aspecto, resolucao: peca.resolucao, paleta: cores }),
         });
         if (!resposta.ok) throw new Error("O provedor recusou o pedido de imagem.");
         const dados = await resposta.json() as { taskId?: string; modelo?: string };
@@ -516,7 +537,11 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
 
       while (pendentes.size && agora() - comeco < TETO_MS) {
         const decorrido = agora() - comeco;
-        setProgressoIa(`${Object.keys(prontas).length} de ${pecasGeradas.length} prontas, ${Math.round(decorrido / 1000)}s…`);
+        /* o mesmo conjunto dos dois lados do "de": `prontas` também guarda as
+           versões do símbolo e o par de celular dos banners, que o denominador
+           não conta. Era daí que saía o "7 de 6". */
+        const jaVieram = pecasGeradas.filter((peca) => prontas[peca.chave]).length;
+        setProgressoIa(`${jaVieram} de ${pecasGeradas.length} prontas, ${Math.round(decorrido / 1000)}s…`);
         /* 5 s no primeiro minuto, 10 s depois: perguntar mais não faz a fila
            do provedor andar, e cada pergunta é uma consulta paga em tempo */
         await new Promise((resolve) => window.setTimeout(resolve, decorrido < 60_000 ? 5000 : 10_000));
@@ -527,11 +552,17 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             body: JSON.stringify({ acao: "salvar", papel: "imagem", taskId: tarefa.taskId, modelo: tarefa.modelo, chave }),
           });
           if (!resposta.ok) {
-            /* 4xx é definitivo (arquivo grande demais, tarefa inválida):
-               insistir só gasta o relógio das outras. 5xx pode ser passageiro,
-               então esse continua na fila. */
-            if (resposta.status >= 400 && resposta.status < 500) {
-              const corpo = await resposta.json().catch(() => ({})) as { error?: string };
+            /**
+             * Insistir só faz sentido no que pode mudar.
+             *
+             * O servidor agora DIZ qual é o caso: arquivo grande demais, tipo
+             * errado e resposta vazia voltam como 4xx com `definitivo`, porque
+             * perguntar de novo devolve a mesma imagem. Antes tudo saía como
+             * 502 e o cliente insistia até o teto de 15 minutos, gastando o
+             * relógio das peças que ainda tinham chance.
+             */
+            const corpo = await resposta.json().catch(() => ({})) as { error?: string; definitivo?: boolean };
+            if (corpo.definitivo || (resposta.status >= 400 && resposta.status < 500)) {
               falhas[chave] = corpo.error ?? `erro ${resposta.status}`;
               pendentes.delete(chave);
             }
@@ -620,8 +651,22 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       /* o que não veio aparece PELO NOME: "faltaram 3" manda a pessoa procurar
          quais; dizer quais é a diferença entre um aviso e um enigma */
       const faltando = [...pendentes.keys(), ...Object.keys(falhas)].map(tituloDe);
+      /**
+       * "7 de 6 prontas" — o número que não podia existir, e existia.
+       *
+       * O numerador contava TODAS as chaves de `prontas`, e ali dentro também
+       * moram peças que o denominador não conta: as versões do símbolo, que
+       * saem por cálculo, e o par de celular de cada banner. Com quatro
+       * geradas mais três derivadas, dava sete de seis.
+       *
+       * Contar o mesmo conjunto dos dois lados é a correção inteira.
+       */
+      const quantasGeradas = pecasGeradas.filter((peca) => prontas[peca.chave]).length;
+      /* e o motivo aparece: "sem imagem" sem por quê manda a pessoa adivinhar
+         se foi o provedor, o tamanho do arquivo ou o tempo */
+      const porque = [...new Set(Object.values(falhas).map(motivoLegivel))].join("; ");
       setProgressoIa(faltando.length
-        ? `${Object.keys(prontas).length} de ${pecasGeradas.length} prontas. Sem imagem: ${faltando.join(", ")}. Posso gerar de novo só o que faltou.`
+        ? `${quantasGeradas} de ${pecasGeradas.length} prontas. Sem imagem: ${faltando.join(", ")}${porque ? ` (${porque})` : ""}. Posso gerar de novo só o que faltou.`
         : `${pecasGeradas.length} imagens prontas.`);
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Não consegui gerar as imagens agora.");

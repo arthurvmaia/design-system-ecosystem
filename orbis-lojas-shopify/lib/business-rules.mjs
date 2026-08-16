@@ -20,6 +20,27 @@ const ALLOWED_UPLOADS = new Set(["image/jpeg", "image/png", "image/webp"]);
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 export const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / (1024 * 1024);
 
+/**
+ * O teto da arte que o APP gerou, que é outra conversa.
+ *
+ * Recusar o arquivo que o cliente escolheu é barato: ele escolhe outro. Recusar
+ * o arquivo que o app acabou de MANDAR GERAR e PAGAR é jogar fora trabalho já
+ * comprado, e a pessoa não tem outro para pôr no lugar: ela fica sem a peça.
+ *
+ * E o app pede 4k, de propósito, porque em banner de largura inteira o 2k sai
+ * esticado. Medido numa geração real deste computador: 3,5 / 12,4 / 17,9 /
+ * 19,8 MB. Com o teto em 20 MB, metade das peças passa raspando e a outra
+ * metade cai fora por centímetros. Foi assim que uma rodada de seis terminou
+ * com quatro.
+ *
+ * Os 20 MB continuam valendo onde eles são verdade: é o limite da Shopify para
+ * o arquivo que a pessoa sobe em Conteúdo → Arquivos. Passar disso vira AVISO
+ * na entrega, não recusa na captura. Aqui o número só existe como barreira
+ * contra resposta desgovernada.
+ */
+export const MAX_ARTE_GERADA_BYTES = 40 * 1024 * 1024;
+export const MAX_ARTE_GERADA_MB = MAX_ARTE_GERADA_BYTES / (1024 * 1024);
+
 export const DEFAULT_CUSTOMIZATION = Object.freeze({
   global: {
     font: "Inter",

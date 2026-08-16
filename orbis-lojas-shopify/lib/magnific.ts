@@ -113,8 +113,8 @@ function ehNanoBanana(modelo: string) {
  * errada receber um campo que ela recusa, o que derruba a geração inteira.
  */
 function corpoDoPedido(
-  { papel, modelo, prompt, aspecto, cores, imagemBase64 }:
-    { papel: PapelMagnific; modelo: string; prompt: string; aspecto: string; cores: string[]; imagemBase64?: string },
+  { papel, modelo, prompt, aspecto, cores, resolucao, imagemBase64 }:
+    { papel: PapelMagnific; modelo: string; prompt: string; aspecto: string; cores: string[]; resolucao?: string; imagemBase64?: string },
 ): Record<string, unknown> {
   if (papel === "upscale") return { image: imagemBase64, prompt, scale_factor: "2x" };
   if (papel === "video") {
@@ -123,20 +123,22 @@ function corpoDoPedido(
     return corpo;
   }
   if (ehNanoBanana(modelo)) {
-    return { prompt, aspect_ratio: razaoCurta(aspecto), resolution: "2K" };
+    return { prompt, aspect_ratio: razaoCurta(aspecto), resolution: (resolucao ?? "2k").toUpperCase() };
   }
   /**
-   * `4k`, e não `2k`.
+   * A resolução vem da PEÇA, não de uma constante.
    *
-   * A API aceita `1k`, `2k` e `4k`; estávamos pedindo o do meio. Num banner que
-   * ocupa a largura inteira da tela, 2k já chega esticado — e foi assim que as
-   * imagens da loja apareceram pixeladas para quem olhou de perto. O banner é a
-   * primeira coisa que a pessoa vê, então é onde nitidez importa mais.
+   * Já foi `2k` para tudo, e o banner saía esticado — ele é recomposto em
+   * 3000×1000, e ampliar de 2048 px pixeliza de verdade. A correção foi pôr
+   * `4k` fixo, e ela trocou um defeito por outro: as cenas passaram a chegar
+   * com 17,9 e 19,8 MB, o download arrastava a rodada inteira, e o que passava
+   * do teto era descartado DEPOIS de gerado e pago.
    *
-   * Custa mais crédito por imagem. É uma troca declarada: pixel visível numa
-   * loja que se quer vender é caro de outra forma.
+   * Quem sabe do que cada peça precisa é a peça: o banner continua em 4k
+   * porque a composição exige, e cena e símbolo caem para 2k porque o destino
+   * deles não usa mais que isso. Ver `RESOLUCAO` em `marca-imagens.ts`.
    */
-  const corpo: Record<string, unknown> = { prompt, aspect_ratio: aspecto, resolution: "4k" };
+  const corpo: Record<string, unknown> = { prompt, aspect_ratio: aspecto, resolution: resolucao ?? "2k" };
   /* `styling.colors` é o que faz a imagem sair na paleta da marca em vez de
      depender de o modelo obedecer as cores citadas no texto */
   const paleta = cores.filter((cor) => /^#[0-9a-f]{6}$/i.test(cor)).slice(0, 5);
@@ -147,12 +149,12 @@ function corpoDoPedido(
 /** Abre a tarefa de geração. O resultado vem depois, por `consultarTarefa`. */
 export async function pedirGeracao(
   chave: string,
-  { papel, modelo, prompt, aspecto = "square_1_1", cores = [], imagemBase64 }:
-    { papel: PapelMagnific; modelo: string; prompt: string; aspecto?: string; cores?: string[]; imagemBase64?: string },
+  { papel, modelo, prompt, aspecto = "square_1_1", cores = [], resolucao, imagemBase64 }:
+    { papel: PapelMagnific; modelo: string; prompt: string; aspecto?: string; cores?: string[]; resolucao?: string; imagemBase64?: string },
 ): Promise<TarefaMagnific> {
   if (!modeloValido(papel, modelo)) throw new Error("MODELO_NAO_PERMITIDO");
   if (papel !== "upscale" && !aspectoValido(aspecto)) throw new Error("ASPECTO_NAO_PERMITIDO");
-  const corpo = corpoDoPedido({ papel, modelo, prompt, aspecto, cores, imagemBase64 });
+  const corpo = corpoDoPedido({ papel, modelo, prompt, aspecto, cores, resolucao, imagemBase64 });
   const bruto = await chamar(chave, `/v1/ai/${modelo}`, { method: "POST", body: JSON.stringify(corpo) });
   const tarefa = extrair(bruto);
   if (!tarefa) throw new Error("MAGNIFIC_SEM_TASK_ID");
