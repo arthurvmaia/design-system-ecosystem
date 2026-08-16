@@ -205,6 +205,15 @@ export async function POST(request: Request) {
        importado, ela leva junto o tema com a marca já aplicada */
     const customizacao = brandCustomization(marca) as unknown as Record<string, unknown>;
     /**
+     * O modelo nativo ANTES de receber o tema.
+     *
+     * É esta cópia que viaja no marcador, e ela não pode ter o `shopify`
+     * dentro: além de a loja carregar duas versões de si mesma, `customizacao`
+     * passa a se referenciar e o `JSON.stringify` do marcador estoura em ciclo.
+     */
+    const modeloNativo = { ...customizacao };
+    const brand = sanitizeBrand(marca);
+    /**
      * A capa de cada coleção, casada por HANDLE — e gravada, não só usada.
      *
      * Este mapa era montado na hora, dentro do pedido de prévia do fluxo do
@@ -234,10 +243,15 @@ export async function POST(request: Request) {
         });
         /* o nicho faz a vitrine mostrar os produtos daquele nicho em toda rota
            de render; as capas fazem cada cartão mostrar a coleção dele */
+        /* e o NOME PRÓPRIO: sem ele a loja entregue continua se chamando como o
+           tema de origem, e reimportá-la no estúdio grava por cima do tema base
+           — a loja do cliente virava o Dawn de todo mundo */
         temaComMarca = {
           ...resultado.theme,
           orbisNicheId: parsed.data.nicheId,
           ...(Object.keys(capasDeColecao).length ? { orbisCapas: capasDeColecao } : {}),
+          orbisLoja: { nome: brand.name, slug: brand.slug },
+          orbisCustomizacao: modeloNativo,
         };
         customizacao.shopify = temaComMarca;
         alterados = resultado.alterados;
@@ -245,7 +259,6 @@ export async function POST(request: Request) {
     }
     await saveProject(viewer, projectId, customizacao);
 
-    const brand = sanitizeBrand(marca);
     await getD1()
       .prepare("UPDATE projects SET name = ? WHERE id = ? AND user_id = ?")
       .bind(`Loja de ${brand.name}`, projectId, viewer.id)
@@ -420,9 +433,11 @@ export async function POST(request: Request) {
 
     /* o tema sai sabendo de que loja ele é: reimportar a própria loja tem de
        trazer a vitrine dela de volta, não o catálogo de demonstração */
-    if (parsed.data.nicheId || Object.keys(capasDeColecao).length) {
-      arquivos[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(parsed.data.nicheId ?? "", capasDeColecao));
-    }
+    arquivos[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(parsed.data.nicheId ?? "", capasDeColecao, {
+      nome: brand.name,
+      slug: brand.slug,
+      customizacao: modeloNativo,
+    }));
 
     const zip = zipSync(arquivos, { level: 6 });
     /**

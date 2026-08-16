@@ -361,3 +361,52 @@ test("o nicho da loja viaja no ZIP exportado e volta na importação", async () 
     await server.close();
   }
 });
+
+/**
+ * O NOME PRÓPRIO da loja viaja junto — e é o que impede a loja entregue de
+ * gravar por cima do tema de origem quando volta para o estúdio.
+ *
+ * Sem ele, uma loja feita sobre o Dawn se chama "Dawn" e importa em
+ * `import-dawn`, o id do tema base. Com ele, importa como ela mesma.
+ */
+test("o nome próprio da loja e o modelo do estúdio sobrevivem à exportação", async () => {
+  const { server, shopifyTheme, themeExport } = await loadModules();
+  try {
+    const original = buildFixtureZip();
+    const theme = shopifyTheme.extractShopifyThemeBytes(original, "fixture.zip");
+    const files = shopifyTheme.themeFilesFromZip(original);
+    const modeloNativo = { header: { brand: "Claro Co." }, hero: { headline: "Claro Co." } };
+
+    const daLoja = {
+      ...theme,
+      orbisNicheId: "oculos",
+      orbisLoja: { nome: "Claro Co.", slug: "claro-co" },
+      orbisCustomizacao: modeloNativo,
+    };
+    const { zip } = themeExport.exportThemeZip(daLoja, files);
+    const marcador = JSON.parse(strFromU8(unzipSync(zip)[shopifyTheme.ARQUIVO_DA_LOJA]));
+    assert.deepEqual(marcador.orbisLoja, { nome: "Claro Co.", slug: "claro-co" });
+    assert.deepEqual(marcador.orbisCustomizacao, modeloNativo);
+
+    const devolta = shopifyTheme.extractShopifyThemeBytes(zip, "loja-claro-co.zip");
+    assert.deepEqual(devolta.orbisLoja, { nome: "Claro Co.", slug: "claro-co" });
+    assert.deepEqual(devolta.orbisCustomizacao, modeloNativo);
+    assert.equal(shopifyTheme.identidadeDoTemaImportado(devolta).id, "loja-claro-co");
+    assert.notEqual(
+      shopifyTheme.identidadeDoTemaImportado(devolta).id,
+      shopifyTheme.identidadeDoTemaImportado(theme).id,
+      "exportar a loja e reimportá-la não pode ocupar a linha do tema de origem",
+    );
+
+    /* loja SEM nicho e SEM capa ainda ganha marcador, porque ela tem nome: é o
+       nome que decide onde ela entra no estúdio */
+    const soNome = unzipSync(themeExport.exportThemeZip({ ...theme, orbisLoja: { nome: "Vega", slug: "vega" } }, files).zip);
+    assert.ok(soNome[shopifyTheme.ARQUIVO_DA_LOJA], "loja com nome precisa se declarar mesmo sem nicho");
+
+    /* e o tema cru continua sem marcador nenhum: ele não é de ninguém */
+    const cru = unzipSync(themeExport.exportThemeZip(theme, files).zip);
+    assert.equal(cru[shopifyTheme.ARQUIVO_DA_LOJA], undefined);
+  } finally {
+    await server.close();
+  }
+});

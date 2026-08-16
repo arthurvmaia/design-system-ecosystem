@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { Viewer, BootstrapData, Project, Theme, TokenPackage, TokenTransaction } from "@/lib/types";
 import { DEFAULT_CUSTOMIZATION, normalizeCustomization } from "@/lib/business-rules.mjs";
-import type { ShopifyThemeImport } from "@/lib/shopify-theme";
+import { identidadeDoTemaImportado, type ShopifyThemeImport } from "@/lib/shopify-theme";
 
 type Identity = Omit<Viewer, "role">;
 
@@ -514,15 +514,35 @@ export async function deleteTheme(viewer: Viewer, themeId: string) {
 export async function importShopifyTheme(viewer: Viewer, imported: ShopifyThemeImport) {
   await ensureDatabase();
   const db = getD1();
-  const baseSlug = slugify(imported.themeName) || "tema-shopify";
-  const isShrine = /shrine/i.test(imported.themeName) || /shrine/i.test(imported.sourceFile);
-  const id = isShrine ? "shrine-pro" : `import-${baseSlug.slice(0, 48)}`;
-  const slug = isShrine ? "shrine-pro" : baseSlug.slice(0, 56);
+  /**
+   * UMA LOJA ENTREGUE NÃO É O TEMA DE ORIGEM.
+   *
+   * O id saía do `theme_info` do ZIP, e uma loja feita sobre o Dawn continua se
+   * chamando "Dawn": reimportá-la caía em `import-dawn`, o MESMO id do tema
+   * base do estúdio, e o `ON CONFLICT DO UPDATE` abaixo a gravava por cima
+   * dele. A loja do cliente virava o tema de todo mundo, e duas lojas feitas
+   * sobre o mesmo tema disputavam a mesma linha — a última a entrar apagava a
+   * anterior, sem aviso.
+   *
+   * Quem entrega declara o nome próprio no marcador (`orbisLoja`), e é ele que
+   * manda. Tema sem marcador segue pelo nome, como sempre.
+   */
+  const { id, slug, nome } = identidadeDoTemaImportado(imported);
+  const isShrine = id === "shrine-pro";
   const existing = await db.prepare("SELECT default_settings AS defaults FROM themes WHERE id = ?")
     .bind(id).first<{ defaults: string }>();
   const currentDefaults = normalizeCustomization(parseJson(existing?.defaults, DEFAULT_CUSTOMIZATION));
-  const defaults = normalizeCustomization({ ...currentDefaults, shopify: imported });
-  const displayName = isShrine ? "ShrinePro" : imported.themeName.slice(0, 80);
+  /**
+   * O modelo nativo vem da LOJA quando ela o traz.
+   *
+   * O tema Shopify não é a loja inteira: o estúdio tem um modelo próprio
+   * (cabeçalho, dobra, rodapé, cores), e ele desenha as telas que não passam
+   * pelo Liquid. Ele não viajava no pacote, então a importação o herdava do que
+   * já estivesse naquele id — na prática, o conteúdo de demonstração. A loja do
+   * cliente abria com a marca certa no tema e "CACTUS" em tudo o mais.
+   */
+  const defaults = normalizeCustomization({ ...currentDefaults, ...(imported.orbisCustomizacao ?? {}), shopify: imported });
+  const displayName = nome;
   const description = `${imported.compatibility.architecture} extraído por completo: ${imported.summary.fileCount} arquivos, ${imported.summary.templateCount} páginas, ${imported.summary.sectionDefinitionCount} tipos de seção e ${imported.summary.editableSettingCount} configurações editáveis.`;
   const languages = Array.from(new Set(imported.sourceFiles.filter((file) => file.kind === "locale" && !file.path.endsWith(".schema.json")).map((file) => file.path.split("/").at(-1)?.replace(/\.json$/i, "")).filter((value): value is string => Boolean(value)))).slice(0, 40);
 
@@ -610,6 +630,3 @@ function parseJson<T>(value: unknown, fallback: T): T {
   }
 }
 
-function slugify(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}

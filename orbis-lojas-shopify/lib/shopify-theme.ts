@@ -123,6 +123,29 @@ export type ShopifyThemeImport = {
    */
   orbisCapas?: Record<string, string>;
   /**
+   * QUEM é esta loja — e não de que TEMA ela nasceu.
+   *
+   * Uma loja entregue continua carregando o `theme_info` do tema de origem: uma
+   * loja feita sobre o Dawn se chama "Dawn". O estúdio deriva o id do tema desse
+   * nome, então toda loja entregue importava como `import-dawn` — o MESMO id do
+   * tema base — e o `ON CONFLICT DO UPDATE` a gravava por cima dele. A loja do
+   * cliente virava o tema do estúdio, e duas lojas feitas sobre o mesmo tema
+   * disputavam a mesma linha.
+   *
+   * Com o nome próprio no marcador, cada loja importa como ela mesma.
+   */
+  orbisLoja?: { nome: string; slug: string };
+  /**
+   * O modelo NATIVO do estúdio (cabeçalho, dobra, rodapé, cores) desta loja.
+   *
+   * O tema Shopify não é a loja inteira: o estúdio tem um modelo próprio, e ele
+   * é quem desenha as telas que não passam pelo Liquid. Ele não viajava, então
+   * a importação o herdava do que já estivesse naquele id — na prática, o
+   * conteúdo de demonstração. A loja do cliente abria no estúdio com a marca
+   * certa no tema e "CACTUS" em tudo o mais.
+   */
+  orbisCustomizacao?: Record<string, unknown>;
+  /**
    * Arquivos de `assets/` que ficaram de FORA da instalação, com o motivo.
    *
    * Cada um destes é uma imagem quebrada esperando na prévia: o Liquid continua
@@ -338,6 +361,10 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   if (nicho) theme.orbisNicheId = nicho;
   const capas = lerCapasDoTema(byRelativePath);
   if (Object.keys(capas).length) theme.orbisCapas = capas;
+  const loja = lerLojaDoTema(byRelativePath);
+  if (loja) theme.orbisLoja = loja;
+  const customizacao = lerCustomizacaoDoTema(byRelativePath);
+  if (customizacao) theme.orbisCustomizacao = customizacao;
   return { theme, images: assets };
 }
 
@@ -345,12 +372,74 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
 export const ARQUIVO_DA_LOJA = "assets/orbis-loja.json";
 
 /** O conteúdo do marcador, para quem monta o ZIP da entrega. */
-export function marcadorDaLoja(nicheId: string, capas: Record<string, string> = {}) {
+export function marcadorDaLoja(
+  nicheId: string,
+  capas: Record<string, string> = {},
+  loja: { nome?: string; slug?: string; customizacao?: Record<string, unknown> } = {},
+) {
   const corpo: Record<string, unknown> = { orbisNicheId: nicheId };
   /* as capas só aparecem quando existem: marcador com campo vazio faz quem lê
      achar que a loja declarou "sem capa", e o certo é ele nem perguntar */
   if (Object.keys(capas).length) corpo.orbisCapas = capas;
+  /* nome E apelido, ou nenhum dos dois: meia identidade faz o importador
+     inventar a outra metade, que é exatamente o palpite que isto evita */
+  if (loja.nome && loja.slug) corpo.orbisLoja = { nome: loja.nome.slice(0, 80), slug: loja.slug.slice(0, 56) };
+  if (loja.customizacao && Object.keys(loja.customizacao).length) corpo.orbisCustomizacao = loja.customizacao;
   return JSON.stringify(corpo, null, 2);
+}
+
+/**
+ * Com que IDENTIDADE um tema importado entra no estúdio.
+ *
+ * Mora aqui, junto do marcador que a alimenta, e é pura de propósito: era uma
+ * linha dentro do `importShopifyTheme`, que precisa de banco para rodar, e por
+ * isso a regra mais consequente da importação não tinha teste nenhum.
+ *
+ * Três casos, nesta ordem: a loja que declara seu nome entra como ela mesma; o
+ * ShrinePro tem id fixo porque o estúdio o trata como tema de casa; o resto
+ * segue pelo nome do tema.
+ */
+export function identidadeDoTemaImportado(
+  imported: Pick<ShopifyThemeImport, "themeName" | "sourceFile" | "orbisLoja">,
+): { id: string; slug: string; nome: string } {
+  const loja = imported.orbisLoja;
+  const base = slugify(loja?.slug || loja?.nome || imported.themeName) || "tema-shopify";
+  if (loja) return { id: `loja-${base.slice(0, 48)}`, slug: `loja-${base.slice(0, 50)}`, nome: loja.nome.slice(0, 80) };
+  if (/shrine/i.test(imported.themeName) || /shrine/i.test(imported.sourceFile)) {
+    return { id: "shrine-pro", slug: "shrine-pro", nome: "ShrinePro" };
+  }
+  return { id: `import-${base.slice(0, 48)}`, slug: base.slice(0, 56), nome: imported.themeName.slice(0, 80) };
+}
+
+function slugify(value: string) {
+  /* `\p{M}` em vez do intervalo escrito à mão: a marca combinante literal some
+     em qualquer ferramenta que normalize o arquivo, e aí a regra para de tirar
+     acento sem ninguém perceber — "Óculos Já" viraria "-culos-j-" */
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+/** O nome próprio da loja, quando o pacote entregue o declara. */
+function lerLojaDoTema(byRelativePath: Map<string, Uint8Array>): { nome: string; slug: string } | null {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return null;
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisLoja;
+  if (!cru || typeof cru !== "object" || Array.isArray(cru)) return null;
+  const { nome, slug } = cru as { nome?: unknown; slug?: unknown };
+  if (typeof nome !== "string" || typeof slug !== "string" || !nome.trim() || !slug.trim()) return null;
+  return { nome: nome.slice(0, 80), slug: slug.slice(0, 56) };
+}
+
+/** O modelo nativo do estúdio que a loja entregue leva consigo. */
+function lerCustomizacaoDoTema(byRelativePath: Map<string, Uint8Array>): Record<string, unknown> | null {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return null;
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisCustomizacao;
+  if (!cru || typeof cru !== "object" || Array.isArray(cru)) return null;
+  /* o `shopify` NÃO entra: o tema já está sendo lido do ZIP, e deixar uma cópia
+     dentro do modelo nativo faria a loja carregar duas versões de si mesma */
+  const resto = { ...(cru as Record<string, unknown>) };
+  delete resto.shopify;
+  return Object.keys(resto).length ? resto : null;
 }
 
 /**

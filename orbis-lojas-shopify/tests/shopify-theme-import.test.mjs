@@ -268,6 +268,100 @@ test("o tema entregue diz de que loja é, e a importação reconhece pelas cole�
 });
 
 /**
+ * A LOJA ENTREGUE NÃO É O TEMA DE ORIGEM.
+ *
+ * Uma loja feita sobre o Dawn continua carregando o `theme_info` do Dawn: o
+ * `themeName` dela é "Dawn". Como o estúdio derivava o id do tema desse nome,
+ * importar a loja do cliente caía em `import-dawn` — o MESMO id do tema base —
+ * e o `ON CONFLICT DO UPDATE` a gravava por cima dele. Medido no acervo desta
+ * máquina: o tema `import-dawn` do estúdio estava com `sourceFile`
+ * "loja-claro-co.zip", ou seja, já era a loja do cliente ocupando a linha do
+ * tema. Duas lojas sobre o mesmo tema também disputavam a mesma linha, e a
+ * última a entrar apagava a anterior sem aviso.
+ */
+test("a loja entregue importa como ela mesma, e não por cima do tema de origem", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemeBytes, identidadeDoTemaImportado, ARQUIVO_DA_LOJA, marcadorDaLoja } =
+      await server.ssrLoadModule("/lib/shopify-theme.ts");
+
+    const temaBase = {
+      "layout/theme.liquid": "<html><body>{{ content_for_layout }}</body></html>",
+      "sections/lista.liquid": section("Lista"),
+      "templates/index.json": JSON.stringify({ sections: { c0: { type: "lista", settings: {} } }, order: ["c0"] }),
+      "config/settings_schema.json": JSON.stringify([
+        { name: "theme_info", theme_name: "Dawn", theme_version: "15.0", theme_author: "Shopify" },
+      ]),
+      "config/settings_data.json": JSON.stringify({ current: {} }),
+    };
+    const modeloNativo = { header: { brand: "Claro Co." }, hero: { headline: "Claro Co." } };
+
+    /* o tema cru: entra pelo nome dele, como sempre */
+    const cru = extractShopifyThemeBytes(archive(temaBase), "dawn.zip");
+    assert.equal(cru.orbisLoja, undefined, "tema sem marcador não inventa loja");
+    assert.equal(identidadeDoTemaImportado(cru).id, "import-dawn");
+
+    /* a loja entregue: mesmo themeName, identidade própria */
+    const daLoja = extractShopifyThemeBytes(archive({
+      ...temaBase,
+      [ARQUIVO_DA_LOJA]: marcadorDaLoja("oculos", {}, { nome: "Claro Co.", slug: "claro-co", customizacao: modeloNativo }),
+    }), "loja-claro-co.zip");
+    assert.equal(daLoja.themeName, "Dawn", "o theme_info continua sendo o do tema de origem");
+    assert.deepEqual(daLoja.orbisLoja, { nome: "Claro Co.", slug: "claro-co" });
+    assert.equal(identidadeDoTemaImportado(daLoja).id, "loja-claro-co");
+    assert.equal(identidadeDoTemaImportado(daLoja).nome, "Claro Co.", "a lista do estúdio mostra o nome da loja");
+
+    /* é ESTA a regressão: o id da loja não pode ser o do tema base */
+    assert.notEqual(
+      identidadeDoTemaImportado(daLoja).id,
+      identidadeDoTemaImportado(cru).id,
+      "a loja do cliente não pode gravar por cima do tema de origem",
+    );
+
+    /* e duas lojas sobre o mesmo tema não disputam a mesma linha */
+    const outra = extractShopifyThemeBytes(archive({
+      ...temaBase,
+      [ARQUIVO_DA_LOJA]: marcadorDaLoja("roupas", {}, { nome: "Vega Modas", slug: "vega-modas" }),
+    }), "loja-vega-modas.zip");
+    assert.notEqual(identidadeDoTemaImportado(outra).id, identidadeDoTemaImportado(daLoja).id);
+
+    /* o modelo nativo do estúdio viaja: sem ele a importação o herdava do que
+       estivesse naquele id, e a loja abria com o conteúdo de demonstração */
+    assert.deepEqual(daLoja.orbisCustomizacao, modeloNativo);
+    assert.equal(outra.orbisCustomizacao, undefined, "loja que não declara modelo não ganha um inventado");
+
+    /* o tema NÃO pode voltar dentro do modelo nativo: além da loja carregar duas
+       versões de si mesma, o marcador viraria um ciclo no JSON */
+    const comTemaDentro = extractShopifyThemeBytes(archive({
+      ...temaBase,
+      [ARQUIVO_DA_LOJA]: marcadorDaLoja("oculos", {}, {
+        nome: "Claro Co.", slug: "claro-co",
+        customizacao: { ...modeloNativo, shopify: { pages: [] } },
+      }),
+    }), "loja.zip");
+    assert.equal("shopify" in (comTemaDentro.orbisCustomizacao ?? {}), false);
+
+    /* meia identidade não vale: sem nome ou sem apelido o importador teria de
+       inventar a outra metade, que é o palpite que o marcador existe para evitar */
+    const meia = extractShopifyThemeBytes(archive({
+      ...temaBase,
+      [ARQUIVO_DA_LOJA]: marcadorDaLoja("oculos", {}, { nome: "Claro Co." }),
+    }), "loja.zip");
+    assert.equal(meia.orbisLoja, undefined);
+    assert.equal(identidadeDoTemaImportado(meia).id, "import-dawn");
+
+    /* o ShrinePro segue com id fixo — mas uma LOJA feita sobre ele não vira ele */
+    assert.equal(identidadeDoTemaImportado({ themeName: "ShrinePro", sourceFile: "shrine.zip" }).id, "shrine-pro");
+    assert.equal(
+      identidadeDoTemaImportado({ themeName: "ShrinePro", sourceFile: "loja-x.zip", orbisLoja: { nome: "Loja X", slug: "loja-x" } }).id,
+      "loja-loja-x",
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+/**
  * A foto que ESTE app produziu volta sozinha na reimportação.
  *
  * Um tema exportado da Shopify aponta as fotos como `shopify://shop_images/…`
