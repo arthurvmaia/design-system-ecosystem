@@ -352,17 +352,15 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       };
 
       /**
-       * O TEXTO DO BANNER é assado na arte, aqui.
+       * O BANNER vira dois arquivos, um por formato, SEM texto.
        *
-       * O tema desenhava título, subtítulo e botão por cima da foto na hora de
-       * renderizar, e a composição não era nossa: em tela estreita o bloco
-       * escorregava para fora da imagem, e o banner virava dois pedaços que às
-       * vezes se encontravam.
+       * Cada arte é cortada em 3000×1000 e 1080×1350 a partir da MESMA foto:
+       * é a mesma cena no computador e no celular, que foi o pedido, e cada
+       * campo recebe o corte que lhe serve em vez de o tema esticar um só.
        *
-       * Cada arte vira DOIS arquivos fechados, um por formato — 3000×1000 e
-       * 1080×1350 — a partir da MESMA foto. É a mesma cena nos dois, que foi o
-       * outro pedido do dono, e agora o corte e a escrita são decididos aqui em
-       * vez de no navegador de quem visita.
+       * Sem frase nenhuma por cima. O dono pediu assim, e a razão é boa: texto
+       * de banner é decisão de quem vende, e ele decide isso no editor da
+       * Shopify, não aqui.
        */
       const comBanner = ["banner-1", "banner-2"].filter((chave) => prontas[chave] && !prontas[`${chave}-mobile`]);
       if (comBanner.length) {
@@ -373,12 +371,10 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         const fontes = { titulo: marca.headingFont || undefined, corpo: marca.bodyFont || undefined };
         for (const chave of comBanner) {
           try {
-            const texto = {
-              titulo: marca.slogan || marca.name || "",
-              subtitulo: marca.description || "",
-              cta: chave === "banner-1" ? "Ver a coleção" : "Ver a loja",
-            };
-            if (!texto.titulo.trim()) continue;
+            /* SEM texto: o dono pediu banner sem frase nenhuma. O que a
+               composição faz aqui é o corte exato de cada formato a partir da
+               MESMA foto, que é o que o tema não sabe fazer sozinho. */
+            const texto = { titulo: "" };
             const largo = await comporBanner(prontas[chave], texto, cores, "desktop", fontes);
             const alto = await comporBanner(prontas[chave], texto, cores, "mobile", fontes);
             prontas[chave] = await subir(largo, chave, "image/jpeg");

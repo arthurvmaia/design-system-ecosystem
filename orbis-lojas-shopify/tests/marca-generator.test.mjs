@@ -590,7 +590,7 @@ test("o provedor de imagem por IA é opcional e só aceita modelo da lista", asy
   }
 });
 
-test("cada dobra de banner tem foto própria, e o texto pousa na imagem", async () => {
+test("cada dobra de banner tem foto própria, e nenhuma recebe texto", async () => {
   const raiz = fileURLToPath(new URL("..", import.meta.url));
   const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
   try {
@@ -645,12 +645,13 @@ test("cada dobra de banner tem foto própria, e o texto pousa na imagem", async 
     assert.equal(a.image, "/api/media/1111111111111111aaaa");
     assert.equal(b.image, "/api/media/2222222222222222bbbb");
 
-    /* o subtítulo diz o que o título não disse: `subheading` contém "heading",
-       casava na regra de título e recebia o mesmo slogan */
+    /* SEM TEXTO no banner, decisão do dono: "não quero o texto". O campo é
+       limpo mesmo quando o tema trouxe um padrão em inglês, senão a loja abre
+       com "Image slide" escrito por cima da foto. */
     for (const bloco of [a, b]) {
-      assert.equal(bloco.heading, marca.slogan);
-      assert.equal(bloco.subheading, marca.description);
-      assert.notEqual(bloco.heading, bloco.subheading, "título e subtítulo não podem ser a mesma frase");
+      assert.equal(bloco.heading, "", "banner não recebe título");
+      assert.equal(bloco.subheading, "", "nem subtítulo");
+      assert.equal(bloco.button_label, "", "nem rótulo de botão");
     }
 
     /* o texto pousa NA imagem, na paleta da marca — nada de caixa branca */
@@ -660,13 +661,10 @@ test("cada dobra de banner tem foto própria, e o texto pousa na imagem", async 
       assert.equal(bloco.color_scheme, "inverse");
     }
 
-    /* RÓTULO DE BOTÃO É RÓTULO. A regra de sobra enfiava a descrição em todo
-       campo de texto restante, e o banner saía com um botão contendo um
-       parágrafo inteiro dentro da borda. */
+    /* e nada de placeholder em inglês sobrando: o campo vazio é vazio mesmo */
     for (const bloco of [a, b]) {
-      assert.ok(bloco.button_label.length <= 24, `rótulo longo demais: ${bloco.button_label}`);
-      assert.notEqual(bloco.button_label, marca.description);
-      assert.doesNotMatch(bloco.button_label, /Button label/i, "nada de placeholder em inglês na loja publicada");
+      assert.doesNotMatch(String(bloco.button_label), /Button label/i);
+      assert.doesNotMatch(String(bloco.heading), /Image slide/i);
     }
 
     /* e a altura da dobra deixa de depender do arquivo */
@@ -800,8 +798,69 @@ test("o banner sai como arquivo fechado: foto, véu medido e tipografia", async 
   const marca = await readFile(new URL("../lib/shopify-brand.ts", import.meta.url), "utf8");
   /* com a arte composta, o tema fica CALADO no banner: deixá-lo escrever põe a
      frase duas vezes na mesma foto, e é a segunda que escorrega para fora */
-  assert.match(marca, /const temArteComTexto = /);
-  assert.match(marca, /if \(dobraDeBanner && temArteComTexto &&/);
+  assert.match(marca, /if \(dobraDeBanner && \(PAPEL_TITULO/, "o banner não recebe texto em condição nenhuma");
   /* e o campo do celular recebe o arquivo do CELULAR, não o corte largo */
   assert.match(marca, /const doCelular = \/mobile\|celular\/i\.test\(papel\)/);
+});
+
+/**
+ * O banner é a FOTO. Sem frase, no computador e no celular.
+ *
+ * Decisão do dono, dita por extenso: "não quero o texto". Quem quiser escrever
+ * ali escreve no editor da Shopify depois, que é onde a decisão é de quem
+ * vende.
+ *
+ * O outro lado é o corte: o arquivo do celular (`<peça>-mobile`) nasce da
+ * composição no navegador e não está na lista de peças, então a rota o
+ * descartava calado — e o campo do celular ficava com o corte largo.
+ */
+test("o banner nunca recebe texto, e cada formato recebe o corte dele", async () => {
+  const rota = await readFile(new URL("../app/api/client-request/route.ts", import.meta.url), "utf8");
+  /* o acompanhante passa pela porta, e a lista continua fechada */
+  assert.match(rota, /const acompanhante = parsed\.data\.imagens\?\.\[`\$\{peca\.chave\}-mobile`\]/);
+  assert.match(rota, /imagens\[`\$\{peca\.chave\}-mobile`\] = acompanhante/);
+
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { aplicarMarcaNoTema } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+    const tema = {
+      themeName: "T", globalValues: {}, globalGroups: [], sourceFiles: [], compatibility: {}, summary: {},
+      format: "shopify-os-2.0", version: "1", author: "", sourceFile: "t.zip", sourceFingerprint: "0000000000000000", importedAt: "",
+      sectionSchemas: [{
+        type: "slideshow", name: "Slideshow", settings: [], blocks: [{ type: "slide", name: "Slide", settings: [
+          { id: "image", type: "image_picker", label: "Imagem" },
+          { id: "mobile_image", type: "image_picker", label: "Imagem para mobile" },
+          { id: "heading", type: "text", label: "Título" },
+          { id: "subheading", type: "text", label: "Subtítulo" },
+          { id: "button_label", type: "text", label: "Etiqueta de botão" },
+        ] }], presets: [],
+      }],
+      pages: [{ id: "index", name: "Início", template: "templates/index.json", sections: [{
+        id: "s1", type: "slideshow", name: "Slideshow", settings: {},
+        blocks: [{ id: "b1", type: "slide", settings: { heading: "", subheading: "", button_label: "" } }],
+      }] }],
+    };
+    const marca = { name: "Elo", slogan: "Brilho no detalhe", description: "Semijoias.", primaryColor: "#2f3d2f", backgroundColor: "#f6f4ef" };
+    const bloco = (t) => t.pages[0].sections[0].blocks[0].settings;
+
+    /* SEM texto, sempre: mesmo com só a foto, o banner não ganha frase */
+    const semTexto = aplicarMarcaNoTema(tema, { ...marca, imagens: { "banner-1": "/api/media/aaaaaaaa-1111-4000-8000-000000000001" }, imagensGeradas: ["banner-1"] });
+    assert.equal(bloco(semTexto.theme).heading, "", "banner não recebe título em hipótese nenhuma");
+    assert.equal(bloco(semTexto.theme).button_label, "", "nem rótulo de botão");
+    assert.equal(bloco(semTexto.theme).image, bloco(semTexto.theme).mobile_image, "sem corte alto, o celular repete o largo");
+
+    /* e o corte alto, quando existe, vai para o campo do celular */
+    const comTexto = aplicarMarcaNoTema(tema, { ...marca, imagens: {
+      "banner-1": "/api/media/aaaaaaaa-1111-4000-8000-000000000001",
+      "banner-1-mobile": "/api/media/bbbbbbbb-2222-4000-8000-000000000002",
+    }, imagensGeradas: ["banner-1"] });
+    assert.equal(bloco(comTexto.theme).heading, "");
+    assert.equal(bloco(comTexto.theme).subheading, "");
+    assert.equal(bloco(comTexto.theme).button_label, "");
+    assert.notEqual(bloco(comTexto.theme).image, bloco(comTexto.theme).mobile_image, "cada formato tem o seu arquivo");
+    assert.match(bloco(comTexto.theme).mobile_image, /bbbbbbbb/);
+  } finally {
+    await server.close();
+  }
 });

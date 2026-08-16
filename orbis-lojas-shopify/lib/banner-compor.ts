@@ -130,6 +130,15 @@ export async function comporBanner(
 
   const deLado = formato === "desktop";
   /**
+   * SEM texto, sem véu: a peça é a foto no formato certo.
+   *
+   * O véu existe para a letra ficar legível. Sem letra ele seria só uma sombra
+   * escurecendo a foto sem motivo — e o dono pediu banner sem texto. O que
+   * sobra da composição continua valendo, e é o que importa: o corte exato de
+   * cada formato, a partir da MESMA foto.
+   */
+  if (!texto.titulo.trim()) return paraBlob(canvas);
+  /**
    * O véu é MEDIDO, não fixo.
    *
    * Uma barra escura sempre igual estraga foto que já era escura e não salva

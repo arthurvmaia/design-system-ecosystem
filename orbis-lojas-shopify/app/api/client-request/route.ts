@@ -168,6 +168,21 @@ export async function POST(request: Request) {
     for (const peca of pecas) {
       const enviada = parsed.data.imagens?.[peca.chave];
       if (enviada) imagens[peca.chave] = enviada;
+      /**
+       * O ACOMPANHANTE de uma peça também entra.
+       *
+       * A composição do banner devolve dois arquivos por dobra — o largo e o
+       * alto —, e o alto se chama `<peça>-mobile`. Ele não está na lista de
+       * peças, porque não é uma geração: nasce da arte, no navegador.
+       *
+       * Sem esta linha ele era descartado aqui, calado, e o efeito era o
+       * contrário do pedido: o campo do celular ficava com o corte largo E o
+       * tema voltava a escrever o texto por cima, porque o sinal de "a arte já
+       * tem texto" nunca chegava. A lista continua fechada: só entra o que é
+       * acompanhante de uma peça que existe.
+       */
+      const acompanhante = parsed.data.imagens?.[`${peca.chave}-mobile`];
+      if (acompanhante) imagens[`${peca.chave}-mobile`] = acompanhante;
     }
 
     const escolhido = parsed.data.themeId ? await temaPublicado(parsed.data.themeId) : null;

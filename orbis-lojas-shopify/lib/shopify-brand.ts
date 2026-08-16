@@ -307,9 +307,6 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
    * rendem mais e custam menos. Ler as duas mantém de pé a loja gerada antes da
    * troca, que já está no computador de quem a recebeu.
    */
-  /* houve composição com texto assado? é o que decide se o tema ainda precisa
-     escrever no banner ou se deve ficar calado para não duplicar a frase */
-  const temArteComTexto = Object.keys(imagens).some((chave) => /^banner-\d+-mobile$/.test(chave));
   const capas = Object.keys(imagens)
     .filter((chave) => chave.startsWith("colecao-") || chave.startsWith("cena-"))
     .sort()
@@ -541,19 +538,25 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
            * em inglês e o que é comprido demais para caber num botão.
            */
           /**
-           * NA DOBRA DE BANNER, o tema não escreve nada.
+           * NA DOBRA DE BANNER não entra texto. Nenhum, em formato nenhum.
            *
-           * O título, o subtítulo e o botão são assados na própria arte agora
-           * (`banner-compor.ts`), como na referência que o dono apontou. Deixar
-           * o tema escrever também põe a frase DUAS vezes na mesma foto, uma
-           * composta e outra flutuando — e é a flutuante que escorrega para
-           * fora da imagem em tela estreita, que foi a queixa.
+           * É decisão do dono, dita por extenso: "não quero o texto". O banner
+           * é a foto, e só. Quem quiser escrever ali escreve no editor da
+           * Shopify depois, que é onde a decisão é dele e não nossa.
            *
-           * Só quando a arte composta chegou. Sem ela o banner é foto limpa, e
-           * aí o texto do tema é o que salva a dobra de ficar muda.
+           * E limpa o que já estiver escrito, inclusive o que o tema trouxe:
+           * deixar a frase antiga era o "Brilho no detalhe" reaparecendo por
+           * cima da foto nova, que é exatamente o que se quer evitar.
+           *
+           * Vale no desktop E no celular, porque o campo é o mesmo: o texto do
+           * bloco serve os dois cortes, e apagar só um lado deixaria o outro
+           * falando sozinho.
            */
-          if (dobraDeBanner && temArteComTexto && (PAPEL_TITULO.test(pista) || CAMPO_DE_SUBTITULO.test(pista) || CAMPO_DE_BOTAO.test(pista))) {
-            if (typeof atual === "string" && atual.trim() !== "") {
+          if (dobraDeBanner && (PAPEL_TITULO.test(pista) || CAMPO_DE_SUBTITULO.test(pista) || CAMPO_DE_BOTAO.test(pista))) {
+            /* vazio EXPLÍCITO, não ausente: campo ausente faz o Liquid cair no
+               padrão do schema, e o padrão do Dawn é "Image slide" e "Button
+               label" — a loja abriria com placeholder em inglês sobre a foto */
+            if (alvo.settings[definicao.id] !== "") {
               alvo.settings[definicao.id] = "";
               marcou(`${secao.type}.${definicao.id}`);
             }
