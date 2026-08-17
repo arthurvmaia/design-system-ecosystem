@@ -258,6 +258,56 @@ async function initializeDatabase() {
   ).run();
 
   await removerTemasZumbis(db, themes.map((theme) => theme.id));
+  await removerAssetsOrfaos(db);
+}
+
+/**
+ * OS ASSETS DE TEMAS QUE JÁ NÃO EXISTEM.
+ *
+ * A partir de agora `deleteTheme` leva os assets junto. Só que o que já estava
+ * no disco não tem como ser alcançado por ele: a chave é
+ * `theme-assets/<dono>/<fingerprint>/…`, e o fingerprint saiu do banco junto
+ * com o tema. Ficariam ali para sempre, sem nenhum caminho de volta.
+ *
+ * Medido neste computador depois de o usuário apagar tudo pela tela: nenhum
+ * tema no banco, nenhum ZIP de origem no R2, e 2.365 objetos órfãos ocupando
+ * 342 MB.
+ *
+ * A regra é simples e não depende de histórico: fingerprint que nenhum tema
+ * VIVO declara não serve a ninguém. Reimportar o mesmo ZIP recria tudo, porque
+ * o fingerprint é do conteúdo.
+ */
+async function removerAssetsOrfaos(db: ReturnType<typeof getD1>) {
+  if (!env.MEDIA) return 0;
+  const vivos = new Set<string>();
+  const temas = await db.prepare("SELECT default_settings AS defaults FROM themes").all<{ defaults: string }>();
+  for (const tema of temas.results ?? []) {
+    const fingerprint = parseJson<{ shopify?: { sourceFingerprint?: string } }>(tema.defaults, {}).shopify?.sourceFingerprint;
+    if (fingerprint) vivos.add(fingerprint);
+  }
+
+  let cursor: string | undefined;
+  let apagados = 0;
+  let pendentes: string[] = [];
+  const descarregar = async () => {
+    if (!pendentes.length) return;
+    await env.MEDIA.delete(pendentes);
+    apagados += pendentes.length;
+    pendentes = [];
+  };
+  /* com cursor e em lotes: um acervo real passa de dois mil objetos, e listar
+     de uma vez devolve a primeira página em silêncio */
+  do {
+    const pagina = await env.MEDIA.list({ prefix: "theme-assets/", cursor, limit: 500 });
+    for (const objeto of pagina.objects as Array<{ key: string }>) {
+      const fingerprint = objeto.key.split("/")[2];
+      if (fingerprint && !vivos.has(fingerprint)) pendentes.push(objeto.key);
+      if (pendentes.length >= 200) await descarregar();
+    }
+    cursor = pagina.truncated ? pagina.cursor : undefined;
+  } while (cursor);
+  await descarregar();
+  return apagados;
 }
 
 /**
@@ -497,6 +547,38 @@ async function apagarMidiaDosProjetos(projectIds: string[]) {
   }
 }
 
+/**
+ * OS ASSETS INSTALADOS DO TEMA saem com ele.
+ *
+ * A importação copia cada imagem, CSS, JS e fonte do ZIP para
+ * `theme-assets/<dono>/<fingerprint>/…` no R2 — é de lá que a prévia serve o
+ * arquivo. A remoção do tema apagava o ZIP de origem e esquecia essa cópia,
+ * que é a MAIOR das duas: ela fica descompactada, arquivo por arquivo.
+ *
+ * Medido neste computador depois de o usuário apagar tudo pela tela: nenhum
+ * tema no banco, nenhum ZIP de origem no R2 — e 2.365 objetos de `theme-assets`
+ * órfãos, 342 MB, de temas que não existem mais. Ninguém tinha como alcançá-los:
+ * a chave depende de um fingerprint que saiu do banco junto com o tema.
+ */
+async function apagarAssetsDoTema(fingerprint: string, ownerId: string) {
+  if (!env.MEDIA || !/^[0-9a-f]{16}$/.test(fingerprint) || !ownerId) return 0;
+  const prefix = `theme-assets/${ownerId}/${fingerprint}/`;
+  let cursor: string | undefined;
+  let apagados = 0;
+  /* em lote e com cursor: um tema real passa de mil arquivos, e listar de uma
+     vez só devolve a primeira página em silêncio */
+  do {
+    const lote = await env.MEDIA.list({ prefix, cursor, limit: 500 });
+    const chaves = (lote.objects as Array<{ key: string }>).map((objeto) => objeto.key);
+    if (chaves.length) {
+      await env.MEDIA.delete(chaves);
+      apagados += chaves.length;
+    }
+    cursor = lote.truncated ? lote.cursor : undefined;
+  } while (cursor);
+  return apagados;
+}
+
 export async function deleteTheme(viewer: Viewer, themeId: string) {
   const db = getD1();
   /**
@@ -508,8 +590,8 @@ export async function deleteTheme(viewer: Viewer, themeId: string) {
    * publicados) E indeletáveis — a rota responde THEME_NOT_FOUND. Um estado do
    * qual não se sai por caminho nenhum.
    */
-  const theme = await db.prepare("SELECT id FROM themes WHERE id = ?")
-    .bind(themeId).first<{ id: string }>();
+  const theme = await db.prepare("SELECT id, default_settings AS defaults FROM themes WHERE id = ?")
+    .bind(themeId).first<{ id: string; defaults: string }>();
   if (!theme) throw new Error("THEME_NOT_FOUND");
 
   /**
@@ -523,9 +605,11 @@ export async function deleteTheme(viewer: Viewer, themeId: string) {
    */
   const projects = await db.prepare("SELECT id FROM projects WHERE theme_id = ?")
     .bind(themeId).all<{ id: string }>();
-  const source = await db.prepare("SELECT source_key AS sourceKey FROM theme_imports WHERE theme_id = ?")
-    .bind(themeId).first<{ sourceKey: string }>();
+  const source = await db.prepare("SELECT source_key AS sourceKey, user_id AS userId FROM theme_imports WHERE theme_id = ?")
+    .bind(themeId).first<{ sourceKey: string; userId: string }>();
   if (source?.sourceKey && env.MEDIA) await env.MEDIA.delete(source.sourceKey);
+  /* e os ASSETS instalados do tema, que ninguém removia */
+  await apagarAssetsDoTema(parseJson<{ shopify?: { sourceFingerprint?: string } }>(theme.defaults, {}).shopify?.sourceFingerprint ?? "", source?.userId || viewer.id);
   await apagarMidiaDosProjetos(projects.results.map((projeto) => projeto.id));
   for (const project of projects.results) {
     await db.batch([

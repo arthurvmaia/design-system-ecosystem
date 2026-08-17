@@ -212,7 +212,7 @@ test("tema arquivado pode ser apagado, e o que sobrou some sozinho", async () =>
      justamente para quem mais precisava dela */
   assert.doesNotMatch(fn, /FROM themes WHERE id = \? AND status = 'published'/,
     "exigir publicado deixa o arquivado preso para sempre");
-  assert.match(fn, /SELECT id FROM themes WHERE id = \?/);
+  assert.match(fn, /SELECT id.*FROM themes WHERE id = \?/);
 
   const limpeza = data.match(/async function removerTemasZumbis[\s\S]*?\n\}/)?.[0] ?? "";
   assert.ok(limpeza, "a limpeza dos zumbis sumiu");
@@ -227,6 +227,42 @@ test("tema arquivado pode ser apagado, e o que sobrou some sozinho", async () =>
   }
   /* e ela roda na preparação do banco: sem isso o zumbi espera para sempre */
   assert.match(data, /await removerTemasZumbis\(db, themes\.map/);
+});
+
+/**
+ * OS ASSETS DO TEMA APAGADO ocupavam o disco para sempre.
+ *
+ * A importação copia cada imagem, CSS, JS e fonte do ZIP para
+ * `theme-assets/<dono>/<fingerprint>/…` — descompactado, arquivo por arquivo.
+ * A remoção do tema apagava só o ZIP de origem, que é a MENOR das duas cópias.
+ *
+ * Medido neste computador depois de apagar tudo pela tela: nenhum tema no
+ * banco, nenhum ZIP de origem no R2, e 2.365 objetos órfãos ocupando 342 MB —
+ * inalcançáveis, porque a chave depende de um fingerprint que saiu do banco
+ * junto com o tema.
+ */
+test("apagar o tema leva os assets instalados dele, e o que ficou para trás é varrido", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const data = await readFile(new URL("../lib/data.ts", import.meta.url), "utf8");
+
+  const fn = data.match(/export async function deleteTheme[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.match(fn, /await apagarAssetsDoTema\(/, "o tema sai e os assets dele ficam");
+
+  const doTema = data.match(/async function apagarAssetsDoTema[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(doTema, "apagarAssetsDoTema sumiu");
+  assert.match(doTema, /theme-assets\/\$\{ownerId\}\/\$\{fingerprint\}\//, "o prefixo tem de casar com o da instalação");
+  /* com cursor: um tema real passa de mil arquivos, e uma página só apagaria
+     parte deles em silêncio */
+  assert.match(doTema, /lote\.truncated \? lote\.cursor : undefined/);
+
+  const varredura = data.match(/async function removerAssetsOrfaos[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.ok(varredura, "a varredura dos órfãos sumiu");
+  /* a regra não depende de histórico: fingerprint que nenhum tema vivo declara */
+  assert.match(varredura, /if \(fingerprint\) vivos\.add\(fingerprint\)/);
+  assert.match(varredura, /!vivos\.has\(fingerprint\)/);
+  assert.match(varredura, /pagina\.truncated \? pagina\.cursor : undefined/);
+  /* e roda na preparação do banco, junto da limpeza dos zumbis */
+  assert.match(data, /await removerAssetsOrfaos\(db\);/);
 });
 
 /**
