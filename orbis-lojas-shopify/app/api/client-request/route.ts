@@ -195,8 +195,46 @@ export async function POST(request: Request) {
       if (acompanhante) imagens[`${peca.chave}-mobile`] = acompanhante;
     }
 
+    /**
+     * O TEMA ESCOLHIDO — ou nenhum. Substituto em silêncio, nunca.
+     *
+     * O id caía num valor de reserva — o ShrinePro — quando o tema escolhido
+     * não fosse encontrado, e o remendo mentia de três jeitos ao mesmo tempo.
+     * O cliente escolhe um tema na tela, e se ele não
+     * estivesse publicado no instante do envio a loja saía sobre OUTRO tema,
+     * sem uma palavra. Pior: a marca só era aplicada quando `escolhido`
+     * existia, então nesse caso o pacote saía sem tema Shopify nenhum — só a
+     * prévia estática, que é justamente a entrega quebrada que o resto deste
+     * arquivo existe para não repetir. E hoje o próprio `shrine-pro` está
+     * arquivado, então a rede de segurança falha ao ser acionada.
+     *
+     * A lista que o cliente vê é a área Temas do estúdio (`/api/bootstrap`, só
+     * publicados). Se o que ele escolheu não está mais lá, a resposta certa é
+     * dizer isso.
+     */
     const escolhido = parsed.data.themeId ? await temaPublicado(parsed.data.themeId) : null;
-    const themeId = escolhido?.id ?? "shrine-pro";
+    if (!escolhido) {
+      return Response.json(
+        { error: parsed.data.themeId ? "THEME_NOT_AVAILABLE" : "THEME_REQUIRED" },
+        { status: parsed.data.themeId ? 404 : 400 },
+      );
+    }
+    const themeId = escolhido.id;
+
+    /**
+     * Tema sem dados Shopify não entrega loja — e isso se descobre ANTES de
+     * cobrar.
+     *
+     * Uma linha de tema pode existir sem `.shopify`: a semeada, por exemplo,
+     * nasce só com o modelo nativo. Seguindo daqui, o pacote sairia sem layout,
+     * sem templates e sem seções — um site estático com nome de loja, que a
+     * Shopify recusa na importação. Conferir depois do `unlockTheme` deixaria
+     * para trás um projeto criado e um desbloqueio cobrado por um pacote que
+     * não sobe.
+     */
+    let shopify: ShopifyThemeImport | null = null;
+    try { shopify = (JSON.parse(escolhido.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { shopify = null; }
+    if (!shopify) return Response.json({ error: "THEME_WITHOUT_SHOPIFY_DATA" }, { status: 409 });
 
     const unlocked = await unlockTheme(viewer, themeId, `client-site-${crypto.randomUUID()}`);
     const projectId = unlocked.projectId as string;
@@ -230,33 +268,23 @@ export async function POST(request: Request) {
       const handle = handleDeColecao(String(nome));
       if (capa && handle) capasDeColecao[handle] = capa;
     }
-    let alterados: string[] = [];
-    let temaComMarca: ShopifyThemeImport | null = null;
-    if (escolhido) {
-      let shopify: ShopifyThemeImport | null = null;
-      try { shopify = (JSON.parse(escolhido.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { shopify = null; }
-      if (shopify) {
-        const resultado = aplicarMarcaNoTema(shopify, {
-          ...marca,
-          imagens,
-          imagensGeradas: parsed.data.imagensGeradas ?? [],
-        });
-        /* o nicho faz a vitrine mostrar os produtos daquele nicho em toda rota
-           de render; as capas fazem cada cartão mostrar a coleção dele */
-        /* e o NOME PRÓPRIO: sem ele a loja entregue continua se chamando como o
-           tema de origem, e reimportá-la no estúdio grava por cima do tema base
-           — a loja do cliente virava o Dawn de todo mundo */
-        temaComMarca = {
-          ...resultado.theme,
-          orbisNicheId: parsed.data.nicheId,
-          ...(Object.keys(capasDeColecao).length ? { orbisCapas: capasDeColecao } : {}),
-          orbisLoja: { nome: brand.name, slug: brand.slug },
-          orbisCustomizacao: modeloNativo,
-        };
-        customizacao.shopify = temaComMarca;
-        alterados = resultado.alterados;
-      }
-    }
+    const resultado = aplicarMarcaNoTema(shopify, {
+      ...marca,
+      imagens,
+      imagensGeradas: parsed.data.imagensGeradas ?? [],
+    });
+    /* o nicho faz a vitrine mostrar os produtos daquele nicho em toda rota de
+       render; as capas fazem cada cartão mostrar a coleção dele; e o NOME
+       PRÓPRIO impede que reimportar a loja grave por cima do tema de origem */
+    const temaComMarca: ShopifyThemeImport = {
+      ...resultado.theme,
+      orbisNicheId: parsed.data.nicheId,
+      ...(Object.keys(capasDeColecao).length ? { orbisCapas: capasDeColecao } : {}),
+      orbisLoja: { nome: brand.name, slug: brand.slug },
+      orbisCustomizacao: modeloNativo,
+    };
+    customizacao.shopify = temaComMarca;
+    const alterados = resultado.alterados;
     await saveProject(viewer, projectId, customizacao);
 
     await getD1()

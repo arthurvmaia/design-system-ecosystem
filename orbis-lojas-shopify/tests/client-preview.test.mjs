@@ -228,3 +228,44 @@ test("o fluxo não pede escolha de composição de página", async () => {
   /* o modelo padrão continua indo no pedido, senão a entrega perde o site */
   assert.match(flow, /templateId,/);
 });
+
+/**
+ * A LOJA SAI SOBRE O TEMA QUE O CLIENTE ESCOLHEU — ou não sai.
+ *
+ * O servidor tinha `escolhido?.id ?? "shrine-pro"`, e o remendo mentia de três
+ * jeitos: trocava o tema escolhido por outro sem avisar; a marca só era
+ * aplicada quando `escolhido` existia, então nesse caso o pacote saía sem tema
+ * Shopify nenhum — só a prévia estática, a entrega quebrada que o resto do
+ * arquivo existe para não repetir; e o próprio `shrine-pro` está arquivado
+ * neste computador, então a rede de segurança falha ao ser acionada.
+ */
+test("o fluxo entrega sobre o tema escolhido na área Temas, e recusa em vez de substituir", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
+  const rota = await readFile(join(raiz, "app/api/client-request/route.ts"), "utf8");
+
+  /* a lista que o cliente vê é a MESMA área Temas do estúdio */
+  assert.match(flow, /fetch\("\/api\/bootstrap"\)/);
+  assert.match(flow, /setTemas\(lista\)/);
+  /* e não dá para avançar sem escolher um */
+  assert.match(flow, /if \(!themeId\) return false;/);
+  /* o navegador precisa ENVIAR o tema escolhido */
+  assert.match(flow, /^\s+themeId,$/m);
+
+  /* e o servidor não pode arrumar um substituto */
+  assert.doesNotMatch(rota, /\?\? "shrine-pro"/, "substituir o tema em silêncio é o defeito que este teste guarda");
+  assert.match(rota, /const themeId = escolhido\.id;/, "o tema entregue é o escolhido, sem alternativa");
+  assert.match(rota, /THEME_NOT_AVAILABLE/, "tema escolhido que sumiu precisa ser dito, não trocado");
+  assert.match(rota, /THEME_REQUIRED/, "pedido sem tema é recusado, não completado por conta");
+  /* tema sem dados Shopify sairia como site estático, que a Shopify recusa */
+  assert.match(rota, /THEME_WITHOUT_SHOPIFY_DATA/);
+
+  /**
+   * E as três recusas vêm ANTES do desbloqueio. Depois dele já existe projeto
+   * criado e token cobrado por um pacote que não vai sair.
+   */
+  const unlock = rota.indexOf("await unlockTheme(");
+  for (const erro of ["THEME_NOT_AVAILABLE", "THEME_REQUIRED", "THEME_WITHOUT_SHOPIFY_DATA"]) {
+    assert.ok(rota.indexOf(erro) < unlock, `${erro} precisa ser conferido antes de cobrar o desbloqueio`);
+  }
+});
