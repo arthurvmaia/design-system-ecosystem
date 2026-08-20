@@ -108,9 +108,11 @@ const principal = async (): Promise<void> => {
    */
   if (doUpload !== null && doParametro !== null && doParametro !== doUpload) {
     morrer(
-      `Este pedido tem arquivo do cliente (${pedido.imagem.caminhoDoUpload}) e o --fundo aponta para outro (${fundoArg}).\n  ` +
-        'Upload vence geração: trocar o material dele por outro é o contrário do que ele pediu.\n  ' +
+      [
+        `Este pedido tem arquivo do cliente (${pedido.imagem.caminhoDoUpload}) e o --fundo aponta para outro (${fundoArg}).`,
+        'Upload vence geração: trocar o material dele por outro é o contrário do que ele pediu.',
         'Componha sem --fundo, ou aponte para o arquivo do próprio upload.',
+      ].join('\n  '),
     );
   }
 

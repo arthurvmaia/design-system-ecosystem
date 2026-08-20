@@ -1,6 +1,7 @@
 import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
 import { PrecisaDaSenhaDeAcao, api } from '@/lib/api';
+import { useChaveDeEnvio } from '@/lib/chave-de-envio';
 import { TRATAMENTO } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
 import {
@@ -64,7 +65,7 @@ export function CriativosExpressoPage() {
   const [pedidoConferido, setPedidoConferido] = useState<PedidoCriativo | null>(null);
   const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
   /** A chave deste envio: é ela que impede o clique duplo de virar dois pedidos pagos. */
-  const [chaveDeEnvio, setChaveDeEnvio] = useState(() => crypto.randomUUID());
+  const [chaveDeEnvio, renovarChaveDeEnvio] = useChaveDeEnvio('criativos:expresso');
   const qc = useQueryClient();
 
   const projetos = useQuery({ queryKey: ['projects'], queryFn: api.listProjects });
@@ -179,7 +180,7 @@ export function CriativosExpressoPage() {
           ? 'Este pedido já estava na fila: reaproveitei o mesmo, em vez de abrir outro e cobrar duas vezes.'
           : `Pedido na fila${d === null ? '' : ` (${d.largura}×${d.altura})`}. Quem produz é o estúdio, então ele não sai na hora: acompanhe em Minhas peças.`,
       );
-      setChaveDeEnvio(crypto.randomUUID());
+      renovarChaveDeEnvio();
     },
     onError: (e) => {
       if (e instanceof PrecisaDaSenhaDeAcao) {

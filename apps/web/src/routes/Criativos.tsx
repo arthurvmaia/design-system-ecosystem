@@ -1,6 +1,7 @@
 import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
 import { PrecisaDaSenhaDeAcao, api } from '@/lib/api';
+import { useChaveDeEnvio } from '@/lib/chave-de-envio';
 import { loadFont } from '@/lib/font-loader';
 import { TRATAMENTO } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
@@ -164,7 +165,7 @@ export function CriativosPage() {
    * cobrar duas vezes. Só troca quando um envio dá certo: enquanto a pessoa
    * corrige e tenta de novo, continua sendo o mesmo pedido.
    */
-  const [chaveDeEnvio, setChaveDeEnvio] = useState(() => crypto.randomUUID());
+  const [chaveDeEnvio, renovarChaveDeEnvio] = useChaveDeEnvio('criativos:quatro-passos');
   const qc = useQueryClient();
 
   // A mesma api da tela de projetos: a marca vem preenchida de lá, com um
@@ -463,7 +464,7 @@ export function CriativosPage() {
           : `Pedido na fila${d === null ? '' : ` (${d.largura}×${d.altura})`}. Quem produz é o estúdio, então ele não sai na hora: acompanhe em Minhas peças.`,
       );
       // Chave nova: o próximo envio é outro pedido, e não uma repetição deste.
-      setChaveDeEnvio(crypto.randomUUID());
+      renovarChaveDeEnvio();
     },
     onError: (e) => {
       // 428 é o servidor pedindo a confirmação do gasto, não uma falha.

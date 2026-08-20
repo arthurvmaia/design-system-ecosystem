@@ -26,7 +26,15 @@
  * divergência entre o registrado e o saldo real da conta apareça em vez de
  * passar batida.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import {
   ArquivoDoRazao,
@@ -72,17 +80,81 @@ const lerLancamentos = (jobId: string): Lancamento[] => {
   }
 };
 
-/** Acrescenta um lançamento. Nunca reescreve os anteriores. */
-const acrescentar = (jobId: string, novo: Lancamento): void => {
-  const dir = criativosDir(jobId);
-  mkdirSync(dir, { recursive: true });
-  const lancamentos = [...lerLancamentos(jobId), novo];
-  writeFileSync(
-    caminhoDoRazao(jobId),
-    JSON.stringify({ formato: 1, lancamentos }, null, 2),
-    'utf8',
-  );
+/**
+ * Quanto tempo uma trava pode ficar de pé antes de ser considerada abandonada.
+ *
+ * Um lançamento é ler, somar um item e gravar: milissegundos. Trinta segundos é
+ * ordens de grandeza acima disso, então uma trava mais velha que isto é de um
+ * processo que morreu — e deixar o razão travado para sempre por causa de um
+ * Ctrl+C seria trocar um problema raro por um garantido.
+ */
+const VALIDADE_DA_TRAVA_MS = 30_000;
+
+/**
+ * A seção crítica do razão.
+ *
+ * Acrescentar é READ-MODIFY-WRITE: lê os lançamentos, junta o novo e regrava o
+ * arquivo inteiro. Dois processos fazendo isso ao mesmo tempo perdem um
+ * lançamento — e o que se perde pode ser um DÉBITO, o que faz o razão declarar
+ * menos gasto do que houve. É a única classe de erro aqui que produz um número
+ * errado em vez de um erro visível.
+ *
+ * A trava é um arquivo criado com `wx`, que é atômico no sistema de arquivos.
+ * Quem não conseguir criar espera; quem esperar demais reclama alto, em vez de
+ * seguir e sobrescrever.
+ */
+const comTrava = <T>(jobId: string, acao: () => T): T => {
+  const trava = `${caminhoDoRazao(jobId)}.trava`;
+  let tenho = false;
+  for (let tentativa = 0; tentativa < 3 && !tenho; tentativa += 1) {
+    try {
+      writeFileSync(trava, String(process.pid), { encoding: 'utf8', flag: 'wx' });
+      tenho = true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      // Trava de um processo que morreu não pode travar o razão para sempre.
+      try {
+        const idade = Date.now() - statSync(trava).mtimeMs;
+        if (idade > VALIDADE_DA_TRAVA_MS) rmSync(trava, { force: true });
+      } catch {
+        // Sumiu entre o `wx` e o `stat`: a próxima volta pega.
+      }
+    }
+  }
+  if (!tenho) {
+    return morrer(
+      [
+        `O razão de ${jobId} está travado por outro processo (${trava}).`,
+        'Dois lançamentos ao mesmo tempo perderiam um dos dois, e o perdido pode ser um débito.',
+        'Espere o outro terminar. Se não houver outro, apague o arquivo de trava.',
+      ].join('\n  '),
+    );
+  }
+  try {
+    return acao();
+  } finally {
+    rmSync(trava, { force: true });
+  }
 };
+
+/**
+ * Acrescenta um lançamento. Nunca reescreve os anteriores.
+ *
+ * A gravação é em arquivo temporário seguido de `rename`, que é atômico: um
+ * `writeFileSync` direto interrompido no meio deixa um JSON truncado, e
+ * `lerLancamentos` se recusa (com razão) a continuar por cima de um registro de
+ * dinheiro ilegível — o que travaria o job para sempre, com a arte já paga.
+ */
+const acrescentar = (jobId: string, novo: Lancamento): void =>
+  comTrava(jobId, () => {
+    const dir = criativosDir(jobId);
+    mkdirSync(dir, { recursive: true });
+    const lancamentos = [...lerLancamentos(jobId), novo];
+    const destino = caminhoDoRazao(jobId);
+    const temporario = `${destino}.novo`;
+    writeFileSync(temporario, JSON.stringify({ formato: 1, lancamentos }, null, 2), 'utf8');
+    renameSync(temporario, destino);
+  });
 
 const tetoDoPedido = (jobId: string): number => {
   const arquivo = criativoPedidoPath(jobId);

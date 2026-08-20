@@ -78,9 +78,11 @@ const principal = async (): Promise<void> => {
      * pior que entregar o símbolo como ele veio. Quem chamou decide, sabendo.
      */
     morrer(
-      `Não consegui recortar o fundo deste símbolo (${err instanceof Error ? err.message : String(err)}).\n  ` +
-        'O recorte pressupõe fundo LISO de cor única, bem separado do símbolo — é o que o pedido de geração pede.\n  ' +
+      [
+        `Não consegui recortar o fundo deste símbolo (${err instanceof Error ? err.message : String(err)}).`,
+        'O recorte pressupõe fundo LISO de cor única, bem separado do símbolo, que é o que o pedido de geração pede.',
         'Use o símbolo como ele veio, e registre que as versões ficaram de fora.',
+      ].join('\n  '),
     );
   } finally {
     await navegador.close();
