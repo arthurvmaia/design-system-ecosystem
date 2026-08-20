@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { ArquivoDoRazao, lerRazao } from '@ds/creative';
 import {
   CODIGOS_DA_REGUA_DE_MARCA,
+  PedidoDeMarca,
   criativoPedidoPath,
   criativosDir,
   dimensaoDePng,
@@ -342,12 +343,26 @@ if (job.type === 'marca') {
 
     const arquivoDoRazaoDaMarca = join(dir, 'razao.json');
     let razaoDaMarca: { gasto: number; empenhado: number } | undefined;
+    /**
+     * O teto em vigor, quando o dono liberou mais depois do pedido.
+     *
+     * O retrato continua sendo a trava, e continua intocado; os aumentos vivem
+     * no razão, com data e motivo. O portão precisa dos dois — senão ele recusa
+     * a entrega de um job cujo estouro tem autorização escrita.
+     */
+    let tetoEmVigorDaMarca: number | undefined;
     if (existsSync(arquivoDoRazaoDaMarca)) {
       try {
-        const conta = lerRazao(
-          ArquivoDoRazao.parse(JSON.parse(readFileSync(arquivoDoRazaoDaMarca, 'utf8'))).lancamentos,
+        const arquivo = ArquivoDoRazao.parse(
+          JSON.parse(readFileSync(arquivoDoRazaoDaMarca, 'utf8')),
         );
+        const conta = lerRazao(arquivo.lancamentos);
         razaoDaMarca = { gasto: conta.gasto, empenhado: conta.empenhado };
+        const liberado = arquivo.aumentos.reduce((t, a) => t + a.creditos, 0);
+        if (liberado > 0) {
+          const teto = PedidoDeMarca.safeParse(referenciaDaMarca.pedido);
+          if (teto.success) tetoEmVigorDaMarca = teto.data.tetoDeCreditos + liberado;
+        }
       } catch (err) {
         problemas.push(
           `razao.json da marca está ilegível (${err instanceof Error ? err.message : String(err)}): não fecho um job pago por cima de um registro de dinheiro que não consigo ler.`,
@@ -363,6 +378,7 @@ if (job.type === 'marca') {
           existe: (relativo: string) => existsSync(join(dir, relativo)),
           temApresentacao: existsSync(join(dir, 'apresentacao.pdf')),
           razao: razaoDaMarca,
+          tetoEmVigor: tetoEmVigorDaMarca,
           codigosDaRegua: [...CODIGOS_DA_REGUA_DE_MARCA],
         }),
       );

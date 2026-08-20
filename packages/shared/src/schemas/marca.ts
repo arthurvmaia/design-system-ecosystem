@@ -290,6 +290,22 @@ export const problemasDaEntregaDeMarca = (entrada: {
   readonly razao?: { readonly gasto: number; readonly empenhado: number };
   /** Os códigos que a régua da marca produz. Vem de fora para não criar ciclo. */
   readonly codigosDaRegua: readonly string[];
+  /**
+   * O teto que vale HOJE, quando o dono autorizou mais depois do pedido.
+   *
+   * Ausente = vale o do retrato, que é o comportamento de sempre.
+   *
+   * O retrato do pedido é gravado ANTES da fila e é isso que o torna uma trava:
+   * um número que o processamento não alcança não pode ser movido para
+   * justificar o que já se gastou. Mas o dono PODE liberar mais — e quando ele
+   * libera, o aumento vira lançamento no razão, com data e motivo.
+   *
+   * Sem este campo o portão só enxergava o retrato, e recusava a entrega de um
+   * job cujo estouro tinha autorização escrita. Medido no job de prova: gasto
+   * 1425, retrato 825, e 600 liberados um a um no razão. Recusar ali seria
+   * chamar de estouro o que estava registrado como decisão.
+   */
+  readonly tetoEmVigor?: number;
 }): string[] => {
   const problemas: string[] = [];
 
@@ -355,9 +371,14 @@ export const problemasDaEntregaDeMarca = (entrada: {
   }
 
   const pedido = PedidoDeMarca.safeParse(entrada.pedido);
-  if (pedido.success && lido.data.custoGasto > pedido.data.tetoDeCreditos) {
+  const tetoQueVale = entrada.tetoEmVigor ?? (pedido.success ? pedido.data.tetoDeCreditos : 0);
+  if (pedido.success && lido.data.custoGasto > tetoQueVale) {
     problemas.push(
-      `o gasto (${lido.data.custoGasto}) passou do teto do pedido (${pedido.data.tetoDeCreditos}). Fechar assim registraria o estouro como sucesso.`,
+      // A frase diz os DOIS números quando eles diferem: sem isso, quem lê não
+      // sabe se o teto que barrou é o do pedido ou um que alguém liberou depois.
+      tetoQueVale === pedido.data.tetoDeCreditos
+        ? `o gasto (${lido.data.custoGasto}) passou do teto do pedido (${tetoQueVale}). Fechar assim registraria o estouro como sucesso.`
+        : `o gasto (${lido.data.custoGasto}) passou do teto em vigor (${tetoQueVale} = ${pedido.data.tetoDeCreditos} do retrato + ${tetoQueVale - pedido.data.tetoDeCreditos} liberado(s) depois). Fechar assim registraria o estouro como sucesso.`,
     );
   }
 

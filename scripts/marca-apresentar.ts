@@ -24,10 +24,12 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  ArquivoDoRazao,
   comoDataUri,
   comporPeca,
   coresDerivadas,
   cssDaFonte,
+  lerRazao,
   medirApresentacaoPronta,
   renderizarApresentacao,
 } from '@ds/creative';
@@ -586,9 +588,36 @@ const principal = async (): Promise<void> => {
         const folha = [...anteriores, ...daApresentacao].sort(
           (a, b) => Number(a.codigo.slice(1)) - Number(b.codigo.slice(1)),
         );
+        /**
+         * O CUSTO também é reescrito aqui, e pela mesma razão que a folha.
+         *
+         * `marca:montar` grava `custoGasto` lendo o razão no momento em que ele
+         * roda — e naquele momento só o símbolo saiu. Tudo o que vem depois (as
+         * artes, os conceitos, as versões de telefone) é gasto que o resultado
+         * nunca via. Medido no job de prova: o resultado dizia 75 e o razão
+         * 1425, e o portão da entrega recusou com a conta na mão — "a entrega
+         * afirmaria um custo que os lançamentos não sustentam".
+         *
+         * O número sai do RAZÃO, nunca de um contador local. É a mesma regra que
+         * já vale nos dois comandos que o gravam; faltava valer no que o
+         * reescreve por último.
+         */
+        const arquivoDoRazao = join(dir, 'razao.json');
+        let custoGasto = lido.data.custoGasto;
+        if (existsSync(arquivoDoRazao)) {
+          try {
+            custoGasto = lerRazao(
+              ArquivoDoRazao.parse(JSON.parse(readFileSync(arquivoDoRazao, 'utf8'))).lancamentos,
+            ).gasto;
+          } catch {
+            console.warn(
+              '  AVISO: o razão está ilegível, então mantive o custo que já estava no resultado.',
+            );
+          }
+        }
         writeFileSync(
           arquivoDoResultado,
-          JSON.stringify({ ...lido.data, conferencia: folha }, null, 2),
+          JSON.stringify({ ...lido.data, conferencia: folha, custoGasto }, null, 2),
           'utf8',
         );
 
