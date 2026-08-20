@@ -164,14 +164,35 @@ const DEGRAU_DO_ALFA = 0.01;
  * Devolve 1 quando nem o véu cheio resolve, o que só acontece se a própria
  * faixa não separa da tinta. Aí o véu não é o problema, e a medição reprova.
  */
-export const alfaDoVeu = (cores: CoresDaPeca, piso: number = PISO_DO_BOTAO): number => {
-  const piorFoto =
-    contrasteRatio(cores.texto, '#ffffff') < contrasteRatio(cores.texto, '#000000')
-      ? '#ffffff'
-      : '#000000';
+export const alfaDoVeu = (cores: CoresDaPeca, piso: number = PISO_DO_BOTAO): number =>
+  alfaDoVeuSobre(cores, piorFotoPara(cores.texto), cores.texto, piso);
+
+/** O extremo do cubo que mais aproxima o par: contra ele, todo pixel é melhor. */
+const piorFotoPara = (tinta: string): string =>
+  contrasteRatio(tinta, '#ffffff') < contrasteRatio(tinta, '#000000') ? '#ffffff' : '#000000';
+
+/**
+ * O menor alfa de véu que faz `tinta` vencer o piso sobre um fundo CONHECIDO.
+ *
+ * Existe porque o pior caso teórico é caro em pixel. Medido no banner de um
+ * corredor com janelas estouradas: o alfa do pior caso deu **0,66**, porque ele
+ * precisa domar um branco puro que está na janela — e o texto não pousa na
+ * janela, pousa no piso do corredor, que é meio-tom. Para o pixel que o texto
+ * REALMENTE pega, 0,45 basta. Vinte pontos de véu a menos é a diferença entre
+ * a foto aparecer e a foto virar uma mancha azul.
+ *
+ * A garantia não afrouxa: quem informa o fundo é a amostragem do pixel sob a
+ * caixa do texto, e a medição confere de novo depois de o véu ser aplicado.
+ */
+export const alfaDoVeuSobre = (
+  cores: CoresDaPeca,
+  fundo: string,
+  tinta: string = cores.texto,
+  piso: number = PISO_DO_BOTAO,
+): number => {
   for (let passo = 0; passo <= 100; passo += 1) {
     const alfa = Number((passo * DEGRAU_DO_ALFA).toFixed(2));
-    if (contrasteRatio(cores.texto, corComposta(cores.faixa, alfa, piorFoto)) >= piso) return alfa;
+    if (contrasteRatio(tinta, corComposta(cores.faixa, alfa, fundo)) >= piso) return alfa;
   }
   return 1;
 };

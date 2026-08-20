@@ -49,11 +49,37 @@ export type Lancamento = z.infer<typeof Lancamento>;
  * própria versão obriga quem o lê a adivinhar, e adivinhar sobre dinheiro é o
  * que este arquivo existe para evitar.
  */
+/**
+ * Um AUMENTO do teto, autorizado pelo dono.
+ *
+ * O teto original mora no retrato do pedido, gravado ANTES da fila, e é isso que
+ * o torna uma trava: um número que o processamento não alcança não pode ser
+ * movido para justificar o que já se gastou.
+ *
+ * Mas o dono pode legitimamente liberar mais — foi o que aconteceu quando os
+ * banners saíram ruins e ele mandou refazer as imagens. Editar o retrato à mão
+ * resolveria e destruiria a trava junto: ninguém saberia depois se o teto era
+ * aquele desde o começo. Aqui o aumento é um LANÇAMENTO como outro qualquer,
+ * com data e com motivo, e o retrato continua intocado.
+ */
+export const AumentoDeTeto = z.object({
+  creditos: z.number().positive(),
+  em: z.number().int().positive(),
+  /** Quem autorizou e por quê. Aumento sem motivo é teto que se move sozinho. */
+  motivo: z.string().min(1),
+});
+export type AumentoDeTeto = z.infer<typeof AumentoDeTeto>;
+
 export const ArquivoDoRazao = z.object({
   formato: z.literal(1).default(1),
   lancamentos: z.array(Lancamento).default([]),
+  aumentos: z.array(AumentoDeTeto).default([]),
 });
 export type ArquivoDoRazao = z.infer<typeof ArquivoDoRazao>;
+
+/** O teto que vale hoje: o do retrato mais o que o dono liberou depois. */
+export const tetoEmVigor = (tetoDoRetrato: number, aumentos: readonly AumentoDeTeto[]): number =>
+  aumentos.reduce((t, a) => t + a.creditos, tetoDoRetrato);
 
 export type Razao = {
   /** Créditos que já saíram da conta, comprovadamente. */

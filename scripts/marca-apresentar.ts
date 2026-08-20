@@ -117,8 +117,21 @@ const principal = async (): Promise<void> => {
     const paraOPacote: { nome: string; bytes: Uint8Array }[] = [];
 
     /**
-     * Os conceitos de banner: desktop e mobile do MESMO pixel, em arranjos
-     * DIFERENTES.
+     * Os conceitos são BANNERS DE SITE, e só isso.
+     *
+     * Eles saíam também em 1:1, chamado de "mobile", do mesmo pixel. Era um
+     * erro de categoria, e o dono nomeou: *"serão banners pra o site, e os
+     * criativos é criativos de vendas do tráfego pago"*. São dois produtos, não
+     * dois tamanhos do mesmo.
+     *
+     * Um banner de site é visto por quem JÁ está no site: ele estabelece a
+     * marca, é largo, tem respiro e uma frase de posicionamento. Um criativo de
+     * tráfego é visto por quem está rolando o feed e nunca ouviu falar dela:
+     * assunto fechado, impacto, oferta e um CTA que converte. Recortar o
+     * primeiro em quadrado não produz o segundo — produz o primeiro, cortado.
+     *
+     * O criativo de tráfego vive na frente Criativos, que tem formato próprio,
+     * copy de venda e orçamento próprio.
      *
      * O pixel gerado é matéria-prima; o conceito é ele com a marca, a copy e o
      * botão por cima. Mostrar o pixel cru seria mostrar a foto, não a aplicação
@@ -138,6 +151,23 @@ const principal = async (): Promise<void> => {
      */
     const usados = new Set<ArranjoDaPeca>();
     const arranjoPorConceito: Record<string, ArranjoDaPeca> = {};
+
+    /**
+     * O arranjo PRETENDIDO de cada arte, quando quem a gerou já sabia.
+     *
+     * A foto e o arranjo não são independentes: num `faixa-inferior` o terço de
+     * baixo some sob a faixa, então o assunto tem de viver em cima; num
+     * `veu-cheio` a cena precisa aguentar um véu e um texto no meio. Briefar a
+     * imagem para um arranjo e compô-la noutro desperdiça o briefing — e o
+     * briefing é a parte que custou crédito.
+     *
+     * Ele é uma PREFERÊNCIA, não uma ordem: a medição continua mandando, e um
+     * arranjo pretendido que reprova cede lugar ao seguinte.
+     */
+    const arquivoPretendidos = join(artesDir, 'arranjos-pretendidos.json');
+    const pretendido: Record<string, string> = existsSync(arquivoPretendidos)
+      ? (JSON.parse(readFileSync(arquivoPretendidos, 'utf8')) as Record<string, string>)
+      : {};
 
     /** O que a régua da peça cobra sobre um conceito, com a geometria medida. */
     const conferirConceito = (
@@ -182,7 +212,10 @@ const principal = async (): Promise<void> => {
        * pixel já está em disco —, então tentar o seguinte é de graça e parar
        * na primeira reprovação seria desperdício de nada.
        */
-      const candidatos = ARRANJOS_EM_ORDEM.filter((a) => !usados.has(a));
+      const daArte = pretendido[arquivo];
+      const candidatos = ARRANJOS_EM_ORDEM.filter((a) => !usados.has(a)).sort(
+        (a, b) => (a === daArte ? -1 : 0) - (b === daArte ? -1 : 0),
+      );
       let aceito: {
         arranjo: ArranjoDaPeca;
         pecas: { onde: string; peca: Awaited<ReturnType<typeof comporPeca>> }[];
@@ -192,10 +225,7 @@ const principal = async (): Promise<void> => {
       for (const arranjo of candidatos) {
         const tentativa: { onde: string; peca: Awaited<ReturnType<typeof comporPeca>> }[] = [];
         let motivo: string | null = null;
-        for (const [formato, onde] of [
-          ['banner-3x1', 'desktop'],
-          ['feed-1x1', 'mobile'],
-        ] as const) {
+        for (const [formato, onde] of [['banner-3x1', 'site']] as const) {
           const peca = await comporPeca(navegador, {
             formato,
             arranjo,
@@ -258,7 +288,7 @@ const principal = async (): Promise<void> => {
         const nome = `conceito-${i + 1}-${onde}.png`;
         writeFileSync(join(artesDir, nome), peca.png);
         paraOPacote.push({ nome, bytes: peca.png });
-        if (onde === 'desktop') {
+        if (onde === 'site') {
           compostos.push({
             titulo: `Conceito ${i + 1} — ${ARRANJO[escolhido.arranjo].rotulo}`,
             /**
@@ -269,7 +299,7 @@ const principal = async (): Promise<void> => {
              * conceitos mostram a mesma coisa — exatamente o que a página não
              * pode dizer.
              */
-            legenda: `${ARRANJO[escolhido.arranjo].comoE} A chamada é "${copy.headline}", com o botão "${copy.cta}". O mesmo pixel serve o banner largo do site e o quadrado das redes.`,
+            legenda: `${ARRANJO[escolhido.arranjo].comoE} A chamada é "${copy.headline}", com o botão "${copy.cta}".`,
             imagem: `data:image/png;base64,${Buffer.from(peca.png).toString('base64')}`,
           });
         }

@@ -102,28 +102,24 @@ const ENTREGA: readonly {
     para: 'icone-512 (aplicativo).png',
     obrigatorio: false,
   },
+  /**
+   * As artes da marca são BANNERS DE SITE.
+   *
+   * Havia também um "Post para redes" aqui, e ele era o mesmo pixel recortado
+   * em quadrado. Post de rede para tráfego pago é outro produto — outra copy,
+   * outra oferta, outro CTA —, e entregá-lo como um recorte do banner promete
+   * ao cliente uma coisa que a pasta não tem.
+   */
   {
-    de: 'artes/conceito-1-desktop.png',
+    de: 'artes/conceito-1-site.png',
     pasta: 'Artes prontas',
     para: 'Banner do site 1.png',
     obrigatorio: false,
   },
   {
-    de: 'artes/conceito-1-mobile.png',
-    pasta: 'Artes prontas',
-    para: 'Post para redes 1.png',
-    obrigatorio: false,
-  },
-  {
-    de: 'artes/conceito-2-desktop.png',
+    de: 'artes/conceito-2-site.png',
     pasta: 'Artes prontas',
     para: 'Banner do site 2.png',
-    obrigatorio: false,
-  },
-  {
-    de: 'artes/conceito-2-mobile.png',
-    pasta: 'Artes prontas',
-    para: 'Post para redes 2.png',
     obrigatorio: false,
   },
 ];

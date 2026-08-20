@@ -38,10 +38,12 @@ import {
 import { join } from 'node:path';
 import {
   ArquivoDoRazao,
+  type AumentoDeTeto,
   type Lancamento,
   lerRazao,
   podeProduzir,
   reservaAberta,
+  tetoEmVigor,
 } from '@ds/creative';
 import {
   PedidoCriativo,
@@ -153,14 +155,31 @@ const comTrava = <T>(jobId: string, acao: () => T): T => {
  * `lerLancamentos` se recusa (com razão) a continuar por cima de um registro de
  * dinheiro ilegível — o que travaria o job para sempre, com a arte já paga.
  */
+/**
+ * Acrescenta um lançamento SEM perder o resto do arquivo.
+ *
+ * Ele montava o objeto a escrever à mão — `{ formato: 1, lancamentos }` — e por
+ * isso qualquer campo novo do razão sumia no lançamento seguinte. Aconteceu na
+ * primeira vez que houve um: o aumento de teto autorizado pelo dono foi gravado,
+ * a reserva seguinte reescreveu o arquivo por cima, e o teto voltou sozinho para
+ * o do retrato. O comando ainda disse "pode produzir", porque a reserva foi
+ * conferida contra o teto certo — e o registro que a justificava já não existia.
+ *
+ * Escrever a partir do arquivo LIDO, e não de um literal, faz o dado novo
+ * sobreviver por construção. Um arquivo de dinheiro não pode perder campo em
+ * silêncio: o silêncio é o defeito, não a perda.
+ */
 const acrescentar = (jobId: string, novo: Lancamento): void =>
   comTrava(jobId, () => {
     const dir = casaDoJob(jobId).dir;
     mkdirSync(dir, { recursive: true });
-    const lancamentos = [...lerLancamentos(jobId), novo];
     const destino = caminhoDoRazao(jobId);
+    const atual = existsSync(destino)
+      ? ArquivoDoRazao.parse(JSON.parse(readFileSync(destino, 'utf8')))
+      : ArquivoDoRazao.parse({});
+    const arquivo = { ...atual, lancamentos: [...atual.lancamentos, novo] };
     const temporario = `${destino}.novo`;
-    writeFileSync(temporario, JSON.stringify({ formato: 1, lancamentos }, null, 2), 'utf8');
+    writeFileSync(temporario, JSON.stringify(arquivo, null, 2), 'utf8');
     renameSync(temporario, destino);
   });
 
@@ -191,7 +210,18 @@ const casaDoJob = (jobId: string): { readonly dir: string; readonly pedido: stri
   );
 };
 
-const tetoDoPedido = (jobId: string): number => {
+/** Os aumentos de teto que o dono já autorizou neste job. */
+const aumentosDoJob = (jobId: string): AumentoDeTeto[] => {
+  const arquivo = join(casaDoJob(jobId).dir, 'razao.json');
+  if (!existsSync(arquivo)) return [];
+  const lido = ArquivoDoRazao.safeParse(JSON.parse(readFileSync(arquivo, 'utf8')));
+  if (!lido.success) {
+    return morrer(`O razão de ${jobId} está ilegível: ${lido.error.issues[0]?.message}`);
+  }
+  return lido.data.aumentos;
+};
+
+const tetoDoRetrato = (jobId: string): number => {
   const arquivo = casaDoJob(jobId).pedido;
   const cru: unknown = JSON.parse(readFileSync(arquivo, 'utf8'));
   // Os dois contratos declaram `tetoDeCreditos`, e é só ele que interessa aqui.
@@ -206,6 +236,16 @@ const tetoDoPedido = (jobId: string): number => {
   );
 };
 
+/**
+ * O teto que vale HOJE: o do retrato, mais o que o dono liberou depois.
+ *
+ * Toda decisão de dinheiro passa por aqui, então o aumento vale para todas — e
+ * como ele vive no razão, `ver` o mostra e ninguém precisa acreditar que foi
+ * autorizado.
+ */
+const tetoDoPedido = (jobId: string): number =>
+  tetoEmVigor(tetoDoRetrato(jobId), aumentosDoJob(jobId));
+
 /** O teto desta rodada, se o dono declarou. Sem default de propósito. */
 const tetoDoLote = (): number | null => {
   const bruto = process.env.ORBIS_CRIATIVO_TETO_LOTE;
@@ -219,8 +259,19 @@ const mostrar = (jobId: string): void => {
   const r = lerRazao(lancamentos);
   const teto = tetoDoPedido(jobId);
   console.log('');
+  const aumentos = aumentosDoJob(jobId);
   console.log(`  Razão de ${jobId}`);
-  console.log(`    teto do pedido : ${teto}`);
+  if (aumentos.length === 0) {
+    console.log(`    teto do pedido : ${teto}`);
+  } else {
+    console.log(
+      `    teto do pedido : ${teto}  (${tetoDoRetrato(jobId)} do retrato + ${aumentos.reduce((t, a) => t + a.creditos, 0)} liberado(s) depois)`,
+    );
+    for (const a of aumentos) {
+      const quando = new Date(a.em).toISOString().replace('T', ' ').slice(0, 19);
+      console.log(`      ${quando}  +${a.creditos}  ${a.motivo}`);
+    }
+  }
   console.log(`    gasto          : ${r.gasto}`);
   console.log(`    em voo         : ${r.empenhado}`);
   console.log(`    comprometido   : ${r.comprometido}  (resta ${teto - r.comprometido})`);
@@ -245,6 +296,41 @@ const principal = (): void => {
   if (!ehJobId(jobId)) return void morrer(`"${jobId}" não tem forma de id de job.`);
 
   if (verbo === 'ver') {
+    mostrar(jobId);
+    return;
+  }
+
+  if (verbo === 'teto') {
+    /**
+     * Subir o teto é decisão DO DONO, e por isso ela fica escrita.
+     *
+     * O retrato do pedido continua intocado: é ele que prova qual era o teto
+     * quando o job entrou na fila. O aumento é um lançamento com data e motivo,
+     * e `ver` mostra os dois lado a lado. Editar o retrato à mão resolveria o
+     * mesmo problema e destruiria a prova junto.
+     */
+    const extra = Number(referencia);
+    const motivo = (quarto ?? '').trim();
+    if (!Number.isFinite(extra) || extra <= 0) {
+      return void morrer(
+        `Aumento inválido: "${referencia}". Use: pnpm criativo:razao teto <job> <quanto> "<motivo>"`,
+      );
+    }
+    if (motivo === '') {
+      return void morrer(
+        'Aumentar o teto exige motivo: um teto que sobe sem explicação não é teto, é um número que cede quando incomoda.',
+      );
+    }
+    const arquivo = join(casaDoJob(jobId).dir, 'razao.json');
+    const atual = existsSync(arquivo)
+      ? ArquivoDoRazao.parse(JSON.parse(readFileSync(arquivo, 'utf8')))
+      : ArquivoDoRazao.parse({});
+    const novo = {
+      ...atual,
+      aumentos: [...atual.aumentos, { creditos: extra, em: Date.now(), motivo }],
+    };
+    writeFileSync(arquivo, JSON.stringify(novo, null, 2), 'utf8');
+    console.log(`\n  Teto de ${jobId}: +${extra}. ${motivo}\n`);
     mostrar(jobId);
     return;
   }

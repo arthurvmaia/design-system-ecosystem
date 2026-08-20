@@ -8,7 +8,9 @@ import {
   type CoresDaPeca,
   DIMENSAO_DO_FORMATO,
   type FormatoCriativo,
+  PISO_DO_BOTAO,
   alfaDoVeu,
+  alfaDoVeuSobre,
   contrasteDaPeca,
   contrasteRatio,
 } from '@ds/shared/schemas';
@@ -102,6 +104,7 @@ export {
   contrasteDaPeca,
   PISO_DO_BOTAO,
   alfaDoVeu,
+  alfaDoVeuSobre,
 } from '@ds/shared/schemas';
 
 /**
@@ -144,6 +147,14 @@ export type PecaComposta = {
   readonly contrasteAmostrado: number | null;
   /** A que terço o texto se alinhou. `null` = o arranjo não alinha a terço. */
   readonly terco: TercoDaPeca | null;
+  /**
+   * O alfa do véu REALMENTE aplicado. `null` = a peça não tem véu.
+   *
+   * Ele começa no pior caso possível e encolhe até o que a foto pede, então o
+   * número derivado antes e o aplicado depois são diferentes de propósito — e
+   * quem lê a peça tem o direito de saber qual dos dois cobriu a imagem.
+   */
+  readonly alfaDoVeuAplicado: number | null;
   /**
    * Quanto da peça a FOTO ainda ocupa, de 0 a 1. `null` = peça sem foto.
    *
@@ -993,6 +1004,42 @@ const FERRAMENTAS_DO_PIXEL = `
     }
     return onde === null ? null : { razao: pior, cor: emHex(onde[0], onde[1], onde[2]) };
   };
+  /**
+   * Os pixels EXTREMOS de um retângulo: o mais claro e o mais escuro.
+   *
+   * O pior contraste não serve para dimensionar véu, e a razão é que a razão de
+   * contraste não é monótona na luminância — ela é MÍNIMA quando o fundo tem a
+   * mesma luminância da tinta, e volta a subir dos dois lados. Medido no banner
+   * do corredor: o pior pixel sob a headline tinha razão 1,00 porque era da cor
+   * da própria tinta, enquanto o pixel que exigia mais véu era um branco de
+   * janela com razão 1,16 — mais alta, e por isso invisível para quem procura o
+   * mínimo.
+   *
+   * Quem precisa de mais véu é o extremo do lado OPOSTO à tinta: o mais claro
+   * quando a tinta é clara, o mais escuro quando ela é escura.
+   */
+  const extremosNoRetangulo = (S, esq, topo, dir, base) => {
+    const x0 = Math.max(0, Math.round(esq) - S.dx);
+    const y0 = Math.max(0, Math.round(topo) - S.dy);
+    const x1 = Math.min(S.L, Math.round(dir) - S.dx);
+    const y1 = Math.min(S.A, Math.round(base) - S.dy);
+    if (x1 <= x0 || y1 <= y0) return null;
+    let lClaro = -1; let claro = null;
+    let lEscuro = 2; let escuro = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = (y * S.L + x) * 4;
+        const l = lumDe(S.dados[i], S.dados[i + 1], S.dados[i + 2]);
+        if (l > lClaro) { lClaro = l; claro = [S.dados[i], S.dados[i + 1], S.dados[i + 2]]; }
+        if (l < lEscuro) { lEscuro = l; escuro = [S.dados[i], S.dados[i + 1], S.dados[i + 2]]; }
+      }
+    }
+    if (claro === null || escuro === null) return null;
+    return {
+      claro: emHex(claro[0], claro[1], claro[2]),
+      escuro: emHex(escuro[0], escuro[1], escuro[2]),
+    };
+  };
 `;
 
 /**
@@ -1055,7 +1102,14 @@ const medirSubstrato = (dados: string): string => `(() => {
     const papel = el.getAttribute('data-papel') || '';
     const tinta = papel === 'cta' ? cfg.acento : cfg.tinta;
     const achado = piorNoRetangulo(S, cfg.veu, tinta, r.left, r.top, r.right, r.bottom);
-    return { papel: papel, razao: achado === null ? null : achado.razao, cor: achado === null ? null : achado.cor };
+    const ext = extremosNoRetangulo(S, r.left, r.top, r.right, r.bottom);
+    return {
+      papel: papel,
+      razao: achado === null ? null : achado.razao,
+      cor: achado === null ? null : achado.cor,
+      maisClaro: ext === null ? null : ext.claro,
+      maisEscuro: ext === null ? null : ext.escuro,
+    };
   });
 })()`;
 
@@ -1106,6 +1160,9 @@ type AmostraDoPapel = {
   readonly papel: string;
   readonly razao: number | null;
   readonly cor: string | null;
+  /** Os pixels extremos do retângulo, para dimensionar o véu. */
+  readonly maisClaro?: string | null;
+  readonly maisEscuro?: string | null;
 };
 
 type PaginaDoNavegador = {
@@ -1139,7 +1196,7 @@ export const comporPeca = async (
    * seria trocar uma certeza por uma leitura de canvas.
    */
   const amostrar = entrada.fundo !== null && substrato !== 'cor-solida';
-  const veu =
+  let veu: { r: number; g: number; b: number; alfa: number } | null =
     substrato === 'foto-com-veu'
       ? (() => {
           const [r, g, b] = canais(entrada.cores.faixa);
@@ -1168,18 +1225,105 @@ export const comporPeca = async (
     if (amostrar) {
       const pronto = await pagina.evaluate<{ pronto: boolean; porque: string }>(PREPARAR_SUBSTRATO);
       if (pronto.pronto) {
-        const comum = JSON.stringify({
-          veu,
+        const semVeu = JSON.stringify({
+          veu: null,
           tinta: canais(entrada.cores.texto),
           acento: canais(entrada.cores.acento),
         });
         if (arranjo === 'texto-sobre-imagem') {
           const escolha = await pagina.evaluate<{ terco: TercoDaPeca } | null>(
-            escolherTerco(comum),
+            escolherTerco(semVeu),
           );
           if (escolha !== null) terco = escolha.terco;
         }
-        amostras = await pagina.evaluate<readonly AmostraDoPapel[] | null>(medirSubstrato(comum));
+
+        /**
+         * O véu encolhe até o que ESTA foto precisa, e não além.
+         *
+         * `alfaDoVeu` derivou o alfa do pior pixel POSSÍVEL — branco puro, para
+         * tinta clara —, e isso é o certo enquanto ninguém viu a foto. Depois de
+         * vê-la, o pior caso teórico sai caro em pixel: medido no banner do
+         * corredor, ele deu 0,66 para domar uma janela estourada que o texto nem
+         * toca, enquanto o piso do corredor sob a headline precisava de 0,45.
+         * Vinte pontos de véu a menos é a diferença entre a foto aparecer e a
+         * foto virar uma mancha da cor da marca.
+         *
+         * A primeira passada mede o pixel CRU sob cada papel, a conta responde
+         * de quanto véu aquele pixel precisa, e a segunda confere o resultado já
+         * com o véu aplicado. A garantia não afrouxa: o número que sai é medido
+         * depois, não prometido antes.
+         */
+        if (veu !== null) {
+          const seguro = veu.alfa;
+          const cruas = await pagina.evaluate<readonly AmostraDoPapel[] | null>(
+            medirSubstrato(semVeu),
+          );
+          /**
+           * O extremo do lado OPOSTO à tinta é quem dimensiona o véu.
+           *
+           * Não o pior contraste: ele é mínimo quando o fundo tem a luminância
+           * da própria tinta, e ali o véu quase não faz falta. Medido no banner
+           * do corredor, derivar do pior contraste deu 0,60 e a medição depois
+           * devolveu 2,90:1 — abaixo do piso, com a conta jurando que dava.
+           */
+          const tintaEhClara =
+            contrasteRatio(entrada.cores.texto, '#ffffff') <
+            contrasteRatio(entrada.cores.texto, '#000000');
+          const preciso = (cruas ?? []).reduce((maior, a) => {
+            const extremo = tintaEhClara ? a.maisClaro : a.maisEscuro;
+            if (extremo === null || extremo === undefined) return maior;
+            const tinta = a.papel === 'cta' ? entrada.cores.acento : entrada.cores.texto;
+            return Math.max(maior, alfaDoVeuSobre(entrada.cores, extremo, tinta, PISO_DO_BOTAO));
+          }, 0);
+
+          const aplicar = async (alfa: number): Promise<void> => {
+            veu = { ...(veu as NonNullable<typeof veu>), alfa };
+            await pagina.evaluate<void>(
+              `(() => { const v = document.querySelector('.veu'); if (v) v.style.background = 'rgba(${(veu as NonNullable<typeof veu>).r},${(veu as NonNullable<typeof veu>).g},${(veu as NonNullable<typeof veu>).b},${alfa})'; })()`,
+            );
+          };
+          const medir = async (): Promise<readonly AmostraDoPapel[] | null> =>
+            await pagina.evaluate<readonly AmostraDoPapel[] | null>(
+              medirSubstrato(
+                JSON.stringify({
+                  veu,
+                  tinta: canais(entrada.cores.texto),
+                  acento: canais(entrada.cores.acento),
+                }),
+              ),
+            );
+
+          if (preciso > 0 && preciso < seguro) await aplicar(preciso);
+          amostras = await medir();
+
+          /**
+           * E se o véu encolhido não entregar, ele VOLTA.
+           *
+           * A conta que dimensiona é uma estimativa sobre um pixel; a medição é
+           * sobre todos. Em vez de confiar na estimativa, o motor mede e desfaz
+           * — o alfa do pior caso é garantido por construção, e recompor aqui
+           * não custa nem crédito nem uma segunda página.
+           */
+          const pior = (amostras ?? [])
+            .map((a) => a.razao)
+            .filter((n): n is number => n !== null && Number.isFinite(n));
+          if (veu.alfa < seguro && (pior.length === 0 || Math.min(...pior) < PISO_DO_BOTAO)) {
+            await aplicar(seguro);
+            amostras = await medir();
+          }
+        }
+
+        if (amostras === null) {
+          amostras = await pagina.evaluate<readonly AmostraDoPapel[] | null>(
+            medirSubstrato(
+              JSON.stringify({
+                veu,
+                tinta: canais(entrada.cores.texto),
+                acento: canais(entrada.cores.acento),
+              }),
+            ),
+          );
+        }
       }
     }
 
@@ -1271,6 +1415,7 @@ export const comporPeca = async (
       arranjo,
       contrasteAmostrado: menorAmostrado,
       terco,
+      alfaDoVeuAplicado: veu === null ? null : veu.alfa,
       fracaoDaFoto,
       fonteAplicada,
     };
