@@ -270,6 +270,22 @@ export const criativoPedidoPath = (jobId: string): string =>
  */
 export const criativoUploadDir = (jobId: string): string => join(criativosDir(jobId), 'upload');
 
+// ── Marcas criadas ─────────────────────────────────────────────────────────
+/**
+ * As MARCAS criadas ficam fora de `criativos/`, e de propósito.
+ *
+ * Uma marca não é uma peça: ela não tem canal, não vence, e é INSUMO das outras
+ * duas frentes — o site e a loja vão buscar as versões da logo aqui. Guardá-la
+ * junto das peças de tráfego faria a faxina de criativos levar embora o que o
+ * resto do portal depende.
+ */
+export const marcasRootDir = (): string => join(getRoot(), 'marcas');
+export const marcaDir = (jobId: string): string =>
+  join(marcasRootDir(), conferido(jobId, ehJobId(jobId)));
+
+/** O retrato do pedido de marca, ao lado do que ele produziu. */
+export const marcaPedidoPath = (jobId: string): string => join(marcaDir(jobId), 'pedido.json');
+
 // ── Rascunhos de criativo ──────────────────────────────────────────────────
 /**
  * Onde o upload espera ANTES de existir job.

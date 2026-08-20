@@ -61,6 +61,12 @@ export const QueueJobType = z.enum([
   'ajustar',
   'aprender',
   'criativo',
+  /**
+   * A criação de MARCA. Separado de `criativo` porque a entrega é outra: não é
+   * uma peça com dimensão de canal, é um conjunto de arquivos que precisam ser a
+   * mesma marca em roupas diferentes.
+   */
+  'marca',
 ]);
 export type QueueJobType = z.infer<typeof QueueJobType>;
 
