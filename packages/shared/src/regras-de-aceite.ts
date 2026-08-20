@@ -556,12 +556,33 @@ export type SiteNoNavegador = {
    * Pares texto/fundo abaixo do piso, já resolvidos: a cor que o navegador
    * calculou, contra o primeiro ancestral com fundo opaco.
    */
-  contrastesAbaixoDoPiso: readonly { texto: string; contraste: number; onde: string }[];
+  contrastesAbaixoDoPiso: readonly {
+    texto: string;
+    contraste: number;
+    onde: string;
+    /**
+     * Onde escrever a correção, e com que cor — `null` quando não deu para
+     * dizer.
+     *
+     * Os dois já viajavam da página e o tipo não os declarava, então quem
+     * escreve o `ajustes.css` os lia de um objeto que oficialmente não os tinha.
+     * Um consumidor que lê uma propriedade ausente do tipo é um contrato que já
+     * se rompeu — só não foi conferido.
+     */
+    seletor?: string | null;
+    tinta?: string | null;
+  }[];
   /**
    * Texto que está na página com opacidade quase zero — quase sempre uma
    * revelação por rolagem que nunca disparou.
    */
-  textoApagado: readonly { texto: string; opacidade: number; onde: string }[];
+  textoApagado: readonly {
+    texto: string;
+    opacidade: number;
+    onde: string;
+    /** Onde escrever a correção. `null` quando não deu para dizer. */
+    seletor?: string | null;
+  }[];
   /** `<img>` que não carregou: slot de mídia que ficou como bloco vazio. */
   slotsDeMidiaVazios: readonly string[];
   /** Elementos que passam da borda da tela sem estar dentro de um recorte. */

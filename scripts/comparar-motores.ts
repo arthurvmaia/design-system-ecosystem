@@ -247,7 +247,11 @@ const rodarV1 = async (alvo: string): Promise<Metricas> => {
           !NAO_COMPONENTE.has(n.tagName.toLowerCase()),
       );
       for (const c of candidatos) {
-        const html = (c as { outerHTML: string }).outerHTML ?? '';
+        // `as unknown as` porque `Node` do node-html-parser não declara
+        // `outerHTML`, e converter direto entre dois tipos que não se sobrepõem
+        // é o que o compilador recusa — com razão. O mesmo idioma está duas
+        // linhas abaixo.
+        const html = (c as unknown as { outerHTML: string }).outerHTML ?? '';
         if (html.trim().length < 30) continue;
         const no = c as unknown as {
           querySelector: (s: string) => { textContent: string } | null;

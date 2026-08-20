@@ -24,12 +24,22 @@ import {
 } from '@ds/shared';
 import { eq, inArray } from 'drizzle-orm';
 
-const projectId = process.argv[2];
+const argumento = process.argv[2];
 const saida = process.argv[3];
-if (!projectId) {
-  console.error('uso: node regerar.mjs <prj_...> [outputDir]');
+if (argumento === undefined || !argumento.startsWith('prj_')) {
+  console.error('uso: pnpm site:gerar <prj_...> [outputDir]');
   process.exit(1);
 }
+/**
+ * O id do projeto e MARCADO (`prj_${string}`), e a marca existe para impedir
+ * passar um id de kit onde se espera um de projeto. O terminal entrega texto
+ * solto: a conferencia do prefixo acima e o que autoriza a conversao — sem ela
+ * seria so um `as` escondendo o problema em vez de resolve-lo.
+ *
+ * De quebra, a mensagem de uso deixou de citar "node regerar.mjs", que e o nome
+ * de um arquivo que nao existe mais.
+ */
+const projectId = argumento as `prj_${string}`;
 
 const db = getDb();
 const projeto = db.select().from(tables.projects).where(eq(tables.projects.id, projectId)).get();
@@ -58,7 +68,12 @@ const components = ids.flatMap((id) => {
           name: c.name,
           category: c.category,
           kind: c.kind,
-          bundlePath: libraryComponentBundleDir(c.id),
+          // `c.id` vem do banco como `string`; `libraryComponentBundleDir`
+          // exige o id MARCADO (`cmp_${string}`). A marca existe para impedir
+          // passar um id de projeto onde se espera um de componente, e o banco
+          // não a carrega — a conversão é o ponto onde as duas convenções se
+          // encontram, e é aqui que ela fica visível.
+          bundlePath: libraryComponentBundleDir(c.id as `cmp_${string}`),
           designSystemId: c.designSystemId,
         },
       ]
@@ -78,7 +93,7 @@ const r = montarPaginaDoKit({
   designSystem: kitLinha?.tokensJson ? JSON.parse(kitLinha.tokensJson) : null,
   layout,
   branding,
-  midia: midiaBruta.map((m) => ({
+  midia: midiaBruta.map((m: (typeof midiaBruta)[number]) => ({
     de: m.path,
     para: `midia/${m.path}`,
     secaoId: m.secaoId,

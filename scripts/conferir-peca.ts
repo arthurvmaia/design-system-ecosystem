@@ -157,6 +157,15 @@ export const conferirBiblioteca = async (opcoes: {
   const saida: ConferenciaDaPeca[] = [];
   try {
     for (const [i, p] of pecas.entries()) {
+      /**
+       * Peça sem design system de origem não tem o que conferir.
+       *
+       * `designSystemId` é anulável na Biblioteca, e a conferência inteira parte
+       * dele: é por ele que se acha a captura com que comparar. Pular é a única
+       * resposta honesta — sem origem não há original, e um veredito sem
+       * original seria um carimbo.
+       */
+      if (p.designSystemId === null) continue;
       const r = await conferirPeca(
         { id: p.id, name: p.name, category: p.category, designSystemId: p.designSystemId },
         raiz,

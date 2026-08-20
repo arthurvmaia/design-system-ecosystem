@@ -14,7 +14,28 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { cssDaOrigem, medirBundle } from '@ds/generator';
-import { getRoot } from '@ds/shared';
+import { type StructuralNode, type VisualLayer, getRoot } from '@ds/shared';
+
+/**
+ * O manifesto da captura, na FORMA QUE ESTE TESTE LÊ.
+ *
+ * `JSON.parse` devolve `any`, e `any` apaga a conferência de tipo de tudo o que
+ * encosta nele: os callbacks abaixo saíam com parâmetro implícito e o
+ * `subtreeTextLength` era lido de um `{}` sem ninguém reclamar. Um teste que
+ * afirma coisas sobre um objeto sem tipo afirma sobre `any`.
+ *
+ * A forma é a MÍNIMA que este arquivo usa, e não o schema inteiro de propósito:
+ * um espelho completo do contrato envelheceria em silêncio ao lado dele. Os
+ * tipos que importam vêm do contrato, então mudar `VisualLayer` ou
+ * `StructuralNode` quebra este teste — que é o que se quer.
+ */
+type ManifestoLido = {
+  structuralMap?: StructuralNode[];
+  visualLayers?: VisualLayer[];
+  viewport?: { width: number; height: number };
+  pageHeight?: number;
+  mediaDetections?: { fingerprint: { hash: string } }[];
+};
 
 const raiz = getRoot();
 const vault = join(raiz, 'vault');
@@ -106,7 +127,7 @@ test(
     for (const ds of sites) {
       const mPath = join(vault, ds, 'capture-v2', 'manifest.json');
       if (!existsSync(mPath)) continue;
-      const m = JSON.parse(readFileSync(mPath, 'utf8'));
+      const m = JSON.parse(readFileSync(mPath, 'utf8')) as ManifestoLido;
       const nos = m.structuralMap ?? [];
       const porHash = new Map(nos.map((n) => [n.fingerprint.hash, n]));
       const r = escolherCamadasDePagina({
@@ -190,7 +211,7 @@ test(
       for (const h of htmls) {
         total += h.length;
         if (h.length < 40) continue;
-        if (htmls.some((outro) => outro !== h && outro.includes(h))) contidos += h.length;
+        if (htmls.some((outro: string) => outro !== h && outro.includes(h))) contidos += h.length;
       }
       if (total === 0) continue;
       const fracao = contidos / total;

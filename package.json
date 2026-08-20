@@ -43,7 +43,7 @@
     "acervo:limpar-orfas": "tsx scripts/acervo-limpar-orfas.ts",
     "test:navegador": "node --import tsx --test --test-concurrency=1 \"packages/**/src/**/*.browser.test.ts\" \"apps/**/src/**/*.browser.test.ts\"",
     "test:tudo": "pnpm test && pnpm test:navegador",
-    "verificar": "pnpm lint && pnpm typecheck && pnpm test && pnpm medir-fidelidade --falhar-se-piorar",
+    "verificar": "pnpm lint && pnpm typecheck && pnpm typecheck:scripts && pnpm test && pnpm medir-fidelidade --falhar-se-piorar",
     "voz": "tsx scripts/voz-orbis.ts",
     "pagina": "tsx scripts/pagina-montar.ts",
     "conferir": "tsx scripts/conferir-site.ts",
@@ -62,10 +62,14 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.2",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.36.4",
+    "node-html-parser": "^6.1.13",
     "playwright": "^1.61.1",
     "tsx": "^4.19.2",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "zod": "^3.24.1"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {

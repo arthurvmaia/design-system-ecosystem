@@ -118,13 +118,41 @@ const avaliar = (seg: {
     jaNaBiblioteca: seg.inLibrary,
     fidelidade: insight?.fidelity ?? 0,
     representacao: (bundle?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
+    /**
+     * A representação vem do BUNDLE, e o insight não a tem.
+     *
+     * Esta linha lia `insight.representation`, que `SegmentInsight` não declara
+     * e o manifesto não grava — então ela era `null` desde sempre. O valor real
+     * é o de cima, lido do bundle; manter a leitura morta ao lado dele só fazia
+     * parecer que havia duas fontes.
+     */
     representacaoDoInsight:
-      (insight?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
+      (bundle?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
     interacoes: insight?.interactions?.length ?? 0,
     movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
     suporte: insight?.support ?? null,
-    comparacaoVisualOk: insight?.comparacaoVisual?.ok ?? null,
-    comparacaoVisualDelta: insight?.comparacaoVisual?.delta ?? null,
+    /**
+     * A comparação de pixel NÃO chega até aqui, e isso é um buraco declarado.
+     *
+     * Estas duas linhas liam `insight.comparacaoVisual`, que o `SegmentInsight`
+     * também não declara. A consequência não era teórica: em
+     * `curadoria-escolha.ts`, `comparacaoVisualOk === false` é uma condição de
+     * REPROVA — "o bundle não bate com o que a captura viu" —, e com o campo
+     * eternamente `null` ela nunca disparou. Peça cujo bundle diverge da
+     * captura era promovida em silêncio.
+     *
+     * O dado existe: `lerComparacoesV2(id)` o lê do disco. O que não existe é o
+     * caminho até aqui — quem associa comparação a segmento é
+     * `associarConferencias`, uma função PRIVADA da rota de design systems, e a
+     * associação é heurística (casa por print da dobra e por posição). Trazê-la
+     * para cá quer dizer extraí-la para um pacote compartilhado, com teste, e
+     * isso é maior que o conserto de tipo que abriu este buraco.
+     *
+     * Fica `null` EXPLÍCITO em vez de uma leitura que fingia medir: o veredito
+     * "não medido" é verdadeiro, e o de antes não era.
+     */
+    comparacaoVisualOk: null,
+    comparacaoVisualDelta: null,
     // O bundle está em disco AGORA: G8 é a única regra do aceite que a curadoria
     // consegue conferir por inteiro, e é a que evita levar para o kit uma peça
     // cujo script mistura o analytics da origem com o comportamento dela.

@@ -48,7 +48,18 @@ import {
 } from '@ds/shared';
 
 const say = (texto: string) => console.log(`  ${texto}`);
-const die = (texto: string): never => {
+/**
+ * Anotação no LADO ESQUERDO, e não no retorno da seta.
+ *
+ * O TypeScript só usa uma função que nunca retorna para ESTREITAR o que vem
+ * depois dela quando a anotação está na variável. Com `= (t: string): never =>`,
+ * a chamada continua sendo só uma chamada: tudo o que vem depois segue
+ * "possibly undefined", e foi por isso que este arquivo tinha quatro erros de
+ * tipo em cima de guardas que já existiam e já funcionavam.
+ *
+ * A mesma armadilha está anotada em `criativo-compor.ts`.
+ */
+const die: (texto: string) => never = (texto) => {
   console.error(`\n  [ERRO] ${texto}\n`);
   process.exit(1);
 };
@@ -86,7 +97,12 @@ const acharZip = async (argumento: string | undefined): Promise<string> => {
     );
   }
   candidatos.sort((a, b) => b.mtime - a.mtime);
-  const escolhido = candidatos[0].caminho;
+  // O `die` acima garante que a lista não está vazia, mas ele guarda o
+  // COMPRIMENTO e o índice é outra coisa: `noUncheckedIndexedAccess` não liga
+  // as duas, e tem razão — uma lista não-vazia continua podendo ter um buraco.
+  const primeiro = candidatos[0];
+  if (primeiro === undefined) die('Não achei nenhum zip de acervo para importar.');
+  const escolhido = primeiro.caminho;
   const usar = await perguntarSimNao(`Encontrei ${basename(escolhido)}. Importar esse?`);
   if (!usar) die('Cancelado. Nada foi alterado.');
   return escolhido;
