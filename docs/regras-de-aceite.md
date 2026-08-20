@@ -333,3 +333,170 @@ benigna. A regra acusa só quando existe no HTML um id terminando em
 `-<procurado>` — o que pega os 4 bundles medidos no acervo e nenhum a mais.
 Busca montada em tempo de execução (`'#' + nome`) fica fora: sem executar não se
 sabe o alvo, e acusar no escuro reprova peça boa.
+
+---
+
+# Regra de aceite da PEÇA CRIATIVA
+
+Vale para cada variação produzida na frente Criativos, no momento em que ela
+seria marcada como `aprovada`.
+
+> **A peça criativa custa dinheiro e sai da casa.** As outras duas réguas
+> protegem o acervo; esta protege o cliente e a conta de quem paga. Por isso o
+> `pendente` aqui quase nunca é limite técnico: é **coisa que não temos como
+> medir** — e o que não se mede não pode ser chamado de aprovado.
+
+Uma peça com pendência sai rotulada **"aprovada com ressalva"**, com a ressalva
+nomeada, e a folha de conferência viaja com ela. O contrato recusa fechar um job
+cuja variação está `aprovada` sem folha, ou com uma regra reprovada dentro dela:
+veredito que contradiz a própria medição é pior que não medir, porque alguém
+olhou, viu errado, e carimbou verde assim mesmo.
+
+### C1. A dimensão é exatamente a do formato
+
+*Por que:* peça fora de medida não entra no lugar. O canal corta, estica ou
+recusa, e quem descobre é o cliente, depois de pagar.
+
+*Como se confere:* largura e altura MEDIDAS no arquivo, contra
+`DIMENSAO_DO_FORMATO`. A medida sai do cabeçalho do PNG, sem biblioteca.
+
+*Falhou:* a primeira geração paga saiu 736×414 num pedido de 1080×1080 — o
+provedor devolve a proporção que ele quer, não a que se pediu. É por isso que a
+composição recorta para a dimensão exata em vez de confiar na saída.
+
+### C2. O texto pedido está na peça, e dentro do quadro
+
+*Por que:* o cliente digitou uma headline literal. Ela aparecer "parecida" é o
+mesmo que não aparecer — e ela aparecer FORA do quadro também.
+
+*Como se confere:* duas medições, porque são duas perguntas. A primeira lê o
+texto renderizado e cobra a headline e o CTA literais. A segunda mede
+`getBoundingClientRect()` de cada `[data-papel]` e cobra que a caixa esteja
+dentro do quadro do formato, nos quatro lados. Sem a segunda medição a regra
+fica **pendente**, nunca verde.
+
+*Falhou:* medido em Chromium num `banner-3x1` com uma headline de 176
+caracteres (o schema permite 200): a faixa de leitura cresceu para cima e a
+linha da marca terminou **601px acima** do topo do quadro de 500px. A peça saiu
+sem marca visível e a headline entrou cortada no meio — e as **dez** regras
+ficaram verdes, com o rótulo "aprovada". Nenhuma delas perguntava onde o texto
+estava; todas perguntavam se ele existia, e `innerText` responde sobre o
+documento, não sobre o pixel.
+
+Foi por causa desse caso que a composição passou a derivar o corpo da letra do
+comprimento do texto, em vez de usar uma fração fixa da largura.
+
+### C3. A grafia da marca está exata
+
+*Por que:* a grafia é FATO, não estilo. É o único pedaço da peça que não admite
+interpretação.
+
+*Como se confere:* a marca aparece no texto renderizado com a caixa exata. Se
+aparece só ignorando maiúsculas, REPROVA — `text-transform: uppercase` muda o
+que se vê sem mudar o documento, e "iFood" vira "IFOOD" na tela continuando
+"iFood" no DOM.
+
+### C4. O texto se lê no tamanho real
+
+*Por que:* peça de tráfego que não se lê não cumpre função nenhuma.
+
+*Como se confere:* o menor contraste entre texto e fundo fica em 3:1 ou acima —
+o mesmo piso das outras réguas da casa. O número é CALCULADO entre o par de
+cores que a composição escolheu, não amostrado do pixel, e isso é barato e
+exato enquanto valerem as duas condições que o tornam verdade: o texto é opaco,
+e a faixa sob ele é sólida. As duas são medidas aqui, não presumidas.
+
+*Falhou:* na mesma peça de C2, a régua declarava **11,82:1** e o pixel real no
+topo da linha da marca media **2,51:1**. A faixa era um degradê que começava
+transparente e a marca vinha com `opacity:.85`: o par de cores continuava o
+mesmo, e nenhuma das duas cores estava na tela. Hoje o degradê vive num véu
+acima da caixa de texto, a marca é opaca, e a régua **reprova** quando encontra
+qualquer `[data-papel]` com opacidade menor que 1 — porque nesse caso o número
+declarado deixou de descrever a peça.
+
+Contraste que não dá para calcular (`NaN`, de cor em formato que a conta não lê)
+fica **pendente**. Sem essa conferência ele passava por baixo do piso em
+silêncio, já que `NaN < 3` é `false`.
+
+### C5. O material do cliente foi preservado
+
+*Por que:* upload vence geração. Trocar o arquivo dele por material inventado é
+o contrário do que ele pediu.
+
+*Como se confere:* houve upload? Então ele tem de estar na peça. **Não houve
+upload** e **ninguém conferiu** são coisas diferentes: a primeira passa, a
+segunda é pendência. Enquanto as duas foram o mesmo `null`, a régua dava verde
+para o que ninguém tinha olhado.
+
+### C6. As variações são de fato diferentes
+
+*Por que:* cobrar duas e entregar uma.
+
+*Como se confere:* o hash do conteúdo não bate com o de nenhuma irmã do mesmo
+pedido.
+
+### C7. Nenhum texto espúrio dentro do pixel
+
+*Por que:* modelo de imagem inventa letra torta, legenda e assinatura. Nada
+disso pode chegar ao cliente como se fosse da marca dele.
+
+*Como se confere:* **não se confere.** Ler o que está DENTRO da imagem exige
+OCR, e este repositório não tem. Com pixel gerado, a regra é PENDENTE e vai para
+revisão humana. Peça sem pixel gerado passa: não há o que inventar.
+
+### C8. Sem marca d'água do provedor
+
+*Por que:* marca d'água de terceiro numa peça de campanha é problema do cliente,
+não do fornecedor.
+
+*Como se confere:* também não se confere. O plano da conta não é prova sobre o
+pixel — dizer "o plano é premium, logo não tem marca d'água" é vender cadastro
+como proveniência. PENDENTE quando houve geração.
+
+### C9. A procedência está registrada
+
+*Por que:* peça que não diz de que modelo e preset saiu não é reproduzível nem
+auditável. Quando o cliente pedir "outra igual a essa", não há como.
+
+*Como se confere:* a variação traz modelo e preset. Sem isso, pendência.
+
+### C10. Nenhum caractere se perdeu no caminho
+
+*Por que:* C2 e C3 comparam o texto renderizado com o texto do pedido. Se os
+dois vierem corrompidos, os dois concordam e ambos passam — a régua fica verde
+sobre uma peça que mostra "cole��o".
+
+*Como se confere:* o texto renderizado não contém o caractere de substituição
+(U+FFFD). Ele é o rastro que sobra quando alguma etapa leu os bytes com a
+codificação errada.
+
+*Falhou:* a primeira peça composta deste repositório saiu com o CTA
+"Ver a cole��o", e as nove regras da época ficaram verdes. Quem percebeu foi o
+olho, ao abrir o PNG. Esta regra existe para o olho não precisar ser o único.
+
+### C11. A peça saiu na tipografia da marca
+
+*Por que:* o `font-family` do CSS é um PEDIDO, e o fallback dele é silencioso
+por desenho. Sem a fonte carregada, o navegador desenha noutra letra e nada no
+arquivo diz que isso aconteceu: a peça alega ser da marca sem ser.
+
+*Como se confere:* a composição EMBUTE o arquivo da fonte na página (o Chromium
+que compõe não tem as fontes do mundo instaladas), e depois percorre
+`document.fonts` procurando uma face daquela família com `status: "loaded"`.
+Pedido que não escolheu tipografia passa: a letra da casa foi decisão.
+
+*Falhou:* a primeira tentativa usou `document.fonts.check()`, e ele responde a
+pergunta errada, que é se o navegador consegue desenhar o texto de ALGUM jeito.
+Medido: uma família inventada passava por aplicada, porque o fallback do
+sistema dá conta.
+
+*Por que reprova em vez de virar ressalva:* recompor não gasta crédito. O pixel
+gerado já está pago e em disco, e `pnpm criativo:compor` monta de novo a partir
+dele. Como o conserto é de graça, deixar sair uma peça na letra errada seria
+escolher entregar errado.
+
+### Antes de gastar: claim não autorizado
+
+Não é regra de aceite — é porteiro. Preço, desconto, prazo e frete no texto da
+peça são conferidos **no pedido**, contra `autorizacoesDeClaim`. Conferir depois
+da geração só serviria para reprovar algo que já foi pago.

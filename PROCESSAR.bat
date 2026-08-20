@@ -79,7 +79,7 @@ REM esse texto, acabar o limite fica identico a qualquer outro erro, e a janela
 REM some sem explicar nada.
 REM
 REM 90 = limite de uso atingido    91 = nao esta logado
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& claude -p 'Processe somente os jobs da fila com estes ids: %JOBS%. Ignore qualquer outro job pendente, inclusive os mais antigos: eles ficam na fila de proposito e nao devem ser tocados agora. Siga as instrucoes do CLAUDE.md. Para cada job selecionado: reporte o avanco com pnpm fila:progresso ao terminar cada etapa (a pessoa esta olhando a barra no aplicativo e sem isso acha que travou), execute o trabalho descrito no payload e depois finalize rodando pnpm fila:concluir com o id do job. Nao peca confirmacao e nao pare no meio: va ate o ultimo job selecionado. Se um job falhar, registre o erro e siga para o proximo. Ao terminar, imprima um resumo com os jobs concluidos, os que falharam e o motivo.' --permission-mode bypassPermissions --verbose 2>&1 | Tee-Object -Variable saida; $t = $saida | Out-String; if ($t -match 'hit your .* limit') { exit 90 }; if ($t -match 'Not logged in' -or $t -match 'resolve authentication method') { exit 91 }; exit $LASTEXITCODE"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& claude -p 'Processe somente os jobs da fila com estes ids: %JOBS%. Ignore qualquer outro job pendente, inclusive os mais antigos: eles ficam na fila de proposito e nao devem ser tocados agora. Siga as instrucoes do CLAUDE.md. Para cada job selecionado: reporte o avanco com pnpm fila:progresso ao terminar cada etapa (a pessoa esta olhando a barra no aplicativo e sem isso acha que travou), execute o trabalho descrito no payload e depois finalize rodando pnpm fila:concluir com o id do job. Nao peca confirmacao e nao pare no meio: va ate o ultimo job selecionado. Atencao: parar por teto de credito NAO e parar no meio - e concluir o job, com as variacoes restantes marcadas como falhou e o motivo escrito. Estourar o teto em silencio e que seria defeito. Se um job falhar, registre o erro e siga para o proximo. Ao terminar, imprima um resumo com os jobs concluidos, os que falharam e o motivo.' --permission-mode bypassPermissions --verbose 2>&1 | Tee-Object -Variable saida; $t = $saida | Out-String; if ($t -match 'hit your .* limit') { exit 90 }; if ($t -match 'Not logged in' -or $t -match 'resolve authentication method') { exit 91 }; exit $LASTEXITCODE"
 
 set "SAIDA=%errorlevel%"
 
@@ -98,14 +98,19 @@ if not "%SAIDA%"=="0" (
 echo.
 echo   ------------------------------------------------------------
 
-REM Zera a fila inteira: o que sobrou de pendente e o historico de processados.
-REM A proxima abertura comeca limpa, sem resto da anterior. Isso apaga PEDIDOS,
-REM nao trabalho: o que foi extraido fica em vault/ e library/, intocado.
+REM Limpa SO os jobs desta rodada. Antes era "tudo", e isso contradizia o proprio
+REM prompt la em cima: ele manda ignorar os pendentes nao selecionados porque
+REM "eles ficam na fila de proposito", e a limpeza os apagava assim mesmo.
+REM
+REM Isso apaga PEDIDOS, nao trabalho: o que foi extraido fica em vault/ e
+REM library/, intocado. E o fila-limpar poupa job `criativo` por padrao, porque
+REM ali o pedido apagado leva junto a peca paga da tela "Minhas pecas", o teto de
+REM creditos e os claims autorizados.
 REM
 REM So roda depois de um processamento de verdade. Se voce cancelou na tela de
 REM escolha, o script saiu la em cima e nada foi apagado - cancelar tem que ser
 REM seguro, senao a palavra perde o sentido.
-call pnpm exec tsx scripts/fila-limpar.ts tudo
+call pnpm exec tsx scripts/fila-limpar.ts %JOBS%
 
 echo.
 echo   Pronto. Pode fechar esta janela.

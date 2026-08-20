@@ -9,10 +9,13 @@
  * ele também segmenta e roda a validação do replay no navegador (passo do
  * processamento, não trabalho de LLM) para promover o que reproduz de verdade.
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ArquivoDoRazao, lerRazao } from '@ds/creative';
 import {
+  criativoPedidoPath,
   criativosDir,
+  dimensaoDePng,
   finishJob,
   getJob,
   listarAssetsFaltando,
@@ -193,6 +196,28 @@ if (job.type === 'criativo') {
   const dir = criativosDir(jobId);
   const arquivo = join(dir, 'resultado.json');
 
+  // O retrato do pedido vai para o disco ANTES de qualquer conferência, e
+  // acontecendo o que acontecer com o job.
+  //
+  // A fila é volátil por desenho — o `fila:limpar` a esvazia — e enquanto o
+  // pedido morava só lá, esvaziá-la levava junto o teto de créditos, os claims
+  // autorizados e a peça inteira da tela "Minhas peças". Os arquivos ficavam em
+  // `criativos/<job_id>/`, pagos e inalcançáveis.
+  //
+  // Gravar aqui é o que existe hoje: quem enfileira ainda é a tela de ensaio,
+  // que não cria job. Quando o `POST` nascer, o retrato passa a ser escrito no
+  // ato do enfileiramento e esta linha vira rede de segurança.
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(criativoPedidoPath(jobId), JSON.stringify(job.payload, null, 2), 'utf8');
+  } catch (err) {
+    problemas.push(
+      `não consegui gravar o retrato do pedido em ${dir}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
   if (!existsSync(arquivo)) {
     problemas.push(`resultado.json não existe em ${dir} — a peça não tem onde ser lida.`);
   } else {
@@ -206,12 +231,46 @@ if (job.type === 'criativo') {
         `resultado.json não é JSON válido: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    /**
+     * O razão entra na conferência.
+     *
+     * Sem ele, o portão comparava o teto contra o `custoGasto` do
+     * `resultado.json` — um número que nasce zerado e que quem produziu escreve.
+     * `0 > teto` nunca dispara, e a régua do orçamento era código morto.
+     */
+    const arquivoDoRazao = join(dir, 'razao.json');
+    let razao: { gasto: number; empenhado: number } | undefined;
+    if (existsSync(arquivoDoRazao)) {
+      try {
+        const r = ArquivoDoRazao.parse(JSON.parse(readFileSync(arquivoDoRazao, 'utf8')));
+        const conta = lerRazao(r.lancamentos);
+        razao = { gasto: conta.gasto, empenhado: conta.empenhado };
+      } catch (err) {
+        problemas.push(
+          `razao.json está ilegível (${err instanceof Error ? err.message : String(err)}): não fecho um job pago por cima de um registro de dinheiro que não consigo ler.`,
+        );
+      }
+    }
+
     if (leu) {
       problemas.push(
         ...problemasDaEntregaCriativa({
           resultado: bruto,
           pedido: job.payload,
+          razao,
           existe: (relativo) => existsSync(join(dir, relativo)),
+          // O portão mede o ARQUIVO, em vez de acreditar na folha que veio
+          // junto: ela é escrita por quem produziu, e uma entrega que confia na
+          // própria declaração não é conferida por ninguém.
+          dimensaoDe: (relativo) => {
+            const caminho = join(dir, relativo);
+            if (!existsSync(caminho)) return null;
+            try {
+              return dimensaoDePng(readFileSync(caminho));
+            } catch {
+              return null;
+            }
+          },
         }),
       );
     }

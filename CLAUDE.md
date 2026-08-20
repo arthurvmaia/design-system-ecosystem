@@ -210,19 +210,62 @@ nenhuma peça visual nasce fora do motor.
    motor (MCP), e só onde o pixel não existe.
 2. **Upload vence geração, sempre.** `origem: 'upload'` nunca passa por
    gerador — o schema já reprova o payload ambíguo, e o motor respeita.
-3. **Orçamento contado.** `simulate_cost` antes (read-only), declare o custo,
-   debite do `tetoDeCreditos` do pedido e PARE ao zerar — parar é resultado,
-   estourar em silêncio é defeito.
+3. **Orçamento contado, e agora com registro.** O caminho sancionado é este, e
+   é o único que deixa prova:
+
+   ```powershell
+   pnpm criativo:precos                              # o preset e o preço medido
+   mcp: account_balance                              # o saldo ANTES do lote
+   pnpm criativo:razao reservar <job> <ref> <custo>  # confere e empenha; RECUSA se não couber
+   mcp: images_generate ...                          # só depois de o empenho passar
+   pnpm criativo:razao debitar  <job> <ref> <custo>  # o provedor cobrou
+   pnpm criativo:razao liberar  <job> <ref> "<por quê>"  # falhou ANTES de cobrar
+   mcp: account_balance                              # o saldo DEPOIS; a diferença é achado
+   ```
+
+   O `reservar` confere contra três tetos e vence o menor: o do pedido
+   (`tetoDeCreditos`), o da rodada (`ORBIS_CRIATIVO_TETO_LOTE`, sem default) e o
+   saldo real. Ele recusa com a conta escrita — parar é resultado, estourar em
+   silêncio é defeito.
+
+   O preset padrão é `imagem-padrao` (Nano Banana 2 em 2K). Para o símbolo e os
+   ativos finais da marca use `imagem-marca`: é o Nano Banana **Pro**, custa o
+   mesmo (75, medido) e tem mais fidelidade. Nunca derive o slug do rótulo — o
+   slug `imagen-nano-banana-2` é o **Pro**, não o 2. O catálogo é a fonte.
 4. **Nada inventado.** Preço, desconto, prazo, frete, depoimento e
    certificação só aparecem se estiverem em `autorizacoesDeClaim` — ou seja,
    se o cliente digitou.
-5. **Saída em disco**: `criativosDir(jobId)` com as variações e um
-   `resultado.json` no formato `ResultadoCriativo`. Reporte
-   `pnpm fila:progresso` por variação.
-6. **Verificação antes do download** (estágio 5 do motor): dimensão
-   exatamente a do formato pedido, texto legível no tamanho real do canal,
-   produto do cliente preservado quando houve upload. Peça reprovada não vira
-   download: o resultado diz o que falhou. Feche com `pnpm fila:concluir`.
+5. **O pixel do provedor pousa DENTRO de `criativosDir(jobId)`.** A URL que o
+   provedor devolve traz token que expira, então ela não é entrega: baixe o
+   arquivo para a pasta do job antes de qualquer outra coisa.
+6. **Componha. O pixel gerado NÃO é a peça.** Medido na primeira geração paga:
+   um pedido de 1080×1080 voltou 736×414 — o provedor devolve a proporção que
+   ele quer. Quem entrega a dimensão exata, o texto literal, o logotipo, a cor
+   do botão e a tipografia da marca é a composição, e ela é um comando:
+
+   ```powershell
+   pnpm criativo:compor <job> <n> --fundo <arquivo que você baixou>
+   ```
+
+   Ele compõe na medida exata, MEDE no navegador (onde cada papel foi parar,
+   se o logotipo carregou e não deformou, se a fonte da marca aplicou), roda
+   C1..C11 e grava a folha de conferência junto da peça. Rode uma vez por
+   variação. Sem esta etapa o `fila:concluir` RECUSA fechar — e aí o crédito
+   já saiu.
+
+   Leia os avisos que ele imprime. "o logotipo não está na pasta", "nenhuma
+   cor de apoio se lê no botão" e "não consegui obter a fonte" são coisas que
+   se conserta ANTES de entregar, e recompor não gasta crédito nenhum: o pixel
+   já está em disco.
+7. **Saída em disco**: `criativosDir(jobId)` com as variações e um
+   `resultado.json` no formato `ResultadoCriativo` — o `criativo:compor` grava.
+   Reporte `pnpm fila:progresso` por variação.
+8. **Verificação antes do download** (estágio 5 do motor): a folha C1..C11 é
+   ela. Dimensão exata, texto DENTRO do quadro, marca visível e não deformada,
+   contraste real, tipografia da marca aplicada, produto do cliente preservado.
+   Peça reprovada não vira download: o resultado diz o que falhou. Peça com
+   pendência sai "aprovada com ressalva", com a ressalva nomeada. Feche com
+   `pnpm fila:concluir`.
 
 ### `ajustar`
 
@@ -306,6 +349,18 @@ Isso valida o schema, registra no SQLite e move o job para `concluido/`. Se o sc
 - **Nunca crie um watcher, cron, daemon ou qualquer coisa que processe a fila sem uma pessoa mandar.** O único gatilho válido é alguém abrir o `PROCESSAR.bat` e escolher os jobs na janela. A partir daí o processamento corre sozinho até o fim — mas só sobre os ids escolhidos, e a janela encerra quando acaba. Agendar, disparar em background ou ficar de olho na pasta descaracteriza o modo e coloca a conta do usuário em risco.
 - Não chame a API da Anthropic a partir do código no modo `queue` — o trabalho é seu.
 - Não invente conteúdo que não esteja no material do usuário.
+- **O motor criativo é UM, e atende as três frentes.** Imagem, vídeo e criação
+  de marca saem de `@ds/creative` — não importa se quem pediu foi a geração de
+  site, a loja Shopify ou a frente Criativos. Uma segunda implementação de
+  qualquer parte visual é defeito, porque a divergência aparece tarde e como
+  "a logo da loja não é a mesma do site". O recorte das versões da logo mora em
+  `packages/creative-engine/src/marca/derivar-navegador.ts`; a frente de Lojas
+  tem um ESPELHO verificado por teste (`pnpm marca:espelhar`), porque ela é um
+  projeto com deploy separado e não pode importar do workspace.
+- **Do símbolo saem as versões, por cálculo — nunca por geração.** Pedir "o
+  mesmo símbolo em fundo branco" abre um pedido NOVO e o modelo desenha outro
+  símbolo: é assim que a marca chega em três modelos diferentes em vez de uma
+  marca em três roupas. Gere o símbolo UMA vez e rode `pnpm marca:derivar`.
 - **Toda peça visual passa pelo motor `orbis-suite`.** Qualquer processo do app
   que crie imagem, vídeo ou peça de design — nas três frentes — segue a skill
   `orbis-suite`: briefing separando fato de direção, rota de produção declarada,
@@ -341,6 +396,11 @@ pnpm test:navegador   # os 11 arquivos com Chromium (~4min, precisa do playwrigh
 pnpm test:tudo        # os dois
 pnpm verificar        # lint + typecheck + test + portao de fidelidade
 pnpm db:migrate       # aplica migrations
+pnpm criativo:precos  # catálogo de presets + tabela de preço MEDIDA, e o que falta medir
+pnpm criativo:compor  # compõe UMA variação na medida exata, mede no navegador e roda C1..C11
+pnpm criativo:razao   # ver/reservar/debitar/liberar o crédito de um job criativo
+pnpm marca:derivar    # do símbolo saem as 3 versões da logo, por cálculo (não gasta crédito)
+pnpm marca:espelhar   # regrava o espelho do recorte na frente de Lojas (--seco só confere)
 pnpm fila             # lista a fila
 pnpm extrair          # extrai um job de URL por navegador (renderiza o DOM real) — passo 1 do modo queue
 pnpm explorar         # captura profunda: descobre estados interativos e baixa assets (opcional)
@@ -354,7 +414,8 @@ pnpm medir-fidelidade # mede o acervo e compara com a linha de base (--gravar ad
                       # --falhar-se-piorar vira PORTAO: sai 1 se reprovar, 2 se nao der para verificar
 pnpm reextrair        # re-captura um ds_id (ou --todos) no MESMO id, trocando só no fim
 pnpm regiao:recompilar # limpa/recompila bundles do acervo sem reabrir navegador (--todos, --seco)
-pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
+pnpm fila:limpar      # limpa os jobs do lote (roda no fim do PROCESSAR.bat); poupa `criativo`
+                      # por padrão — só sai com --incluir-criativos escrito à mão
 pnpm acervo:limpar-orfas # lista (e com --apagar remove) pastas do vault sem design system no app
 pnpm acervo:exportar  # zip portátil do acervo (EXPORTAR-ACERVO.bat)
 pnpm acervo:importar  # importa acervo de outra máquina reescrevendo caminhos (IMPORTAR-ACERVO.bat)
