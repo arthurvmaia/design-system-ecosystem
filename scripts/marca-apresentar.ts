@@ -88,6 +88,21 @@ const principal = async (): Promise<void> => {
      * botão por cima. Mostrar o pixel cru seria mostrar a foto, não a aplicação
      * — e é a aplicação que o cliente precisa ver para saber o que recebeu.
      */
+    /**
+     * O briefing de cada arte, lido do registro.
+     *
+     * É o que M9 confere: duas artes do mesmo briefing são, por construção,
+     * variações de uma ideia. Medir a distância visual não serve — os pares de
+     * mesma ideia e de ideias diferentes se CRUZAM na escala, e o porquê está
+     * medido na régua.
+     */
+    const arquivoDosBriefings = join(artesDir, 'briefings.json');
+    const porArquivo: Record<string, string> = existsSync(arquivoDosBriefings)
+      ? (JSON.parse(readFileSync(arquivoDosBriefings, 'utf8')) as Record<string, string>)
+      : {};
+    const briefings: string[] | null =
+      Object.keys(porArquivo).length === 0 ? null : Object.values(porArquivo);
+
     const copyDosBanners = [
       { headline: 'Você entende o tratamento antes de ele começar', cta: 'Agendar avaliação' },
       { headline: 'A gente explica. Depois trata.', cta: 'Marcar horário' },
@@ -186,9 +201,17 @@ const principal = async (): Promise<void> => {
       },
       favicons,
       paleta,
+      /**
+       * A legenda de cada referência é o BRIEFING dela.
+       *
+       * Elas eram todas a mesma frase, o que dizia ao cliente que as três
+       * mostram a mesma coisa — logo depois de eu ter refeito as três
+       * justamente para que não mostrassem. A legenda que se repete é a versão
+       * escrita do defeito que M9 pega no pixel.
+       */
       direcaoDeImagem: direcoes.map((a, i) => ({
         titulo: `Referência ${i + 1}`,
-        legenda: 'Luz natural, ambiente claro, sem aparelhagem à mostra.',
+        legenda: porArquivo[a] ?? 'Luz natural, ambiente claro.',
         imagem: comoDataUri(join(artesDir, a)),
       })),
       banners: compostos,
@@ -209,20 +232,6 @@ const principal = async (): Promise<void> => {
      * o olho, e o olho não escala.
      */
     const medida = await medirApresentacaoPronta(navegador, pronta.html);
-    /**
-     * O briefing de cada arte, lido do registro.
-     *
-     * É o que M9 confere: duas artes do mesmo briefing são, por construção,
-     * variações de uma ideia. Medir a distância visual não serve — os pares de
-     * mesma ideia e de ideias diferentes se CRUZAM na escala, e o porquê está
-     * medido na régua.
-     */
-    const arquivoDosBriefings = join(artesDir, 'briefings.json');
-    const briefings: string[] | null = existsSync(arquivoDosBriefings)
-      ? (Object.values(
-          JSON.parse(readFileSync(arquivoDosBriefings, 'utf8')) as Record<string, string>,
-        ) as string[])
-      : null;
 
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'apresentacao.pdf'), pronta.pdf);
