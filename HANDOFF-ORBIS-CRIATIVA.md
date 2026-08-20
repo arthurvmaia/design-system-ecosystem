@@ -67,7 +67,33 @@ tela /criativos/marca → POST /api/marcas (credencial 428; id = hash da chave;
      → pnpm marca:entregar <job> --para "<Desktop>"
 ```
 
-### Os ARRANJOS de banner
+### Como a ARTE de banner nasce hoje
+
+Regra do dono: **a arte é gerada por inteiro no Magnific**. O prompt descreve a
+peça completa — foto, layout, cor, chamada e botão — e o motor busca o arquivo
+(`arte-completa-N.png`). O compositor continua inteiro e continua sendo o caminho
+quando a arte chega crua.
+
+Três regras que custaram esta rodada e valem para QUALQUER marca:
+
+1. **Dois conceitos são duas PROPOSTAS VISUAIS, tiradas do briefing.** Não duas
+   geometrias da mesma ideia, e não de um cardápio fixo de estilos — cardápio
+   devolve as mesmas duas ideias para clínica, padaria e advogado. **M10**
+   confere, lendo `artes/propostas.json`.
+2. **Todo banner de site tem desktop E mobile**, e o mobile não é recorte da
+   larga. **M11** recusa a entrega pela metade.
+3. **O mobile aparece NA APRESENTAÇÃO**, não só na pasta: a página de conceito
+   existe para o cliente ver o que vai receber.
+
+O que se PERDE ao gerar em vez de compor, e fica declarado na página de
+pendências: C2, C3, C4 e C11 medem o DOCUMENTO, e um PNG não tem documento.
+A grafia é conferência de olho — acento em português é onde o modelo mais erra.
+
+**Existe brand kit no Magnific** e ele resolveria a tipografia (`brandKitId` no
+`images_generate`), mas `brand_kit_list` NÃO está exposto no MCP: o kit tem de
+ser criado no app pelo dono.
+
+### Os ARRANJOS de banner (o caminho da arte CRUA)
 
 `comporPeca` tinha **um layout só** — foto em cima, faixa sólida embaixo — e o
 dono viu: *"você fez 1 estilo de banner só para os dois"*. Hoje são quatro, e

@@ -250,9 +250,23 @@ const principal = async (): Promise<void> => {
         imagem: comoDataUri(caminho),
       });
       paraOPacote.push({ nome: arquivo, bytes: readFileSync(caminho) });
+      /**
+       * A versão de TELEFONE entra na apresentação, e não só na pasta.
+       *
+       * Regra do dono, e a razão é a mesma que fez M11 existir: o telefone é
+       * onde a maior parte das pessoas vê o banner. Um brandbook que mostra só
+       * a versão larga deixa o cliente aprovar uma peça e receber outra — e a
+       * página de conceito existe justamente para ele ver o que vai receber.
+       */
       const doTelefone = join(artesDir, mobileDe(arquivo));
       if (existsSync(doTelefone)) {
         paraOPacote.push({ nome: mobileDe(arquivo), bytes: readFileSync(doTelefone) });
+        compostos.push({
+          titulo: `Conceito ${i + 1} — no telefone`,
+          legenda:
+            'A mesma proposta diagramada para a tela vertical. Não é um recorte da versão larga: o texto foi refeito para a largura do telefone.',
+          imagem: comoDataUri(doTelefone),
+        });
       }
     }
 

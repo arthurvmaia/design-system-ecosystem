@@ -125,9 +125,21 @@ const ENTREGA: readonly {
     obrigatorio: false,
   },
   {
+    de: 'artes/arte-completa-1-mobile.png',
+    pasta: 'Artes prontas',
+    para: 'Banner do site 1 - celular.png',
+    obrigatorio: false,
+  },
+  {
     de: 'artes/arte-completa-2.png',
     pasta: 'Artes prontas',
     para: 'Banner do site 2.png',
+    obrigatorio: false,
+  },
+  {
+    de: 'artes/arte-completa-2-mobile.png',
+    pasta: 'Artes prontas',
+    para: 'Banner do site 2 - celular.png',
     obrigatorio: false,
   },
   {
