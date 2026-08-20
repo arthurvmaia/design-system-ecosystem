@@ -38,6 +38,8 @@ const NADA_MEDIDO: VariacaoParaAceite = {
   uploadPreservado: null,
   procedencia: null,
   tipografia: null,
+  fracaoDaFoto: null,
+  temFoto: null,
 };
 
 /** Uma variação inteiramente medida e correta. */
@@ -86,6 +88,8 @@ const TUDO_MEDIDO: VariacaoParaAceite = {
   uploadPreservado: true,
   procedencia: { modelo: 'imagen-nano-banana-2-flash', preset: 'imagem-padrao' },
   tipografia: { familia: null, aplicou: null },
+  fracaoDaFoto: null,
+  temFoto: false,
 };
 
 test('PROVA: sem medicao nenhuma, NADA fica verde', () => {

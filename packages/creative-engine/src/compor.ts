@@ -145,6 +145,16 @@ export type PecaComposta = {
   /** A que terço o texto se alinhou. `null` = o arranjo não alinha a terço. */
   readonly terco: TercoDaPeca | null;
   /**
+   * Quanto da peça a FOTO ainda ocupa, de 0 a 1. `null` = peça sem foto.
+   *
+   * É a medida que faltava, e a falta tinha endereço: medido no banner real da
+   * marca de prova, a faixa saiu com 52% da peça e a foto com 48% — o dono viu
+   * e disse que estava péssimo, e as ONZE regras estavam verdes. C2 pergunta se
+   * o texto cabe no quadro; C4, se ele se lê. Nenhuma pergunta o que sobrou da
+   * imagem, então a peça passava e continuava ruim.
+   */
+  readonly fracaoDaFoto: number | null;
+  /**
    * A fonte da marca REALMENTE aplicou?
    *
    * `null` = nenhuma foi pedida, e a peça saiu na letra da casa por decisão.
@@ -302,6 +312,40 @@ const LARGURA_DO_TERCO = 0.42;
  */
 const ALTURA_DO_TERCO = 0.34;
 
+/**
+ * O teto da faixa de leitura — e por que ele NÃO é a metade.
+ *
+ * Ele segura o caso ALTO, onde deixar o texto ocupar a peça inteira daria um
+ * bloco de legenda no lugar de uma peça de campanha. Não é ele que impede a
+ * faixa de comer a peça, e a tentativa de fazê-lo virar isso está medida:
+ *
+ * - **Baixá-lo para 50% sozinho não mudou nada.** No banner real, a estimativa
+ *   já cabia no orçamento menor, então a faixa continuou saindo com 52% da peça
+ *   e a foto com 48%. Quem consertou aquilo foi a DISPOSIÇÃO em linha: 52% →
+ *   40%, medido no mesmo banner.
+ * - **Baixá-lo para 50% de verdade quebrou C2.** Com o texto no teto do schema
+ *   (headline de 200 caracteres), a faixa capada não comporta o bloco nem no
+ *   menor corpo de letra, e o texto sai do quadro. Texto fora do quadro é uma
+ *   falha pior que faixa gorda.
+ *
+ * Quem cobra a proporção é C12, que MEDE quanto sobrou da foto no pixel — e
+ * quando ela reprova, recompor noutro arranjo não gasta crédito nenhum. É a
+ * divisão de sempre: a geometria tenta acertar, a medição decide se acertou, e
+ * não se põe na geometria uma trava que a medição já faz melhor.
+ */
+const TETO_DA_FAIXA = 0.62;
+
+/**
+ * Quanto da linha sobra para a HEADLINE quando a faixa é uma linha só.
+ *
+ * Na disposição em linha, a largura é dividida entre a marca, a headline e o
+ * botão. A marca e o botão são curtos e têm largura própria; a headline é a
+ * única que quebra, e é dela que a conta de linhas precisa. 55% é o que sobra
+ * depois de reservar folgadamente os outros dois — folgado de propósito, porque
+ * errar para MENOS aqui promete que cabe e a régua reprova depois.
+ */
+const HEADLINE_NA_LINHA = 0.55;
+
 /** A escala tipográfica e o respiro da peça, em pixels. */
 export type EscalaDaPeca = {
   readonly padX: number;
@@ -324,7 +368,20 @@ export type EscalaDaPeca = {
   readonly larguraDisponivel: number;
   /** O arranjo de que esta escala saiu. */
   readonly arranjo: ArranjoDaPeca;
+  /**
+   * Como a faixa de leitura se organiza: empilhada ou em LINHA.
+   *
+   * Só `faixa-inferior` a usa, e ela não é escolhida — é derivada. Ver
+   * `escalaDaPeca`.
+   */
+  readonly disposicao: DisposicaoDaFaixa;
 };
+
+/**
+ * Empilhada (marca, headline e botão um sob o outro) ou em LINHA (os três lado
+ * a lado).
+ */
+export type DisposicaoDaFaixa = 'empilhada' | 'linha';
 
 /**
  * O quadro parte no eixo LONGO.
@@ -354,9 +411,11 @@ const caixaDoArranjo = (
   switch (arranjo) {
     case 'faixa-inferior':
       // A faixa é ancorada embaixo e cresce para cima. O limite é o quadro menos
-      // o respiro; os 62% seguram o caso alto (story), onde deixar o texto ocupar
-      // a peça inteira daria um bloco de legenda no lugar de uma peça de campanha.
-      return { largura: larguraCheia, altura: Math.min(alturaCheia, Math.round(d.altura * 0.62)) };
+      // o respiro, ou o teto do caso alto — ver `TETO_DA_FAIXA`.
+      return {
+        largura: larguraCheia,
+        altura: Math.min(alturaCheia, Math.round(d.altura * TETO_DA_FAIXA)),
+      };
     case 'tela-dividida':
       return ehLargo(d)
         ? { largura: Math.round(d.largura / 2) - 2 * padX, altura: alturaCheia }
@@ -422,32 +481,122 @@ export const escalaDaPeca = (e: {
   const temLogotipo = e.logotipo !== null && e.logotipo !== undefined;
   const assinatura = e.assinatura ?? null;
 
-  const linhas = (texto: string, corpo: number): number =>
-    Math.max(1, Math.ceil((texto.length * AVANCO_MEDIO * corpo) / larguraUtil));
+  /**
+   * Quantas linhas aquele texto gasta naquela largura.
+   *
+   * Duas contas, e vale a MAIOR. A primeira é a de caracteres, que assume
+   * empacotamento perfeito. A segunda é a de PALAVRAS, e ela existe porque
+   * texto real não quebra onde a primeira acha que quebra.
+   *
+   * Medido: numa coluna de 484px com corpo 67, a conta de caracteres previu 4
+   * linhas para "Você entende o tratamento antes de ele começar" e o navegador
+   * gastou 6 — a palavra "tratamento" sozinha ocupa 370px daquela coluna, então
+   * quase toda linha leva uma palavra e só. O erro passou dos 30%, muito acima
+   * da folga de 15% que a estimativa se dá, e o resultado foi uma faixa de 51%
+   * da peça onde a conta previa 40%.
+   *
+   * O erro da primeira conta cresce quando a coluna estreita, e é exatamente
+   * onde a disposição em linha vive. Sem esta segunda, a escolha da disposição
+   * decide olhando para um número que não descreve o que vai acontecer.
+   */
+  const linhas = (texto: string, corpo: number, largura: number): number => {
+    const porLinha = Math.max(1, Math.floor(largura / (AVANCO_MEDIO * corpo)));
+    const porContagem = Math.ceil(texto.length / porLinha);
+    const palavras = texto
+      .trim()
+      .split(/\s+/)
+      .filter((p) => p !== '');
+    if (palavras.length === 0) return 1;
+    // O comprimento médio de palavra JÁ inclui o espaço que a separa da próxima,
+    // porque `texto.length` conta os espaços.
+    const mediaDaPalavra = texto.length / palavras.length;
+    const palavrasPorLinha = Math.max(1, Math.floor(porLinha / mediaDaPalavra));
+    const porPalavra = Math.ceil(palavras.length / palavrasPorLinha);
+    return Math.max(1, porContagem, porPalavra);
+  };
 
-  /** A altura do bloco de texto com o corpo ideal multiplicado por `k`. */
-  const alturaCom = (k: number): number => {
+  /**
+   * A altura do bloco de texto com o corpo ideal multiplicado por `k`.
+   *
+   * EMPILHADA, a altura é a SOMA das partes com as margens entre elas. Em
+   * LINHA, é o MAIOR dos três — eles ficam lado a lado, e as margens verticais
+   * viram espaço horizontal. É a diferença inteira entre uma faixa de 52% da
+   * peça e uma de 24%.
+   */
+  const alturaCom = (k: number, disposicao: DisposicaoDaFaixa): number => {
     const sMarca = IDEAL.marca * k;
     const sHeadline = IDEAL.headline * k;
     const sCta = IDEAL.cta * k;
     const sAssinatura = IDEAL.assinatura * k;
+    const emLinha = disposicao === 'linha';
+    // Em linha, a headline divide a largura com a marca e o botão.
+    const larguraDaHeadline = emLinha ? larguraUtil * HEADLINE_NA_LINHA : larguraUtil;
+
     // O logotipo ENTRA NO LUGAR da linha de texto da marca, e não além dela.
-    let h = temLogotipo ? sMarca * ALTURA_DO_LOGOTIPO : linhas(e.marca, sMarca) * 1.2 * sMarca;
+    const hMarca = temLogotipo
+      ? sMarca * ALTURA_DO_LOGOTIPO
+      : linhas(e.marca, sMarca, larguraUtil) * 1.2 * sMarca;
     // `.4em` de margem, entrelinha de 1,12 — os mesmos números do CSS abaixo.
-    if (e.headline !== null)
-      h += 0.4 * sHeadline + linhas(e.headline, sHeadline) * 1.12 * sHeadline;
+    const hHeadline =
+      e.headline === null
+        ? 0
+        : (emLinha ? 0 : 0.4 * sHeadline) +
+          linhas(e.headline, sHeadline, larguraDaHeadline) * 1.12 * sHeadline;
     // `.9em` de margem + `.55em` de recheio em cima e embaixo + a linha.
-    if (e.cta !== null) h += 0.9 * sCta + 1.1 * sCta + linhas(e.cta, sCta) * sCta;
+    const hCta =
+      e.cta === null
+        ? 0
+        : (emLinha ? 0 : 0.9 * sCta) + 1.1 * sCta + linhas(e.cta, sCta, larguraUtil) * sCta;
     // `.6em` de margem + a linha.
-    if (assinatura !== null)
-      h += 0.6 * sAssinatura + linhas(assinatura, sAssinatura) * 1.2 * sAssinatura;
-    return h;
+    const hAssinatura =
+      assinatura === null
+        ? 0
+        : (emLinha ? 0 : 0.6 * sAssinatura) +
+          linhas(assinatura, sAssinatura, larguraUtil) * 1.2 * sAssinatura;
+
+    return emLinha
+      ? Math.max(hMarca, hHeadline, hCta, hAssinatura)
+      : hMarca + hHeadline + hCta + hAssinatura;
   };
 
-  let fator = 1;
-  while (fator > FATOR_MINIMO && alturaCom(fator) * FOLGA_DA_ESTIMATIVA > alturaDisponivel) {
-    fator = Number((fator - DEGRAU).toFixed(2));
-  }
+  /** O maior corpo de letra que ainda cabe, naquela disposição. */
+  const fatorDe = (disposicao: DisposicaoDaFaixa): number => {
+    let k = 1;
+    while (k > FATOR_MINIMO && alturaCom(k, disposicao) * FOLGA_DA_ESTIMATIVA > alturaDisponivel) {
+      k = Number((k - DEGRAU).toFixed(2));
+    }
+    return k;
+  };
+
+  /**
+   * A disposição é DERIVADA, e não uma bandeira nem um limiar de proporção.
+   *
+   * São dois critérios, nesta ordem, e a ordem importa:
+   *
+   * 1. **O corpo da letra.** Nenhuma economia de altura vale encolher o texto.
+   * 2. **A altura gasta.** Empatado o corpo, vence a que deixa mais peça para a
+   *    foto.
+   *
+   * O segundo critério é o que fazia falta. Medido no banner real da marca de
+   * prova: as duas disposições cabiam com o corpo IDEAL, o fator empatava em 1
+   * e o critério não decidia nada — a faixa continuava saindo com 52% da peça.
+   * O que separa as duas ali não é o encolhimento; é que empilhar gasta a SOMA
+   * das partes e a linha gasta a MAIOR delas.
+   *
+   * Isso responde sem nenhum número escolhido, e continua respondendo certo se
+   * as proporções dos formatos mudarem: num story a largura é o recurso escasso,
+   * a headline quebra em muitas linhas dentro da coluna e a linha perde já no
+   * primeiro critério, antes de o segundo ser consultado.
+   */
+  const escolherDisposicao = (): DisposicaoDaFaixa => {
+    if (arranjo !== 'faixa-inferior') return 'empilhada';
+    const kLinha = fatorDe('linha');
+    const kPilha = fatorDe('empilhada');
+    if (kLinha !== kPilha) return kLinha > kPilha ? 'linha' : 'empilhada';
+    return alturaCom(kLinha, 'linha') < alturaCom(kPilha, 'empilhada') ? 'linha' : 'empilhada';
+  };
+  const disposicao = escolherDisposicao();
+  const fator = fatorDe(disposicao);
 
   return {
     padX,
@@ -459,10 +608,11 @@ export const escalaDaPeca = (e: {
     assinatura: Math.round(IDEAL.assinatura * fator),
     veu: Math.round(d.altura * 0.12),
     fator,
-    alturaEstimada: Math.round(alturaCom(fator)),
+    alturaEstimada: Math.round(alturaCom(fator, disposicao)),
     alturaDisponivel,
     larguraDisponivel: larguraUtil,
     arranjo,
+    disposicao,
   };
 };
 
@@ -482,7 +632,22 @@ const cssDoArranjo = (
 ): { readonly css: string; readonly camadas: string; readonly alinhamento: 'left' | 'center' } => {
   const [r, g, b] = canais(cores.faixa);
   switch (arranjo) {
-    case 'faixa-inferior':
+    case 'faixa-inferior': {
+      /**
+       * Em LINHA, as margens verticais entre os papéis viram espaço horizontal.
+       *
+       * Sem zerá-las, o `margin-top` de cada papel empurra os três para baixo
+       * dentro da linha e a faixa volta a crescer — o defeito, com outra cara.
+       * O espaço entre eles passa a ser o `gap`, que é do eixo certo.
+       */
+      const emLinha =
+        s.disposicao === 'linha'
+          ? `.faixa{display:flex;flex-direction:row;align-items:center;gap:${Math.round(s.padX * 0.6)}px}
+  .faixa>*{margin-top:0}
+  .headline{flex:1 1 auto}
+  .marca,.cta,.logotipo,.assinatura{flex:0 0 auto}
+  .logotipo{max-width:16%}`
+          : '';
       return {
         alinhamento: 'left',
         camadas: '',
@@ -491,8 +656,10 @@ const cssDoArranjo = (
   /* O véu vive ACIMA da faixa, fora da caixa de texto: ele amacia a emenda com
      a foto sem pôr uma letra sequer sobre pixel semitransparente. */
   .faixa::before{content:'';position:absolute;left:0;right:0;bottom:100%;height:${s.veu}px;
-    background:linear-gradient(to top, ${cores.faixa} 0%, transparent 100%)}`,
+    background:linear-gradient(to top, ${cores.faixa} 0%, transparent 100%)}
+  ${emLinha}`,
       };
+    }
     case 'tela-dividida': {
       // A foto ocupa a metade dela, e não o quadro inteiro sob a cor: com
       // `cover` no quadro inteiro, o assunto da foto ficaria centrado atrás da
@@ -892,6 +1059,48 @@ const medirSubstrato = (dados: string): string => `(() => {
   });
 })()`;
 
+/**
+ * Quanto da peça a foto ainda ocupa, medido na GEOMETRIA.
+ *
+ * A camada da foto é `.foto` quando ela existe (tela dividida) e a própria peça
+ * quando a foto é cheia. Dela sai o que as superfícies OPACAS cobrem — hoje só
+ * a faixa de leitura, e só quando o fundo dela é opaco de verdade: num arranjo
+ * em que a faixa é transparente, ela não esconde nada.
+ *
+ * O véu NÃO conta como cobertura. Ele escurece a foto e continua mostrando-a, e
+ * é essa a diferença entre uma foto sob véu e uma tira de foto acima de um
+ * painel de texto.
+ */
+const MEDIR_FRACAO_DA_FOTO = `(() => {
+  const peca = document.querySelector('.peca');
+  if (!peca) return null;
+  const camada = peca.querySelector('.foto') || peca;
+  const temImagem = (getComputedStyle(camada).backgroundImage || 'none') !== 'none';
+  if (!temImagem) return null;
+
+  const q = peca.getBoundingClientRect();
+  const area = q.width * q.height;
+  if (!area) return null;
+  const f = camada.getBoundingClientRect();
+
+  /** O alfa do fundo de um elemento: 0 quando ele não esconde nada. */
+  const alfaDoFundo = (el) => {
+    const n = (getComputedStyle(el).backgroundColor || '').match(/[0-9]+([.][0-9]+)?/g);
+    if (!n || n.length < 3) return 0;
+    return n.length > 3 ? Number(n[3]) : 1;
+  };
+
+  let coberta = 0;
+  for (const el of Array.from(peca.querySelectorAll('.faixa'))) {
+    if (alfaDoFundo(el) < 1) continue;
+    const r = el.getBoundingClientRect();
+    const larg = Math.max(0, Math.min(f.right, r.right) - Math.max(f.left, r.left));
+    const alt = Math.max(0, Math.min(f.bottom, r.bottom) - Math.max(f.top, r.top));
+    coberta += larg * alt;
+  }
+  return Math.max(0, (f.width * f.height - coberta) / area);
+})()`;
+
 /** O que o navegador devolve sobre o pixel sob um papel. */
 type AmostraDoPapel = {
   readonly papel: string;
@@ -1022,6 +1231,8 @@ export const comporPeca = async (
             })()`,
           );
 
+    const fracaoDaFoto = await pagina.evaluate<number | null>(MEDIR_FRACAO_DA_FOTO);
+
     const png = await pagina.screenshot({ type: 'png' });
 
     /**
@@ -1060,6 +1271,7 @@ export const comporPeca = async (
       arranjo,
       contrasteAmostrado: menorAmostrado,
       terco,
+      fracaoDaFoto,
       fonteAplicada,
     };
   } finally {

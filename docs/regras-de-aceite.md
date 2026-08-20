@@ -522,6 +522,44 @@ gerado já está pago e em disco, e `pnpm criativo:compor` monta de novo a parti
 dele. Como o conserto é de graça, deixar sair uma peça na letra errada seria
 escolher entregar errado.
 
+### C12. A foto continua sendo a peça
+
+*Por que:* esta regra nasceu de uma peça que passou em ONZE regras e o dono
+reprovou de olho. Medido no banner real da marca de prova: a faixa de leitura
+saiu com **52% da peça** e a foto com **48%**. C1 dizia que a dimensão era
+exata, C2 que o texto cabia no quadro, C3 que a marca estava lá, C4 que se lia,
+C11 que a tipografia era a da marca — todas certas, e nenhuma perguntava o que
+sobrou da imagem. Uma peça com foto em que a foto é a MENOR parte não é uma peça
+com foto; é um painel de texto com uma tira de imagem em cima.
+
+*Como se confere:* a geometria, medida no navegador. A camada da foto (a peça
+inteira, ou a metade dela numa tela dividida) menos a área que as superfícies
+OPACAS de texto cobrem, sobre a área da peça. O véu não conta como cobertura:
+ele escurece a foto e continua mostrando-a, e é essa a diferença entre uma foto
+sob véu e uma tira de foto acima de um painel.
+
+*Por que o piso é METADE:* porque não é um número calibrado — é onde a definição
+da peça empata consigo mesma, e empatar já é o extremo tolerável. Medido antes
+de o número ser escrito, no mesmo banner e nos quatro arranjos:
+
+```
+48%                      a peça que o dono reprovou de olho
+56%  60%  100%  100%     as que ele não reprovou
+```
+
+As duas classes não se cruzam, e o piso cai entre elas sem ter sido ajustado
+para isso. Se um dia se cruzarem, a regra está errada e sai — é a mesma lição
+que aposentou o piso de distância visual entre artes (M9).
+
+*Três estados, e não dois:* peça SEM foto passa (a faixa é a peça, por decisão);
+peça com foto que ninguém mediu fica PENDENTE; quem não disse nem se há foto
+também fica pendente. `false` é um padrão, não uma medida, e com dois estados
+uma conferência vazia saía com C12 verde.
+
+*Por que reprova em vez de virar ressalva:* recompor noutro arranjo é geometria
+sobre um pixel que já está pago e em disco. Como o conserto é de graça, deixar
+sair a peça errada seria escolher entregar errado.
+
 ### O portão da entrega cobra a folha INTEIRA
 
 Uma variação `aprovada` precisa de folha com **todas** as regras (C1 a C11), e

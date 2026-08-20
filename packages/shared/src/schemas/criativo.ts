@@ -593,6 +593,7 @@ export const CODIGOS_DA_REGUA = [
   'C9',
   'C10',
   'C11',
+  'C12',
 ] as const;
 
 // ── O portão da entrega ──────────────────────────────────────────────────────

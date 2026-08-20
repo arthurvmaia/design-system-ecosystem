@@ -277,6 +277,8 @@ const principal = async (): Promise<void> => {
       preset: pedido.preset ?? 'imagem-padrao',
     },
     tipografia: { familia: familiaPedida, aplicou: peca.fonteAplicada },
+    fracaoDaFoto: peca.fracaoDaFoto,
+    temFoto: fundo !== null,
   });
 
   const rotulo = rotuloDaPeca(conferencia);

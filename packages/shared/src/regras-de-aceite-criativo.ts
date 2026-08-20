@@ -190,6 +190,25 @@ export type VariacaoParaAceite = {
    * casa por decisão. `aplicou: null` = ninguém mediu.
    */
   readonly tipografia: { readonly familia: string | null; readonly aplicou: boolean | null } | null;
+  /**
+   * Quanto da peça a FOTO ainda ocupa, de 0 a 1.
+   *
+   * `null` = ninguém mediu, OU a peça não tem foto — e a regra sabe distinguir
+   * pelo `temFoto`, porque as duas coisas não podem sair com o mesmo veredito:
+   * uma peça sem foto não deve nada a ninguém, e uma peça com foto que ninguém
+   * mediu é a que já passou por aprovada.
+   */
+  readonly fracaoDaFoto: number | null;
+  /**
+   * Esta peça TEM foto? `null` = ninguém disse.
+   *
+   * Três estados, e não dois, porque `false` é um PADRÃO e não uma medida. Com
+   * dois, uma conferência que não recebeu nada saía com C12 verde — "não tem
+   * foto, então não deve nada" —, e o teste que exige zero verdes num objeto
+   * vazio pegou isso na primeira rodada. É o mesmo desenho de `houveUpload` ao
+   * lado de `uploadPreservado`, pela mesma razão.
+   */
+  readonly temFoto: boolean | null;
 };
 
 /**
@@ -198,6 +217,29 @@ export type VariacaoParaAceite = {
  * tamanho real, e uma peça de tráfego que não se lê não cumpre função nenhuma.
  */
 export const PISO_DE_CONTRASTE_DA_PECA = 3;
+
+/**
+ * Quanto da peça a foto tem de ocupar, no mínimo — e por que é METADE.
+ *
+ * Não é um número calibrado: é onde a definição da peça empata consigo mesma.
+ * Uma peça com foto em que a foto é a MENOR parte não é uma peça com foto; é um
+ * painel de texto com uma tira de imagem em cima. Empatar já é o extremo
+ * tolerável, e é por isso que o piso é a metade e não um valor escolhido por
+ * parecer bonito.
+ *
+ * Medido antes de escrever o número, no banner real da marca de prova e nos
+ * quatro arranjos:
+ *
+ * ```
+ * 48%                      a peça que o dono reprovou de olho
+ * 56%  60%  100%  100%     as que ele não reprovou
+ * ```
+ *
+ * As duas classes não se cruzam, e o piso cai entre elas sem ter sido ajustado
+ * para isso. Se um dia se cruzarem, esta regra está errada e sai — é a mesma
+ * lição que aposentou o piso de distância visual entre artes.
+ */
+export const PISO_DA_FOTO = 0.5;
 
 const passou = (codigo: string, titulo: string): VereditoDaRegra => ({
   codigo,
@@ -591,6 +633,42 @@ export const conferirVariacaoCriativa = (v: VariacaoParaAceite): ResultadoDeAcei
     );
   } else {
     vereditos.push(passou('C11', TITULO_C11));
+  }
+
+  // C12 ────────────────────────────────────────────────────────────────────
+  // A regra que faltava, e a falta tem data. Medido no banner real da marca de
+  // prova: a faixa de leitura saiu com 52% da peça e a foto com 48%, o dono
+  // olhou e disse que estava péssimo — e as ONZE regras acima estavam VERDES.
+  // Cada uma delas respondia certo: o texto cabia no quadro, se lia, a marca
+  // estava exata, a tipografia era a da marca. Nenhuma perguntava o que sobrou
+  // da imagem, e uma peça com foto em que a foto é a menor parte é um painel de
+  // texto com uma tira de imagem em cima.
+  const TITULO_C12 = 'A foto continua sendo a peça';
+  if (v.temFoto === null) {
+    vereditos.push(
+      pendente('C12', TITULO_C12, 'Ninguém disse se esta peça tem foto, então não há o que medir.'),
+    );
+  } else if (!v.temFoto) {
+    // Peça sem foto não deve nada aqui: a faixa É a peça, por decisão.
+    vereditos.push(passou('C12', TITULO_C12));
+  } else if (v.fracaoDaFoto === null) {
+    vereditos.push(
+      pendente(
+        'C12',
+        TITULO_C12,
+        'Ninguém mediu quanto da peça sobrou para a foto. É exatamente o que deixou onze regras verdes numa peça que o dono reprovou de olho.',
+      ),
+    );
+  } else if (v.fracaoDaFoto < PISO_DA_FOTO) {
+    vereditos.push(
+      reprovou(
+        'C12',
+        TITULO_C12,
+        `A foto ficou com ${(v.fracaoDaFoto * 100).toFixed(0)}% da peça e o resto é superfície de texto, abaixo do piso de ${(PISO_DA_FOTO * 100).toFixed(0)}%. Recompor noutro arranjo não gasta crédito nenhum: o pixel já está em disco.`,
+      ),
+    );
+  } else {
+    vereditos.push(passou('C12', TITULO_C12));
   }
 
   return {

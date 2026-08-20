@@ -192,13 +192,19 @@ test('PROVA: a caixa de todo arranjo cabe no QUADRO', () => {
   }
 });
 
-test('PROVA: a coluna da tela dividida encolhe a letra MAIS que a faixa cheia', () => {
-  // É a prova de que a escala olha para o arranjo. A mesma headline, o mesmo
-  // formato: só muda a largura em que ela quebra — e ela quebra em metade.
+test('PROVA: a caixa do arranjo decide o corpo da letra', () => {
+  // A prova de que a escala olha para o arranjo, e não só para o formato. O
+  // mesmo texto, o mesmo quadro: só muda a largura em que ele quebra.
+  //
+  // A comparação é `veu-cheio` contra `tela-dividida` de propósito. Contra
+  // `faixa-inferior` ela deixou de discriminar quando a faixa ganhou a
+  // disposição em LINHA — ali a headline também passou a dividir a largura, e
+  // as duas convergiram para o mesmo corpo. Medir contra um arranjo cuja
+  // disposição é fixa isola a variável que este teste quer.
   const texto = encher(LIMITES_DO_PEDIDO.headline, 'alfaiataria sob medida');
-  const cheia = escalaDaPeca({
+  const larga = escalaDaPeca({
     formato: 'banner-3x1',
-    arranjo: 'faixa-inferior',
+    arranjo: 'veu-cheio',
     marca: 'Castevani',
     headline: texto,
     cta: 'Agendar',
@@ -211,13 +217,41 @@ test('PROVA: a coluna da tela dividida encolhe a letra MAIS que a faixa cheia', 
     cta: 'Agendar',
   });
   assert.ok(
-    coluna.larguraDisponivel < cheia.larguraDisponivel,
-    'a coluna tem de ser mais estreita que a faixa cheia',
+    coluna.larguraDisponivel < larga.larguraDisponivel,
+    'a coluna tem de ser mais estreita que o bloco centralizado',
   );
   assert.ok(
-    coluna.headline < cheia.headline,
-    `a mesma headline numa coluna estreita tem de sair menor: ${coluna.headline} vs ${cheia.headline}`,
+    coluna.headline < larga.headline,
+    `a mesma headline numa coluna estreita tem de sair menor: ${coluna.headline} vs ${larga.headline}`,
   );
+});
+
+test('PROVA: num banner 3:1 a faixa vira LINHA, e num story continua empilhada', () => {
+  // A disposição é derivada: vence a que preserva mais o corpo da letra e, no
+  // empate, a que gasta menos altura. Numa peça 3x mais larga que alta,
+  // empilhar marca, headline e botão gasta altura que a peça não tem — foi
+  // assim que a faixa saiu com 52% do banner e a foto com 48%.
+  const banner = escalaDaPeca({
+    formato: 'banner-3x1',
+    arranjo: 'faixa-inferior',
+    marca: 'Castevani',
+    logotipo: 'logo.png',
+    headline: 'Você entende o tratamento antes de ele começar',
+    cta: 'Agendar avaliação',
+  });
+  assert.equal(banner.disposicao, 'linha');
+
+  // Num story a largura é o recurso escasso: a headline quebraria em muitas
+  // linhas dentro da coluna, e a linha perde já no primeiro critério.
+  const story = escalaDaPeca({
+    formato: 'story-9x16',
+    arranjo: 'faixa-inferior',
+    marca: 'Castevani',
+    logotipo: 'logo.png',
+    headline: encher(LIMITES_DO_PEDIDO.headline, 'alfaiataria sob medida'),
+    cta: 'Agendar avaliação',
+  });
+  assert.equal(story.disposicao, 'empilhada');
 });
 
 test('o arranjo AUSENTE continua sendo o de sempre: nada muda sozinho', () => {

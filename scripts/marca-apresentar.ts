@@ -165,6 +165,8 @@ const principal = async (): Promise<void> => {
           preset: pedido.preset ?? 'imagem-marca',
         },
         tipografia: { familia: FONTE_PADRAO, aplicou: peca.fonteAplicada },
+        fracaoDaFoto: peca.fracaoDaFoto,
+        temFoto: true,
       });
 
     for (const [i, arquivo] of bannersCrus.entries()) {

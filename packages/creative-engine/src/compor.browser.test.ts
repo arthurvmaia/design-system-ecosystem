@@ -87,6 +87,8 @@ test('PROVA: a peca composta passa na regua, e a regua e a mesma da entrega', as
     uploadPreservado: null,
     procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
     tipografia: { familia: null, aplicou: peca.fonteAplicada },
+    fracaoDaFoto: null,
+    temFoto: false,
   });
 
   assert.equal(
@@ -144,6 +146,8 @@ test('PROVA: a headline realista NAO joga mais a marca para fora do quadro', asy
     uploadPreservado: null,
     procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
     tipografia: { familia: null, aplicou: peca.fonteAplicada },
+    fracaoDaFoto: null,
+    temFoto: false,
   });
   assert.equal(
     rotuloDaPeca(r),
@@ -262,6 +266,8 @@ test('PROVA: o logotipo entra SEM deformar, e a regua mede a proporcao', async (
     uploadPreservado: null,
     procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
     tipografia: { familia: null, aplicou: peca.fonteAplicada },
+    fracaoDaFoto: null,
+    temFoto: false,
   });
   assert.equal(
     rotuloDaPeca(r),
@@ -306,6 +312,8 @@ test('PROVA: logotipo que NAO carrega reprova em vez de virar buraco', async (t)
     uploadPreservado: null,
     procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
     tipografia: { familia: null, aplicou: peca.fonteAplicada },
+    fracaoDaFoto: null,
+    temFoto: false,
   });
   const c3 = r.vereditos.find((v) => v.codigo === 'C3');
   assert.equal(c3?.estado, 'reprovou', JSON.stringify(peca.caixas));
@@ -491,6 +499,8 @@ test('PROVA: a fonte da marca APLICA quando o arquivo entra embutido', async (t)
     uploadPreservado: null,
     procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
     tipografia: { familia: 'Sora', aplicou: peca.fonteAplicada },
+    fracaoDaFoto: null,
+    temFoto: false,
   });
   assert.equal(r.vereditos.find((v) => v.codigo === 'C11')?.estado, 'passou');
 });
@@ -531,6 +541,8 @@ test('PROVA: fonte pedida que NAO carrega reprova, em vez de sair calada', async
     uploadPreservado: null,
     procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
     tipografia: { familia: 'Fonte Que Nao Existe Em Lugar Nenhum', aplicou: peca.fonteAplicada },
+    fracaoDaFoto: null,
+    temFoto: false,
   });
   const c11 = r.vereditos.find((v) => v.codigo === 'C11');
   assert.equal(c11?.estado, 'reprovou');
@@ -613,6 +625,8 @@ test('PROVA: C2 medida — nos QUATRO arranjos, em todo formato, no TETO do sche
         uploadPreservado: null,
         procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
         tipografia: { familia: null, aplicou: peca.fonteAplicada },
+        fracaoDaFoto: null,
+        temFoto: false,
       });
       const c2 = r.vereditos.find((v) => v.codigo === 'C2');
       assert.equal(
@@ -688,6 +702,8 @@ test('PROVA: sobre FOTO o contraste e amostrado no pixel, e a foto que estoura R
     uploadPreservado: null,
     procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
     tipografia: { familia: null, aplicou: peca.fonteAplicada },
+    fracaoDaFoto: null,
+    temFoto: false,
   });
   const c4 = r.vereditos.find((v) => v.codigo === 'C4');
   assert.equal(c4?.estado, 'reprovou', JSON.stringify(c4));
@@ -807,7 +823,143 @@ test('PROVA: sobre a foto, o logotipo deixa de ficar PENDENTE — o fundo dele e
     uploadPreservado: null,
     procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
     tipografia: { familia: null, aplicou: peca.fonteAplicada },
+    fracaoDaFoto: null,
+    temFoto: false,
   });
   const c3 = r.vereditos.find((v) => v.codigo === 'C3');
   assert.notEqual(c3?.estado, 'pendente', JSON.stringify(c3));
+});
+
+test('PROVA C12: a peca que o dono reprovou de OLHO agora reprova na regua', async (t) => {
+  // O caso, com endereço: no banner real da marca de prova a faixa saiu com 52%
+  // da peça e a foto com 48%. O dono disse que estava péssimo e as onze regras
+  // estavam verdes, porque nenhuma perguntava o que sobrou da imagem.
+  //
+  // Aqui a faixa é forçada a ficar grande com uma headline comprida, e a regra
+  // tem de pegar. Sem C12, esta mesma peça sai "aprovada".
+  const navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  t.after(async () => await navegador.close());
+
+  const fundo = await fundoDeTeste(navegador, SO_COR('#3a5a80'), 1500, 500);
+  const headline = encher(LIMITES_DO_PEDIDO.headline, 'alfaiataria sob medida');
+  const peca = await comporPeca(navegador, {
+    formato: 'banner-3x1',
+    arranjo: 'faixa-inferior',
+    fundo,
+    marca: 'Castevani',
+    headline,
+    cta: 'Agendar prova',
+    cores: CORES,
+  });
+  rmSync(fundo, { force: true });
+
+  assert.ok(peca.fracaoDaFoto !== null, 'a peça tem foto, então a fração tem de ser medida');
+  assert.ok(
+    (peca.fracaoDaFoto as number) < 0.5,
+    `esta peça deveria ter a foto como MENOR parte; deu ${peca.fracaoDaFoto}`,
+  );
+
+  const r = conferirVariacaoCriativa({
+    formato: 'banner-3x1',
+    largura: peca.largura,
+    altura: peca.altura,
+    houvePixelGerado: true,
+    headline,
+    cta: 'Agendar prova',
+    textoRenderizado: peca.textos,
+    caixasDosPapeis: peca.caixas,
+    marca: 'Castevani',
+    menorContraste: peca.menorContraste,
+    hash: 'a',
+    hashesIrmas: [],
+    houveUpload: false,
+    uploadPreservado: null,
+    procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
+    tipografia: { familia: null, aplicou: peca.fonteAplicada },
+    fracaoDaFoto: peca.fracaoDaFoto,
+    temFoto: true,
+  });
+  const c12 = r.vereditos.find((v) => v.codigo === 'C12');
+  assert.equal(c12?.estado, 'reprovou', JSON.stringify(c12));
+  assert.equal(rotuloDaPeca(r), 'reprovada');
+
+  // E as OUTRAS onze continuam verdes na mesma peça: é isso que prova que a
+  // régua tinha um buraco, e não que ela estava toda errada.
+  const outras = r.vereditos.filter((v) => v.codigo !== 'C12' && v.estado === 'reprovou');
+  assert.deepEqual(outras, [], 'nenhuma outra regra pega este defeito');
+});
+
+test('PROVA C12: com a copy real, a faixa vira LINHA e a foto volta a ser a peca', async (t) => {
+  // A mesma peça com uma headline de tamanho realista. A disposição em linha é
+  // derivada — ninguém a pede —, e é ela que devolve a peça para a foto.
+  const navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  t.after(async () => await navegador.close());
+
+  const fundo = await fundoDeTeste(navegador, SO_COR('#3a5a80'), 1500, 500);
+  const peca = await comporPeca(navegador, {
+    formato: 'banner-3x1',
+    arranjo: 'faixa-inferior',
+    fundo,
+    marca: 'Castevani',
+    headline: 'Você entende o tratamento antes de ele começar',
+    cta: 'Agendar avaliação',
+    cores: CORES,
+  });
+  rmSync(fundo, { force: true });
+
+  assert.ok(
+    (peca.fracaoDaFoto as number) >= 0.5,
+    `a foto tem de voltar a ser a maior parte; deu ${peca.fracaoDaFoto}`,
+  );
+});
+
+test('peca SEM foto nao deve nada a C12: a faixa e a peca, por decisao', () => {
+  const r = conferirVariacaoCriativa({
+    formato: 'feed-1x1',
+    largura: 1080,
+    altura: 1080,
+    houvePixelGerado: false,
+    headline: null,
+    cta: null,
+    textoRenderizado: [],
+    caixasDosPapeis: [],
+    marca: 'Castevani',
+    menorContraste: 10,
+    hash: 'a',
+    hashesIrmas: [],
+    houveUpload: false,
+    uploadPreservado: null,
+    procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
+    tipografia: { familia: null, aplicou: null },
+    fracaoDaFoto: null,
+    temFoto: false,
+  });
+  assert.equal(r.vereditos.find((v) => v.codigo === 'C12')?.estado, 'passou');
+});
+
+test('PROVA C12: peca COM foto que ninguem mediu fica PENDENTE, nunca verde', () => {
+  // É a distinção que o `temFoto` existe para fazer: `fracaoDaFoto: null`
+  // significaria "não há foto" e "ninguém mediu" ao mesmo tempo, e a régua daria
+  // verde para a segunda — que é exatamente o caso que ela existe para pegar.
+  const r = conferirVariacaoCriativa({
+    formato: 'banner-3x1',
+    largura: 1500,
+    altura: 500,
+    houvePixelGerado: true,
+    headline: null,
+    cta: null,
+    textoRenderizado: [],
+    caixasDosPapeis: [],
+    marca: 'Castevani',
+    menorContraste: 10,
+    hash: 'a',
+    hashesIrmas: [],
+    houveUpload: false,
+    uploadPreservado: null,
+    procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
+    tipografia: { familia: null, aplicou: null },
+    fracaoDaFoto: null,
+    temFoto: true,
+  });
+  assert.equal(r.vereditos.find((v) => v.codigo === 'C12')?.estado, 'pendente');
 });
