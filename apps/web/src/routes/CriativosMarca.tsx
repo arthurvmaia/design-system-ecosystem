@@ -9,6 +9,7 @@ import {
   CorDaPaleta,
   FamiliaDoSimbolo,
   LIMITES_DA_MARCA,
+  LIMITE_DE_CORES_DE_APOIO,
   PedidoDeMarca,
   ROTULO_DA_FAMILIA,
 } from '@ds/shared/schemas';
@@ -44,6 +45,15 @@ export function CriativosMarcaPage() {
   const [tom, setTom] = useState('');
   const [evitar, setEvitar] = useState('');
   const [corPreferida, setCorPreferida] = useState('');
+  /**
+   * As outras cores da paleta. Uma marca não é uma cor.
+   *
+   * A principal continua separada porque ela decide tudo o que sai por cálculo:
+   * é dela que a tinta e o acento derivam. As de apoio entram na paleta da
+   * apresentação e são candidatas a botão — a mesma regra da peça criativa,
+   * porque `coresDerivadas` é uma função só.
+   */
+  const [coresDeApoio, setCoresDeApoio] = useState<string[]>([]);
   const [mostrarPendencias, setMostrarPendencias] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
@@ -67,6 +77,9 @@ export function CriativosMarcaPage() {
     // Vazio é "escolha por mim", que é diferente de uma cor inválida: o
     // contrato aceita null e o motor registra a escolha com o motivo.
     corPreferida: corValida ? corPreferida : null,
+    // Só as que passam no contrato: um hex pela metade viraria erro de parse
+    // depois de a pessoa ter clicado em criar.
+    coresDeApoio: coresDeApoio.filter((c) => CorDaPaleta.shape.hex.safeParse(c).success),
     tetoDeCreditos: custos.data?.teto ?? 0,
     estimativa: custos.data?.teto ?? null,
     preset: 'imagem-marca',
@@ -257,6 +270,73 @@ export function CriativosMarcaPage() {
               Vazio, eu escolho e escrevo o porquê na apresentação. Trocar depois é barato: todas as
               versões saem do mesmo símbolo.
             </p>
+
+            {/*
+              As OUTRAS cores da paleta.
+
+              O formulário pedia uma só, e quem já tinha as suas cores era
+              obrigado a jogar fora todas menos uma — a apresentação saía
+              dizendo que a marca tem uma cor.
+
+              A principal fica separada de propósito, e não vira "a primeira da
+              lista": é dela que a tinta e o acento saem por cálculo, e as de
+              apoio são candidatas a botão. Misturá-las apagaria essa diferença
+              e o brandbook não saberia qual é a cor da marca.
+            */}
+            <div className="mt-3">
+              <span className="ds-label">e as outras, se houver</span>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {coresDeApoio.map((cor, i) => (
+                  <span
+                    // A posição É a identidade aqui: duas cores iguais são duas
+                    // entradas legítimas, e o valor como chave faria o React
+                    // fundir as duas.
+                    // biome-ignore lint/suspicious/noArrayIndexKey: ver acima
+                    key={i}
+                    className="flex items-center gap-1 border px-1.5 py-1"
+                    style={{ borderColor: 'var(--color-border)' }}
+                  >
+                    <input
+                      type="color"
+                      value={CorDaPaleta.shape.hex.safeParse(cor).success ? cor : '#888888'}
+                      onChange={(e) =>
+                        setCoresDeApoio((atual) =>
+                          atual.map((c, j) => (j === i ? e.target.value : c)),
+                        )
+                      }
+                      aria-label={`Cor de apoio ${i + 1}`}
+                      className="h-6 w-6 shrink-0 cursor-pointer rounded-none border-0 bg-transparent"
+                    />
+                    <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+                      {cor}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCoresDeApoio((atual) => atual.filter((_, j) => j !== i))}
+                      aria-label={`Tirar a cor de apoio ${i + 1}`}
+                      className="px-1 text-[13px] leading-none"
+                      style={{ color: 'var(--color-fg-subtle)' }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {coresDeApoio.length < LIMITE_DE_CORES_DE_APOIO && (
+                  <button
+                    type="button"
+                    onClick={() => setCoresDeApoio((atual) => [...atual, '#888888'])}
+                    className="border border-dashed px-3 py-1.5 text-[12px] transition-colors hover:border-[var(--color-signal)]"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+                  >
+                    + cor
+                  </button>
+                )}
+              </div>
+              <p className="mt-1.5 text-[11.5px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                Até {LIMITE_DE_CORES_DE_APOIO}. Elas entram na paleta da apresentação, e a primeira
+                que se separar da principal e aceitar texto legível vira o botão das peças.
+              </p>
+            </div>
           </div>
         </div>
 

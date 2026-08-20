@@ -72,7 +72,20 @@ const principal = async (): Promise<void> => {
     cor: { hex: string; decidida: string; motivo: string };
   };
   const cor = resultado.cor.hex;
-  const cores = coresDerivadas(cor);
+  /**
+   * As cores de apoio entram na derivação, e não só na página da paleta.
+   *
+   * `coresDerivadas` escolhe o ACENTO — o botão — entre elas: a primeira que se
+   * separa da principal e ainda aceita texto legível. Sem passá-las, o botão de
+   * todo conceito sairia na dupla invertida do preto-e-branco, que é contraste
+   * garantido e nenhuma relação com a marca.
+   */
+  const cores = coresDerivadas(cor, pedido.coresDeApoio);
+  if (pedido.coresDeApoio.length > 0 && !cores.acentoVeioDaMarca) {
+    console.warn(
+      '  AVISO: nenhuma cor de apoio se separa da principal e aceita tinta legível ao mesmo tempo, então o botão saiu na cor derivada.',
+    );
+  }
 
   const precisa = (nome: string): string => {
     const caminho = join(dir, nome);
@@ -407,6 +420,23 @@ const principal = async (): Promise<void> => {
         papel: 'Texto quando o fundo é a cor da marca',
         sobreBranco: contrasteRatio(cores.texto, '#ffffff'),
       },
+      /**
+       * As cores de apoio do cliente, com o contraste MEDIDO como as outras.
+       *
+       * Elas entram nomeadas por posição porque o pedido não pede nome — pedir
+       * um rótulo para cada cor seria cobrar de quem preenche um trabalho que a
+       * apresentação faz melhor: o papel de cada uma sai do que ela consegue
+       * fazer, e isso é conta.
+       */
+      ...pedido.coresDeApoio.map((hex, i) => ({
+        nome: `Cor de apoio ${i + 1}`,
+        hex,
+        papel:
+          hex === cores.acento
+            ? 'O botão das peças: separa da cor da marca e aceita texto legível'
+            : 'Apoio, para gráficos e destaques',
+        sobreBranco: contrasteRatio(hex, '#ffffff'),
+      })),
       {
         nome: 'Grafite',
         hex: '#141414',

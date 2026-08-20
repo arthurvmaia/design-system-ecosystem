@@ -60,6 +60,15 @@ export const ROTULO_DA_FAMILIA: Record<FamiliaDoSimbolo, string> = {
   'decida-por-mim': 'Decida por mim',
 };
 
+/**
+ * Quantas cores de apoio a marca aceita, e por que TRÊS.
+ *
+ * A composição tem faixa, tinta e acento — três lugares onde uma cor pousa.
+ * Cor que não tem onde pousar é campo que cobra de quem preenche e devolve
+ * nada. É o mesmo número da peça criativa, pela mesma razão.
+ */
+export const LIMITE_DE_CORES_DE_APOIO = 3;
+
 export const PedidoDeMarca = z.object({
   /**
    * O nome, com a GRAFIA EXATA. Trava porque é ele que vai desenhado no
@@ -85,6 +94,24 @@ export const PedidoDeMarca = z.object({
    * resultado com a decisão escrita ao lado.
    */
   corPreferida: HEX.nullable().default(null),
+  /**
+   * As outras cores da paleta, se o cliente já as tem.
+   *
+   * Uma marca não é uma cor: ela tem a principal e as que a acompanham. O
+   * formulário pedia UMA e o resto da paleta não tinha onde entrar — quem já
+   * tinha as suas cores era obrigado a jogar fora todas menos uma, e a
+   * apresentação saía dizendo que a marca tem uma cor só.
+   *
+   * O modelo é o MESMO da peça criativa (`PedidoCriativo.direcao.coresDeApoio`)
+   * de propósito, e não um segundo: `coresDerivadas(principal, apoio)` já é a
+   * função que decide qual delas vira o botão, e ela é única na casa. Um
+   * segundo modelo de paleta divergiria na primeira mudança e apareceria como
+   * "a cor do site não é a do brandbook".
+   *
+   * Três, pelo mesmo motivo de lá: a composição tem faixa, tinta e acento. Cor
+   * que não tem onde pousar é campo que cobra e descarta.
+   */
+  coresDeApoio: z.array(HEX).max(LIMITE_DE_CORES_DE_APOIO).default([]),
   /**
    * Teto de gasto, em créditos. OBRIGATÓRIO e sem default, pela mesma razão do
    * pedido criativo: parar ao zerar exige saber onde fica o zero.
