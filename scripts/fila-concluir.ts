@@ -13,13 +13,17 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from 'node:path';
 import { ArquivoDoRazao, lerRazao } from '@ds/creative';
 import {
+  CODIGOS_DA_REGUA_DE_MARCA,
   criativoPedidoPath,
   criativosDir,
   dimensaoDePng,
   finishJob,
   getJob,
   listarAssetsFaltando,
+  marcaDir,
+  marcaPedidoPath,
   problemasDaEntregaCriativa,
+  problemasDaEntregaDeMarca,
   projectGeneratedDir,
   referenciaDoPedido,
   vaultDsDir,
@@ -272,7 +276,7 @@ if (job.type === 'criativo') {
           resultado: bruto,
           pedido: pedidoDeReferencia,
           razao,
-          existe: (relativo) => existsSync(join(dir, relativo)),
+          existe: (relativo: string) => existsSync(join(dir, relativo)),
           // O portão mede o ARQUIVO, em vez de acreditar na folha que veio
           // junto: ela é escrita por quem produziu, e uma entrega que confia na
           // própria declaração não é conferida por ninguém.
@@ -285,6 +289,81 @@ if (job.type === 'criativo') {
               return null;
             }
           },
+        }),
+      );
+    }
+  }
+}
+
+/**
+ * `marca` — o outro job que gasta DINHEIRO, e que também fechava sem conferência.
+ *
+ * A marca ganhou tipo próprio na fila e este arquivo não a conhecia: ela caía
+ * direto no `finishJob`. É o mesmo buraco que o `criativo` já teve, e o custo é
+ * maior — uma marca é carregada por tudo o que a empresa faz depois.
+ */
+if (job.type === 'marca') {
+  const dir = marcaDir(jobId);
+  const arquivo = join(dir, 'resultado.json');
+
+  // O retrato manda aqui pela mesma razão do criativo: é contra o teto DELE que
+  // o gasto é medido, e o payload da fila é o lado mutável.
+  const arquivoDoRetrato = marcaPedidoPath(jobId);
+  let retratoLido: unknown | undefined = null;
+  if (existsSync(arquivoDoRetrato)) {
+    try {
+      retratoLido = JSON.parse(readFileSync(arquivoDoRetrato, 'utf8'));
+    } catch {
+      retratoLido = undefined;
+    }
+  }
+  const referenciaDaMarca = referenciaDoPedido({
+    retrato: retratoLido,
+    payloadDaFila: job.payload,
+  });
+  if (referenciaDaMarca.ilegivel) {
+    problemas.push(
+      `o retrato do pedido de marca está ilegível em ${arquivoDoRetrato}: não fecho um job pago sem saber contra que teto medir.`,
+    );
+  }
+
+  if (!existsSync(arquivo)) {
+    problemas.push(`resultado.json não existe em ${dir} — a marca não tem onde ser lida.`);
+  } else {
+    let bruto: unknown;
+    try {
+      bruto = JSON.parse(readFileSync(arquivo, 'utf8'));
+    } catch (err) {
+      problemas.push(
+        `resultado.json não é JSON válido: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      bruto = undefined;
+    }
+
+    const arquivoDoRazaoDaMarca = join(dir, 'razao.json');
+    let razaoDaMarca: { gasto: number; empenhado: number } | undefined;
+    if (existsSync(arquivoDoRazaoDaMarca)) {
+      try {
+        const conta = lerRazao(
+          ArquivoDoRazao.parse(JSON.parse(readFileSync(arquivoDoRazaoDaMarca, 'utf8'))).lancamentos,
+        );
+        razaoDaMarca = { gasto: conta.gasto, empenhado: conta.empenhado };
+      } catch (err) {
+        problemas.push(
+          `razao.json da marca está ilegível (${err instanceof Error ? err.message : String(err)}): não fecho um job pago por cima de um registro de dinheiro que não consigo ler.`,
+        );
+      }
+    }
+
+    if (bruto !== undefined) {
+      problemas.push(
+        ...problemasDaEntregaDeMarca({
+          resultado: bruto,
+          pedido: referenciaDaMarca.pedido,
+          existe: (relativo: string) => existsSync(join(dir, relativo)),
+          temApresentacao: existsSync(join(dir, 'apresentacao.pdf')),
+          razao: razaoDaMarca,
+          codigosDaRegua: [...CODIGOS_DA_REGUA_DE_MARCA],
         }),
       );
     }

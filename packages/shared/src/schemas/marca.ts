@@ -237,3 +237,106 @@ export const ResultadoDeMarca = z.object({
   custoGasto: z.number().min(0),
 });
 export type ResultadoDeMarca = z.infer<typeof ResultadoDeMarca>;
+
+/**
+ * O portão da entrega da MARCA.
+ *
+ * Ele não existia, e o buraco era o mesmo que o `criativo` já tinha tido: um
+ * job que gasta dinheiro caía direto no `finishJob`. Resultado ausente, fora do
+ * contrato, apontando para arquivo que não existe, sem apresentação ou com
+ * regra reprovada — tudo fechava calado, como "concluído".
+ *
+ * As perguntas, na ordem em que doem:
+ *
+ * 1. Há resultado, e ele passa no contrato?
+ * 2. Os arquivos que ele cita existem em disco?
+ * 3. A folha cobre a régua INTEIRA, e nenhuma regra reprovou?
+ * 4. A apresentação existe? Marca sem apresentação não é marca pronta.
+ * 5. O gasto bate com o razão, e não passou do teto do pedido?
+ */
+export const problemasDaEntregaDeMarca = (entrada: {
+  /** O conteúdo lido de `resultado.json`, ainda não validado. */
+  readonly resultado: unknown;
+  /** O retrato do pedido, de onde sai o teto que valia para ESTE job. */
+  readonly pedido: unknown;
+  /** O caminho relativo à pasta do job existe em disco? */
+  readonly existe: (caminhoRelativo: string) => boolean;
+  /** A apresentação em PDF existe? */
+  readonly temApresentacao: boolean;
+  /** O que o RAZÃO diz que foi gasto e o que ainda está em voo. */
+  readonly razao?: { readonly gasto: number; readonly empenhado: number };
+  /** Os códigos que a régua da marca produz. Vem de fora para não criar ciclo. */
+  readonly codigosDaRegua: readonly string[];
+}): string[] => {
+  const problemas: string[] = [];
+
+  const lido = ResultadoDeMarca.safeParse(entrada.resultado);
+  if (!lido.success) {
+    for (const i of lido.error.issues) {
+      problemas.push(`resultado.json → ${i.path.join('.') || '(raiz)'}: ${i.message}`);
+    }
+    return problemas;
+  }
+
+  for (const peca of lido.data.pecas) {
+    if (!entrada.existe(peca.caminho)) {
+      problemas.push(
+        `o resultado cita ${peca.caminho} e ele não existe em disco: a entrega apontaria para o vazio.`,
+      );
+    }
+  }
+
+  if (lido.data.conferencia === null || lido.data.conferencia.length === 0) {
+    problemas.push(
+      'a marca não tem folha de conferência: "pronta" afirma que alguém mediu, e aqui não há o que mostrar.',
+    );
+  } else {
+    const presentes = new Set(lido.data.conferencia.map((r) => r.codigo));
+    const faltando = entrada.codigosDaRegua.filter((c) => !presentes.has(c));
+    if (faltando.length > 0) {
+      problemas.push(
+        `folha INCOMPLETA: falta ${faltando.join(', ')}. Regra que some da folha é regra que ninguém rodou.`,
+      );
+    }
+    const reprovadas = lido.data.conferencia.filter((r) => r.estado === 'reprovou');
+    if (reprovadas.length > 0) {
+      problemas.push(
+        `${reprovadas.length} regra(s) REPROVADA(S) na folha (${reprovadas.map((r) => r.codigo).join(', ')}): o veredito contradiz a medição.`,
+      );
+    }
+  }
+
+  /**
+   * A apresentação é obrigatória, e é regra do dono.
+   *
+   * Um punhado de PNGs obriga quem recebe a adivinhar qual é a logo e quando
+   * usar cada versão — o trabalho que contratar uma marca vinha evitar.
+   */
+  if (!entrada.temApresentacao) {
+    problemas.push(
+      'não há apresentação em PDF. Marca sem apresentação não é marca pronta: quem recebe fica com arquivos soltos e sem saber qual usar onde.',
+    );
+  }
+
+  if (entrada.razao !== undefined) {
+    if (entrada.razao.empenhado > 0) {
+      problemas.push(
+        `há ${entrada.razao.empenhado} crédito(s) empenhados e sem desfecho no razão: ou o provedor cobrou e falta debitar, ou não cobrou e falta liberar.`,
+      );
+    }
+    if (lido.data.custoGasto !== entrada.razao.gasto) {
+      problemas.push(
+        `o resultado diz ${lido.data.custoGasto} crédito(s) e o razão registra ${entrada.razao.gasto}: a entrega afirmaria um custo que os lançamentos não sustentam.`,
+      );
+    }
+  }
+
+  const pedido = PedidoDeMarca.safeParse(entrada.pedido);
+  if (pedido.success && lido.data.custoGasto > pedido.data.tetoDeCreditos) {
+    problemas.push(
+      `o gasto (${lido.data.custoGasto}) passou do teto do pedido (${pedido.data.tetoDeCreditos}). Fechar assim registraria o estouro como sucesso.`,
+    );
+  }
+
+  return problemas;
+};

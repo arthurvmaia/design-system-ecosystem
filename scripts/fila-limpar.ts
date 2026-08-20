@@ -63,6 +63,20 @@ export type PlanoDeLimpeza = {
  * pessoa nomeou o alvo, e nomear é decidir — só o `criativo` continua exigindo
  * a bandeira, porque o dinheiro já foi gasto.
  */
+/**
+ * Os tipos de job que GASTAM dinheiro, e que a faxina de rotina poupa.
+ *
+ * `marca` entrou junto de `criativo` porque o estrago é o mesmo, e nem o nome
+ * muda: o job é a única identidade que o pedido tem. `marcas/<job_id>/` é
+ * indexado por ele, a tela lista por ele, e apagá-lo deixa em disco um símbolo
+ * gerado, as versões da logo e a apresentação em PDF — tudo pago — numa pasta
+ * que ninguém mais alcança.
+ *
+ * Foi um buraco real: a marca ganhou tipo próprio na fila e esta lista tinha um
+ * nome só, escrito quando `criativo` era o único que custava.
+ */
+const TIPOS_QUE_GASTAM: readonly string[] = ['criativo', 'marca'];
+
 export const planejarLimpeza = (opts: {
   jobs: readonly JobNaFila[];
   ids: readonly string[] | null;
@@ -75,7 +89,7 @@ export const planejarLimpeza = (opts: {
   for (const job of opts.jobs) {
     if (opts.ids !== null && !opts.ids.includes(job.id)) continue;
 
-    if (job.tipo === 'criativo' && !opts.incluirCriativos) {
+    if (TIPOS_QUE_GASTAM.includes(job.tipo ?? '') && !opts.incluirCriativos) {
       criativosPoupados.push(job);
       continue;
     }

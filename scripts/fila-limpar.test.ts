@@ -94,3 +94,32 @@ test('json ilegivel sai quando a pessoa nomeia o id', () => {
   );
   assert.equal(r.desconhecidosPoupados.length, 0);
 });
+
+test('PROVA: a faxina de rotina tambem poupa job de MARCA', () => {
+  // O estrago e o mesmo do criativo, e nem o nome muda: o job e a unica
+  // identidade que o pedido tem. Apaga-lo deixa em disco o simbolo gerado, as
+  // versoes da logo e a apresentacao em PDF — tudo pago — numa pasta orfa.
+  const r = planejarLimpeza({
+    jobs: [job('job_a', 'extract'), job('job_b', 'marca'), job('job_c', 'criativo')],
+    ids: null,
+    incluirCriativos: false,
+  });
+  assert.deepEqual(
+    r.apagar.map((j) => j.id),
+    ['job_a'],
+  );
+  assert.deepEqual(
+    r.criativosPoupados.map((j) => j.id),
+    ['job_b', 'job_c'],
+  );
+});
+
+test('nomear o id nao basta para a marca: a bandeira continua exigida', () => {
+  const r = planejarLimpeza({
+    jobs: [job('job_b', 'marca')],
+    ids: ['job_b'],
+    incluirCriativos: false,
+  });
+  assert.equal(r.apagar.length, 0);
+  assert.equal(r.criativosPoupados.length, 1);
+});
