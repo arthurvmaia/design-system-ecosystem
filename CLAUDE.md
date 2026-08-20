@@ -269,6 +269,11 @@ nenhuma peça visual nasce fora do motor.
 
 ### `marca`
 
+O cliente pediu a MARCA pela tela `/criativos/marca` — a porta fica no passo 1
+da frente Criativos, ao lado de imagem e vídeo ("ainda não tenho marca"). Ela é
+tela própria porque uma marca não tem formato de canal, nem origem de imagem,
+nem copy: nada do que os quatro passos da peça perguntam.
+
 O cliente pediu a MARCA, não uma peça. O payload segue `PedidoDeMarca`
 (`packages/shared/src/schemas/marca.ts`) e a saída mora em `marcas/<job>/` —
 fora de `criativos/`, porque uma marca não vence, não tem canal e é INSUMO das

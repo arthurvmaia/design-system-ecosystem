@@ -652,6 +652,42 @@ export function CriativosPage() {
               ))}
             </div>
           </div>
+
+          {/*
+            A MARCA é o terceiro caminho, e ele sai daqui em vez de virar um
+            terceiro cartão na mesma grade.
+
+            Uma marca não tem formato de canal, nem origem de imagem, nem copy:
+            nada do que os passos 2 a 4 perguntam. Como cartão, ela obrigaria
+            metade do wizard a se esconder conforme a escolha, e passo que some
+            é passo que alguém preenche sem saber que não vale. Como porta, ela
+            leva para a tela que faz as perguntas DELA.
+          */}
+          <Link
+            to="/criativos/marca"
+            className="mt-6 flex items-start gap-3 rounded-none border p-4 transition-colors hover:border-[var(--color-signal)]"
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            <span
+              className="grid h-10 w-10 shrink-0 place-items-center"
+              style={{ background: 'rgb(var(--acento) / 0.12)', color: 'rgb(var(--acento))' }}
+              aria-hidden
+            >
+              <Sparkles size={18} strokeWidth={1.6} />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
+                Ainda não tenho marca
+              </span>
+              <span
+                className="mt-0.5 block text-[12.5px] leading-snug"
+                style={{ color: 'var(--color-fg-muted)' }}
+              >
+                Crio a marca inteira: símbolo, versões da logo, favicons, paleta e a apresentação em
+                PDF. Depois as peças saem dela.
+              </span>
+            </span>
+          </Link>
         </section>
       )}
 

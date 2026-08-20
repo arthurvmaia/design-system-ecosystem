@@ -36,10 +36,66 @@ export function CriativosPecasPage() {
     // dizendo "em produção" muito depois de a peça estar pronta.
     refetchInterval: 15_000,
   });
+  /**
+   * As MARCAS entram na mesma tela das peças, e acima delas.
+   *
+   * Elas não são peça — não têm formato de canal e não vencem —, mas é aqui que
+   * quem pediu vem procurar o que produziu. Uma segunda tela só para marca
+   * faria a pessoa lembrar em qual das duas ela pediu cada coisa.
+   */
+  const marcas = useQuery({
+    queryKey: ['marcas'],
+    queryFn: api.listMarcas,
+    refetchInterval: 15_000,
+  });
   const items = pecas.data?.items ?? [];
+  const itensDeMarca = marcas.data?.items ?? [];
 
   return (
     <div className="mx-auto max-w-[1080px] px-4 sm:px-8 py-8 sm:py-12">
+      {itensDeMarca.length > 0 && (
+        <section className="mb-10">
+          <h2
+            className="text-[10px] uppercase tracking-[0.28em]"
+            style={{ color: 'rgb(var(--acento))', fontFamily: 'var(--font-display)' }}
+          >
+            Marcas
+          </h2>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {itensDeMarca.map((m) => (
+              <div key={m.id} className="ds-glass-static rounded-xl px-5 py-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-[16px] font-medium" style={{ color: 'var(--color-fg)' }}>
+                    {m.nome}
+                  </span>
+                  <span className="text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
+                    {m.status === 'pendente' ? 'na fila, esperando o Orbis' : m.rotulo}
+                  </span>
+                </div>
+                {m.oQueFaz !== '' && (
+                  <p
+                    className="mt-1 truncate text-[12.5px]"
+                    style={{ color: 'var(--color-fg-subtle)' }}
+                  >
+                    {m.oQueFaz}
+                  </p>
+                )}
+                <p className="mt-2 text-[11.5px]" style={{ color: 'var(--color-fg-muted)' }}>
+                  {/* Marca sem apresentação não é marca pronta, e a tela diz. */}
+                  {m.temApresentacao
+                    ? 'Com apresentação em PDF.'
+                    : m.status === 'pendente'
+                      ? 'A apresentação sai junto com as artes.'
+                      : 'Ainda sem apresentação: a marca não está pronta para entregar.'}
+                  {m.custoGasto !== null && m.custoGasto > 0
+                    ? ` ${m.custoGasto} crédito${m.custoGasto === 1 ? '' : 's'} gastos.`
+                    : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <div
         className="ds-slide-up text-[10px] uppercase tracking-[0.28em]"
         style={{ color: 'rgb(var(--acento))', fontFamily: 'var(--font-display)' }}

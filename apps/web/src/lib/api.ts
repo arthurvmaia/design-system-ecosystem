@@ -685,6 +685,33 @@ export type PecaCriativa = {
 };
 
 /**
+ * O que a criação de MARCA custa, por estágio.
+ *
+ * A conta vem do contrato (`ESTAGIOS_DA_MARCA`) e não da tela, pela mesma razão
+ * do preço da peça: dois lados somando números digitados em lugares diferentes
+ * é como a conta diverge sem ninguém errar.
+ */
+export type CustosDaMarca = {
+  teto: number;
+  geracoes: number;
+  estagios: { id: string; rotulo: string; geracoes: number; creditos: number }[];
+};
+
+/** Uma marca criada, como a tela a mostra. */
+export type MarcaCriada = {
+  id: string;
+  nome: string;
+  oQueFaz: string;
+  status: 'pendente' | 'concluido' | 'erro' | 'cancelado';
+  criadoEm: number;
+  /** Derivado da folha de conferência, como nas peças. */
+  rotulo: 'aprovada' | 'aprovada com ressalva' | 'reprovada' | 'sem folha';
+  /** Marca sem apresentação não é marca pronta: a tela diz isso. */
+  temApresentacao: boolean;
+  custoGasto: number | null;
+};
+
+/**
  * Quanto custa uma variação, medido — não escrito na tela.
  *
  * `medidoEm` e `validaAte` viajam junto porque um preço sem data é palpite se
@@ -997,6 +1024,41 @@ export const api = {
   // ── Meus sites (versões geradas em disco) ───────────────────────────────
   listMeusProjetos: () => jsonFetch<{ items: MeusProjetosItem[] }>('/api/meus-projetos'),
   listPecasCriativas: () => jsonFetch<{ items: PecaCriativa[] }>('/api/criativos'),
+
+  // ── Marca ────────────────────────────────────────────────────────────────
+  /** O que a marca custa, com a conta aberta por estágio. Vem do contrato. */
+  custosDaMarca: () => jsonFetch<CustosDaMarca>('/api/marcas/custos'),
+  listMarcas: () => jsonFetch<{ items: MarcaCriada[] }>('/api/marcas'),
+  /**
+   * Cria o pedido de marca.
+   *
+   * A chave de envio é a mesma ideia da peça: o id do job sai dela, então
+   * clicar duas vezes devolve o MESMO job em vez de abrir dois pedidos pagos.
+   */
+  criarPedidoDeMarca: async (chaveDeEnvio: string, pedido: unknown, senhaDeAcao?: string) => {
+    const res = await fetch('/api/marcas', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+        ...(senhaDeAcao === undefined ? {} : { 'x-orbis-acao': senhaDeAcao }),
+      },
+      body: JSON.stringify({ chaveDeEnvio, pedido }),
+    });
+    if (res.status === 428) throw new PrecisaDaSenhaDeAcao();
+    if (!res.ok) {
+      const corpo = await res.text();
+      let msg = 'Não consegui registrar o pedido.';
+      try {
+        const p = JSON.parse(corpo) as { message?: string };
+        if (typeof p.message === 'string' && p.message.trim() !== '') msg = p.message;
+      } catch {
+        // corpo não-JSON: fica a frase genérica
+      }
+      throw new Error(msg);
+    }
+    return (await res.json()) as { job: { id: string }; repetido: boolean };
+  },
   custosCriativos: () => jsonFetch<CustosCriativos>('/api/criativos/custos'),
   /**
    * Cria o pedido criativo.
