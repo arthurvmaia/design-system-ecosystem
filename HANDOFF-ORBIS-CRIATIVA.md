@@ -1,14 +1,23 @@
-# ORBIS CRIATIVA — retomada, 2026-08-17
+# ORBIS CRIATIVA — retomada, 2026-08-20
 
 Este arquivo é o ponto de partida de quem continuar a frente **Orbis Criativa**.
 O `HANDOFF.md` descreve o produto; o `HANDOFF-RETOMADA.md` descreve onde a frente
-de Design Systems parou. Este descreve **o que foi construído aqui, o que já foi
-revisado e o que falta**.
+de Design Systems parou. Este descreve **o que foi construído, o que já foi
+medido e o que falta**.
 
-Estado do repositório: `main` em `275931b`, **nada commitado**. 30 arquivos
-modificados e 20 novos. Suíte com **uma** falha, pré-existente e sem relação com
-este trabalho (`scripts/acervo-regressao.test.ts`, 7,1% de bytes duplicados no
-acervo local da máquina — a mesma que o `HANDOFF-RETOMADA.md` já registrava).
+Estado do repositório: branch **`orbis-criativa`**, seis commits a partir de
+`275931b`. Árvore limpa. Suíte com **uma** falha, pré-existente e sem relação
+com este trabalho (`scripts/acervo-regressao.test.ts`, 7,1% de bytes duplicados
+no acervo local da máquina — a mesma que o `HANDOFF-RETOMADA.md` já registrava).
+
+```
+ad83142  Os documentos param de prometer o que ninguem faz
+e6e1e78  Um motor de marca so, para as tres frentes do portal
+4d62218  O servidor da frente Criativos: pedido, upload por papel e custo medido
+f018f84  A direcao de marca chega ate a peca, em vez de morrer no navegador
+eed3d3b  A regua para de medir o documento e passa a medir a PECA
+07d2569  O contrato do pedido criativo, o preco MEDIDO e o razao de credito
+```
 
 O plano completo, com a matriz de lacunas e as fases, está em
 `~/.claude/plans/c-users-arthur-maia-desktop-orbis-criati-ancient-pizza.md`.
@@ -40,6 +49,10 @@ arbitrária.
 9. **O app vai para a Vercel, público.** Isso vira o critério de toda escolha:
    *sobrevive sem sessão do Claude, sem `~/design-system-ecosystem`, sem SQLite
    em arquivo e sem shell?*
+
+E uma décima, dada em 20/08: **o motor criativo é UM e atende as três frentes.**
+Qualquer processo do portal que precise gerar imagem, vídeo ou criar marca
+chama `@ds/creative`. Segunda implementação de parte visual é defeito.
 
 ---
 
@@ -89,22 +102,24 @@ Saldo em 17/08: **20.635** de 45.000. `isUnlimitedMode: true` com
 
 ## 3. O que está construído
 
-### Comandos novos
+### Comandos
 
 ```powershell
-pnpm criativo:precos                              # catálogo + tabela de preço medida, e o que falta medir
-pnpm criativo:compor <job> <n> [--fundo <arq>]    # compõe, mede, roda C1..C10 e grava a folha
+pnpm criativo:precos                              # catálogo + tabela de preço medida
+pnpm criativo:compor <job> <n> [--fundo <arq>]    # compõe, mede no navegador, roda C1..C11
 pnpm criativo:razao ver|reservar|debitar|liberar  # o razão de crédito de um job
+pnpm marca:derivar <símbolo> [--saida <pasta>]    # as 3 versões da logo, por cálculo
+pnpm marca:espelhar [--seco]                      # sincroniza o recorte na frente de Lojas
 ```
 
 ### O caminho de uma peça, hoje
 
 ```
-tela → POST /api/criativos (credencial de ação 428; id = hash da chave de envio,
-       arquivo criado com flag 'wx'; retrato em criativos/<job>/pedido.json)
+tela → POST /api/criativos (credencial de ação 428; id = hash da chave de envio;
+       upload por PAPEL: imagem e logotipo em gavetas separadas)
      → [pessoa abre o PROCESSAR.bat]
      → agente: account_balance → criativo:razao reservar → images_generate (MCP)
-       → baixa para o disco → criativo:razao debitar → account_balance
+       → BAIXA para criativosDir(job) → criativo:razao debitar → account_balance
      → pnpm criativo:compor <job> <n> --fundo <arquivo baixado>
      → pnpm fila:concluir <job>
      → download só do que a régua aprovou
@@ -112,12 +127,14 @@ tela → POST /api/criativos (credencial de ação 428; id = hash da chave de en
 
 ### As peças
 
-- **`packages/creative-engine`** (novo): catálogo de presets por transporte,
-  tabela de preço datada, razão de crédito, composição em DOM.
-- **`packages/shared/src/regras-de-aceite-criativo.ts`**: as regras **C1..C10**.
+- **`packages/creative-engine`** (`@ds/creative`) — o motor. Catálogo de presets
+  por transporte, tabela de preço datada, razão de crédito, composição em DOM,
+  fonte embutida com cache, e o recorte das versões da logo.
+- **`packages/shared/src/regras-de-aceite-criativo.ts`** — as regras **C1..C11**.
   O texto delas está em `docs/regras-de-aceite.md`, junto com as G e as S.
-- **`scripts/criativo-*.ts`**: os três comandos acima.
-- **`apps/server/src/routes/criativos.ts`**: POST do pedido, upload em rascunho,
+- **`packages/shared/src/schemas/cores-da-peca.ts`** — a derivação de cor, que a
+  tela e o compositor usam pela MESMA conta.
+- **`apps/server/src/routes/criativos.ts`** — POST do pedido, upload por papel,
   rota de custos, listagem que lê o disco além da fila.
 
 ### O princípio que organiza a régua
@@ -128,78 +145,42 @@ tela → POST /api/criativos (credencial de ação 428; id = hash da chave de en
 imensuráveis sem OCR: ficam pendentes quando houve geração, e a peça sai
 "aprovada com ressalva".
 
-O portão de entrega (`problemasDaEntregaCriativa`) recusa fechar quando: a
-variação está `aprovada` sem folha de conferência; a folha tem regra reprovada;
-o arquivo mede diferente do formato; o arquivo não pode ser medido; o razão
-mostra reserva em voo; ou o `custoGasto` da entrega não bate com o razão.
+---
+
+## 4. O que foi consertado desde o handoff anterior
+
+Os oito defeitos da revisão adversarial já estavam consertados. Estes são os
+**pendentes** daquele handoff, todos fechados agora:
+
+**A — a régua não media a peça.** Medido em Chromium: num `banner-3x1` com
+headline de 176 caracteres, a marca terminava **601px acima** do topo do quadro
+e as dez regras ficavam verdes. C2 passou a medir `getBoundingClientRect()` nos
+quatro lados; C4 passou a medir as duas condições que tornam o contraste
+declarado verdadeiro (texto opaco, faixa sólida). A composição parou de produzir
+o defeito: corpo derivado do comprimento do texto, respiro vertical saindo da
+altura, faixa sólida com o degradê num véu. 16 de 16 combinações dentro do
+quadro, incluindo o teto do schema.
+
+**B — a ressalva era descartada.** O rótulo agora é derivado da folha, que
+sempre viajou. A tela mostra "N com ressalva" e nomeia qual.
+
+**D — o `CLAUDE.md` não documentava o `criativo:compor`.** Documentado, com a
+sequência real.
+
+**G (parcial) — contraste `NaN`** passava por baixo do piso (`NaN < 3` é
+`false`). Agora fica pendente.
 
 ---
 
-## 4. A primeira geração paga do repositório
+## 5. O que FALTA
 
-Aconteceu em 17/08, com teto de 3 créditos autorizado pelo dono. O handoff
-anterior dizia que nunca tinha havido uma.
-
-`images_remove_background`, saldo **20.638 → 20.635**, delta de 3 batendo
-exatamente com o razão. O arquivo veio para o disco (a URL do provedor traz
-token que expira, então ela não é entrega), 73.519 bytes, PNG real, 736×414
-medidos do cabeçalho.
-
-**Esse 736×414 é o dado que justifica a composição:** o pedido era de outra
-proporção. O provedor devolve o que ele quer.
-
----
-
-## 5. A revisão adversarial, e o que ela achou
-
-Rodei cinco revisores independentes + dois céticos sobre todo o código novo.
-Confirmei cada achado antes de mexer.
-
-### Consertado e testado
-
-| # | Defeito | O que custava |
-|---|---|---|
-| 1 | `/output/` fora do `.gitignore` | 6,8 MB com a apresentação de marca de um cliente; um `git add -A` levaria para repositório público |
-| 2 | `mesmoConteudo` cego ao aninhado | `JSON.stringify(a, Object.keys(a).sort())` — o 2º argumento é lista de chaves PERMITIDAS, aplicada recursivamente. Pedidos que diferiam só na headline contavam como o mesmo, e `gerar→upload` também |
-| 3 | Idempotência expirando ao fechar o job | O `wx` só protege `pendente/`. Mesma chave abria um segundo job pago, e o `finishJob` dele apagava o custo do primeiro |
-| 4 | Razão pareando errado | Um débito apagava as reservas POSTERIORES da mesma referência. Medido: 300 créditos num teto de 225 |
-| 5 | `custoGasto` nunca saía de 0 | Razão e entrega nunca se encontravam; `0 > teto` nunca dispara |
-| 6 | Vídeo vendido sem rota de produção | 520 créditos por peça que sairia como imagem parada. Agora o POST recusa |
-| 7 | Arquivo não-mensurável passava batido | `continue` em silêncio. Agora reprova |
-| 8 | `resultado.json` ilegível | Recomeçava do zero e apagava variações já pagas |
-
-### PENDENTE — o mais sério primeiro
-
-**A. A régua não mede a peça.** Um revisor provou em Chromium: uma headline
-realista (o schema permite 200 caracteres) joga a marca inteira para fora do
-quadro num `banner-3x1`, e `innerText` continua devolvendo o texto — **as dez
-regras ficam verdes sobre uma peça sem marca visível**. E o contraste é medido
-sobre as cores declaradas: no topo da linha da marca o pixel real é **2,51:1**
-enquanto C4 declara 11,82, porque a faixa é um gradiente que começa transparente
-e a marca tem `opacity:.85`.
-
-*Correção:* `LER_TEXTOS` devolver também `getBoundingClientRect()` por
-`[data-papel]`, e C2 reprovar quando `top < 0 || bottom > altura`. O idioma já
-existe na casa em `scripts/conferir-site.ts:363-380`. Escalar a fonte pelo
-comprimento do texto (determinístico). Pôr o texto sobre faixa **sólida** e tirar
-o `opacity`, para o número de `contrasteDaPeca` voltar a ser verdade.
-
-**B. Toda peça gerada sai gravada `aprovada`, e o rótulo é descartado.**
-`scripts/criativo-compor.ts` calcula `rotuloDaPeca` e joga fora na linha
-seguinte; `PecaCriativa` (`apps/web/src/lib/api.ts`) nem declara `conferencia`.
-Contradiz "toda pendência é declarada". *Correção barata:* o front deriva o
-rótulo da `conferencia`, que já viaja.
+### Pendências técnicas
 
 **C. O job entra na fila ANTES do upload e do retrato.**
 `apps/server/src/routes/criativos.ts` — se o `renameSync` falhar, o job fica
 enfileirado e cobrável citando um arquivo que não existe, e o reenvio cai em
 `repetido` sem reparar. *Correção:* o id é determinístico, então gravar
 `pedido.json` e o upload **antes** de `enfileirarUmaVez`.
-
-**D. O `CLAUDE.md` não documenta `pnpm criativo:compor`.** Quem processar segue
-o documento, gera o pixel (crédito sai) e descobre no fim que o `fila:concluir`
-recusa. Falta o passo 5.5 com a sequência real e a nota de onde o arquivo do
-provedor deve pousar (dentro de `criativosDir`).
 
 **E. `--fundo` sobrescreve o upload do cliente**, e C5/C7/C8 ficam verdes:
 `uploadPreservado` pergunta se *algum* fundo existe, não se é o do cliente.
@@ -208,23 +189,35 @@ provedor deve pousar (dentro de `criativosDir`).
 (`scripts/fila-concluir.ts`), e confere o teto contra o payload da fila — o lado
 mutável — em vez do retrato.
 
-**G. Dívida declarada**, agrupada por arquivo, na saída completa da revisão
+**G. Dívida declarada**, na saída completa da revisão
 (`~/.claude/.../tasks/wwuk09phr.output`): C3 casa substring em qualquer papel;
-contraste `NaN` passa por baixo do piso; C10 é cego a mojibake que não gere
-U+FFFD; o portão aceita folha com uma regra só; `razao.json` é read-modify-write
-sem trava; a chave de envio vive só na memória da aba (F5 abre um segundo job).
+C10 é cego a mojibake que não gere U+FFFD; o portão aceita folha com uma regra
+só; `razao.json` é read-modify-write sem trava; a chave de envio vive só na
+memória da aba (F5 abre um segundo job).
 
-### Decisões que a revisão devolveu para o dono
+### Criação de marca: metade construída
 
-1. **Vídeo:** fechar a venda no POST (feito) até existir rota, ou construir a
-   rota de vídeo agora?
-2. **Exposição:** o app vai ser alcançado por túnel ou por mais de uma pessoa nos
+O **recorte** está pronto, testado por pixel e disponível para as três frentes
+(`pnpm marca:derivar`). Falta a metade que **gera o símbolo**, e ela depende de
+duas decisões do dono (abaixo). Enquanto isso não vier, `tipo: 'marca'` NÃO
+entra no contrato: vender o que não tem rota de produção é o defeito nº 6 que a
+revisão pegou no vídeo.
+
+### Decisões que continuam com o dono
+
+1. **Teto de crédito da criação de marca.** O símbolo custa 75 (preset
+   `imagem-marca`, Nano Banana Pro) por tentativa. Sem teto declarado, nada é
+   gerado.
+2. **Vídeo:** manter a venda fechada no POST (feito) ou construir a rota agora?
+3. **Exposição:** o app vai ser alcançado por túnel ou por mais de uma pessoa nos
    próximos dias? Se sim, sobem para bloqueante: exigir `Origin` em todo
    não-GET, credencial de ação no rascunho, e contador no 428.
-3. **Teto no servidor:** o POST passa a recalcular `tetoComFolga` e recusar teto
-   maior, ou a docstring para de prometer uma conferência que não existe?
 4. **Teto de rodada:** `ORBIS_CRIATIVO_TETO_LOTE` passa a ser perguntado no
    `selecionar.ts` quando a rodada tem job `criativo`?
+5. **A frente de Lojas entra no workspace pnpm?** Hoje ela é projeto separado
+   com `package-lock.json` e deploy próprios, então o recorte da logo vive lá
+   como ESPELHO verificado por teste (`pnpm marca:espelhar`). Entrando no
+   workspace, o espelho morre e vira um `import`.
 
 ---
 
@@ -232,20 +225,21 @@ sem trava; a chave de envio vive só na memória da aba (F5 abre um segundo job)
 
 ```powershell
 pnpm verificar          # lint + typecheck + suíte + portão de fidelidade
+pnpm test:navegador     # os testes que medem pixel (precisa do playwright)
 pnpm criativo:precos    # confere se a tabela de preço ainda vale (vence em 14/11)
+pnpm marca:espelhar --seco  # confere se o recorte da frente de Lojas está em dia
 ```
 
-A ordem que eu seguiria: **A** (a régua mentindo é o defeito que anula todos os
-outros consertos), depois **B** e **D** (as duas mentiras para quem usa), depois
-**C** e **F**.
-
-Depois disso, a **Fase 6**: marca como entidade (`Brand`/`BrandVersion`), que é o
-que destrava o pacote de marca e a integração com as outras frentes.
+A ordem que eu seguiria: **C** e **F** (as duas que podem cobrar por um arquivo
+que não existe), depois **E**, depois a dívida **G**. Com o teto declarado, a
+geração do símbolo fecha a criação de marca.
 
 ### O que NÃO fazer
 
 - Não propor worker autônomo nem Photoshop no caminho do produto: as duas coisas
   foram decididas contra, com medição.
-- Não mexer em `orbis-lojas-shopify` antes do `git pull` que o dono vai fazer.
 - Não derivar slug de modelo a partir do rótulo. O catálogo é a fonte.
 - Não gastar crédito sem teto declarado pelo dono.
+- Não editar `orbis-lojas-shopify/lib/logo-derivar.ts`: ele é espelho. O original
+  está em `packages/creative-engine/src/marca/derivar-navegador.ts`.
+- Não criar uma segunda implementação de nada visual. O motor é um.
