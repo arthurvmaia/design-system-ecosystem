@@ -164,6 +164,17 @@ const principal = async (): Promise<void> => {
         preset: pedido.preset ?? 'imagem-marca',
       },
       decisaoDaCor: { por: cor.decidida, motivo: cor.motivo },
+      /**
+       * A apresentação e os briefings NÃO são conferidos aqui.
+       *
+       * Este comando monta as peças a partir do símbolo; a apresentação é o
+       * passo seguinte (`pnpm marca:apresentar`) e é ele que mede M7, M8 e M9.
+       * Declarar `null` faz as três saírem PENDENTES — que é a verdade neste
+       * ponto do percurso, e o que impede a marca de parecer pronta antes de a
+       * apresentação existir.
+       */
+      apresentacao: null,
+      briefingsDasArtes: null,
     });
 
     /**
