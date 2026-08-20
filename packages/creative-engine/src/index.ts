@@ -17,3 +17,6 @@ export * from './marca/derivar-navegador.js';
 export * from './marca/medir.js';
 export * from './marca/conferir.js';
 export * from './marca/prompt.js';
+export * from './marca/ico.js';
+export * from './marca/pacote-navegador.js';
+export * from './marca/pacote.js';

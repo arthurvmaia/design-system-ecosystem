@@ -103,6 +103,75 @@ export const PedidoDeMarca = z.object({
 });
 export type PedidoDeMarca = z.infer<typeof PedidoDeMarca>;
 
+// ── Os estágios que gastam ───────────────────────────────────────────────────
+
+/**
+ * Os estágios PAGOS de uma marca, com o custo declarado de cada um.
+ *
+ * ## Por que o empenho é por estágio, e não de uma vez
+ *
+ * Um pacote completo custa 750, e o símbolo é o primeiro passo. Empenhar os
+ * 750 de saída significaria descobrir no fim que o desenho não presta depois de
+ * ter queimado tudo; empenhando por estágio, uma marca que erra no símbolo para
+ * em 75. O estágio seguinte só empenha depois de o anterior passar na régua.
+ *
+ * ## Por que 22 seções custam 9 gerações
+ *
+ * Porque a maior parte de um brandbook é COMPOSIÇÃO, não geração — é a regra da
+ * casa (determinístico antes de generativo) aplicada ao caso onde ela mais
+ * economiza. Favicon, lockup, área de proteção, paleta, tipografia, contraste,
+ * formatos de rede e faça/evite saem todos do mesmo símbolo por cálculo. E as
+ * versões desktop e mobile de um banner são o MESMO pixel composto duas vezes,
+ * não duas gerações.
+ */
+export const ESTAGIOS_DA_MARCA = [
+  {
+    id: 'simbolo',
+    rotulo: 'O símbolo',
+    /** Uma geração. Dela saem, por cálculo, todas as versões da logo. */
+    geracoes: 1,
+    creditos: 75,
+  },
+  {
+    id: 'direcao-de-imagem',
+    rotulo: 'A direção de imagem',
+    /** As capas de categoria da referência: como as fotos desta marca são. */
+    geracoes: 3,
+    creditos: 225,
+  },
+  {
+    id: 'key-visual',
+    rotulo: 'Os key visuals',
+    geracoes: 2,
+    creditos: 150,
+  },
+  {
+    id: 'conceito-de-banner',
+    rotulo: 'Os conceitos de banner',
+    /** Desktop e mobile saem do MESMO pixel, compostos: são 2 gerações, não 4. */
+    geracoes: 2,
+    creditos: 150,
+  },
+  {
+    id: 'vetor',
+    rotulo: 'O símbolo em vetor',
+    /**
+     * `images_to_svg`, medido em 150. Entra porque a referência entrega vetor e
+     * a espec proíbe "SVG que seja apenas bitmap disfarçado".
+     */
+    geracoes: 1,
+    creditos: 150,
+  },
+] as const;
+
+export type EstagioDaMarca = (typeof ESTAGIOS_DA_MARCA)[number]['id'];
+
+/** O teto de um pacote completo: a soma dos estágios, e não um número escolhido. */
+export const TETO_DA_MARCA_COMPLETA = ESTAGIOS_DA_MARCA.reduce((t, e) => t + e.creditos, 0);
+
+/** Quantas gerações pagas um pacote completo custa. */
+export const GERACOES_DA_MARCA_COMPLETA = ESTAGIOS_DA_MARCA.reduce((t, e) => t + e.geracoes, 0);
+
 // ── A entrega ────────────────────────────────────────────────────────────────
 
 /**

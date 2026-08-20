@@ -28,7 +28,9 @@ import { isAbsolute, join, resolve } from 'node:path';
 import {
   ArquivoDoRazao,
   corDaMarca,
+  cssDaFonte,
   derivarLogosDaMarca,
+  derivarPacoteDaMarca,
   lerRazao,
   medirMarca,
   paraARegua,
@@ -117,6 +119,39 @@ const principal = async (): Promise<void> => {
     writeFileSync(arquivos['logotipo-fundo-branco'] as string, versoes.fundoBranco);
     writeFileSync(arquivos['logotipo-fundo-preto'] as string, versoes.fundoPreto);
 
+    /**
+     * O resto do pacote, também por CÁLCULO e também de graça.
+     *
+     * Lockup horizontal e vertical, nome por extenso e os cinco favicons mais o
+     * `.ico` — cinco páginas da referência que custam zero, porque são o mesmo
+     * símbolo em outra roupa. É por isso que 22 seções custam 9 gerações.
+     *
+     * A fonte da marca entra embutida: o nome é DESENHADO em tipografia, e não
+     * gerado, porque modelo erra letra e a grafia da marca é a única coisa
+     * deste contrato que não admite interpretação.
+     */
+    const familia = 'Sora';
+    const fonteCss = (await cssDaFonte(familia)) ?? '';
+    if (fonteCss === '') {
+      console.warn(
+        `
+  AVISO: não consegui obter a fonte "${familia}". O nome sai na letra da casa.`,
+      );
+    }
+    const pacote = await derivarPacoteDaMarca(navegador, {
+      simbolo: arquivos.logotipo as string,
+      nome: pedido.nome,
+      cor: cor.hex,
+      fonteCss,
+      familia: fonteCss === '' ? null : familia,
+    });
+    for (const [peca, png] of Object.entries(pacote.pngs)) {
+      const destino = join(dir, `${peca}.png`);
+      writeFileSync(destino, png);
+      arquivos[peca] = destino;
+    }
+    writeFileSync(join(dir, 'favicon.ico'), pacote.ico);
+
     const medidas = await medirMarca(navegador, arquivos);
     const conferencia = conferirMarca({
       ...paraARegua(medidas),
@@ -185,7 +220,9 @@ const principal = async (): Promise<void> => {
       );
     }
     console.log('');
-    console.log(`  Três versões em ${dir}, todas do MESMO símbolo, por cálculo.`);
+    console.log(
+      `  ${Object.keys(arquivos).length + 1} arquivos em ${dir}, todos do MESMO símbolo, por cálculo.`,
+    );
     console.log('');
   } catch (err) {
     /**
