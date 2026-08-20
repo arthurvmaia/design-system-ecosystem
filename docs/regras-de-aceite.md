@@ -495,6 +495,19 @@ gerado já está pago e em disco, e `pnpm criativo:compor` monta de novo a parti
 dele. Como o conserto é de graça, deixar sair uma peça na letra errada seria
 escolher entregar errado.
 
+### O portão da entrega cobra a folha INTEIRA
+
+Uma variação `aprovada` precisa de folha com **todas** as regras (C1 a C11), e
+não com algumas. Enquanto uma folha com uma regra só passava, "aprovada com
+folha" parecia auditável: bastava declarar C1 e a ausência das outras dez não
+aparecia em lugar nenhum. Regra que some de uma folha é regra que ninguém
+rodou.
+
+A lista canônica (`CODIGOS_DA_REGUA`) mora no contrato, e não na régua, para o
+portão poder cobrá-la sem depender dela. Um teste amarra as duas: a régua tem
+de produzir exatamente essa lista, senão o portão passa a exigir o que não
+existe, ou deixa de exigir o que passou a existir.
+
 ### Antes de gastar: claim não autorizado
 
 Não é regra de aceite — é porteiro. Preço, desconto, prazo e frete no texto da

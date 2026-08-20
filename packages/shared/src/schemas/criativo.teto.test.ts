@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PedidoCriativo, problemasDaEntregaCriativa, tetoComFolga } from './criativo.js';
+import {
+  CODIGOS_DA_REGUA,
+  PedidoCriativo,
+  problemasDaEntregaCriativa,
+  tetoComFolga,
+} from './criativo.js';
 
 /**
  * O teto do job não pode nascer igual à estimativa.
@@ -13,7 +18,16 @@ import { PedidoCriativo, problemasDaEntregaCriativa, tetoComFolga } from './cria
  */
 
 /** A folha mínima: "aprovada" só fecha quando alguém mediu alguma coisa. */
-const FOLHA = [{ codigo: 'C1', titulo: 'dimensão', estado: 'passou', motivo: '' }];
+/**
+ * Uma folha COMPLETA. O portão cobra a régua inteira, então testar com folha
+ * parcial seria testar um portão que não é o que roda.
+ */
+const FOLHA = CODIGOS_DA_REGUA.map((codigo) => ({
+  codigo,
+  titulo: `regra ${codigo}`,
+  estado: 'passou' as const,
+  motivo: '',
+}));
 
 test('o teto cabe uma variacao a mais que a estimativa', () => {
   const custo = 75;

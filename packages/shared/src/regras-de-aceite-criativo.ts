@@ -49,6 +49,16 @@ import {
 export type CaixaDoPapel = {
   /** O `data-papel` do elemento: `marca`, `headline`, `cta`, `assinatura`. */
   readonly papel: string;
+  /**
+   * O que ESTE papel renderizou.
+   *
+   * Separado da lista solta de textos porque a pergunta de C3 é sobre um papel
+   * específico: a marca. Procurando a grafia em QUALQUER texto da peça, uma
+   * headline que mencionasse a marca satisfazia a regra enquanto a linha da
+   * marca estava errada, ou ausente. Numa imagem (o logotipo) o texto é o
+   * `alt`, que é onde o nome da marca vive.
+   */
+  readonly texto: string;
   readonly esquerda: number;
   readonly topo: number;
   readonly direita: number;
@@ -95,6 +105,20 @@ const FOLGA_DA_BORDA = 1;
  * acima disto significa que alguém escreveu uma largura em pixel.
  */
 const DESVIO_DE_PROPORCAO = 0.02;
+
+/**
+ * A assinatura do acento EMBARALHADO, que não deixa rastro de perda.
+ *
+ * Quando bytes de UTF-8 são lidos como se fossem de uma tabela de um byte,
+ * "coleção" vira "coleÃ§Ã£o": nada se perdeu, e por isso não há U+FFFD para
+ * denunciar. C10 procurava só o caractere de substituição e passava por cima
+ * desta classe inteira.
+ *
+ * O padrão é a sequência que só aparece nesse acidente: um `Ã` ou `Â` seguido
+ * de um caractere da faixa de continuação de UTF-8, ou o `â€` das aspas
+ * tipográficas. Português de verdade não produz nenhum dos dois.
+ */
+const MOJIBAKE = /[ÃÂ][-¿]|â€/;
 
 /** O que a conferência precisa saber sobre UMA variação produzida. */
 export type VariacaoParaAceite = {
@@ -299,8 +323,18 @@ export const conferirVariacaoCriativa = (v: VariacaoParaAceite): ResultadoDeAcei
   } else if (v.textoRenderizado === null) {
     vereditos.push(pendente('C3', TITULO_C3, 'Ninguém leu o que a peça renderizou.'));
   } else {
-    const achouExata = v.textoRenderizado.some((t) => t.includes(v.marca));
-    const achouIgnorandoCaixa = v.textoRenderizado.some((t) =>
+    /**
+     * A grafia é procurada no PAPEL da marca, não na peça toda.
+     *
+     * Varrendo todos os textos, uma headline que mencionasse a marca satisfazia
+     * C3 enquanto a linha da marca estava com outra grafia — ou não estava lá.
+     * Sem a geometria medida não há como saber qual texto é de qual papel, e aí
+     * a varredura antiga é o que há; o veredito diz isso na frase, em vez de
+     * afirmar mais do que mediu.
+     */
+    const ondeProcurar = caixaDaMarca === null ? v.textoRenderizado : [caixaDaMarca.texto];
+    const achouExata = ondeProcurar.some((t) => t.includes(v.marca));
+    const achouIgnorandoCaixa = ondeProcurar.some((t) =>
       t.toLowerCase().includes(v.marca.toLowerCase()),
     );
     if (achouExata) {
@@ -462,15 +496,26 @@ export const conferirVariacaoCriativa = (v: VariacaoParaAceite): ResultadoDeAcei
     );
   } else {
     const perdidos = v.textoRenderizado.filter((t) => t.includes('�'));
-    vereditos.push(
-      perdidos.length === 0
-        ? passou('C10', 'Nenhum caractere se perdeu no caminho')
-        : reprovou(
-            'C10',
-            'Nenhum caractere se perdeu no caminho',
-            `Há caractere de substituição no texto: ${perdidos.map((t) => `"${t}"`).join(', ')}. Alguma etapa leu os bytes com a codificação errada, e "coleção" virou "cole��o" na peça.`,
-          ),
-    );
+    const embaralhados = v.textoRenderizado.filter((t) => MOJIBAKE.test(t));
+    if (perdidos.length > 0) {
+      vereditos.push(
+        reprovou(
+          'C10',
+          'Nenhum caractere se perdeu no caminho',
+          `Há caractere de substituição no texto: ${perdidos.map((t) => `"${t}"`).join(', ')}. Alguma etapa leu os bytes com a codificação errada, e "coleção" virou "cole��o" na peça.`,
+        ),
+      );
+    } else if (embaralhados.length > 0) {
+      vereditos.push(
+        reprovou(
+          'C10',
+          'Nenhum caractere se perdeu no caminho',
+          `O texto está com acento embaralhado: ${embaralhados.map((t) => `"${t}"`).join(', ')}. Nada se perdeu — os bytes de UTF-8 foram LIDOS como se fossem de outra tabela, e "coleção" virou "coleÃ§Ã£o". Não há caractere de substituição para denunciar, e por isso esta conferência existe além da outra.`,
+        ),
+      );
+    } else {
+      vereditos.push(passou('C10', 'Nenhum caractere se perdeu no caminho'));
+    }
   }
 
   // C11 ────────────────────────────────────────────────────────────────────

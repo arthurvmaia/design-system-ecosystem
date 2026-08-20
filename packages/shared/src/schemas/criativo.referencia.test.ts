@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { referenciaDoPedido } from './criativo.js';
+import { CODIGOS_DA_REGUA, problemasDaEntregaCriativa, referenciaDoPedido } from './criativo.js';
 
 /**
  * Contra QUAL pedido a entrega é conferida.
@@ -38,4 +38,53 @@ test('PROVA: retrato ILEGÍVEL não vira gravação por cima nem fechamento cala
   const r = referenciaDoPedido({ retrato: undefined, payloadDaFila: { tetoDeCreditos: 225 } });
   assert.equal(r.ilegivel, true, 'o fechamento tem de reprovar');
   assert.equal(r.gravarRetrato, false, 'e não pode apagar o que não leu');
+});
+
+test('PROVA: folha INCOMPLETA nao passa no portao da entrega', () => {
+  // "Aprovada com folha" parecia auditável: bastava declarar C1 e a ausência
+  // das outras dez não aparecia em lugar nenhum. Regra que some de uma folha é
+  // regra que ninguém rodou.
+  const problemas = problemasDaEntregaCriativa({
+    resultado: {
+      variacoes: [
+        {
+          caminho: 'v1.png',
+          estado: 'aprovada',
+          motivo: null,
+          conferencia: [{ codigo: 'C1', titulo: 'A dimensão', estado: 'passou', motivo: '' }],
+        },
+      ],
+      custoGasto: 0,
+    },
+    pedido: {},
+    existe: () => true,
+  });
+  assert.ok(
+    problemas.some((p) => p.includes('folha INCOMPLETA')),
+    `o portão devia recusar, e devolveu: ${JSON.stringify(problemas)}`,
+  );
+});
+
+test('folha completa passa por esta conferencia', () => {
+  const problemas = problemasDaEntregaCriativa({
+    resultado: {
+      variacoes: [
+        {
+          caminho: 'v1.png',
+          estado: 'aprovada',
+          motivo: null,
+          conferencia: CODIGOS_DA_REGUA.map((codigo) => ({
+            codigo,
+            titulo: 'medido',
+            estado: 'passou' as const,
+            motivo: '',
+          })),
+        },
+      ],
+      custoGasto: 0,
+    },
+    pedido: {},
+    existe: () => true,
+  });
+  assert.equal(problemas.filter((p) => p.includes('folha')).length, 0, JSON.stringify(problemas));
 });

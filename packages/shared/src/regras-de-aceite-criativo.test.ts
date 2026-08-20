@@ -9,6 +9,7 @@ import {
   rotuloDaConferencia,
   rotuloDaPeca,
 } from './regras-de-aceite-criativo.js';
+import { CODIGOS_DA_REGUA } from './schemas/criativo.js';
 
 /**
  * A régua da peça criativa.
@@ -49,9 +50,33 @@ const TUDO_MEDIDO: VariacaoParaAceite = {
   cta: 'Venha tomar um café',
   textoRenderizado: ['Café da Estação', 'Aberto desde as sete', 'Venha tomar um café'],
   caixasDosPapeis: [
-    { papel: 'marca', esquerda: 65, topo: 700, direita: 400, base: 740, opacidade: 1 },
-    { papel: 'headline', esquerda: 65, topo: 760, direita: 900, base: 900, opacidade: 1 },
-    { papel: 'cta', esquerda: 65, topo: 940, direita: 460, base: 1010, opacidade: 1 },
+    {
+      papel: 'marca',
+      texto: 'Café da Estação',
+      esquerda: 65,
+      topo: 700,
+      direita: 400,
+      base: 740,
+      opacidade: 1,
+    },
+    {
+      papel: 'headline',
+      texto: 'Aberto desde as sete',
+      esquerda: 65,
+      topo: 760,
+      direita: 900,
+      base: 900,
+      opacidade: 1,
+    },
+    {
+      papel: 'cta',
+      texto: 'Venha tomar um café',
+      esquerda: 65,
+      topo: 940,
+      direita: 460,
+      base: 1010,
+      opacidade: 1,
+    },
   ],
   marca: 'Café da Estação',
   menorContraste: 7.2,
@@ -114,9 +139,33 @@ test('PROVA C2: texto FORA do quadro reprova, mesmo estando no documento', () =>
     largura: 1500,
     altura: 500,
     caixasDosPapeis: [
-      { papel: 'marca', esquerda: 105, topo: -648, direita: 400, base: -601, opacidade: 1 },
-      { papel: 'headline', esquerda: 105, topo: -564, direita: 1300, base: 269, opacidade: 1 },
-      { papel: 'cta', esquerda: 105, topo: 307, direita: 480, base: 395, opacidade: 1 },
+      {
+        papel: 'marca',
+        texto: 'Café da Estação',
+        esquerda: 105,
+        topo: -648,
+        direita: 400,
+        base: -601,
+        opacidade: 1,
+      },
+      {
+        papel: 'headline',
+        texto: 'Aberto desde as sete',
+        esquerda: 105,
+        topo: -564,
+        direita: 1300,
+        base: 269,
+        opacidade: 1,
+      },
+      {
+        papel: 'cta',
+        texto: 'Venha tomar um café',
+        esquerda: 105,
+        topo: 307,
+        direita: 480,
+        base: 395,
+        opacidade: 1,
+      },
     ],
   });
   const c2 = r.vereditos.find((v) => v.codigo === 'C2');
@@ -130,7 +179,15 @@ test('C2: texto que passa da borda de baixo ou da direita tambem reprova', () =>
   const embaixo = conferirVariacaoCriativa({
     ...TUDO_MEDIDO,
     caixasDosPapeis: [
-      { papel: 'cta', esquerda: 65, topo: 1000, direita: 460, base: 1120, opacidade: 1 },
+      {
+        papel: 'cta',
+        texto: 'Venha tomar um café',
+        esquerda: 65,
+        topo: 1000,
+        direita: 460,
+        base: 1120,
+        opacidade: 1,
+      },
     ],
   });
   assert.equal(embaixo.vereditos.find((v) => v.codigo === 'C2')?.estado, 'reprovou');
@@ -138,7 +195,15 @@ test('C2: texto que passa da borda de baixo ou da direita tambem reprova', () =>
   const naDireita = conferirVariacaoCriativa({
     ...TUDO_MEDIDO,
     caixasDosPapeis: [
-      { papel: 'marca', esquerda: 65, topo: 700, direita: 1240, base: 740, opacidade: 1 },
+      {
+        papel: 'marca',
+        texto: 'Café da Estação',
+        esquerda: 65,
+        topo: 700,
+        direita: 1240,
+        base: 740,
+        opacidade: 1,
+      },
     ],
   });
   assert.equal(naDireita.vereditos.find((v) => v.codigo === 'C2')?.estado, 'reprovou');
@@ -162,10 +227,91 @@ test('PROVA C3: text-transform uppercase reprova a grafia da marca', () => {
     ...TUDO_MEDIDO,
     marca: 'iFood',
     textoRenderizado: ['IFOOD', 'Aberto desde as sete', 'Venha tomar um café'],
+    caixasDosPapeis: [
+      {
+        papel: 'marca',
+        texto: 'IFOOD',
+        esquerda: 65,
+        topo: 700,
+        direita: 400,
+        base: 740,
+        opacidade: 1,
+      },
+    ],
   });
   const c3 = r.vereditos.find((v) => v.codigo === 'C3');
   assert.equal(c3?.estado, 'reprovou');
   assert.match(c3?.motivo ?? '', /text-transform/);
+});
+
+test('PROVA C3: a grafia e procurada no PAPEL da marca, nao na peca toda', () => {
+  // Varrendo todos os textos, uma headline que MENCIONA a marca satisfazia C3
+  // enquanto a linha da marca estava com outra coisa escrita. A regra é sobre
+  // a assinatura da peça, e não sobre a palavra aparecer em algum lugar.
+  const r = conferirVariacaoCriativa({
+    ...TUDO_MEDIDO,
+    marca: 'Castevani',
+    headline: 'A Castevani veste quem decide',
+    cta: null,
+    textoRenderizado: ['Outra Coisa', 'A Castevani veste quem decide'],
+    caixasDosPapeis: [
+      {
+        papel: 'marca',
+        texto: 'Outra Coisa',
+        esquerda: 65,
+        topo: 700,
+        direita: 400,
+        base: 740,
+        opacidade: 1,
+      },
+      {
+        papel: 'headline',
+        texto: 'A Castevani veste quem decide',
+        esquerda: 65,
+        topo: 760,
+        direita: 900,
+        base: 900,
+        opacidade: 1,
+      },
+    ],
+  });
+  const c3 = r.vereditos.find((v) => v.codigo === 'C3');
+  assert.notEqual(c3?.estado, 'passou', 'a marca não assina esta peça, e a headline não conta');
+});
+
+test('PROVA C10: acento EMBARALHADO reprova, mesmo sem caractere de substituicao', () => {
+  // Quando bytes de UTF-8 são lidos como se fossem de uma tabela de um byte,
+  // "coleção" vira "coleÃ§Ã£o": nada se perdeu, e por isso não há U+FFFD para
+  // denunciar. C10 procurava só o caractere de substituição, e passava por
+  // cima desta classe inteira com a peça mostrando o acento errado.
+  const r = conferirVariacaoCriativa({
+    ...TUDO_MEDIDO,
+    headline: 'Ver a coleÃ§Ã£o',
+    cta: null,
+    textoRenderizado: ['Café da Estação', 'Ver a coleÃ§Ã£o'],
+  });
+  const c10 = r.vereditos.find((v) => v.codigo === 'C10');
+  assert.equal(c10?.estado, 'reprovou');
+  assert.match(c10?.motivo ?? '', /embaralhado/);
+  assert.equal(r.aprovado, false);
+});
+
+test('C10 nao acusa portugues correto', () => {
+  // O padrão tem de ser cego para texto legítimo: "coleção", "Estação",
+  // "Ã" sozinho como letra. Falso positivo aqui reprovaria peça boa.
+  for (const texto of ['coleção', 'Café da Estação', 'ÃGUA', 'não', 'São João']) {
+    const r = conferirVariacaoCriativa({
+      ...TUDO_MEDIDO,
+      headline: texto,
+      cta: null,
+      textoRenderizado: ['Café da Estação', texto],
+    });
+    assert.equal(
+      r.vereditos.find((v) => v.codigo === 'C10')?.estado,
+      'passou',
+      `"${texto}" é português correto e foi acusado`,
+    );
+  }
 });
 
 test('C4: contraste abaixo do piso reprova com o numero', () => {
@@ -185,7 +331,15 @@ test('PROVA C4: texto translucido invalida o contraste DECLARADO', () => {
     ...TUDO_MEDIDO,
     menorContraste: 11.82,
     caixasDosPapeis: [
-      { papel: 'marca', esquerda: 65, topo: 700, direita: 400, base: 740, opacidade: 0.85 },
+      {
+        papel: 'marca',
+        texto: 'Café da Estação',
+        esquerda: 65,
+        topo: 700,
+        direita: 400,
+        base: 740,
+        opacidade: 0.85,
+      },
     ],
   });
   const c4 = r.vereditos.find((v) => v.codigo === 'C4');
@@ -357,4 +511,16 @@ test('descricao de cena com numero nao vira claim', () => {
     autorizacoes: {},
   });
   assert.deepEqual(achados, []);
+});
+
+test('PROVA: a regua produz EXATAMENTE os codigos que o portao cobra', () => {
+  // `CODIGOS_DA_REGUA` mora no contrato para o portão poder exigir a folha
+  // completa sem importar a régua. Duas listas que ninguém compara divergem na
+  // primeira regra nova: ou o portão passa a exigir o que não existe, ou deixa
+  // de exigir o que passou a existir.
+  const r = conferirVariacaoCriativa(TUDO_MEDIDO);
+  assert.deepEqual(
+    r.vereditos.map((v) => v.codigo),
+    [...CODIGOS_DA_REGUA],
+  );
 });

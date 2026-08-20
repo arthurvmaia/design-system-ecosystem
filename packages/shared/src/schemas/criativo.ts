@@ -508,6 +508,32 @@ export const ResultadoCriativo = z.object({
 });
 export type ResultadoCriativo = z.infer<typeof ResultadoCriativo>;
 
+/**
+ * Os códigos que a régua da peça produz, na ordem.
+ *
+ * Mora no CONTRATO e não na régua para o portão da entrega poder cobrar a folha
+ * COMPLETA sem importar a régua — e sem o ciclo que isso criaria. Um teste
+ * amarra os dois: a régua tem de produzir exatamente esta lista.
+ *
+ * Existe porque o portão aceitava folha com uma regra só. "Aprovada com folha"
+ * parecia auditável e não era: bastava declarar C1 e o resto sumia sem que
+ * ninguém notasse a ausência, que é justamente o tipo de omissão que uma folha
+ * existe para impedir.
+ */
+export const CODIGOS_DA_REGUA = [
+  'C1',
+  'C2',
+  'C3',
+  'C4',
+  'C5',
+  'C6',
+  'C7',
+  'C8',
+  'C9',
+  'C10',
+  'C11',
+] as const;
+
 // ── O portão da entrega ──────────────────────────────────────────────────────
 
 /**
@@ -634,6 +660,20 @@ export const problemasDaEntregaCriativa = (entrada: {
         `variação ${n + 1} está aprovada sem folha de conferência: "aprovada" afirma que alguém mediu, e aqui não há o que mostrar.`,
       );
       continue;
+    }
+    /**
+     * A folha tem de cobrir a régua INTEIRA.
+     *
+     * Sem isto, uma folha com uma regra só passava: "aprovada com folha"
+     * parecia auditável, e a ausência das outras dez não aparecia em lugar
+     * nenhum. Regra que some de uma folha é regra que ninguém rodou.
+     */
+    const presentes = new Set(v.conferencia.map((r) => r.codigo));
+    const faltando = CODIGOS_DA_REGUA.filter((codigo) => !presentes.has(codigo));
+    if (faltando.length > 0) {
+      problemas.push(
+        `variação ${n + 1} tem folha INCOMPLETA: falta ${faltando.join(', ')}. Regra que some da folha é regra que ninguém rodou, e a ausência dela não aparece em lugar nenhum.`,
+      );
     }
     const reprovadas = v.conferencia.filter((r) => r.estado === 'reprovou');
     if (reprovadas.length > 0) {

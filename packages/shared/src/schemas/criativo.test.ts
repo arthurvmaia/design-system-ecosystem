@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   AutorizacoesDeClaim,
+  CODIGOS_DA_REGUA,
   DIMENSAO_DO_FORMATO,
   OrigemDaImagem,
   PedidoCriativo,
@@ -198,9 +199,27 @@ test('PROVA: upload com descricao de geracao e o espelho ambiguo, e reprova', ()
  * ninguém consegue dizer O QUE foi medido. Um carimbo verde que não se audita é
  * pior que peça reprovada com motivo, porque a reprovada avisa e esta não.
  */
-const folhaLimpa = [
-  { codigo: 'C1', titulo: 'A dimensão é exatamente a do formato', estado: 'passou', motivo: '' },
-];
+/**
+ * Uma folha de conferência COMPLETA, com um veredito trocado quando se quer.
+ *
+ * O portão cobra a régua inteira: uma folha com uma regra só passava por
+ * auditável enquanto a ausência das outras dez não aparecia em lugar nenhum.
+ * Então as fixtures daqui também são completas — usar folha parcial nos testes
+ * seria testar um portão que não é o que roda.
+ */
+const folhaCom = (
+  trocas: Partial<
+    Record<(typeof CODIGOS_DA_REGUA)[number], { estado: string; motivo: string }>
+  > = {},
+) =>
+  CODIGOS_DA_REGUA.map((codigo) => ({
+    codigo,
+    titulo: `regra ${codigo}`,
+    estado: trocas[codigo]?.estado ?? 'passou',
+    motivo: trocas[codigo]?.motivo ?? '',
+  }));
+
+const folhaLimpa = folhaCom();
 
 const entregaBoa = {
   variacoes: [
@@ -272,9 +291,7 @@ test('PROVA: aprovada com regra REPROVADA na folha nao fecha', () => {
           caminho: 'peca-1.png',
           estado: 'aprovada',
           motivo: null,
-          conferencia: [
-            { codigo: 'C1', titulo: 'dimensão', estado: 'reprovou', motivo: 'saiu 1024×1024' },
-          ],
+          conferencia: folhaCom({ C1: { estado: 'reprovou', motivo: 'saiu 1024×1024' } }),
         },
       ],
       custoGasto: 10,
@@ -294,9 +311,7 @@ test('pendente na folha NAO impede fechar: e ressalva declarada, nao defeito', (
           caminho: 'peca-1.png',
           estado: 'aprovada',
           motivo: null,
-          conferencia: [
-            { codigo: 'C7', titulo: 'texto espúrio', estado: 'pendente', motivo: 'exige OCR' },
-          ],
+          conferencia: folhaCom({ C7: { estado: 'pendente', motivo: 'exige OCR' } }),
         },
       ],
       custoGasto: 10,
