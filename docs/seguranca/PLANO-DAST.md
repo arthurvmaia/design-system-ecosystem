@@ -1,129 +1,155 @@
 # Plano de endurecimento do Orbis, roteirizado pelo Frieren DAST-AI
 
-> **Quem escreveu:** sessão paralela (aba de segurança), 20/08/2026.
-> **Contra qual estado:** commit `275931b`, com a árvore de trabalho SUJA (mais de 30 arquivos modificados pela outra sessão).
-> **Esta sessão não editou uma linha de código.** Só leu. Este arquivo é a entrega inteira.
+> **Quem escreveu:** sessão paralela de segurança, 20/08/2026.
+> **Estado:** três dos cinco achados JÁ CORRIGIDOS, commitados na branch `seguranca-dast`.
+> **Este arquivo não é versionado de propósito.** Ele é o canal entre as duas abas, e não conteúdo do repositório. Tracká-lo faria o `git merge` da branch de segurança falhar com "untracked working tree file would be overwritten", que é o erro mais chato possível na hora mais errada possível. O "porquê" de cada correção mora no código e na mensagem do commit, que é onde este repositório sempre pôs as razões.
 
 ---
 
-## 0. Como as duas sessões convivem
+## 0. Como as duas sessões conviveram
 
-A outra aba está no meio de um trabalho grande e não commitado. Uma edição minha em cima disso não daria conflito de git, daria coisa pior: sumiço silencioso de trabalho que ninguém consegue recuperar, porque não existe commit pra voltar.
+A outra aba estava com trabalho grande e não commitado quando isto começou. Depois ela ramificou para `orbis-criativa` e passou a commitar. As regras que esta aba seguiu, do começo ao fim:
 
-Então a regra desta aba, enquanto a outra estiver de pé:
+1. **Zero edição na árvore de trabalho dela.** Nenhuma. A única exceção declarada é este arquivo.
+2. **Worktree separado.** O código foi escrito em `Desktop/orbis-suite-seguranca`, que é um `git worktree` do mesmo repositório: diretório próprio, branch própria (`seguranca-dast`, saindo de `main`), `.git` compartilhado. Enquanto ela commitava em `orbis-criativa`, eu commitava em `seguranca-dast`, e nenhuma das duas viu a outra.
+3. **Nenhum comando de git que mexesse na árvore dela.** Nada de checkout, stash, add ou commit em `Desktop/orbis-suite`.
+4. **O app não foi subido.** As portas 8787, 5173, 3000 e 4000 continuaram sendo dela.
+5. **Colisão medida antes de cada arquivo, não presumida.** `git diff --name-only main orbis-criativa -- <arquivo>` mais `git status --porcelain -- <arquivo>`. Dois arquivos foram descartados por esse teste, e estão listados na seção 3.
 
-1. **Escrevo em UM arquivo só: este.** Pasta nova (`docs/seguranca/`), que ninguém está tocando. Aparece no `git status` como `??` e não colide com nada.
-2. **Não rodo git de escrita.** Nada de commit, add, stash, checkout, branch, restore. A árvore de trabalho é dela.
-3. **Não subo o app.** As portas 8787, 5173, 3000 e 4000 são dela. Nada de `pnpm dev`, e principalmente nada de `POST /api/desligar`.
-4. **O canal é arquivo, nunca conversa colada.** Regra do próprio CLAUDE.md do Arthur. Quem for aplicar isto lê daqui.
-5. **Cada achado abaixo vem carimbado com LIVRE ou OCUPADO**, conferido no `git status` no momento em que escrevi. LIVRE quer dizer que o arquivo não está na mão da outra sessão e a correção pode entrar já. OCUPADO quer dizer que precisa esperar o commit dela, senão duas mãos escrevem no mesmo arquivo.
-6. **Antes de aplicar qualquer coisa daqui, reconferir o carimbo:** `git status --porcelain -- <arquivo>`. O que estava livre às 04h pode estar ocupado depois.
+### O que fazer com o worktree quando isto acabar
 
----
+```powershell
+cd C:\Users\arthur.maia\Desktop\orbis-suite
+git merge seguranca-dast          # ou abra PR de seguranca-dast
+git worktree remove ..\orbis-suite-seguranca
+git branch -d seguranca-dast
+```
 
-## 1. De onde veio o roteiro, e quanto custou
-
-O `knowbe4/frieren-dast-ai` é um DAST com proxy MITM, 62 regras passivas em YAML e 10 agentes ativos que atacam em paralelo por endpoint: xss, sqli, ssrf, file_read, auth_bypass, secrets, discovery (SSTI, open redirect, CRLF), llm_injection, business_logic e blazor.
-
-**Não foi instalado e não vai ser.** Ele exige um provedor de LLM (`AI_PROVIDER`: Bedrock, Anthropic ou OpenAI) e dispara 10 agentes por endpoint, ou seja, toda varredura vira conta de API. Isso contradiz a regra que este repositório já escreveu em `apps/server/src/lib/anthropic.ts`: custo zero de operação, API paga só com decisão explícita.
-
-O que foi aproveitado, de graça: a **lista de classes de ataque** dele, usada como roteiro de leitura do código deste app. Os achados abaixo estão nomeados pelo agente do Frieren que corresponde a cada um.
+O `git worktree remove` apaga a pasta `orbis-suite-seguranca` do Desktop. Ela só existe para dar um lugar de trabalho isolado; depois do merge não serve mais para nada.
 
 ---
 
-## 2. Achados
+## 1. De onde veio o roteiro, e por que a ferramenta não foi instalada
 
-### A1. A URL da extração aceita `file://` e a rede interna
+O `knowbe4/frieren-dast-ai` (Apache-2.0, ativo) é um DAST com proxy MITM, 62 regras passivas em YAML e 10 agentes ativos: xss, sqli, ssrf, file_read, auth_bypass, secrets, discovery, llm_injection, business_logic e blazor.
 
-`ssrf_agent` + `file_read_agent`. **Risco: alto. Arquivos LIVRES.**
+**Foi lido, não rodado.** Confirmado no código dele, e não no README:
 
-- **Onde:** `packages/shared/src/schemas/design-system.ts:34` valida com `z.string().url()`. Esse validador do Zod 3 aceita QUALQUER esquema, inclusive `file:`, `ftp:` e `data:`, e não olha o host.
-- **Pra onde vai:** `packages/extractor/src/fetch-url.ts:22` entrega direto pro `page.goto(url)` (linha 63) ou pro `fetch(url)` (linha 72). Não existe uma única checagem de destino no caminho. Confirmado por varredura: `z.string().url()` é a única validação de URL do repositório inteiro.
-- **O que acontece:**
-  - `{"kind":"url","url":"file:///C:/Users/arthur.maia/.aws/credentials"}` faz o Playwright abrir o arquivo local. O conteúdo entra no acervo e vira contexto do modelo.
-  - `http://127.0.0.1:8787/...` faz o servidor chamar a si mesmo por dentro, de onde a origem é local.
-  - `http://169.254.169.254/` numa hospedagem em nuvem devolve as credenciais da instância.
-- **Quem alcança:** só `admin` (o nível `visita` já é barrado por ser escrita) e, se `ORBIS_SENHA_ACAO` estiver definida, com a senha de ação. O ponto é que existe UMA senha de admin, compartilhada com quem for convidado, e o app é publicado por túnel.
-- **Correção:** um guarda de destino em `packages/shared`, e não local no fetch-url, porque há QUATRO lugares que abrem URL de fora: `packages/extractor/src/fetch-url.ts`, `packages/explorer/src/explore.ts:315`, `packages/explorer/src/browser.ts:223` e `packages/engine-v2/src/engine.ts:451`. Um guarda local conserta um e deixa três.
+- A metade passiva (`dast/plugins/passive_scanner.py`) importa `re` e `yaml` e mais nada. Roda sem LLM nenhum.
+- A metade ativa (`dast/agents/*`) importa `dast.ai` e chama o modelo. É o botão "Scan" do painel, e é o que custa.
+- O `set_provider()` de `bedrock_client.py` só guarda string em variável; não conecta e não valida. Sem credencial preenchida, uma varredura ativa morre em `AiUnavailableError` antes de sair da máquina. Ou seja: não existe caminho pelo qual ele cobre sem alguém preencher credencial de propósito.
 
-  O guarda: aceitar só `http:` e `https:`; resolver o hostname e recusar loopback, `169.254.0.0/16`, `10/8`, `172.16/12`, `192.168/16`, `.local` e `localhost`. E conferir DE NOVO no redirecionamento, porque `page.goto` segue redirect sozinho: um site legítimo pode responder 302 pra `http://127.0.0.1`. No Playwright isso se faz no evento de request da página, não só antes de chamar.
-
-### A2. Injeção de prompt indireta escreve arquivo fora da pasta
-
-`llm_injection_agent` + `file_read_agent`. **Risco: médio hoje, alto no dia que ligar o modo api. Arquivo LIVRE.**
-
-- **Onde:** `packages/extractor/src/tools.ts`, função `resolveSafe`.
-- **O que falta:** ela barra caminho absoluto na entrada e barra `..`, mas confere só `rel.startsWith('..')`. Falta o `isAbsolute(rel)` que o `apps/server/src/routes/app-web.ts:104` já faz na mesma situação. Duas guardas irmãs, uma completa e outra não.
-- **Medido nesta máquina, Node 24:** o caminho `D:evil.js` não conta como absoluto pro Node. O `resolve(workDir, 'D:evil.js')` devolve a raiz da unidade D, o `relative` devolve um caminho absoluto de outra unidade, e isso não começa com `..`. **Passa pela guarda atual, e é bloqueado assim que o `isAbsolute(rel)` entrar.**
-  - `C:evil.js` cai dentro da própria pasta (mesma unidade) e é inofensivo.
-  - Caminho de rede (UNC) é barrado na entrada.
-  - Ou seja: o escape só existe em máquina com uma segunda unidade montada. É condicional, não universal.
-- **Como um estranho chega nisso:** o extrator lê o HTML de um site QUALQUER e tem `create_file` e `str_replace` na mão. O caminho da chamada de ferramenta é escolhido pelo modelo, e o modelo acabou de ler texto escrito por outra pessoa. É a definição de injeção indireta.
-- **Hoje está frio** porque `EXECUTION_MODE=queue` e `DS_PERMITIR_API_PAGA` desligado fecham o caminho. Esquenta sozinho no dia da virada pra api.
-- **Correção:** uma linha, copiada da irmã que já está certa.
-
-### A3. Desligar a suíte inteira de fora, sem senha
-
-`business_logic_agent` + `auth_agent`. **Risco: alto no formato Vercel. `desligar.ts` LIVRE, `index.ts` OCUPADO.**
-
-- **Onde:** `apps/server/src/routes/desligar.ts:72` junto com `cookieDeSessao` em `apps/server/src/lib/portao.ts`.
-- `POST /api/desligar` não lê corpo nem exige cabeçalho próprio. Um formulário HTML em qualquer site faz esse POST, e formulário não dispara preflight.
-- **Com app e API na mesma origem** (o caso do túnel, que o `app-web.ts` documenta) o cookie sai `SameSite=Lax`, e Lax não acompanha POST vindo de outro site. **Protegido.**
-- **Com `WEB_ORIGIN` num domínio de verdade** (front na Vercel, API noutro lugar, cenário que o código escreve explicitamente que suporta) o cookie sai `SameSite=None; Secure`, e aí ele acompanha. Qualquer página aberta noutra aba derruba servidor, tela, portal e app de lojas de uma vez.
-- **CORS não cobre isto.** Ele decide quem consegue LER a resposta, não quem consegue MANDAR o pedido. O efeito colateral já aconteceu antes da resposta existir.
-- **Correção que cobre a classe inteira, e não só esta rota:** no guarda de `index.ts`, para todo método que não é leitura, exigir que `Origin` bata com `WEB_ORIGIN` (ou que `Sec-Fetch-Site` seja `same-origin`). É o mesmo lugar onde a tranca do nível `visita` já mora, pelo mesmo motivo escrito lá: tranca que só existe na tela não é tranca.
-- **Correção parcial que dá pra fazer já, sem tocar no arquivo ocupado:** exigir um cabeçalho próprio no `desligar.ts`. Cabeçalho fora da lista simples obriga preflight, e o preflight morre no CORS.
-
-### A4. O erro de qualquer rota devolve a mensagem crua
-
-Regra passiva de página de erro e rastro. **Risco: baixo. `index.ts` OCUPADO.**
-
-- `apps/server/src/index.ts:141`: `app.onError` responde `{ error: 'internal_error', message: err.message }`.
-- O `asset.ts` tem o cuidado declarado de não vazar caminho físico. O `onError` vaza por fora dele: um `ENOENT` carrega o caminho absoluto da máquina até o navegador, e num túnel público isso sai pra internet.
-- **Correção:** texto fixo na resposta, detalhe só no `console.error` que já está lá.
-
-### A5. A página que tem o campo de senha sai sem cabeçalho de segurança nenhum
-
-Regras passivas de headers, clickjacking e HSTS. **Risco: médio. Arquivo LIVRE.**
-
-- `apps/server/src/routes/app-web.ts:86`: a resposta leva só `Content-Type` e `Cache-Control`.
-- Comparação dentro do próprio repositório: `asset.ts` manda `X-Content-Type-Options: nosniff`, `criativos.ts:698` manda `Content-Security-Policy: sandbox`. A página do portão, que é onde a credencial é digitada, não manda nada.
-- Sem `frame-ancestors` nem `X-Frame-Options`, essa tela pode ser posta num iframe invisível de outro site, com um botão falso por cima. Sem HSTS, a primeira visita pelo túnel aceita ser rebaixada. Sem `nosniff`, um arquivo servido pelo fallback pode ser reinterpretado.
-- **Correção:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` (ou CSP com `frame-ancestors 'none'`), `Referrer-Policy: no-referrer`, e `Strict-Transport-Security` quando o `x-forwarded-proto` disser https. O `conexaoSegura` de `orbis.ts:54` já sabe ler isso.
-
-### A6. O que foi olhado e está certo, e eu NÃO mexeria
-
-- **Contador de tentativas global e em memória** (`limite-de-tentativas.ts`): a escolha está justificada por escrito e o motivo se sustenta (contar por IP atrás de túnel é contar o IP do túnel, e `x-forwarded-for` é escrito por quem chama). O limite dela já está declarado no próprio arquivo.
-- **`Access-Control-Allow-Origin: *` nos assets:** conteúdo endereçado por hash, sem credencial, e fonte em iframe de origem opaca exige. Correto.
-- **`desligar.ts` matando por porta:** a porta vem de constante, o PID passa por `^\d+$` antes de entrar no `taskkill`. Não há injeção de comando ali.
-- **SQL:** tudo por drizzle. O único `prepare` cru é `health.ts:8`, com literal fixo e sem parâmetro. Sem SQLi.
-- **Assinatura do cookie** (`portao.ts`): prazo e nível viajam dentro da assinatura, comparação em tempo constante dos dois lados, as duas senhas sempre conferidas pra não vazar qual delas errou. Bem feito.
-- **Traversal em `asset.ts` e `app-web.ts`:** as duas guardas estão completas.
+Instalar custaria Python, `uv`, navegadores do Playwright e uma CA raiz no navegador, para reconfirmar **um** dos cinco achados (o A5). Os outros quatro exigem os agentes pagos ou leitura de código. O proveito grátis dele foi a lista de classes de ataque, usada como roteiro. É por ela que os achados abaixo estão nomeados.
 
 ---
 
-## 3. Ordem sugerida
+## 2. Os cinco achados
 
-**Pode entrar agora, arquivos livres, nenhum encosta no trabalho da outra aba:**
+### A1. A URL da extração aceitava `file://` e a rede interna — CORRIGIDO
 
-1. A2, o `isAbsolute(rel)` em `packages/extractor/src/tools.ts`. Uma linha, risco zero de regressão.
-2. A5, os cabeçalhos em `apps/server/src/routes/app-web.ts`.
-3. A1, o guarda de destino em `packages/shared`, ligado nos quatro pontos de fetch. É o maior dos três e o que mais vale.
+`ssrf_agent` + `file_read_agent`. Risco alto.
 
-**Espera o commit da outra aba:**
+**O que era:** `packages/shared/src/schemas/design-system.ts:34` valida com `z.string().url()`, que confere só o FORMATO. `file:///C:/Users/arthur.maia/.aws/credentials` passava, `http://127.0.0.1:8787` passava, `http://169.254.169.254` passava. O `packages/extractor/src/fetch-url.ts` entregava os três direto ao `page.goto` ou ao `fetch`. Não havia uma única checagem de destino no repositório inteiro.
 
-4. A3 na forma boa (checagem de origem no guarda de `index.ts`).
-5. A4 (`onError`, no mesmo `index.ts`).
+**O que ficou:** `packages/shared/src/destino-permitido.ts`, novo. Consultado em três momentos, porque um só não bastaria:
+
+- antes de abrir qualquer coisa, com o nome **resolvido no DNS**, porque um domínio público pode apontar para `127.0.0.1`;
+- a cada **redirecionamento**, porque quem responde escolhe o próximo endereço (o `fetch` passou a seguir os saltos à mão, com teto de 5);
+- a cada **pedido que a página faz**, via `page.route` do Playwright, porque o navegador busca imagem, script e fonte sozinho.
+
+Mora em `packages/shared` porque há quatro lugares no repositório que abrem URL de fora, e um guarda escrito dentro de um deles conserta aquele e deixa os outros. Entra por subcaminho (`@ds/shared/destino-permitido`) e não pelo `index.ts`, para não arrastar `node:dns` para dentro do bundle do front.
+
+**A porta que abre de propósito:** `ORBIS_PERMITIR_REDE_INTERNA=1`. Mesmo desenho do `DS_PERMITIR_API_PAGA`. Serve ao caso real de extrair um site rodando na sua própria máquina, sem deixar o servidor publicado aberto para a rede de quem o hospeda. Ela reabre REDE e não reabre `file:`.
+
+### A2. Injeção de prompt indireta escrevia fora da pasta — CORRIGIDO
+
+`llm_injection_agent` + `file_read_agent`. Risco médio hoje, alto no dia da virada para o modo `api`.
+
+**O que era:** `resolveSafe`, em `packages/extractor/src/tools.ts`, conferia `rel.startsWith('..')` e não conferia `isAbsolute(rel)`. As duas perguntas que o `apps/server/src/routes/app-web.ts:104` já fazia na mesma situação; era a irmã pela metade.
+
+**Medido nesta máquina, Node 24:** `D:evil.js` não conta como absoluto para o Node (quer dizer "a pasta atual da unidade D"), então passava pela guarda de entrada. E `relative` entre unidades diferentes devolve um caminho absoluto, que não começa com `..`. Gravava na raiz de D. `C:evil.js` cai dentro da própria pasta e é inofensivo; caminho de rede já era barrado. O escape existia só em máquina com uma segunda unidade montada.
+
+**Quem chegava lá:** o modelo, escolhendo o caminho da chamada de ferramenta logo depois de ler o HTML de um site qualquer.
+
+**O que ficou:** a segunda pergunta, mais o teste que a prova (`tools.test.ts`, o caso da unidade vizinha).
+
+### A3. Desligar a suíte inteira de fora — NÃO CORRIGIDO, arquivo ocupado
+
+`business_logic_agent` + `auth_agent`. Risco alto no formato Vercel, nenhum no formato túnel.
+
+`POST /api/desligar` não lê corpo nem exige cabeçalho próprio, e formulário HTML de outro site não dispara preflight. Com app e API na mesma origem (o túnel) o cookie sai `SameSite=Lax` e não acompanha: **protegido**. Com `WEB_ORIGIN` num domínio de verdade, o cookie sai `SameSite=None; Secure` e acompanha: qualquer página aberta noutra aba derruba servidor, tela, portal e app de lojas.
+
+CORS não cobre isto: ele decide quem LÊ a resposta, não quem MANDA o pedido.
+
+**Correção certa** (a que cobre a classe inteira, e não só esta rota): no guarda de `apps/server/src/index.ts`, para todo método que não é leitura, exigir que `Origin` bata com `WEB_ORIGIN` ou que `Sec-Fetch-Site` seja `same-origin`. É o mesmo lugar onde a tranca do nível `visita` já mora, pelo mesmo motivo escrito lá.
+
+**Por que não entrou:** `index.ts` foi alterado no commit da outra branch.
+
+### A4. O erro de qualquer rota devolve a mensagem crua — NÃO CORRIGIDO, arquivo ocupado
+
+Risco baixo. `apps/server/src/index.ts:141`, no `onError`: `message: err.message`. O `asset.ts` tem o cuidado declarado de não vazar caminho físico, e o `onError` vaza por fora dele. Um `ENOENT` leva `C:\Users\arthur.maia\...` até o navegador, e num túnel público isso sai para a internet. Correção: texto fixo na resposta, detalhe só no `console.error` que já está lá.
+
+**Por que não entrou:** mesmo arquivo do A3.
+
+### A5. A página do portão saía sem cabeçalho de segurança — CORRIGIDO
+
+Risco médio. `apps/server/src/routes/app-web.ts` respondia só `Content-Type` e `Cache-Control`, enquanto o `asset.ts` já mandava `nosniff` e o `criativos.ts` já mandava CSP. A tela onde a CREDENCIAL é digitada era a mais desprotegida das três.
+
+**O que ficou:** `X-Content-Type-Options: nosniff`, `Content-Security-Policy: frame-ancestors 'none'` (com `X-Frame-Options: DENY` ao lado, para navegador velho), `Referrer-Policy: no-referrer`, e `Strict-Transport-Security` quando a conexão chegou por https, lido do `x-forwarded-proto` como o `orbis.ts` já lê.
+
+**Conferido antes de aplicar:** os iframes do app apontam todos para `/api/preview/*`, que é outra rota, registrada antes do coringa, e não recebe estes cabeçalhos. Os do app de lojas usam `srcDoc`, que nem passa por resposta HTTP. `frame-ancestors` não quebra nada.
+
+A CSP tem essa diretiva SÓ. Mandar `default-src` daqui quebraria o bundle do app.
+
+### A6. O que foi olhado e está certo
+
+- **Contador de tentativas do login:** atraso que dobra, teto de 5s, contador global e em memória. A escolha está justificada por escrito e o motivo se sustenta.
+- **Assinatura do cookie:** prazo e nível viajam dentro da assinatura, comparação em tempo constante dos dois lados, as duas senhas sempre conferidas para não vazar qual errou.
+- **`Access-Control-Allow-Origin: *` nos assets:** conteúdo endereçado por hash, sem credencial, e fonte em iframe de origem opaca exige.
+- **`desligar.ts` matando por porta:** porta vem de constante, PID passa por `^\d+$`. Sem injeção de comando.
+- **SQL:** tudo por drizzle; o único `prepare` cru é literal fixo em `health.ts:8`. Sem SQLi.
+- **Traversal em `asset.ts` e `app-web.ts`:** as duas guardas completas.
 
 ---
 
-## 4. Como conferir, sem subir o app
+## 3. O que ficou de fora, e por quê
 
-O repositório já tem teste em vitest ao lado do código (`portao.test.ts`, `paths.test.ts`). O mesmo formato serve:
+**Dois arquivos, os dois porque a outra branch os alterou.** A regra desta aba era não escrever onde ela escreveu, e ela vale até o fim:
 
-- **A1:** tabela de URLs contra o guarda. Passam: `https://exemplo.com`, `http://exemplo.com:8080/a`. Recusadas: `file:///etc/passwd`, `http://127.0.0.1:8787`, `http://169.254.169.254/`, `http://[::1]/`, `http://192.168.0.1/`, `http://localhost`, `data:text/html,x`, e um domínio que resolva pra IP privado.
-- **A2:** os cinco caminhos já medidos, com o resultado esperado de cada um. O `D:evil.js` é o que prova a correção.
-- **A3:** pedido sem `Origin` e pedido com `Origin` de outro site contra uma rota de escrita, esperando 403.
-- **A5:** conferir os cabeçalhos na resposta de `GET /`.
+| Arquivo | O que falta ali |
+|---|---|
+| `apps/server/src/index.ts` | A3 (checagem de origem nas escritas) e A4 (`onError` sem `err.message`) |
+| `apps/server/.env.example` | Documentar o `ORBIS_PERMITIR_REDE_INTERNA` |
 
-O que NÃO foi auditado nesta passada, pra ninguém achar que está coberto: o front (`apps/web`) em profundidade, o `preview.ts` inteiro (1327 linhas, tem construção de HTML com `innerHTML` dentro do documento sandbox), o `packages/engine-v2` e o app de lojas Shopify.
+O trecho do `.env.example`, pronto para colar depois do merge:
+
+```
+# Buscar na rede interna (localhost, 10.x, 192.168.x, o metadata das nuvens).
+# Desligado por padrão, e é de propósito: a URL da extração é digitada por quem
+# usa o app, e sem isto ela alcançaria a própria máquina e a rede de quem
+# hospeda o servidor. Ligue só quando o alvo for um site SEU rodando local.
+ORBIS_PERMITIR_REDE_INTERNA=
+```
+
+**Também não auditado nesta passada**, para ninguém achar que está coberto: o front (`apps/web`) em profundidade, o `preview.ts` inteiro (1327 linhas, com montagem de HTML por `innerHTML` dentro do documento sandbox), o `packages/engine-v2`, o app de lojas Shopify, e os outros três pontos de fetch (`packages/explorer/src/explore.ts:315`, `packages/explorer/src/browser.ts:223`, `packages/engine-v2/src/engine.ts:451`) — o guarda existe e é importável, mas só o `fetch-url.ts` foi ligado nele, porque é o único que a rota `POST /api/design-systems` alcança.
+
+---
+
+## 4. O que foi medido
+
+| | |
+|---|---|
+| Testes novos | 26 (16 no guarda de destino, 7 na guarda de caminho, 3 no restante) |
+| Suíte rápida | 1818 testes, 1816 passando, 1 pulado |
+| Única falha | `acervo-regressao`, fase 3: 7,1% de bytes duplicados entre segmentos contra meta de 5% |
+| A falha é minha? | **Não.** Rodada com as mudanças guardadas no stash, ela falha idêntica. Mede o acervo em `~/design-system-ecosystem`, não o código. |
+| `pnpm typecheck` | 13 pacotes, 13 passando |
+| `pnpm lint` | 545 arquivos, limpo |
+
+---
+
+## 5. O que muda para quem usa o app
+
+**Nada, na tela.** Nenhuma correção mexe em layout, fluxo ou botão. É o objetivo: o que muda é o que dá para fazer contra o app, e não o que ele faz.
+
+Há **uma** mudança de comportamento visível, e ela é deliberada: extrair um endereço que aponte para a própria máquina ou para a rede interna passa a ser recusado com explicação, em vez de aceito. Quem precisar disso liga `ORBIS_PERMITIR_REDE_INTERNA=1`. Um site público, que é o caso normal, continua igual.

@@ -32,7 +32,16 @@ import { executadoDireto } from './executado-direto.js';
 
 const USO = 'Uso: pnpm marca:derivar <arquivo do símbolo> [--saida <pasta>]';
 
-const morrer = (msg: string): never => {
+/**
+ * Anotação no LADO ESQUERDO de propósito.
+ *
+ * O TypeScript só usa uma função que nunca retorna para estreitar o tipo do
+ * que vem DEPOIS dela quando a anotação está na variável, não no valor. Com
+ * `const morrer = (msg: string): never =>`, a chamada continua sendo só uma
+ * chamada: tudo o que vem depois segue "possibly undefined", que é o oposto do
+ * que este atalho existe para dizer.
+ */
+const morrer: (msg: string) => never = (msg) => {
   console.error(`\n  ${msg}\n`);
   process.exit(1);
 };

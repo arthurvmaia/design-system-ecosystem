@@ -53,14 +53,16 @@
     "biblioteca:religar": "tsx scripts/religar-biblioteca.ts",
     "biblioteca:conferir": "tsx scripts/conferir-peca.ts",
     "marca:espelhar": "tsx scripts/marca-espelhar.ts",
-    "marca:derivar": "tsx scripts/marca-derivar.ts"
+    "marca:derivar": "tsx scripts/marca-derivar.ts",
+    "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.10.2",
+    "playwright": "^1.61.1",
     "tsx": "^4.19.2",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2",
-    "playwright": "^1.61.1"
+    "typescript": "^5.7.2"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {
@@ -69,12 +71,12 @@
   },
   "dependencies": {
     "@ds/creative": "workspace:^",
+    "@ds/engine-v2": "workspace:^",
     "@ds/explorer": "workspace:^",
+    "@ds/generator": "workspace:^",
     "@ds/indexer": "workspace:^",
     "@ds/segmenter": "workspace:^",
     "@ds/server": "workspace:^",
-    "@ds/shared": "workspace:^",
-    "@ds/engine-v2": "workspace:^",
-    "@ds/generator": "workspace:^"
+    "@ds/shared": "workspace:^"
   }
 }

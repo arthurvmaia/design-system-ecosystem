@@ -21,6 +21,7 @@ import {
   listarAssetsFaltando,
   problemasDaEntregaCriativa,
   projectGeneratedDir,
+  referenciaDoPedido,
   vaultDsDir,
   vaultExtractedDir,
 } from '@ds/shared';
@@ -196,27 +197,40 @@ if (job.type === 'criativo') {
   const dir = criativosDir(jobId);
   const arquivo = join(dir, 'resultado.json');
 
-  // O retrato do pedido vai para o disco ANTES de qualquer conferência, e
-  // acontecendo o que acontecer com o job.
-  //
   // A fila é volátil por desenho — o `fila:limpar` a esvazia — e enquanto o
   // pedido morava só lá, esvaziá-la levava junto o teto de créditos, os claims
-  // autorizados e a peça inteira da tela "Minhas peças". Os arquivos ficavam em
-  // `criativos/<job_id>/`, pagos e inalcançáveis.
+  // autorizados e a peça inteira da tela "Minhas peças". Por isso o retrato
+  // existe, e por isso ele é gravado no ATO do pedido, pelo POST.
   //
-  // Gravar aqui é o que existe hoje: quem enfileira ainda é a tela de ensaio,
-  // que não cria job. Quando o `POST` nascer, o retrato passa a ser escrito no
-  // ato do enfileiramento e esta linha vira rede de segurança.
-  try {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(criativoPedidoPath(jobId), JSON.stringify(job.payload, null, 2), 'utf8');
-  } catch (err) {
+  // Quem decide o que fazer com ele é `referenciaDoPedido`, e o porquê está lá.
+  const arquivoDoRetrato = criativoPedidoPath(jobId);
+  let retratoLido: unknown | undefined = null;
+  if (existsSync(arquivoDoRetrato)) {
+    try {
+      retratoLido = JSON.parse(readFileSync(arquivoDoRetrato, 'utf8'));
+    } catch {
+      retratoLido = undefined;
+    }
+  }
+  const referencia = referenciaDoPedido({ retrato: retratoLido, payloadDaFila: job.payload });
+  if (referencia.ilegivel) {
     problemas.push(
-      `não consegui gravar o retrato do pedido em ${dir}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `o retrato do pedido está ilegível em ${arquivoDoRetrato}: não fecho um job pago sem saber contra que teto medir.`,
     );
   }
+  if (referencia.gravarRetrato) {
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(arquivoDoRetrato, JSON.stringify(job.payload, null, 2), 'utf8');
+    } catch (err) {
+      problemas.push(
+        `não consegui gravar o retrato do pedido em ${dir}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+  const pedidoDeReferencia = referencia.pedido;
 
   if (!existsSync(arquivo)) {
     problemas.push(`resultado.json não existe em ${dir} — a peça não tem onde ser lida.`);
@@ -256,7 +270,7 @@ if (job.type === 'criativo') {
       problemas.push(
         ...problemasDaEntregaCriativa({
           resultado: bruto,
-          pedido: job.payload,
+          pedido: pedidoDeReferencia,
           razao,
           existe: (relativo) => existsSync(join(dir, relativo)),
           // O portão mede o ARQUIVO, em vez de acreditar na folha que veio

@@ -523,7 +523,30 @@ criativosRoute.post('/', async (c) => {
   const rascunho = criativoRascunhoDir(rascunhoId);
   let arquivoDoRascunho: string | null = null;
 
-  if (pedido.imagem.origem === 'upload') {
+  /**
+   * Este envio já foi aceito antes?
+   *
+   * O rascunho é esvaziado quando o pedido entra, então um reenvio da mesma
+   * chave não acha mais o arquivo na gaveta — e respondia `upload_ausente`, um
+   * 400, para quem clicou duas vezes. A idempotência existe justamente para o
+   * segundo clique devolver o MESMO job, e ela caía no caso que mais precisa
+   * dela: o pedido que já tem arquivo pago em disco.
+   *
+   * Havendo retrato, os caminhos vêm DELE. O que decide "é o mesmo pedido?" é
+   * todo o resto — marca, formato, texto, teto —, não o nome do arquivo, que é
+   * o servidor quem escreve.
+   */
+  const jaAceito = lerPedidoEmDisco(jobId);
+  const doRetrato = jaAceito === null ? null : PedidoCriativo.safeParse(jaAceito);
+  if (doRetrato?.success === true) {
+    pedido = {
+      ...pedido,
+      imagem: { ...pedido.imagem, caminhoDoUpload: doRetrato.data.imagem.caminhoDoUpload },
+      direcao: { ...pedido.direcao, logotipo: doRetrato.data.direcao.logotipo },
+    };
+  }
+
+  if (doRetrato?.success !== true && pedido.imagem.origem === 'upload') {
     arquivoDoRascunho = arquivoDaGaveta(rascunhoId, 'imagem');
     if (arquivoDoRascunho === null) {
       return c.json(
@@ -551,7 +574,8 @@ criativosRoute.post('/', async (c) => {
    * peça sem a marca que o pedido prometeu, e o contrário do que se pediu não
    * pode passar por omissão.
    */
-  const logotipoDoRascunho = arquivoDaGaveta(rascunhoId, 'logotipo');
+  const logotipoDoRascunho =
+    doRetrato?.success === true ? null : arquivoDaGaveta(rascunhoId, 'logotipo');
   /**
    * O nome com que o logotipo passa a morar no job.
    *
@@ -564,7 +588,7 @@ criativosRoute.post('/', async (c) => {
     logotipoDoRascunho !== null && logotipoDoRascunho === arquivoDoRascunho
       ? `logotipo-${logotipoDoRascunho}`
       : logotipoDoRascunho;
-  if (pedido.direcao.logotipo !== null) {
+  if (doRetrato?.success !== true && pedido.direcao.logotipo !== null) {
     if (logotipoDoRascunho === null) {
       return c.json(
         {
@@ -579,6 +603,90 @@ criativosRoute.post('/', async (c) => {
       ...pedido,
       direcao: { ...pedido.direcao, logotipo: `upload/${nomeDoLogotipoNoJob}` },
     };
+  }
+
+  /**
+   * O DISCO primeiro, a fila depois. A ordem é a correção.
+   *
+   * Antes, o job era enfileirado e só então os arquivos mudavam de casa e o
+   * retrato era gravado. Um `renameSync` que falhasse ali deixava um job
+   * ENFILEIRADO e cobrável citando um arquivo que não existe em lugar nenhum —
+   * e o reenvio da mesma chave caía em `repetido`, devolvendo o job quebrado
+   * como se estivesse tudo bem. O estrago só aparecia na hora de produzir,
+   * depois de a pessoa ter confirmado o gasto.
+   *
+   * Invertida a ordem, a falha troca de lado: sem enfileiramento não há job,
+   * ninguém processa e nada é gasto. E ela se REPARA sozinha, porque o
+   * `pedido.json` é escrito com `wx` e vira a exclusividade do lado do disco:
+   * o reenvio encontra o retrato pronto, pula a mudança de arquivos e segue
+   * para o enfileiramento, que é idempotente por conta própria.
+   *
+   * O id sai da chave de envio e é determinístico, então isto é possível: a
+   * pasta do job pode existir antes de o job existir.
+   */
+  const dir = criativosDir(jobId);
+  const retrato = criativoPedidoPath(jobId);
+  let donoDoDisco = false;
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(retrato, JSON.stringify(pedido, null, 2), {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+    donoDoDisco = true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+      return c.json(
+        {
+          error: 'disco_indisponivel',
+          message:
+            'Não consegui gravar o pedido em disco, então não enfileiro nada. Um job que nasce sem o pedido ao lado é um job cobrável apontando para o vazio.',
+        },
+        500,
+      );
+    }
+    // O retrato já existe: outro envio da mesma chave chegou primeiro (ou este
+    // mesmo, e o enfileiramento não completou). Nada de arquivo se move.
+  }
+
+  if (donoDoDisco) {
+    /**
+     * Os arquivos saem do rascunho e passam a morar com o job.
+     *
+     * Falhar aqui APAGA o retrato: um pedido em disco dizendo que tem arquivo,
+     * ao lado de uma pasta sem arquivo nenhum, é pior que pedido nenhum — ele
+     * passaria no `wx` do reenvio e travaria a chave para sempre.
+     */
+    try {
+      if (arquivoDoRascunho !== null || logotipoDoRascunho !== null) {
+        const destino = criativoUploadDir(jobId);
+        mkdirSync(destino, { recursive: true });
+        // A origem é a gaveta quando ela existe, e a raiz quando o rascunho foi
+        // aberto antes das gavetas existirem.
+        const mover = (papel: 'imagem' | 'logotipo', nome: string, comoSeChama: string): void => {
+          const naGaveta = join(gavetaDoRascunho(rascunhoId, papel), nome);
+          renameSync(
+            existsSync(naGaveta) ? naGaveta : join(rascunho, nome),
+            join(destino, comoSeChama),
+          );
+        };
+        if (arquivoDoRascunho !== null) mover('imagem', arquivoDoRascunho, arquivoDoRascunho);
+        if (logotipoDoRascunho !== null && nomeDoLogotipoNoJob !== null)
+          mover('logotipo', logotipoDoRascunho, nomeDoLogotipoNoJob);
+        rmSync(rascunho, { recursive: true, force: true });
+      }
+    } catch (err) {
+      rmSync(retrato, { force: true });
+      return c.json(
+        {
+          error: 'arquivo_nao_mudou_de_casa',
+          message: `Recebi o arquivo mas não consegui guardá-lo com o pedido (${
+            err instanceof Error ? err.message : String(err)
+          }). Nada foi enfileirado: envie de novo.`,
+        },
+        500,
+      );
+    }
   }
 
   const r = enfileirarUmaVez({
@@ -602,37 +710,6 @@ criativosRoute.post('/', async (c) => {
       },
       409,
     );
-  }
-
-  // O retrato vai para o disco no ATO, e não no fechamento: entre o pedido e o
-  // processamento pode passar uma faxina da fila, e o que a peça custou não
-  // pode depender de um arquivo que alguém apaga.
-  if (r.estado === 'criado') {
-    const dir = criativosDir(r.job.id);
-    mkdirSync(dir, { recursive: true });
-
-    // O arquivo do cliente sai do rascunho e passa a morar com o job. Só depois
-    // disso o retrato é gravado: se a mudança falhar, o pedido não fica em disco
-    // dizendo que tem arquivo.
-    if (arquivoDoRascunho !== null || logotipoDoRascunho !== null) {
-      const destino = criativoUploadDir(r.job.id);
-      mkdirSync(destino, { recursive: true });
-      // A origem é a gaveta quando ela existe, e a raiz quando o rascunho foi
-      // aberto antes das gavetas existirem.
-      const mover = (papel: 'imagem' | 'logotipo', nome: string, comoSeChama: string): void => {
-        const naGaveta = join(gavetaDoRascunho(rascunhoId, papel), nome);
-        renameSync(
-          existsSync(naGaveta) ? naGaveta : join(rascunho, nome),
-          join(destino, comoSeChama),
-        );
-      };
-      if (arquivoDoRascunho !== null) mover('imagem', arquivoDoRascunho, arquivoDoRascunho);
-      if (logotipoDoRascunho !== null && nomeDoLogotipoNoJob !== null)
-        mover('logotipo', logotipoDoRascunho, nomeDoLogotipoNoJob);
-      rmSync(rascunho, { recursive: true, force: true });
-    }
-
-    writeFileSync(criativoPedidoPath(r.job.id), JSON.stringify(pedido, null, 2), 'utf8');
   }
 
   return c.json(

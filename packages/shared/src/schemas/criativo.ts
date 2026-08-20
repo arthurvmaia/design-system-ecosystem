@@ -511,6 +511,42 @@ export type ResultadoCriativo = z.infer<typeof ResultadoCriativo>;
 // ── O portão da entrega ──────────────────────────────────────────────────────
 
 /**
+ * Contra QUAL pedido a entrega é conferida, e se o retrato precisa ser gravado.
+ *
+ * O fechamento mede o gasto contra o `tetoDeCreditos` e o texto contra os
+ * `autorizacoesDeClaim`. De onde esses dois saem decide se a régua vale, e por
+ * isso a decisão mora no CONTRATO e não no script que fecha: é a mesma pergunta
+ * que `problemasDaEntregaCriativa` responde logo depois.
+ *
+ * O payload da fila é o lado MUTÁVEL — um JSON em disco que qualquer coisa
+ * edita, e que o `fila:limpar` apaga. O retrato é o lado que existe para não
+ * mudar, gravado no ato do pedido.
+ *
+ * O `fila:concluir` reescrevia o retrato com o payload da fila a cada
+ * fechamento, logo antes de conferir o gasto contra ele. Ou seja: deixava o
+ * conferido escolher a própria régua, e ninguém veria, porque o número
+ * continuava saindo.
+ *
+ * Sem retrato (job anterior ao POST, ou pasta que se perdeu) o payload é o que
+ * há, e aí gravá-lo é rede de segurança, não sobrescrita.
+ */
+export const referenciaDoPedido = (opts: {
+  /** O retrato lido. `null` = não existe; `undefined` = existe e não deu para ler. */
+  readonly retrato: unknown | undefined;
+  readonly payloadDaFila: unknown;
+}): { readonly pedido: unknown; readonly gravarRetrato: boolean; readonly ilegivel: boolean } => {
+  // Existe e ilegível: não fecho um job pago sem saber contra que teto medir, e
+  // não gravo por cima do que não consegui ler.
+  if (opts.retrato === undefined) {
+    return { pedido: opts.payloadDaFila, gravarRetrato: false, ilegivel: true };
+  }
+  if (opts.retrato === null) {
+    return { pedido: opts.payloadDaFila, gravarRetrato: true, ilegivel: false };
+  }
+  return { pedido: opts.retrato, gravarRetrato: false, ilegivel: false };
+};
+
+/**
  * O que impede um job `criativo` de fechar. Lista vazia = pode fechar.
  *
  * ## Por que existe

@@ -257,3 +257,82 @@ test('papel desconhecido recusa, em vez de guardar num lugar que ninguem le', as
   assert.equal(r.status, 400);
   assert.equal(((await r.json()) as { error: string }).error, 'papel_desconhecido');
 });
+
+/**
+ * A ORDEM entre o disco e a fila.
+ *
+ * Enfileirar primeiro fazia o job nascer cobrável citando arquivos que ainda
+ * não existiam. Se a mudança de casa falhasse, ficava um job na fila apontando
+ * para o vazio — e o reenvio da mesma chave devolvia esse job quebrado como se
+ * estivesse tudo bem.
+ */
+
+test('PROVA: o retrato e os arquivos existem ANTES de o job entrar na fila', async (t) => {
+  const { shared, subir, enviar } = await montar(t);
+  const foto = (await (await subir('ordem', 'foto.png', 'a-foto', 'imagem')).json()) as {
+    caminho: string;
+  };
+
+  const r = await enviar('ordem', {
+    ...PEDIDO_COM_UPLOAD,
+    imagem: { origem: 'upload', caminhoDoUpload: foto.caminho, descricaoParaGerar: null },
+  });
+  assert.equal(r.status, 202);
+  const { job } = (await r.json()) as { job: { id: string } };
+
+  // O job está na fila E o retrato e o arquivo estão em disco. A ordem em que
+  // isso aconteceu é o que este teste protege, e ela se lê no resultado: se a
+  // fila viesse antes, um erro no meio deixaria job sem arquivo.
+  assert.ok(shared.getJob(job.id) !== null, 'o job entrou na fila');
+  assert.ok(existsSync(shared.criativoPedidoPath(job.id)), 'o retrato está ao lado');
+  assert.ok(
+    existsSync(join(shared.criativoUploadDir(job.id), foto.caminho)),
+    'e o arquivo do cliente também',
+  );
+});
+
+test('PROVA: clicar duas vezes devolve o MESMO job, mesmo com upload', async (t) => {
+  // O rascunho é esvaziado quando o pedido entra, então o reenvio não acha mais
+  // o arquivo na gaveta — e respondia 400 `upload_ausente` para quem clicou
+  // duas vezes. A idempotência caía justamente no caso que mais precisa dela: o
+  // pedido que já tem arquivo pago em disco.
+  const { shared, subir, enviar } = await montar(t);
+  const foto = (await (await subir('doisc', 'foto.png', 'a-foto', 'imagem')).json()) as {
+    caminho: string;
+  };
+  const corpo = {
+    ...PEDIDO_COM_UPLOAD,
+    imagem: { origem: 'upload', caminhoDoUpload: foto.caminho, descricaoParaGerar: null },
+  };
+
+  const primeira = await enviar('doisc', corpo);
+  assert.equal(primeira.status, 202);
+  const a = (await primeira.json()) as { job: { id: string }; repetido: boolean };
+
+  const segunda = await enviar('doisc', corpo);
+  assert.equal(segunda.status, 200, 'o segundo clique não é um erro');
+  const b = (await segunda.json()) as { job: { id: string }; repetido: boolean };
+
+  assert.equal(b.job.id, a.job.id, 'o mesmo job, não um segundo pedido pago');
+  assert.equal(b.repetido, true);
+  // E o arquivo continua um só, onde estava.
+  assert.equal(readdirSync(shared.criativoUploadDir(a.job.id)).length, 1);
+});
+
+test('PROVA: chave reusada para pedido DIFERENTE continua sendo conflito', async (t) => {
+  // O reenvio ler os caminhos do retrato não pode virar "aceita qualquer
+  // coisa": o que decide se é o mesmo pedido é todo o resto.
+  const { subir, enviar } = await montar(t);
+  const foto = (await (await subir('conf', 'foto.png', 'a-foto', 'imagem')).json()) as {
+    caminho: string;
+  };
+  const base = {
+    ...PEDIDO_COM_UPLOAD,
+    imagem: { origem: 'upload', caminhoDoUpload: foto.caminho, descricaoParaGerar: null },
+  };
+  assert.equal((await enviar('conf', base)).status, 202);
+
+  const outro = await enviar('conf', { ...base, marca: 'Outra Marca Inteira' });
+  assert.equal(outro.status, 409);
+  assert.equal(((await outro.json()) as { error: string }).error, 'chave_ja_usada');
+});
