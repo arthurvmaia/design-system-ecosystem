@@ -578,3 +578,147 @@ existe, ou deixa de exigir o que passou a existir.
 Não é regra de aceite — é porteiro. Preço, desconto, prazo e frete no texto da
 peça são conferidos **no pedido**, contra `autorizacoesDeClaim`. Conferir depois
 da geração só serviria para reprovar algo que já foi pago.
+
+---
+
+# Regra de aceite da MARCA CRIADA
+
+`M1` a `M11`, em `packages/shared/src/regras-de-aceite-marca.ts`, executadas por
+`pnpm marca:montar` (M1..M6) e por `pnpm marca:apresentar` (M7..M11).
+
+## O que muda em relação às outras três
+
+Uma peça criativa erra e vira lixo de uma campanha. **Uma marca errada é
+carregada por tudo o que a empresa faz depois** — o site, a loja, a assinatura de
+e-mail, o bordado do uniforme — e o erro só é notado quando já está em todos
+eles.
+
+Por isso o que esta régua mede não é "ficou bonita", que ninguém mede, e sim as
+coisas que fazem uma marca ser **inutilizável** e que se medem exatamente.
+
+### M1. As três versões saíram, na medida
+
+*Por que:* as versões (transparente, fundo branco, monocromática) saem do símbolo
+por CÁLCULO, não por geração. Faltar uma, ou sair fora do lado padrão, significa
+que o recorte falhou — e recorte que falhou não vira entrega.
+
+### M2. A transparente é transparente de verdade
+
+*Por que:* um PNG "transparente" cujo alfa é opaco em toda parte é um retângulo
+branco esperando para aparecer sobre o primeiro fundo colorido. E o oposto
+também reprova: alfa zero em todo lugar é o recorte que comeu o desenho.
+
+### M3. A monocromática é silhueta, não foto sem cor
+
+*Por que:* ela existe para bordado, carimbo e impressão de uma tinta, onde não há
+meio-tom. Uma versão dessaturada parece certa na tela e sai como mancha no
+tecido.
+
+*Como se confere:* a fração do desenho que é meio-tom. O piso é 12%, e ele
+acomoda a borda macia do recorte — que é meio-tom por natureza e é o que faz a
+logo não parecer recorte de tesoura. A primeira versão desta regra contava
+"quantos tons distintos existem" e reprovava toda silhueta correta, porque
+contava o antialiasing como tinta.
+
+### M4. As versões são o MESMO símbolo
+
+*Por que:* é a queixa que originou o motor inteiro. Pedir "o mesmo símbolo em
+fundo branco" ao gerador abre um pedido NOVO e ele desenha outro símbolo — foi
+assim que uma marca chegou em três modelos diferentes em vez de uma marca em três
+roupas.
+
+*Como se confere:* a distância visual entre as versões e o símbolo de origem.
+Elas são recortadas e recentradas do MESMO arquivo, então a diferença esperada é
+de borda e de escala; geração independente produz distâncias muito acima.
+
+### M5. A cor da marca se lê sobre branco
+
+*Por que:* uma peça de campanha ilegível se refaz; um logotipo ilegível vai para
+a fachada.
+
+### M6. A marca é reproduzível e a decisão está escrita
+
+*Por que:* sem o prompt e a procedência registrados, pedir uma variação desta
+marca é começar de novo e receber outro desenho — e cada tentativa custa. Quando
+a cor foi escolhida pelo Orbis e não pelo cliente, o motivo tem de existir: cor
+escolhida em silêncio é cor que ninguém pode discutir depois.
+
+### M7. A apresentação existe, e explica o sistema
+
+*Por que:* regra do dono — **marca sem apresentação não é marca pronta**. Um
+punhado de PNGs numa pasta obriga quem recebe a adivinhar qual é a logo, quando
+usar cada versão e o que é a cor, que é exatamente o trabalho que contratar uma
+marca vinha evitar.
+
+### M8. A apresentação não corta nem esconde nada
+
+*Por que:* ela nasceu sem régua, e a primeira consequência apareceu na primeira
+leitura: um banner recortado com a headline cortada no meio. Quem viu foi o olho,
+e o olho não escala. O que passa da borda some na impressão, e o que é recortado
+numa página de aplicação vira outra peça.
+
+### M9. Cada arte veio do próprio briefing
+
+*Por que:* *"estão todas com a mesma ideia de arte"*. A causa não era o gerador:
+foi pedir N imagens com `count: N` num prompt só, o que devolve N variações de
+UMA ideia por construção.
+
+*Como se confere:* a PROCEDÊNCIA — de que briefing cada arte veio —, e não o
+pixel. A primeira versão media distância visual entre as artes, com piso 0,08.
+Medido depois, contra pares de classe conhecida:
+
+```
+0,225  0,207  0,188  0,129   pares que são A MESMA ideia
+0,174  0,259                 pares que são ideias DIFERENTES
+```
+
+As faixas se CRUZAM. Um par da mesma ideia (0,225) está mais distante que um par
+de ideias diferentes (0,174), e nenhum piso separa as classes. A regra saiu.
+
+### M10. Cada conceito é uma proposta visual diferente
+
+*Por que:* a mesma queixa, três vezes. *"você fez 1 estilo de banner só para os
+dois"*, e depois de dois consertos de geometria, *"por que você está fazendo só
+nesse estilo?"*. As duas primeiras correções trocaram o LAYOUT e mantiveram a
+linguagem visual — bloco na cor da marca, texto branco, foto de gente sorrindo,
+três vezes seguidas.
+
+**Geometria diferente não é proposta diferente.** Uma proposta é uma direção
+inteira: que peso de cor, que assunto, que registro. E ela sai do BRIEFING
+daquela marca, nunca de um cardápio fixo de estilos — um cardápio devolve as
+mesmas duas ideias para clínica, padaria e escritório de advocacia.
+
+*Como se confere:* `artes/propostas.json`, pela mesma razão de M9.
+
+### M11. Cada conceito tem versão desktop e mobile
+
+*Por que:* um banner de site vive num site responsivo, e o telefone é onde a
+maior parte das pessoas o vê. Entregar só a versão larga é entregar metade — e a
+outra metade **não se obtém recortando esta**, porque o texto foi diagramado para
+a largura que o recorte destrói.
+
+Isto é diferente do criativo de tráfego pago, que também é vertical e NÃO é o
+mesmo produto: aquele é para quem nunca ouviu falar da marca, e vive na frente
+Criativos com copy de venda e orçamento próprios.
+
+## O portão da entrega da marca
+
+`problemasDaEntregaDeMarca` recusa fechar o job quando: não há resultado, ou ele
+está fora do contrato; ele aponta para arquivo que não existe; a folha não cobre
+a régua inteira, ou alguma regra reprovou; **não há apresentação em PDF**; há
+crédito empenhado sem desfecho; o custo declarado não bate com o razão; ou o
+gasto passou do teto.
+
+O teto é o do RETRATO do pedido, gravado antes da fila — mais o que o dono
+liberou depois, que vive no razão com data e motivo (`pnpm criativo:razao teto`).
+O retrato continua intocado, e é ele que prova qual era o teto quando o job
+entrou.
+
+## O que a régua da marca NÃO mede
+
+**A arte gerada por inteiro.** Quando o pixel já chega com a copy dentro — que é
+como as artes de banner nascem hoje —, C2 (texto literal), C3 (grafia da marca),
+C4 (contraste) e C11 (tipografia) não se aplicam: elas medem o DOCUMENTO, e um
+PNG não tem documento. Responder qualquer uma delas exigiria OCR. A apresentação
+declara isso na página de pendências, e a conferência da grafia é de olho —
+acento em português é onde o modelo mais erra.

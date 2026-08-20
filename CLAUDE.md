@@ -325,7 +325,8 @@ condição que torna o recorte exato em vez de estimativa; sem texto porque
 modelo erra letra e a grafia da marca é fato; sem sombra nem degradê porque
 meio-tom impede a versão monocromática de ser silhueta.
 
-**A régua é M1..M10** (em `packages/shared/src/regras-de-aceite-marca.ts`) e ela
+**A régua é M1..M11** (`docs/regras-de-aceite.md`, executável em
+`packages/shared/src/regras-de-aceite-marca.ts`) e ela
 mede o que faz uma marca ser INUTILIZÁVEL, não se ficou bonita: as três versões
 são o mesmo símbolo, a transparente é transparente de verdade, a monocromática é
 silhueta, a cor se lê sobre branco, e o prompt ficou registrado. Recorte que
