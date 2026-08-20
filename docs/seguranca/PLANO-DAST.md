@@ -1,7 +1,7 @@
 # Plano de endurecimento do Orbis, roteirizado pelo Frieren DAST-AI
 
 > **Quem escreveu:** sessão paralela de segurança, 20/08/2026.
-> **Estado:** **os cinco achados da primeira passada estão CORRIGIDOS**, mais um sexto da segunda passada. Tudo na branch `seguranca-dast`, em três commits. A seção 6 traz o que a segunda passada encontrou e ainda espera decisão do dono.
+> **Estado:** três passadas. Sete achados corrigidos, dois esperando decisão sua. A seção 9 traz a terceira passada, que corrigiu um ERRO MEU da primeira: o guarda de SSRF não cobria o caminho principal do app.
 > **Este arquivo não é versionado de propósito.** Ele é o canal entre as duas abas, e não conteúdo do repositório. Tracká-lo faria o `git merge` da branch de segurança falhar com "untracked working tree file would be overwritten", que é o erro mais chato possível na hora mais errada possível. O "porquê" de cada correção mora no código e na mensagem do commit, que é onde este repositório sempre pôs as razões.
 
 ---
@@ -46,9 +46,11 @@ Instalar custaria Python, `uv`, navegadores do Playwright e uma CA raiz no naveg
 
 ## 2. Os cinco achados
 
-### A1. A URL da extração aceitava `file://` e a rede interna — CORRIGIDO
+### A1. A URL da extração aceitava `file://` e a rede interna — CORRIGIDO, mas leia o C1
 
 `ssrf_agent` + `file_read_agent`. Risco alto.
+
+> **Esta seção estava incompleta e ficou aqui como registro.** O que ela descreve fecha o modo `api`. O caminho do modo `queue`, que é o PADRÃO, ficou aberto até a terceira passada. A seção 9 (C1) conta o erro e a correção.
 
 **O que era:** `packages/shared/src/schemas/design-system.ts:34` valida com `z.string().url()`, que confere só o FORMATO. `file:///C:/Users/arthur.maia/.aws/credentials` passava, `http://127.0.0.1:8787` passava, `http://169.254.169.254` passava. O `packages/extractor/src/fetch-url.ts` entregava os três direto ao `page.goto` ou ao `fetch`. Não havia uma única checagem de destino no repositório inteiro.
 
@@ -236,3 +238,54 @@ E o que passa a ser impossível: ler arquivo do disco pelo campo de extrair, usa
 O perímetro do app é **uma senha só**, compartilhada, na frente de um túnel público. Quem tiver ela entra em tudo. Estas oito correções reduzem o estrago de quem entrou; nenhuma delas muda o fato de que existe uma chave só e ela circula.
 
 Na prática, **manter o túnel desligado quando não está em uso** protege mais do que qualquer linha deste plano.
+---
+
+## 9. A terceira passada, e um erro meu que ela corrigiu
+
+*Escrita depois de ler o `docs/MIGRACAO.md`, que muda o peso de várias coisas.*
+
+### C1. O guarda de SSRF não cobria o caminho PRINCIPAL — CORRIGIDO
+
+**Este é um erro meu, e vale registrar como erro.**
+
+Na primeira passada eu liguei o guarda de destino no `packages/extractor/src/fetch-url.ts` e disse que o A1 estava fechado. Estava fechado no modo `api`.
+
+Só que o padrão do app é o modo `queue`, e ali o `pnpm extrair` **não passa pelo `@ds/extractor`**. Ele entra por `renderPage` e `explorePage` do `@ds/explorer`, e por `capturarComV2` do `@ds/engine-v2`. Nenhum dos três tinha guarda. Ou seja: eu tranquei a porta lateral e anunciei a casa fechada.
+
+O que passava, na prática: `file:///C:/Users/arthur.maia/.aws/credentials` digitado no campo de extrair virava um job, e o `pnpm extrair` abria o arquivo num navegador de verdade.
+
+**O que ficou:** `exigirDestinoPermitido` na primeira linha de `explorePage`, `renderPage` e `capturarComV2`. No `capturarComV2` a conferência fica antes da tentativa E antes da retentativa, porque a segunda volta com a mesma URL e um guarda que só roda na primeira não é guarda.
+
+**Por que isso é permanente e não transitório:** pelo item 7.1 do `MIGRACAO.md`, a extração NUNCA sai da máquina do dono, nem na versão 3. Este é o caminho definitivo.
+
+**O que os testes precisaram declarar:** os testes de navegador capturam de `localhost`, que o guarda recusa. A permissão foi para dentro do `iniciarServidorFixture` e das três fixtures inline, com o mesmo raciocínio: subir uma fixture É a declaração de que o alvo é meu, e ela vale exatamente enquanto o servidor existe. Não virou variável de ambiente do `pnpm test`, senão quem não sobe fixture ganharia a permissão de brinde.
+
+**O que NÃO foi feito, e por quê:** o `@ds/explorer` observa a rede de forma passiva de propósito (`capturarRede` usa `page.on('response')`, e o comentário no código diz "Passivo — não pede nada"). Interceptar pedido a pedido ali, como fiz no `fetch-url.ts`, mudaria o comportamento do motor de captura. O `MIGRACAO.md` 6 diz por extenso para não reescrever esse motor por conveniência, e concordo. Então **redirecionamento e subrecurso continuam sem conferência no caminho do explorer** — o que está fechado é o destino de ENTRADA, que é onde mora o `file://`.
+
+### C2. A CSP do site gerado, na parte que não depende de decisão — CORRIGIDO PELA METADE, de propósito
+
+O B2 ficou parado esperando decisão de produto. Fiz a metade que não precisa dela:
+
+- entra `object-src 'none'` e `base-uri 'none'`, que não quebram site nenhum;
+- entra `nosniff`;
+- **não** entram `connect-src` nem `form-action`, que fechariam mais e quebrariam um site de cliente com formulário de contato.
+
+O teste fixa as duas coisas: o que a CSP fecha **e** o que ela deixa aberto. Um teste que só olhasse o lado fechado deixaria a próxima pessoa "consertar" a ausência sem saber que ela foi escolhida.
+
+`sandbox` continua não servindo aqui, e o motivo é o mesmo que o `routes/preview.ts` já escreveu: origem opaca faz o documento pedir os próprios arquivos como se fosse outro site, o cookie não vai junto, e o site chega sem CSS.
+
+### C3. O que o `MIGRACAO.md` muda na leitura de tudo isto
+
+Ler o plano mudou o peso de três coisas:
+
+1. **A senha única já é a Fase 1 do teu plano.** Eu vinha repetindo que ela é o maior risco; ela já está resolvida no papel, com Supabase Auth substituindo o portão. Não é notícia, é confirmação.
+2. **O item 7.5 do teu plano é o B1 e o B2 vistos de outro ângulo.** Ele diz: "o acervo é feito de capturas completas de sites de outras empresas; num endereço aberto na internet é outra coisa". Exato. E acrescento o que ele não diz: publicar site gerado e captura na MESMA origem do app significa que o script de terceiro roda com a sessão de quem entrou. Na versão 2 (mostruário estático na Vercel) isso vale igual, e proteção por senha da Vercel não ajuda contra isso — ela decide quem entra, não o que roda depois.
+3. **A Fase 5 é onde o A2 acorda.** Acrescentei uma seção ao `docs/MIGRAR-PARA-API.md` explicando o que muda de risco ao virar a chave, e uma linha no checklist dele. É o único lugar onde alguém vai olhar na hora certa.
+
+### C4. O que sugiro para a Fase 0
+
+O teu `MIGRACAO.md` abre com "Fase 0 — não migrar em cima de defeito". Se essa lista for real, estes são os candidatos que esta passada deixou:
+
+- **Decidir o B2** (o que um site gerado tem direito de fazer: falar com a rede? enviar formulário?). Sem essa resposta a CSP dele fica pela metade para sempre.
+- **Decidir o B3** (a prévia continua na mesma origem?). A resposta muda com a Fase 1: com Supabase Auth e token no lugar de cookie compartilhado, servir prévia de outra origem deixa de ser o problema que é hoje.
+- **Ler o `preview.ts` inteiro** antes de publicar qualquer coisa. São 1327 linhas, é a peça que monta HTML de terceiro, e ninguém a leu por inteiro com olho de segurança — nem eu.

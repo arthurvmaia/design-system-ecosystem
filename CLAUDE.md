@@ -274,6 +274,25 @@ O cliente pediu a MARCA, não uma peça. O payload segue `PedidoDeMarca`
 fora de `criativos/`, porque uma marca não vence, não tem canal e é INSUMO das
 outras duas frentes: a faxina de criativos não pode levá-la junto.
 
+**Marca sem APRESENTAÇÃO não é marca pronta.** É regra do dono, e ela vale
+como qualquer outra da casa: um punhado de PNGs numa pasta obriga quem recebe
+a adivinhar qual é a logo, quando usar cada versão e o que é a cor — o trabalho
+que contratar uma marca vinha evitar. A apresentação é o que transforma
+arquivos em SISTEMA, e todas as artes que ela mostra têm de existir.
+
+O modelo é a referência aprovada em
+`output/orbis-criativa-planejamento-claude/06-ENTREGAVEIS-MARCA-E-REFERENCIA-CASTEVANI.md`.
+Dela vale o MÉTODO — editorial, muito respiro, hierarquia clara, paginação
+consistente, exemplos reais de aplicação, faça/evite, pendências declaradas —
+e nunca a marca dela: cada apresentação sai na cor e na letra da própria marca.
+O PDF sai de HTML versionado (decisão nº 7); PPTX não é necessário.
+
+**A pasta que vai para o cliente é do CLIENTE.** `pnpm marca:entregar` monta
+só o que ele usa, com nomes que dizem QUANDO usar cada arquivo e um
+`LEIA-ME.txt` que explica. Retrato do pedido, razão de crédito e folha de
+conferência são registro nosso e ficam de fora: quem abre a pasta procurando a
+logo tem de achar a logo.
+
 **Uma geração, e só uma.** O símbolo nasce UMA vez e as três versões saem dele
 por cálculo. Pedir "o mesmo símbolo em fundo branco" ao gerador abre um pedido
 NOVO e ele desenha outro símbolo: foi assim que a marca chegava em três modelos
@@ -439,6 +458,8 @@ pnpm criativo:precos  # catálogo de presets + tabela de preço MEDIDA, e o que 
 pnpm criativo:compor  # compõe UMA variação na medida exata, mede no navegador e roda C1..C11
 pnpm criativo:razao   # ver/reservar/debitar/liberar o crédito de um job criativo
 pnpm marca:montar     # o prompt do símbolo (--prompt) e a marca inteira (--simbolo <arq>)
+pnpm marca:apresentar # a apresentação em PDF, com todas as artes. OBRIGATÓRIA
+pnpm marca:entregar   # monta a pasta DO CLIENTE (--para "<pasta>")
 pnpm marca:derivar    # do símbolo saem as 3 versões da logo, por cálculo (não gasta crédito)
 pnpm marca:espelhar   # regrava o espelho do recorte na frente de Lojas (--seco só confere)
 pnpm fila             # lista a fila

@@ -20,3 +20,5 @@ export * from './marca/prompt.js';
 export * from './marca/ico.js';
 export * from './marca/pacote-navegador.js';
 export * from './marca/pacote.js';
+export * from './marca/apresentacao-html.js';
+export * from './marca/apresentacao.js';

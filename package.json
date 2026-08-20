@@ -55,7 +55,9 @@
     "marca:espelhar": "tsx scripts/marca-espelhar.ts",
     "marca:derivar": "tsx scripts/marca-derivar.ts",
     "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json",
-    "marca:montar": "tsx scripts/marca-montar.ts"
+    "marca:montar": "tsx scripts/marca-montar.ts",
+    "marca:apresentar": "tsx scripts/marca-apresentar.ts",
+    "marca:entregar": "tsx scripts/marca-entregar.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
