@@ -37,8 +37,21 @@ export function CriativosShell() {
       <div className="ds-halo" aria-hidden="true" />
       <div className="ds-grid" aria-hidden="true" />
 
+      {/*
+        O cabeçalho QUEBRA em vez de cortar.
+
+        Medido a 390px, que é a largura de telefone que a casa usa como régua: a
+        navegação terminava em 435px e o "Trocar de app" em 530px, os dois fora
+        de um quadro de 390. E a página não rolava na horizontal — então eles não
+        estavam escondidos, estavam INALCANÇÁVEIS: "Minhas peças" e a volta ao
+        portal simplesmente não existiam no telefone.
+
+        `flex-wrap` resolve deixando a barra virar duas linhas quando não cabe em
+        uma, e `ml-auto` só empurra o último item para a direita enquanto há
+        espaço para isso. Cortar sem rolagem é a única saída que não podia ficar.
+      */}
       <header
-        className="relative z-10 flex items-center gap-4 border-b px-5 py-3"
+        className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-b px-5 py-3"
         style={{ borderColor: 'var(--color-border)', backgroundColor: 'rgba(10, 10, 12, 0.85)' }}
       >
         <span className="flex items-center gap-2.5">
@@ -62,7 +75,10 @@ export function CriativosShell() {
         {/* NavLink de verdade agora que a frente tem 2 rotas: o próprio
             NavLink põe aria-current="page" no ativo, e o `end` da primeira
             impede que /criativos/expresso acenda as duas ao mesmo tempo. */}
-        <nav className="ml-6 flex items-center gap-1" aria-label="Navegação da frente Criativos">
+        <nav
+          className="flex flex-wrap items-center gap-1 sm:ml-6"
+          aria-label="Navegação da frente Criativos"
+        >
           {(
             [
               { para: '/criativos', rotulo: 'Nova peça', Icone: Sparkles, soExato: true },
@@ -89,7 +105,7 @@ export function CriativosShell() {
         <a
           href={portal}
           title="Voltar ao portal da suíte Orbis"
-          className="ml-auto flex items-center gap-2 rounded-none px-3 py-1.5 text-[12px] transition-colors"
+          className="flex items-center gap-2 rounded-none px-3 py-1.5 text-[12px] transition-colors sm:ml-auto"
           style={{ color: 'var(--color-fg-muted)' }}
         >
           <ArrowLeft size={14} strokeWidth={1.75} />

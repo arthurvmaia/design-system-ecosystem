@@ -110,19 +110,40 @@ export type PedidoDeMarca = z.infer<typeof PedidoDeMarca>;
  *
  * ## Por que o empenho é por estágio, e não de uma vez
  *
- * Um pacote completo custa 750, e o símbolo é o primeiro passo. Empenhar os
- * 750 de saída significaria descobrir no fim que o desenho não presta depois de
- * ter queimado tudo; empenhando por estágio, uma marca que erra no símbolo para
- * em 75. O estágio seguinte só empenha depois de o anterior passar na régua.
+ * Um pacote completo custa a soma dos estágios abaixo, e o símbolo é o primeiro
+ * passo. Empenhar o total de saída significaria descobrir no fim que o desenho
+ * não presta depois de ter queimado tudo; empenhando por estágio, uma marca que
+ * erra no símbolo para em 75. O estágio seguinte só empenha depois de o
+ * anterior passar na régua.
  *
- * ## Por que 22 seções custam 9 gerações
+ * O total não é escrito em lugar nenhum: ele é `TETO_DA_MARCA_COMPLETA`, que
+ * SOMA a lista. Um número digitado ao lado dela envelheceria na primeira
+ * mudança de estágio — e envelheceu, quando o banner passou de 2 para 4
+ * gerações e a tela continuou prometendo o total antigo.
  *
- * Porque a maior parte de um brandbook é COMPOSIÇÃO, não geração — é a regra da
- * casa (determinístico antes de generativo) aplicada ao caso onde ela mais
- * economiza. Favicon, lockup, área de proteção, paleta, tipografia, contraste,
- * formatos de rede e faça/evite saem todos do mesmo símbolo por cálculo. E as
- * versões desktop e mobile de um banner são o MESMO pixel composto duas vezes,
- * não duas gerações.
+ * ## Por que a maior parte de um brandbook não gera nada
+ *
+ * Porque ela é COMPOSIÇÃO — a regra da casa (determinístico antes de
+ * generativo) aplicada ao caso onde ela mais economiza. Favicon, lockup, área
+ * de proteção, paleta, tipografia, contraste, formatos de rede e faça/evite
+ * saem todos do mesmo símbolo por cálculo, e nenhum deles aparece na lista
+ * abaixo.
+ *
+ * ## Por que o banner deixou de ser 2 gerações e passou a ser 4
+ *
+ * Esta lista dizia, com todas as letras, que "as versões desktop e mobile de um
+ * banner são o MESMO pixel composto duas vezes, não duas gerações". Era verdade
+ * enquanto o compositor escrevia o texto: o mesmo pixel entrava em dois quadros
+ * e a diagramação era nossa, de graça.
+ *
+ * Deixou de ser. A arte passou a ser gerada por inteiro — texto dentro do pixel
+ * — e o mobile não pode sair da larga por recorte, porque o texto foi
+ * diagramado para a largura que o recorte destrói. É a mesma razão de M11
+ * existir, e ela custa: dois conceitos viram quatro gerações.
+ *
+ * Uma estimativa que não acompanha o motor é pior que nenhuma. Ela promete um
+ * preço ao cliente, o motor cobra outro, e quem descobre é o razão no meio do
+ * trabalho — que foi exatamente o que aconteceu neste job.
  */
 export const ESTAGIOS_DA_MARCA = [
   {
@@ -148,9 +169,15 @@ export const ESTAGIOS_DA_MARCA = [
   {
     id: 'conceito-de-banner',
     rotulo: 'Os conceitos de banner',
-    /** Desktop e mobile saem do MESMO pixel, compostos: são 2 gerações, não 4. */
-    geracoes: 2,
-    creditos: 150,
+    /**
+     * Duas propostas visuais, cada uma em desktop E mobile: 4 gerações.
+     *
+     * Não são dois tamanhos do mesmo pixel — o texto vive dentro da arte e o
+     * mobile é diagramado do zero. Ver M10 (propostas diferentes) e M11
+     * (desktop e mobile).
+     */
+    geracoes: 4,
+    creditos: 300,
   },
   {
     id: 'vetor',
