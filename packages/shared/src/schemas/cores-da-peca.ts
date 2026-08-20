@@ -112,3 +112,66 @@ export const contrasteDaPeca = (cores: CoresDaPeca, temCta: boolean): number | n
   const pares = [doTexto, doCta].filter((n): n is number => n !== null);
   return pares.length === 0 ? null : Math.min(...pares);
 };
+
+const hexParaRgb = (hex: string): readonly [number, number, number] => [
+  Number.parseInt(hex.slice(1, 3), 16),
+  Number.parseInt(hex.slice(3, 5), 16),
+  Number.parseInt(hex.slice(5, 7), 16),
+];
+
+const rgbParaHex = (r: number, g: number, b: number): string => {
+  const h = (c: number): string =>
+    Math.max(0, Math.min(255, Math.round(c)))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${h(r)}${h(g)}${h(b)}`;
+};
+
+/**
+ * A cor que sai de pousar `cor` com opacidade `alfa` sobre `fundo`.
+ *
+ * A conta é em sRGB e não em luz linear de propósito: é assim que o navegador
+ * compõe `rgba()` sobre o que está atrás, e quem confere tem de prever o pixel
+ * que o navegador vai desenhar — não o que a física diria.
+ */
+export const corComposta = (cor: string, alfa: number, fundo: string): string => {
+  const [rc, gc, bc] = hexParaRgb(cor);
+  const [rf, gf, bf] = hexParaRgb(fundo);
+  const m = (c: number, f: number): number => f * (1 - alfa) + c * alfa;
+  return rgbParaHex(m(rc, rf), m(gc, gf), m(bc, bf));
+};
+
+/** O degrau da busca do alfa. Menor que isto é precisão que o olho não tem. */
+const DEGRAU_DO_ALFA = 0.01;
+
+/**
+ * O alfa do véu, DERIVADO — e é por isso que ele não é um número escolhido.
+ *
+ * Um véu existe para uma coisa só: fazer o texto se ler sobre uma foto que
+ * ninguém viu ainda. Então o alfa certo é o MENOR que ainda cumpre isso no pior
+ * caso possível, e o pior caso tem endereço exato.
+ *
+ * A luminância é monótona em cada canal, e a composição também é. Então o pior
+ * pixel de foto que pode existir sob o texto é um dos dois extremos do cubo:
+ * **branco puro** quando a tinta é clara (é ele que aproxima os dois lados do
+ * par) e **preto puro** quando a tinta é escura. Basta conferir um dos dois — o
+ * outro só afasta o par, e afastar melhora o contraste.
+ *
+ * Conferir o extremo cobre TODA foto, porque nenhum pixel de nenhuma imagem
+ * pode ser pior que o extremo do cubo. É o oposto de escolher 0,5 porque parece
+ * razoável: aqui o número sai da conta e muda com a cor da marca.
+ *
+ * Devolve 1 quando nem o véu cheio resolve, o que só acontece se a própria
+ * faixa não separa da tinta. Aí o véu não é o problema, e a medição reprova.
+ */
+export const alfaDoVeu = (cores: CoresDaPeca, piso: number = PISO_DO_BOTAO): number => {
+  const piorFoto =
+    contrasteRatio(cores.texto, '#ffffff') < contrasteRatio(cores.texto, '#000000')
+      ? '#ffffff'
+      : '#000000';
+  for (let passo = 0; passo <= 100; passo += 1) {
+    const alfa = Number((passo * DEGRAU_DO_ALFA).toFixed(2));
+    if (contrasteRatio(cores.texto, corComposta(cores.faixa, alfa, piorFoto)) >= piso) return alfa;
+  }
+  return 1;
+};

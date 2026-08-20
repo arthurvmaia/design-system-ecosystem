@@ -2,10 +2,15 @@ import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import type { CaixaDoPapel } from '@ds/shared';
 import {
+  ARRANJO,
+  ARRANJO_PADRAO,
+  type ArranjoDaPeca,
   type CoresDaPeca,
   DIMENSAO_DO_FORMATO,
   type FormatoCriativo,
+  alfaDoVeu,
   contrasteDaPeca,
+  contrasteRatio,
 } from '@ds/shared/schemas';
 
 /**
@@ -30,19 +35,43 @@ import {
  * medida EXATA do formato e o fundo entra com `cover`, então a peça sai certa
  * por construção — e a régua confere depois, em vez de esperar.
  *
- * ## Por que o contraste é garantido, e não amostrado
+ * ## Por que existe mais de um ARRANJO
  *
- * O texto fica sempre sobre a faixa de leitura, cuja cor sólida nós escolhemos.
- * O contraste é o par entre a cor do texto e essa faixa: um número exato, não
- * uma média de pixels. Texto solto sobre a foto exigiria amostrar o pixel
- * embaixo de cada letra — e é justamente por isso que ele não fica solto.
+ * Havia um só — foto em cima, faixa sólida embaixo. Dois "conceitos" de banner
+ * saíam com a mesma composição e fotos diferentes, e o dono viu: *"você fez 1
+ * estilo de banner só para os dois"*. Arranjo é geometria, então nenhum deles
+ * custa crédito: os banners já pagos se recompõem de graça em qualquer um.
  *
- * Esse número só é verdade sob duas condições, e as duas são construídas aqui
- * de propósito: a faixa sob o texto é SÓLIDA (o degradê que amacia a emenda com
- * a foto vive fora da caixa de texto, num véu acima dela) e o texto é OPACO.
- * Enquanto a faixa era um degradê que começava transparente e a marca tinha
- * `opacity:.85`, este arquivo declarava 11,82:1 sobre um pixel que media
- * 2,51:1. A régua mede as duas condições em vez de acreditar nesta docstring.
+ * O que muda com eles não é só desenho. Cada arranjo é uma chance NOVA de o
+ * texto não caber no quadro, e por isso a escala de letra passou a sair da
+ * caixa daquele arranjo (a coluna de uma tela dividida é metade da largura, e
+ * a mesma headline quebra em muito mais linhas ali).
+ *
+ * ## Por que o contraste às vezes é garantido e às vezes é amostrado
+ *
+ * Enquanto o texto pousava sempre sobre a faixa sólida, o contraste era o par
+ * entre duas cores que NÓS escolhemos: um número exato, não uma média de pixels.
+ *
+ * Dois dos arranjos põem o texto sobre a foto, e ali aquele número continuaria
+ * saindo bonito e deixaria de descrever a peça — que é a pior forma de um número
+ * errar. É o mesmo defeito de quando a marca tinha `opacity:.85` sobre o trecho
+ * transparente de um degradê: este arquivo declarava 11,82:1 sobre um pixel que
+ * media 2,51:1.
+ *
+ * Então o arranjo declara em que o texto pousa, e isso decide a conta:
+ *
+ * - **cor sólida** (`faixa-inferior`, `tela-dividida`) — contraste DECLARADO,
+ *   exato por construção, como sempre foi.
+ * - **foto com véu** (`veu-cheio`) — o alfa do véu é DERIVADO para o pior pixel
+ *   possível ainda vencer o piso (ver `alfaDoVeu`), e o pixel é amostrado
+ *   assim mesmo: a derivação é uma promessa, e promessa se confere.
+ * - **foto nua** (`texto-sobre-imagem`) — não há promessa nenhuma. Só a
+ *   amostragem diz se AQUELA foto carrega texto, e quando ela reprova a saída
+ *   é recompor noutro arranjo, que não gasta crédito.
+ *
+ * A amostragem é do PIOR PIXEL sob a caixa do texto, não da média. Média
+ * esconde exatamente o caso que importa: um estouro de luz debaixo de uma linha
+ * de headline continua ilegível depois de diluído no resto do retângulo.
  *
  * ## Por que o corpo do texto sai de conta, e não de constante
  *
@@ -52,12 +81,12 @@ import {
  * 601px ACIMA do topo do quadro. A peça saía sem marca e a régua dizia
  * "aprovada", porque texto fora do quadro continua respondendo à leitura.
  *
- * Hoje o corpo é derivado do formato e do COMPRIMENTO do texto: a escala parte
- * do tamanho ideal e desce em degraus até o bloco caber na caixa disponível.
- * A conta é uma estimativa — o navegador é quem tem a verdade —, então ela é
- * deliberadamente conservadora e a régua confere a geometria MEDIDA depois. É
- * a mesma divisão de trabalho do resto da casa: o determinístico tenta acertar,
- * a medição decide se acertou.
+ * Hoje o corpo é derivado do formato, do ARRANJO e do COMPRIMENTO do texto: a
+ * escala parte do tamanho ideal e desce em degraus até o bloco caber na caixa
+ * disponível. A conta é uma estimativa — o navegador é quem tem a verdade —,
+ * então ela é deliberadamente conservadora e a régua confere a geometria MEDIDA
+ * depois. É a mesma divisão de trabalho do resto da casa: o determinístico
+ * tenta acertar, a medição decide se acertou.
  */
 
 /**
@@ -72,7 +101,16 @@ export {
   coresDerivadas,
   contrasteDaPeca,
   PISO_DO_BOTAO,
+  alfaDoVeu,
 } from '@ds/shared/schemas';
+
+/**
+ * A que terço o bloco de texto se alinhou, quando o arranjo alinha a um terço.
+ *
+ * `inicio`/`meio`/`fim` e não `esquerda`/`direita` porque o eixo depende do
+ * formato: num banner os terços são colunas, num story são faixas horizontais.
+ */
+export type TercoDaPeca = 'inicio' | 'meio' | 'fim';
 
 export type PecaComposta = {
   readonly png: Uint8Array;
@@ -85,8 +123,27 @@ export type PecaComposta = {
    * existe" de "o texto aparece" — as duas coisas que a régua confundia.
    */
   readonly caixas: readonly CaixaDoPapel[];
-  /** O menor contraste entre texto e faixa. */
+  /** O menor contraste entre texto e o que estiver embaixo dele. */
   readonly menorContraste: number | null;
+  /**
+   * O ARRANJO usado. Viaja porque é a PROCEDÊNCIA do conceito, e é ela que
+   * separa duas ideias de duas fotos com a mesma ideia.
+   *
+   * Medir "layouts diferentes" por distância de pixel foi tentado com as artes
+   * e não funciona: as faixas de "mesma ideia" e "ideias diferentes" se cruzam
+   * na escala. Qual arranjo foi usado é declarado, e por isso é exato.
+   */
+  readonly arranjo: ArranjoDaPeca;
+  /**
+   * O pior contraste AMOSTRADO no pixel sob o texto.
+   *
+   * `null` = ninguém amostrou, e não porque falhou: o arranjo pousa o texto em
+   * cor sólida, onde o contraste é exato por construção e amostrar seria trocar
+   * uma certeza por uma estimativa.
+   */
+  readonly contrasteAmostrado: number | null;
+  /** A que terço o texto se alinhou. `null` = o arranjo não alinha a terço. */
+  readonly terco: TercoDaPeca | null;
   /**
    * A fonte da marca REALMENTE aplicou?
    *
@@ -120,6 +177,13 @@ const fundoEmbutido = (caminho: string): string => {
 const escapar = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** `#RRGGBB` → os três canais, para montar o `rgba()` do véu. */
+const canais = (hex: string): readonly [number, number, number] => [
+  Number.parseInt(hex.slice(1, 3), 16),
+  Number.parseInt(hex.slice(3, 5), 16),
+  Number.parseInt(hex.slice(5, 7), 16),
+];
+
 export type EntradaDaComposicao = {
   readonly formato: FormatoCriativo;
   /** O arquivo de fundo em disco. `null` = peça sem imagem. */
@@ -148,6 +212,19 @@ export type EntradaDaComposicao = {
    */
   readonly fonte?: { readonly familia: string; readonly css: string } | null;
   readonly cores: CoresDaPeca;
+  /**
+   * ONDE o texto pousa dentro do quadro. Ausente = `faixa-inferior`, o arranjo
+   * que já existia — para nenhuma peça antiga mudar sozinha.
+   */
+  readonly arranjo?: ArranjoDaPeca | null;
+  /**
+   * A que terço alinhar, quando o arranjo alinha a um terço.
+   *
+   * Ausente = `inicio`. Quem compõe não precisa escolher: `comporPeca` MEDE os
+   * três terços da foto e move o bloco para o que melhor carrega o texto, o que
+   * é uma decisão que só o pixel pode tomar.
+   */
+  readonly terco?: TercoDaPeca | null;
 };
 
 /**
@@ -197,6 +274,34 @@ const FOLGA_DA_ESTIMATIVA = 1.15;
  */
 const ALTURA_DO_LOGOTIPO = 2.4;
 
+/**
+ * Quanto da largura o bloco centralizado do `veu-cheio` ocupa.
+ *
+ * 76% é a medida de leitura: sobra 12% de cada lado, o dobro do respiro lateral
+ * comum da peça (6%). Um bloco centralizado que fosse até o respiro normal
+ * pareceria uma faixa sem cor, e não um bloco.
+ */
+const LARGURA_DO_CENTRO = 0.76;
+
+/**
+ * Quanto da largura o bloco alinhado a um terço ocupa, no eixo largo.
+ *
+ * 42% e não 33%: o bloco se ALINHA ao terço, não se espreme dentro dele. Um
+ * terço exato de um banner de 1500px daria 500px de coluna, e uma headline de
+ * 200 caracteres ali quebraria em tantas linhas que o encolhimento comeria o
+ * corpo da letra até o piso — a peça caberia e ninguém leria.
+ */
+const LARGURA_DO_TERCO = 0.42;
+
+/**
+ * Quanto da ALTURA o bloco alinhado a um terço ocupa, no eixo alto.
+ *
+ * Aqui os terços são horizontais, então o que o terço limita é a altura. É um
+ * terço de verdade (0,34 com o arredondamento a favor) porque no eixo alto o
+ * bloco tem a largura inteira para respirar.
+ */
+const ALTURA_DO_TERCO = 0.34;
+
 /** A escala tipográfica e o respiro da peça, em pixels. */
 export type EscalaDaPeca = {
   readonly padX: number;
@@ -215,12 +320,60 @@ export type EscalaDaPeca = {
   /** A altura estimada do bloco de texto e a caixa que ele tinha para ocupar. */
   readonly alturaEstimada: number;
   readonly alturaDisponivel: number;
+  /** A largura da caixa daquele arranjo. É ela que decide quantas linhas. */
+  readonly larguraDisponivel: number;
+  /** O arranjo de que esta escala saiu. */
+  readonly arranjo: ArranjoDaPeca;
 };
 
 /**
- * A escala DERIVADA do formato e do comprimento do texto.
+ * O quadro parte no eixo LONGO.
  *
- * Duas decisões de geometria valem ser lidas:
+ * Uma tela dividida ao meio na vertical num story de 9:16 daria duas colunas de
+ * 540px de largura por 1920 de altura — duas tiras, não duas metades. Partir no
+ * eixo em que a peça é comprida é o que faz o mesmo arranjo continuar sendo o
+ * mesmo arranjo em qualquer formato.
+ */
+const ehLargo = (d: { largura: number; altura: number }): boolean => d.largura >= d.altura;
+
+/**
+ * A caixa que o texto tem para ocupar, naquele arranjo.
+ *
+ * É a função que faz o arranjo mudar a ESCALA e não só o desenho: a coluna de
+ * uma tela dividida é metade da largura, e a mesma headline quebra ali em
+ * quase o dobro de linhas.
+ */
+const caixaDoArranjo = (
+  arranjo: ArranjoDaPeca,
+  d: { largura: number; altura: number },
+  padX: number,
+  padY: number,
+): { largura: number; altura: number } => {
+  const alturaCheia = d.altura - 2 * padY;
+  const larguraCheia = d.largura - 2 * padX;
+  switch (arranjo) {
+    case 'faixa-inferior':
+      // A faixa é ancorada embaixo e cresce para cima. O limite é o quadro menos
+      // o respiro; os 62% seguram o caso alto (story), onde deixar o texto ocupar
+      // a peça inteira daria um bloco de legenda no lugar de uma peça de campanha.
+      return { largura: larguraCheia, altura: Math.min(alturaCheia, Math.round(d.altura * 0.62)) };
+    case 'tela-dividida':
+      return ehLargo(d)
+        ? { largura: Math.round(d.largura / 2) - 2 * padX, altura: alturaCheia }
+        : { largura: larguraCheia, altura: Math.round(d.altura / 2) - 2 * padY };
+    case 'veu-cheio':
+      return { largura: Math.round(d.largura * LARGURA_DO_CENTRO), altura: alturaCheia };
+    case 'texto-sobre-imagem':
+      return ehLargo(d)
+        ? { largura: Math.round(d.largura * LARGURA_DO_TERCO), altura: alturaCheia }
+        : { largura: larguraCheia, altura: Math.round(d.altura * ALTURA_DO_TERCO) };
+  }
+};
+
+/**
+ * A escala DERIVADA do formato, do ARRANJO e do comprimento do texto.
+ *
+ * Três decisões de geometria valem ser lidas:
  *
  * **O respiro vertical sai da ALTURA.** Em CSS, `padding` em porcentagem
  * resolve contra a LARGURA do bloco — inclusive o de cima e o de baixo. Os
@@ -234,6 +387,11 @@ export type EscalaDaPeca = {
  * quadrado e story exatamente como estavam — nos dois a largura já é o menor
  * dos dois termos — e corrige só o formato cuja proporção a fórmula antiga não
  * servia.
+ *
+ * **A caixa é a do ARRANJO, não a do quadro.** O corpo ideal continua saindo do
+ * formato, mas quantas linhas ele gasta sai da largura em que o texto quebra —
+ * e essa largura é metade num `tela-dividida`. Sem isto, trocar de arranjo
+ * seria trocar de chance de estourar o quadro sem nada dizer.
  */
 export const escalaDaPeca = (e: {
   readonly formato: FormatoCriativo;
@@ -243,15 +401,15 @@ export const escalaDaPeca = (e: {
   /** Só importa se EXISTE: o logotipo ocupa altura no lugar da linha de texto. */
   readonly logotipo?: string | null;
   readonly assinatura?: string | null;
+  readonly arranjo?: ArranjoDaPeca | null;
 }): EscalaDaPeca => {
+  const arranjo = e.arranjo ?? ARRANJO_PADRAO;
   const d = DIMENSAO_DO_FORMATO[e.formato];
   const padX = Math.round(d.largura * 0.06);
   const padY = Math.round(d.altura * 0.07);
-  const larguraUtil = d.largura - 2 * padX;
-  // A faixa é ancorada embaixo e cresce para cima. O limite é o quadro menos o
-  // respiro; os 62% seguram o caso alto (story), onde deixar o texto ocupar a
-  // peça inteira daria um bloco de legenda no lugar de uma peça de campanha.
-  const alturaDisponivel = Math.min(d.altura - 2 * padY, Math.round(d.altura * 0.62));
+  const caixa = caixaDoArranjo(arranjo, d, padX, padY);
+  const larguraUtil = caixa.largura;
+  const alturaDisponivel = caixa.altura;
 
   const referencia = Math.min(d.largura, d.altura * 1.6);
   const IDEAL = {
@@ -303,7 +461,89 @@ export const escalaDaPeca = (e: {
     fator,
     alturaEstimada: Math.round(alturaCom(fator)),
     alturaDisponivel,
+    larguraDisponivel: larguraUtil,
+    arranjo,
   };
+};
+
+/**
+ * O CSS que POSICIONA o bloco de texto, e o que entra atrás dele.
+ *
+ * Separado do resto porque é a única parte que o arranjo troca: a tipografia, o
+ * respiro e as regras de quebra são as mesmas nos quatro, e mantê-las juntas é
+ * o que impede um arranjo de virar um segundo compositor.
+ */
+const cssDoArranjo = (
+  arranjo: ArranjoDaPeca,
+  d: { largura: number; altura: number },
+  s: EscalaDaPeca,
+  cores: CoresDaPeca,
+  temFoto: boolean,
+): { readonly css: string; readonly camadas: string; readonly alinhamento: 'left' | 'center' } => {
+  const [r, g, b] = canais(cores.faixa);
+  switch (arranjo) {
+    case 'faixa-inferior':
+      return {
+        alinhamento: 'left',
+        camadas: '',
+        css: `.faixa{position:absolute;left:0;right:0;bottom:0;padding:${s.padY}px ${s.padX}px;
+    background:${cores.faixa}}
+  /* O véu vive ACIMA da faixa, fora da caixa de texto: ele amacia a emenda com
+     a foto sem pôr uma letra sequer sobre pixel semitransparente. */
+  .faixa::before{content:'';position:absolute;left:0;right:0;bottom:100%;height:${s.veu}px;
+    background:linear-gradient(to top, ${cores.faixa} 0%, transparent 100%)}`,
+      };
+    case 'tela-dividida': {
+      // A foto ocupa a metade dela, e não o quadro inteiro sob a cor: com
+      // `cover` no quadro inteiro, o assunto da foto ficaria centrado atrás da
+      // metade sólida — a peça mostraria a borda da imagem e esconderia o meio.
+      const metadeDaFoto = ehLargo(d)
+        ? 'right:0;top:0;bottom:0;width:50%'
+        : 'left:0;right:0;top:0;height:50%';
+      const metadeDoTexto = ehLargo(d)
+        ? 'left:0;top:0;bottom:0;width:50%'
+        : 'left:0;right:0;bottom:0;height:50%';
+      return {
+        alinhamento: 'left',
+        camadas: temFoto ? '<div class="foto"></div>' : '',
+        css: `.foto{position:absolute;${metadeDaFoto}}
+  .faixa{position:absolute;${metadeDoTexto};padding:${s.padY}px ${s.padX}px;
+    display:flex;flex-direction:column;justify-content:center;align-items:flex-start}`,
+      };
+    }
+    case 'veu-cheio': {
+      // O alfa é derivado, não escolhido: é o menor que ainda faz o PIOR pixel
+      // possível vencer o piso de contraste. Ver `alfaDoVeu`.
+      const alfa = alfaDoVeu(cores);
+      return {
+        alinhamento: 'center',
+        camadas: temFoto ? '<div class="veu"></div>' : '',
+        css: `.veu{position:absolute;left:0;top:0;right:0;bottom:0;
+    background:rgba(${r},${g},${b},${alfa})}
+  .faixa{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:${Math.round(LARGURA_DO_CENTRO * 100)}%;
+    display:flex;flex-direction:column;align-items:center;text-align:center}`,
+      };
+    }
+    case 'texto-sobre-imagem': {
+      // Nenhum véu, nenhuma faixa: é o arranjo que deixa a foto limpa. Quem
+      // decide se ele serve é a amostragem do pixel, não esta função.
+      const comum = 'position:absolute;display:flex;flex-direction:column;align-items:flex-start';
+      return {
+        alinhamento: 'left',
+        camadas: '',
+        css: ehLargo(d)
+          ? `.faixa{${comum};width:${Math.round(LARGURA_DO_TERCO * 100)}%}
+  .peca[data-terco="inicio"] .faixa{left:${s.padX}px;top:50%;transform:translateY(-50%)}
+  .peca[data-terco="meio"] .faixa{left:50%;top:50%;transform:translate(-50%,-50%)}
+  .peca[data-terco="fim"] .faixa{right:${s.padX}px;top:50%;transform:translateY(-50%)}`
+          : `.faixa{${comum};left:${s.padX}px;right:${s.padX}px}
+  .peca[data-terco="inicio"] .faixa{top:${s.padY}px}
+  .peca[data-terco="meio"] .faixa{top:50%;transform:translateY(-50%)}
+  .peca[data-terco="fim"] .faixa{bottom:${s.padY}px}`,
+      };
+    }
+  }
 };
 
 /**
@@ -312,7 +552,8 @@ export const escalaDaPeca = (e: {
  */
 export const htmlDaPeca = (e: EntradaDaComposicao): string => {
   const d = DIMENSAO_DO_FORMATO[e.formato];
-  const s = escalaDaPeca(e);
+  const arranjo = e.arranjo ?? ARRANJO_PADRAO;
+  const s = escalaDaPeca({ ...e, arranjo });
   // A família da marca vem PRIMEIRO e a da casa fica de rede: se o arquivo
   // embutido falhar, a peça ainda sai legível — e a medição no navegador diz
   // qual das duas realmente aplicou.
@@ -321,10 +562,25 @@ export const htmlDaPeca = (e: EntradaDaComposicao): string => {
       ? 'system-ui,sans-serif'
       : `'${e.fonte.familia.replace(/'/g, '')}',system-ui,sans-serif`;
   const faceDaFonte = e.fonte === null || e.fonte === undefined ? '' : e.fonte.css;
-  const fundo =
-    e.fundo === null
-      ? `background: ${e.cores.faixa};`
-      : `background-image: url('${fundoEmbutido(e.fundo)}'); background-size: cover; background-position: center;`;
+  const temFoto = e.fundo !== null;
+  const imagem = temFoto ? fundoEmbutido(e.fundo as string) : null;
+  const arte = cssDoArranjo(arranjo, d, s, e.cores, temFoto);
+
+  /**
+   * Onde a foto pousa: no quadro inteiro, ou só na metade da tela dividida.
+   *
+   * Sem foto, TODO arranjo cai na cor da faixa — e é por isso que uma peça sem
+   * imagem tem contraste exato em qualquer arranjo: o substrato volta a ser
+   * uma cor que nós escolhemos.
+   */
+  const pintura = (seletor: string): string =>
+    imagem === null
+      ? `${seletor}{background:${e.cores.faixa}}`
+      : `${seletor}{background-image:url('${imagem}');background-size:cover;background-position:center}`;
+  const fundoDaPeca =
+    arranjo === 'tela-dividida'
+      ? `.peca{background:${e.cores.faixa}}\n  ${temFoto ? pintura('.foto') : ''}`
+      : pintura('.peca');
 
   // O logotipo assina no lugar do texto — as duas coisas juntas repetem a marca
   // e é isso que faz peça de tráfego parecer rascunho. `alt` leva o nome, então
@@ -342,13 +598,9 @@ export const htmlDaPeca = (e: EntradaDaComposicao): string => {
   ${faceDaFonte}
   *{margin:0;padding:0;box-sizing:border-box}
   html,body{width:${d.largura}px;height:${d.altura}px;overflow:hidden}
-  .peca{position:relative;width:${d.largura}px;height:${d.altura}px;${fundo}}
-  .faixa{position:absolute;left:0;right:0;bottom:0;padding:${s.padY}px ${s.padX}px;
-    background:${e.cores.faixa}}
-  /* O véu vive ACIMA da faixa, fora da caixa de texto: ele amacia a emenda com
-     a foto sem pôr uma letra sequer sobre pixel semitransparente. */
-  .faixa::before{content:'';position:absolute;left:0;right:0;bottom:100%;height:${s.veu}px;
-    background:linear-gradient(to top, ${e.cores.faixa} 0%, transparent 100%)}
+  .peca{position:relative;width:${d.largura}px;height:${d.altura}px}
+  ${fundoDaPeca}
+  ${arte.css}
   .marca,.headline,.cta,.assinatura{overflow-wrap:anywhere}
   .marca{font:600 ${s.marca}px/1.2 ${familia};
     letter-spacing:.08em;color:${e.cores.texto}}
@@ -356,7 +608,7 @@ export const htmlDaPeca = (e: EntradaDaComposicao): string => {
      \`contain\` é o cinto do suspensório — com os dois, esticar exigiria alguém
      escrever \`width\` em pixel, e aí a régua mede e reprova. */
   .logotipo{display:block;height:${s.logotipo}px;width:auto;
-    max-width:45%;object-fit:contain;object-position:left center}
+    max-width:45%;object-fit:contain;object-position:${arte.alinhamento} center}
   .headline{margin-top:.4em;font:700 ${s.headline}px/1.12 ${familia};
     color:${e.cores.texto}}
   .cta{display:inline-block;margin-top:.9em;padding:.55em 1.1em;
@@ -364,7 +616,8 @@ export const htmlDaPeca = (e: EntradaDaComposicao): string => {
     color:${e.cores.tintaDoAcento};background:${e.cores.acento}}
   .assinatura{margin-top:.6em;font:500 ${s.assinatura}px/1.2 ${familia};
     letter-spacing:.04em;color:${e.cores.texto}}
-</style></head><body><div class="peca"><div class="faixa">
+</style></head><body><div class="peca" data-arranjo="${arranjo}" data-terco="${e.terco ?? 'inicio'}">
+  ${arte.camadas}<div class="faixa">
   ${assinaturaDaMarca}
   ${e.headline === null ? '' : `<div class="headline" data-papel="headline">${escapar(e.headline)}</div>`}
   ${e.cta === null ? '' : `<div class="cta" data-papel="cta">${escapar(e.cta)}</div>`}
@@ -459,6 +712,201 @@ const LER_PAPEIS = `() => {
 }`;
 
 /**
+ * O código que AMOSTRA o pixel sob o texto, como string.
+ *
+ * ## Por que ele redesenha a foto num canvas em vez de fotografar a página
+ *
+ * O que está sob o texto na tela já está COBERTO pelo texto: fotografar a
+ * página devolveria as letras, não o que há embaixo delas. Redesenhando a mesma
+ * imagem com o mesmo mapeamento do `cover`, o que se lê é exatamente o pixel
+ * que o navegador pintou — antes de a letra pousar em cima.
+ *
+ * O mapeamento é aritmética, não estimativa: `cover` escolhe a MAIOR das duas
+ * escalas e centra o excedente, e é isso que as três linhas de `escala`/`ox`/
+ * `oy` reproduzem.
+ *
+ * ## Por que o véu entra por conta e não por leitura
+ *
+ * O alfa vem declarado de fora porque ele é derivado lá fora (`alfaDoVeu`), e
+ * porque ler `rgba()` de volta do estilo computado seria confiar numa string
+ * para reconstruir um número que já temos exato. A composição em sRGB é a mesma
+ * que o navegador faz.
+ *
+ * ## Por que o PIOR pixel, e não a média
+ *
+ * Média esconde exatamente o caso que importa. Um estouro de luz sob uma linha
+ * de headline continua ilegível depois de diluído na média do retângulo, e é
+ * ele que faz o cliente dizer "não dá para ler" olhando uma peça cujo número
+ * dizia 8:1.
+ */
+const PREPARAR_SUBSTRATO = `(async () => {
+  const peca = document.querySelector('.peca');
+  if (!peca) return { pronto: false, porque: 'não achei a peça' };
+  const alvo = peca.querySelector('.foto') || peca;
+  const cru = getComputedStyle(alvo).backgroundImage || '';
+  const casou = cru.match(/url\\(["']?([^"')]+)["']?\\)/);
+  if (!casou) return { pronto: false, porque: 'a peça não tem imagem de fundo' };
+
+  const img = new Image();
+  img.src = casou[1];
+  try { await img.decode(); } catch (e) { return { pronto: false, porque: 'a imagem não decodificou' }; }
+
+  const cx = alvo.getBoundingClientRect();
+  const L = Math.round(cx.width);
+  const A = Math.round(cx.height);
+  if (!L || !A || !img.naturalWidth) return { pronto: false, porque: 'a imagem veio vazia' };
+
+  // O mesmo que \`background-size: cover; background-position: center\` faz.
+  const escala = Math.max(L / img.naturalWidth, A / img.naturalHeight);
+  const dl = img.naturalWidth * escala;
+  const da = img.naturalHeight * escala;
+
+  const c = document.createElement('canvas');
+  c.width = L; c.height = A;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return { pronto: false, porque: 'o canvas não abriu' };
+  ctx.drawImage(img, (L - dl) / 2, (A - da) / 2, dl, da);
+
+  globalThis.__substrato = {
+    dados: ctx.getImageData(0, 0, L, A).data,
+    L: L,
+    A: A,
+    // Onde a foto começa dentro da PEÇA. Na tela dividida ela é só uma metade,
+    // e sem isto as coordenadas das caixas cairiam no lugar errado da imagem.
+    dx: Math.round(cx.left),
+    dy: Math.round(cx.top),
+  };
+  return { pronto: true, porque: '' };
+})()`;
+
+/**
+ * As funções de cor e de pior-caso, compartilhadas pelos dois passos que rodam
+ * na página. Vão como texto porque `evaluate` avalia uma EXPRESSÃO e não tem
+ * como carregar um módulo daqui para lá.
+ */
+const FERRAMENTAS_DO_PIXEL = `
+  const lumDe = (r, g, b) => {
+    const f = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+  const razaoDe = (l1, l2) => {
+    const claro = l1 >= l2 ? l1 : l2;
+    const escuro = l1 >= l2 ? l2 : l1;
+    return (claro + 0.05) / (escuro + 0.05);
+  };
+  const emHex = (r, g, b) => '#' + [r, g, b].map((c) => Math.round(c).toString(16).padStart(2, '0')).join('');
+  /**
+   * O pior pixel de um retângulo: o que menos separa da tinta.
+   *
+   * As coordenadas chegam na origem da PEÇA e são trazidas para a origem da
+   * imagem por \`dx\`/\`dy\`. Retângulo que cai todo fora da foto devolve null —
+   * não há pixel de foto ali, e inventar um seria dar um número que a régua
+   * usaria para aprovar.
+   */
+  const piorNoRetangulo = (S, veu, tinta, esq, topo, dir, base) => {
+    const x0 = Math.max(0, Math.round(esq) - S.dx);
+    const y0 = Math.max(0, Math.round(topo) - S.dy);
+    const x1 = Math.min(S.L, Math.round(dir) - S.dx);
+    const y1 = Math.min(S.A, Math.round(base) - S.dy);
+    if (x1 <= x0 || y1 <= y0) return null;
+    const lt = lumDe(tinta[0], tinta[1], tinta[2]);
+    let pior = Infinity; let onde = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = (y * S.L + x) * 4;
+        let r = S.dados[i]; let g = S.dados[i + 1]; let b = S.dados[i + 2];
+        if (veu) {
+          r = r * (1 - veu.alfa) + veu.r * veu.alfa;
+          g = g * (1 - veu.alfa) + veu.g * veu.alfa;
+          b = b * (1 - veu.alfa) + veu.b * veu.alfa;
+        }
+        const razao = razaoDe(lt, lumDe(r, g, b));
+        if (razao < pior) { pior = razao; onde = [r, g, b]; }
+      }
+    }
+    return onde === null ? null : { razao: pior, cor: emHex(onde[0], onde[1], onde[2]) };
+  };
+`;
+
+/**
+ * Escolhe o terço, MEDINDO — e medindo o BLOCO, não a banda.
+ *
+ * "O terço vazio" não é uma posição fixa: depende da foto. Medir qual dos três
+ * carrega melhor a tinta é a mesma decisão que um diagramador toma olhando, com
+ * a diferença de que esta se repete igual em mil peças e sai escrita no
+ * resultado.
+ *
+ * A primeira versão media a BANDA de um terço do quadro, e ela mentia por
+ * construção: o bloco ocupa 42% da largura e a banda 33%, então um bloco
+ * alinhado ao terço bom sempre invade o vizinho. Medido no caso extremo — dois
+ * terços estourados e um escuro —, a banda escolhida dava 1,13:1 no pixel que o
+ * texto realmente pegava.
+ *
+ * Hoje ele põe o bloco em cada uma das três posições e mede o que o TEXTO pega
+ * ali. É mais caro (três passadas de layout, todas de graça) e é a única
+ * pergunta que corresponde à peça.
+ */
+const escolherTerco = (dados: string): string => `(() => {
+  const S = globalThis.__substrato;
+  const peca = document.querySelector('.peca');
+  if (!S || !peca) return null;
+  const cfg = ${dados};
+  ${FERRAMENTAS_DO_PIXEL}
+  const nomes = ['inicio', 'meio', 'fim'];
+  const razoes = [];
+  for (const nome of nomes) {
+    peca.setAttribute('data-terco', nome);
+    let pior = Infinity;
+    for (const el of Array.from(document.querySelectorAll('[data-papel]'))) {
+      const r = el.getBoundingClientRect();
+      const tinta = el.getAttribute('data-papel') === 'cta' ? cfg.acento : cfg.tinta;
+      const achado = piorNoRetangulo(S, cfg.veu, tinta, r.left, r.top, r.right, r.bottom);
+      if (achado !== null && achado.razao < pior) pior = achado.razao;
+    }
+    razoes.push(pior === Infinity ? 0 : pior);
+  }
+  let melhor = 0;
+  for (let t = 1; t < 3; t += 1) { if (razoes[t] > razoes[melhor]) melhor = t; }
+  peca.setAttribute('data-terco', nomes[melhor]);
+  return { terco: nomes[melhor], razoes: razoes };
+})()`;
+
+/**
+ * O pior contraste sob CADA papel.
+ *
+ * O papel do botão é medido contra a cor do BOTÃO, e não contra a tinta: o que
+ * precisa se separar da foto ali é o retângulo do acento. A tinta de dentro do
+ * botão pousa no acento sólido, e esse par já é exato sem amostrar nada.
+ */
+const medirSubstrato = (dados: string): string => `(() => {
+  const S = globalThis.__substrato;
+  if (!S) return null;
+  const cfg = ${dados};
+  ${FERRAMENTAS_DO_PIXEL}
+  return Array.from(document.querySelectorAll('[data-papel]')).map((el) => {
+    const r = el.getBoundingClientRect();
+    const papel = el.getAttribute('data-papel') || '';
+    const tinta = papel === 'cta' ? cfg.acento : cfg.tinta;
+    const achado = piorNoRetangulo(S, cfg.veu, tinta, r.left, r.top, r.right, r.bottom);
+    return { papel: papel, razao: achado === null ? null : achado.razao, cor: achado === null ? null : achado.cor };
+  });
+})()`;
+
+/** O que o navegador devolve sobre o pixel sob um papel. */
+type AmostraDoPapel = {
+  readonly papel: string;
+  readonly razao: number | null;
+  readonly cor: string | null;
+};
+
+type PaginaDoNavegador = {
+  setContent(html: string, opts?: { waitUntil?: 'load' }): Promise<void>;
+  screenshot(opts: { type: 'png' }): Promise<Buffer>;
+  evaluate<T>(expressao: string): Promise<T>;
+  close(): Promise<void>;
+};
+
+/**
  * Compõe e fotografa, na dimensão exata.
  *
  * O navegador entra por parâmetro para o chamador decidir o ciclo de vida: numa
@@ -467,25 +915,85 @@ const LER_PAPEIS = `() => {
  */
 export const comporPeca = async (
   navegador: {
-    newPage(opts: { viewport: { width: number; height: number } }): Promise<{
-      setContent(html: string, opts?: { waitUntil?: 'load' }): Promise<void>;
-      screenshot(opts: { type: 'png' }): Promise<Buffer>;
-      evaluate<T>(expressao: string): Promise<T>;
-      close(): Promise<void>;
-    }>;
+    newPage(opts: { viewport: { width: number; height: number } }): Promise<PaginaDoNavegador>;
   },
   entrada: EntradaDaComposicao,
 ): Promise<PecaComposta> => {
   const d = DIMENSAO_DO_FORMATO[entrada.formato];
+  const arranjo = entrada.arranjo ?? ARRANJO_PADRAO;
+  const substrato = ARRANJO[arranjo].substrato;
+  /**
+   * Sem foto, TODO arranjo pousa em cor sólida.
+   *
+   * A peça sem imagem cai na cor da faixa em qualquer arranjo, e ali o
+   * contraste volta a ser o par entre duas cores que nós escolhemos. Amostrar
+   * seria trocar uma certeza por uma leitura de canvas.
+   */
+  const amostrar = entrada.fundo !== null && substrato !== 'cor-solida';
+  const veu =
+    substrato === 'foto-com-veu'
+      ? (() => {
+          const [r, g, b] = canais(entrada.cores.faixa);
+          return { r, g, b, alfa: alfaDoVeu(entrada.cores) };
+        })()
+      : null;
+
   const pagina = await navegador.newPage({
     viewport: { width: d.largura, height: d.altura },
   });
   try {
-    await pagina.setContent(htmlDaPeca(entrada), { waitUntil: 'load' });
+    await pagina.setContent(htmlDaPeca({ ...entrada, arranjo }), { waitUntil: 'load' });
+
+    /**
+     * O terço COMEÇA no valor que o HTML pôs, e não em `null`.
+     *
+     * `null` neste campo quer dizer "este arranjo não alinha a terço". Se a
+     * amostragem falhar (imagem que não decodifica, canvas que não abre), a
+     * peça ainda saiu alinhada a ALGUM terço — o padrão —, e devolver `null` ali
+     * diria que ela não tem terço nenhum. O campo passa a responder sempre onde
+     * o bloco pousou.
+     */
+    let terco: TercoDaPeca | null =
+      arranjo === 'texto-sobre-imagem' ? (entrada.terco ?? 'inicio') : null;
+    let amostras: readonly AmostraDoPapel[] | null = null;
+    if (amostrar) {
+      const pronto = await pagina.evaluate<{ pronto: boolean; porque: string }>(PREPARAR_SUBSTRATO);
+      if (pronto.pronto) {
+        const comum = JSON.stringify({
+          veu,
+          tinta: canais(entrada.cores.texto),
+          acento: canais(entrada.cores.acento),
+        });
+        if (arranjo === 'texto-sobre-imagem') {
+          const escolha = await pagina.evaluate<{ terco: TercoDaPeca } | null>(
+            escolherTerco(comum),
+          );
+          if (escolha !== null) terco = escolha.terco;
+        }
+        amostras = await pagina.evaluate<readonly AmostraDoPapel[] | null>(medirSubstrato(comum));
+      }
+    }
+
     // Texto passado ao `evaluate` é avaliado como EXPRESSÃO: sem os parênteses
     // de chamada, o que volta é a própria função e o resultado chega
     // `undefined`. A mesma armadilha está anotada em `conferir-site.ts:1120`.
-    const caixas = await pagina.evaluate<(CaixaDoPapel & { texto: string })[]>(`(${LER_PAPEIS})()`);
+    const cruas = await pagina.evaluate<(CaixaDoPapel & { texto: string })[]>(`(${LER_PAPEIS})()`);
+
+    /**
+     * O fundo do LOGOTIPO passa a ser o pixel amostrado.
+     *
+     * `fundoAtrasDe` sobe pelos ancestrais procurando uma cor de fundo opaca, e
+     * sobre uma foto não existe nenhuma: C3 saía pendente para sempre em três
+     * dos quatro arranjos. O pixel medido responde a mesma pergunta de verdade
+     * — a marca SE VÊ onde ela pousou?
+     */
+    const porPapel = new Map((amostras ?? []).map((a) => [a.papel, a]));
+    const caixas: CaixaDoPapel[] = cruas.map((c) => {
+      const amostra = porPapel.get(c.papel);
+      if (c.imagem === null || c.imagem === undefined || amostra?.cor == null) return c;
+      return { ...c, imagem: { ...c.imagem, fundoAtras: amostra.cor } };
+    });
+
     /**
      * A fonte pedida entrou mesmo?
      *
@@ -515,13 +1023,43 @@ export const comporPeca = async (
           );
 
     const png = await pagina.screenshot({ type: 'png' });
+
+    /**
+     * O contraste da peça, e de onde ele vem.
+     *
+     * Em substrato sólido, o declarado — exato, porque nós escolhemos as duas
+     * cores do par. Sobre a foto, o par do texto deixa de existir e o que resta
+     * de exato é só o de DENTRO do botão (tinta sobre acento, os dois nossos):
+     * ele continua entrando na conta, e o resto sai do pixel.
+     *
+     * Amostragem que não veio (imagem que não decodificou, canvas que não abriu)
+     * deixa o número em `null`. Cair no declarado ali seria publicar o número
+     * que a régua usaria para aprovar aquilo que ninguém mediu.
+     */
+    const amostrados = (amostras ?? [])
+      .map((a) => a.razao)
+      .filter((n): n is number => n !== null && Number.isFinite(n));
+    const menorAmostrado = amostrados.length === 0 ? null : Math.min(...amostrados);
+    const doBotao =
+      entrada.cta === null
+        ? null
+        : contrasteRatio(entrada.cores.tintaDoAcento, entrada.cores.acento);
+    const menorContraste = !amostrar
+      ? contrasteDaPeca(entrada.cores, entrada.cta !== null)
+      : menorAmostrado === null
+        ? null
+        : Math.min(menorAmostrado, doBotao ?? Number.POSITIVE_INFINITY);
+
     return {
       png: new Uint8Array(png),
       largura: d.largura,
       altura: d.altura,
       textos: caixas.map((c) => c.texto),
       caixas,
-      menorContraste: contrasteDaPeca(entrada.cores, entrada.cta !== null),
+      menorContraste,
+      arranjo,
+      contrasteAmostrado: menorAmostrado,
+      terco,
       fonteAplicada,
     };
   } finally {

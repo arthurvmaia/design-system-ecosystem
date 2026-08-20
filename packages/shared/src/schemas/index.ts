@@ -15,6 +15,7 @@ export * from './component-contract.js';
 export * from './criativo.js';
 export * from './marca.js';
 export * from './cores-da-peca.js';
+export * from './arranjo-da-peca.js';
 export * from './generate.js';
 export * from './kit.js';
 export * from './estrutura-marketing.js';

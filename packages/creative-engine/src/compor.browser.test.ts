@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
+  type ArranjoDaPeca,
   DIMENSAO_DO_FORMATO,
   type FormatoCriativo,
   LIMITES_DO_PEDIDO,
@@ -535,4 +536,278 @@ test('PROVA: fonte pedida que NAO carrega reprova, em vez de sair calada', async
   assert.equal(c11?.estado, 'reprovou');
   assert.match(c11?.motivo ?? '', /letra de reserva/);
   assert.equal(r.aprovado, false);
+});
+
+/**
+ * OS ARRANJOS, medidos no pixel.
+ *
+ * Dar mais arranjos ao compositor é geometria e não gasta crédito. O que cada
+ * arranjo novo gasta é RISCO: ele é uma chance nova de o texto não caber no
+ * quadro, e uma chance nova de o texto pousar onde não se lê. Os dois se medem
+ * aqui, e é isto que separa "arranjo" de "conceito".
+ */
+
+const ARRANJOS: ArranjoDaPeca[] = [
+  'faixa-inferior',
+  'tela-dividida',
+  'veu-cheio',
+  'texto-sobre-imagem',
+];
+
+/** Uma página pintada e fotografada, para servir de fundo. */
+const fundoDeTeste = async (
+  navegador: Awaited<ReturnType<typeof chromium.launch>>,
+  corpo: string,
+  largura = 1200,
+  altura = 1200,
+): Promise<string> => {
+  const caminho = join(tmpdir(), `fundo-${randomUUID().slice(0, 8)}.png`);
+  const pagina = await navegador.newPage({ viewport: { width: largura, height: altura } });
+  await pagina.setContent(`<body style="margin:0">${corpo}</body>`);
+  writeFileSync(caminho, await pagina.screenshot({ type: 'png' }));
+  await pagina.close();
+  return caminho;
+};
+
+const SO_COR = (cor: string): string =>
+  `<div style="width:100%;height:100%;background:${cor}"></div>`;
+
+test('PROVA: C2 medida — nos QUATRO arranjos, em todo formato, no TETO do schema', async (t) => {
+  // A condição para um arranjo virar conceito. Cada arranjo põe o texto numa
+  // caixa diferente, e a estimativa que decide o corpo da letra erra sempre
+  // para MENOS (ela assume empacotamento perfeito; o navegador quebra em
+  // palavra). Só a medição diz se coube.
+  const navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  t.after(async () => await navegador.close());
+
+  const formatos: FormatoCriativo[] = ['feed-1x1', 'story-9x16', 'reels-9x16', 'banner-3x1'];
+  const marca = encher(LIMITES_DO_PEDIDO.marca, 'Marca Comprida');
+  const headline = encher(LIMITES_DO_PEDIDO.headline, 'palavra headline enorme');
+  const cta = encher(LIMITES_DO_PEDIDO.cta, 'chamada comprida');
+
+  for (const arranjo of ARRANJOS) {
+    for (const formato of formatos) {
+      const peca = await comporPeca(navegador, {
+        formato,
+        arranjo,
+        fundo: null,
+        marca,
+        headline,
+        cta,
+        cores: CORES,
+      });
+      const r = conferirVariacaoCriativa({
+        formato,
+        largura: peca.largura,
+        altura: peca.altura,
+        houvePixelGerado: false,
+        headline,
+        cta,
+        textoRenderizado: peca.textos,
+        caixasDosPapeis: peca.caixas,
+        marca,
+        menorContraste: peca.menorContraste,
+        hash: 'a',
+        hashesIrmas: [],
+        houveUpload: false,
+        uploadPreservado: null,
+        procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
+        tipografia: { familia: null, aplicou: peca.fonteAplicada },
+      });
+      const c2 = r.vereditos.find((v) => v.codigo === 'C2');
+      assert.equal(
+        c2?.estado,
+        'passou',
+        `${arranjo}/${formato}: ${c2?.motivo} — caixas ${JSON.stringify(peca.caixas)}`,
+      );
+    }
+  }
+});
+
+test('PROVA: o arranjo VIAJA no resultado — é ele que separa dois conceitos', async (t) => {
+  // Medir "layouts diferentes" por distância de pixel não separa as classes: os
+  // pares de mesma ideia e de ideias diferentes se cruzam na escala (§4 do
+  // handoff). Qual arranjo foi usado é declarado, e por isso é exato.
+  const navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  t.after(async () => await navegador.close());
+
+  for (const arranjo of ARRANJOS) {
+    const peca = await comporPeca(navegador, {
+      formato: 'banner-3x1',
+      arranjo,
+      fundo: null,
+      marca: 'Castevani',
+      headline: 'Alfaiataria em repouso',
+      cta: 'Agendar prova',
+      cores: CORES,
+    });
+    assert.equal(peca.arranjo, arranjo);
+  }
+});
+
+test('PROVA: sobre FOTO o contraste e amostrado no pixel, e a foto que estoura REPROVA', async (t) => {
+  // É o defeito que este arranjo poderia ter trazido de graça: o texto sai da
+  // faixa sólida e o número declarado continua saindo bonito, deixando de
+  // descrever a peça. Um branco puro sob tinta off-white é o caso extremo, e
+  // ele TEM de reprovar.
+  const navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  t.after(async () => await navegador.close());
+
+  const estourado = await fundoDeTeste(navegador, SO_COR('#ffffff'));
+  const peca = await comporPeca(navegador, {
+    formato: 'banner-3x1',
+    arranjo: 'texto-sobre-imagem',
+    fundo: estourado,
+    marca: 'Castevani',
+    headline: 'Alfaiataria em repouso',
+    cta: null,
+    cores: CORES,
+  });
+  rmSync(estourado, { force: true });
+
+  assert.ok(peca.contrasteAmostrado !== null, 'o pixel tinha de ter sido amostrado');
+  assert.ok(
+    (peca.contrasteAmostrado as number) < 3,
+    `off-white sobre branco puro não pode dar ${peca.contrasteAmostrado}`,
+  );
+
+  const r = conferirVariacaoCriativa({
+    formato: 'banner-3x1',
+    largura: peca.largura,
+    altura: peca.altura,
+    houvePixelGerado: false,
+    headline: 'Alfaiataria em repouso',
+    cta: null,
+    textoRenderizado: peca.textos,
+    caixasDosPapeis: peca.caixas,
+    marca: 'Castevani',
+    menorContraste: peca.menorContraste,
+    hash: 'a',
+    hashesIrmas: [],
+    houveUpload: false,
+    uploadPreservado: null,
+    procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
+    tipografia: { familia: null, aplicou: peca.fonteAplicada },
+  });
+  const c4 = r.vereditos.find((v) => v.codigo === 'C4');
+  assert.equal(c4?.estado, 'reprovou', JSON.stringify(c4));
+});
+
+test('PROVA: o veu DERIVADO faz a MESMA foto estourada carregar o texto', async (t) => {
+  // O alfa não é escolhido: é o menor que faz o pior pixel possível (branco
+  // puro, para tinta clara) vencer o piso. Esta é a prova de que a derivação
+  // cumpre o que promete — mesma foto, mesmo texto, só muda o arranjo.
+  const navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  t.after(async () => await navegador.close());
+
+  const estourado = await fundoDeTeste(navegador, SO_COR('#ffffff'));
+  const peca = await comporPeca(navegador, {
+    formato: 'banner-3x1',
+    arranjo: 'veu-cheio',
+    fundo: estourado,
+    marca: 'Castevani',
+    headline: 'Alfaiataria em repouso',
+    cta: null,
+    cores: CORES,
+  });
+  rmSync(estourado, { force: true });
+
+  assert.ok(peca.contrasteAmostrado !== null, 'o pixel tinha de ter sido amostrado');
+  assert.ok(
+    (peca.contrasteAmostrado as number) >= 3,
+    `o véu derivado prometeu o piso e entregou ${peca.contrasteAmostrado}`,
+  );
+});
+
+test('PROVA: o TERCO e medido, nao escolhido — o bloco vai para onde o texto se le', async (t) => {
+  // "O terço vazio" não é uma posição fixa: depende da foto. As duas metades
+  // provam que a escolha é MEDIDA e não um padrão: `inicio` é o valor inicial
+  // do atributo, então achar `inicio` sozinho não provaria nada — o segundo
+  // caso é o que mostra o bloco se mudando de lado.
+  const navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  t.after(async () => await navegador.close());
+
+  const metades = (esquerda: string, direita: string): string =>
+    `<div style="display:flex;width:100%;height:100%">
+       <div style="flex:1;background:${esquerda}"></div>
+       <div style="flex:1;background:${direita}"></div>
+     </div>`;
+
+  for (const [onde, esquerda, direita] of [
+    ['inicio', '#050505', '#ffffff'],
+    ['fim', '#ffffff', '#050505'],
+  ] as const) {
+    const fundo = await fundoDeTeste(navegador, metades(esquerda, direita), 1500, 500);
+    const peca = await comporPeca(navegador, {
+      formato: 'banner-3x1',
+      arranjo: 'texto-sobre-imagem',
+      fundo,
+      marca: 'Castevani',
+      headline: 'Alfaiataria em repouso',
+      cta: null,
+      cores: CORES,
+    });
+    rmSync(fundo, { force: true });
+
+    assert.equal(
+      peca.terco,
+      onde,
+      `o lado escuro era "${onde}" e o bloco foi para "${peca.terco}"`,
+    );
+    assert.ok(
+      (peca.contrasteAmostrado as number) >= 3,
+      `sobre o lado escuro a tinta clara tem de se ler: deu ${peca.contrasteAmostrado}`,
+    );
+  }
+});
+
+test('PROVA: sobre a foto, o logotipo deixa de ficar PENDENTE — o fundo dele e amostrado', async (t) => {
+  // `fundoAtrasDe` sobe pelos ancestrais procurando cor de fundo opaca, e sobre
+  // uma foto não existe nenhuma: C3 sairia pendente para sempre em três dos
+  // quatro arranjos. O pixel medido responde a mesma pergunta de verdade.
+  const navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  t.after(async () => await navegador.close());
+
+  const escuro = await fundoDeTeste(navegador, SO_COR('#101010'));
+  const logo = await arquivoDeTeste(navegador, 600, 200);
+  const peca = await comporPeca(navegador, {
+    formato: 'banner-3x1',
+    arranjo: 'veu-cheio',
+    fundo: escuro,
+    marca: 'Castevani',
+    logotipo: logo,
+    headline: 'Alfaiataria em repouso',
+    cta: null,
+    cores: CORES,
+  });
+  rmSync(escuro, { force: true });
+  rmSync(logo, { force: true });
+
+  const marca = peca.caixas.find((c) => c.papel === 'marca');
+  assert.ok(marca?.imagem != null, 'a marca é o logotipo nesta peça');
+  assert.ok(
+    marca?.imagem?.fundoAtras != null,
+    'sem o fundo amostrado, C3 fica pendente para sempre sobre foto',
+  );
+
+  const r = conferirVariacaoCriativa({
+    formato: 'banner-3x1',
+    largura: peca.largura,
+    altura: peca.altura,
+    houvePixelGerado: false,
+    headline: 'Alfaiataria em repouso',
+    cta: null,
+    textoRenderizado: peca.textos,
+    caixasDosPapeis: peca.caixas,
+    marca: 'Castevani',
+    menorContraste: peca.menorContraste,
+    hash: 'a',
+    hashesIrmas: [],
+    houveUpload: false,
+    uploadPreservado: null,
+    procedencia: { modelo: 'composicao', preset: 'imagem-padrao' },
+    tipografia: { familia: null, aplicou: peca.fonteAplicada },
+  });
+  const c3 = r.vereditos.find((v) => v.codigo === 'C3');
+  assert.notEqual(c3?.estado, 'pendente', JSON.stringify(c3));
 });
