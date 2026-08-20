@@ -4,31 +4,51 @@ Ponto de partida de quem continuar a frente **Orbis Criativa**. O `HANDOFF.md`
 descreve o produto; este descreve **o que foi construído, o que foi medido e o
 que falta**.
 
-Estado: branch **`orbis-criativa`**, 26 commits a partir de `275931b`, árvore
-limpa. Suíte com **uma** falha, pré-existente e sem relação com este trabalho
-(`scripts/acervo-regressao.test.ts`, 7,1% de bytes duplicados no acervo local).
+Estado: branch **`orbis-criativa`**, árvore limpa. `pnpm verificar` roda lint,
+typecheck, **`typecheck:scripts`** e a suíte, e passa — a única falha é
+pré-existente e sem relação com esta frente (`scripts/acervo-regressao.test.ts`,
+7,1% de bytes duplicados no acervo local).
+
+O job de prova (**Sorriso Vivo**) está fechado: folha **M1..M11 todas verdes**, o
+portão da entrega passa, razão em **1575/1575** com zero em voo, e a pasta do
+cliente no Desktop tem logo (com o vetor), favicons, quatro banners e o PDF.
 
 ---
 
 ## 1. A PRÓXIMA COISA A FAZER
 
-**Rodar o fluxo inteiro pela TELA.** Todos os jobs desta frente nasceram de
-script, e é a única prova que falta: criar uma marca pelo formulário de
-`/criativos/marca`, processá-la pelo `PROCESSAR.bat` e ver a pasta chegar no
-Desktop. O portão da tela pede a credencial do dono e ela nunca foi usada, então
-`pnpm dev` + o olho continuam sendo um passo que ninguém deu.
+**A comparação de pixel não chega até a curadoria, e isso promove peça ruim em
+silêncio.**
 
-Isso não gasta crédito nenhum se a marca for a que já existe. O que se descobre
-ali é a classe de defeito que teste nenhum pega: campo que não envia, aviso que
-não aparece, botão que a pessoa não acha.
+Em `curadoria-escolha.ts`, `comparacaoVisualOk === false` é condição de REPROVA
+— *"o bundle não bate com o que a captura viu"*. Mas `curar-biblioteca` lia esse
+campo de `insight.comparacaoVisual`, que o `SegmentInsight` não declara e o
+manifesto não grava: ele era `null` desde sempre, e **a reprovação nunca
+disparou**. Peça cujo bundle diverge da captura entra na Biblioteca sem que nada
+acuse.
 
-Depois dela, em ordem de valor:
+Hoje o `null` é EXPLÍCITO, com o buraco escrito no lugar — "não medido" é
+verdadeiro, e o de antes não era. O que falta é o caminho:
 
-- **O SVG do símbolo** — 150 créditos, declarado como pendência na última página
-  do PDF. Sem ele não há fachada nem veículo.
-- **Os 40 erros de tipo em `scripts/`** (eram 89), todos pré-existentes. Os
-  arquivos de criativo e de marca estão limpos; `pnpm typecheck:scripts` existe e
-  não entra no `verificar` até essa limpeza.
+- o dado existe em disco (`lerComparacoesV2(id)`);
+- quem associa comparação a segmento é `associarConferencias`, uma função
+  **privada** da rota de design systems, e a associação é heurística (casa por
+  print da dobra e por posição);
+- trazê-la para a curadoria quer dizer extraí-la para um pacote compartilhado,
+  com teste.
+
+É a mesma forma de todos os achados desta frente: a régua tinha a pergunta certa
+e não tinha a resposta, e ninguém via porque `null` não reclama.
+
+### Depois dela
+
+- **As quatro decisões do dono** que continuam abertas, na §5.
+- **O turbo descarta variável de ambiente VAZIA.** `globalPassThroughEnv` agora
+  lista as 23 do app e `ORBIS_LOCAL=1 pnpm dev` funciona, mas passar
+  `ORBIS_SENHA=` (vazia) é inconstante: às vezes o `.env` vence e o portão sobe
+  ativo. Para o portão desligado de verdade, o caminho seguro continua sendo
+  subir o servidor por fora (`cd apps/server && ORBIS_LOCAL=1 ORBIS_SENHA= npx
+  tsx src/index.ts`).
 
 ---
 
@@ -258,21 +278,15 @@ saiu; quem cobra a proporção é C12, que mede.
 
 ### Trabalho
 
-1. **A tela nunca foi conferida com o olho.** Ela compila, tem 6 testes de rota
-   e o build passa, mas o portão pede a credencial do dono e ela não foi usada.
-   Rode `pnpm dev` e abra `/criativos/marca`.
-2. **O fluxo nunca rodou pela TELA.** Todos os jobs desta frente nasceram de
-   script. Criar uma marca pelo formulário e processá-la pelo `PROCESSAR.bat` é
-   a prova que falta. É a §1.
-3. **O SVG do símbolo** — 150 créditos, declarado como pendência na última
-   página do PDF. Sem ele não há fachada nem veículo.
-4. **40 erros de tipo em `scripts/`** (eram 89), pré-existentes.
-   `pnpm typecheck:scripts` existe e NÃO entra no `verificar` até essa limpeza.
-   Os arquivos de criativo e de marca estão limpos.
-5. **A régua da MARCA não está em `docs/regras-de-aceite.md`.** O documento tem
-   as seções da Galeria, do Site e da PEÇA; M1..M10 só existem como código e
-   docstring, e o `CLAUDE.md` aponta para lá como se estivessem. Gap
-   pré-existente, e agora com uma regra a mais dentro dele.
+A lista inteira que estava aqui foi feita. O que ficou:
+
+1. **A comparação de pixel até a curadoria** — a §1.
+2. **`problemasDaEntregaDeMarca` não confere a marca CONTRA a régua.** Ele exige
+   que a folha esteja completa e sem reprovação, mas quem a escreve é o próprio
+   comando que produziu a marca. Um resultado forjado à mão passaria.
+3. **A frente de Lojas continua com o espelho do recorte** (`pnpm marca:espelhar`),
+   e a decisão de trazê-la para o workspace segue aberta — é a quarta da lista
+   abaixo.
 
 ### Decisões do dono
 
