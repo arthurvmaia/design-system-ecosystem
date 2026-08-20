@@ -20,6 +20,18 @@
  * composição exata. Cada apresentação sai na cor e na letra da própria marca,
  * com os dados da própria marca.
  *
+ * ## O que `data-inteiro` marca, e por quê
+ *
+ * Uma imagem de REFERÊNCIA pode ser recortada: ela mostra o padrão, e o
+ * enquadramento não é o assunto. Uma imagem de APLICAÇÃO não pode — ela existe
+ * para mostrar a peça inteira, e recortada ela vira uma peça diferente.
+ *
+ * A diferença estava só no CSS, e por isso um `object-fit: cover` cortou a
+ * headline de um conceito de banner no meio, numa página cujo propósito é
+ * mostrar a peça. Quem viu foi o olho, ao abrir o PDF. `data-inteiro` declara a
+ * intenção no documento, e a régua a MEDE — que é a diferença entre uma
+ * decisão de layout e uma promessa conferível.
+ *
  * ## Seção sem dado não é inventada
  *
  * A referência é explícita: se uma seção não tem dado válido, o template não
@@ -115,7 +127,7 @@ export const htmlDaApresentacao = (d: DadosDaApresentacao): string => {
     pagina(
       'Apresentação da marca',
       `<div class="capa">
-        <img class="capa-logo" src="${d.logos.negativo}" alt="${esc(d.nome)}">
+        <img class="capa-logo" data-inteiro src="${d.logos.negativo}" alt="${esc(d.nome)}">
         <h1>${esc(d.nome)}</h1>
         <p class="sub">${esc(d.oQueFaz)}</p>
         <p class="meta">${esc(d.versao)} &middot; ${esc(d.data)}</p>
@@ -155,9 +167,9 @@ export const htmlDaApresentacao = (d: DadosDaApresentacao): string => {
       <p class="chamada">As três saem do <strong>mesmo símbolo</strong>, por cálculo. Não são
       três desenhos parecidos: são o mesmo desenho recortado para cada situação.</p>
       <div class="tres">
-        <figure class="sobre-claro"><img src="${d.logos.principal}" alt="Logotipo principal"><figcaption><strong>Principal</strong><br>Sobre fundo claro.</figcaption></figure>
-        <figure class="sobre-marca"><img src="${d.logos.negativo}" alt="Logotipo negativo"><figcaption><strong>Negativo</strong><br>Sobre fundo escuro ou sobre a cor da marca.</figcaption></figure>
-        <figure class="sobre-claro"><img src="${d.logos.lockupHorizontal}" alt="Assinatura horizontal"><figcaption><strong>Assinatura</strong><br>Símbolo e nome, para barra de topo e e-mail.</figcaption></figure>
+        <figure class="sobre-claro"><img data-inteiro src="${d.logos.principal}" alt="Logotipo principal"><figcaption><strong>Principal</strong><br>Sobre fundo claro.</figcaption></figure>
+        <figure class="sobre-marca"><img data-inteiro src="${d.logos.negativo}" alt="Logotipo negativo"><figcaption><strong>Negativo</strong><br>Sobre fundo escuro ou sobre a cor da marca.</figcaption></figure>
+        <figure class="sobre-claro"><img data-inteiro src="${d.logos.lockupHorizontal}" alt="Assinatura horizontal"><figcaption><strong>Assinatura</strong><br>Símbolo e nome, para barra de topo e e-mail.</figcaption></figure>
       </div>`,
     ),
   );
@@ -251,7 +263,7 @@ export const htmlDaApresentacao = (d: DadosDaApresentacao): string => {
         'Aplicação',
         `<h2>${esc(b.titulo)}</h2>
         <p class="chamada">${esc(b.legenda)}</p>
-        <div class="aplicacao"><img class="cheia" src="${b.imagem}" alt="${esc(b.titulo)}"></div>`,
+        <div class="aplicacao"><img class="cheia" data-inteiro src="${b.imagem}" alt="${esc(b.titulo)}"></div>`,
         'escuro',
       ),
     );
@@ -332,7 +344,11 @@ export const htmlDaApresentacao = (d: DadosDaApresentacao): string => {
   code{font-family:ui-monospace,monospace;font-size:12px}
   /* Capa */
   .capa{display:flex;flex-direction:column;justify-content:center;height:100%}
-  .capa-logo{height:96px;width:auto;margin-bottom:34px}
+  /* O align-self é o que impede o esticamento. Num flex em coluna o padrão é
+     stretch: a imagem obedece a altura, ignora a largura automática e se estica
+     pela largura toda. Saía a 10,2 de proporção onde o arquivo é 1,0 — uma logo
+     deformada na CAPA, e eu não tinha visto. Quem viu foi a medida. */
+  .capa-logo{height:96px;width:auto;align-self:flex-start;margin-bottom:34px}
   .capa .sub{font-size:19px;line-height:1.5;max-width:56ch;margin-top:18px;opacity:.85}
   .capa .meta{font-size:11px;letter-spacing:.16em;text-transform:uppercase;margin-top:34px;opacity:.6}
   /* Grades */

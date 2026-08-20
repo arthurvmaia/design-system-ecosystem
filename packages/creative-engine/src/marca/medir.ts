@@ -40,6 +40,24 @@ export type MedidaDaPeca = {
    * em três roupas" de "três marcas".
    */
   readonly silhueta: readonly number[];
+  /**
+   * A ASSINATURA VISUAL: a cor média em cada célula de uma grade grossa.
+   *
+   * A silhueta responde "é a mesma FORMA?" e serve para provar que as versões
+   * da logo saem do mesmo símbolo. Esta responde "é a mesma IMAGEM?", e serve
+   * para o contrário: provar que duas artes são ideias DIFERENTES.
+   *
+   * Ela existe porque faltava. Pedir três capas de categoria com `count: 3` num
+   * prompt só devolve três variações da MESMA ideia — três fotos do mesmo
+   * consultório vazio —, e a régua não tinha como perceber: ela media a logo e
+   * não olhava as artes. O dono percebeu abrindo o PDF, que é exatamente o que
+   * uma régua existe para evitar.
+   *
+   * Grade grossa e cor média de propósito: o que se compara é COMPOSIÇÃO e
+   * paleta, não pixel. Duas fotos da mesma cena com o móvel deslocado continuam
+   * sendo a mesma ideia, e é isso que precisa ser pego.
+   */
+  readonly assinatura: readonly number[];
 };
 
 /** O lado da grade da silhueta. 32×32 = 1024 células, forma sem ruído de borda. */
@@ -92,6 +110,10 @@ export async function medirPeca(entrada: {
   let meioTom = 0;
   const soma = new Array<number>(LADO * LADO).fill(0);
   const conta = new Array<number>(LADO * LADO).fill(0);
+  /** A grade da assinatura é mais grossa: 8×8 basta para comparar composição. */
+  const GRADE = 8;
+  const somaCor = new Array<number>(GRADE * GRADE * 3).fill(0);
+  const contaCor = new Array<number>(GRADE * GRADE).fill(0);
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -121,6 +143,14 @@ export async function medirPeca(entrada: {
         Math.min(LADO - 1, Math.floor((x / width) * LADO));
       soma[celula] = (soma[celula] ?? 0) + (ehMarca ? 1 : 0);
       conta[celula] = (conta[celula] ?? 0) + 1;
+
+      const cy = Math.min(GRADE - 1, Math.floor((y / height) * GRADE));
+      const cx = Math.min(GRADE - 1, Math.floor((x / width) * GRADE));
+      const base = (cy * GRADE + cx) * 3;
+      somaCor[base] = (somaCor[base] ?? 0) + r;
+      somaCor[base + 1] = (somaCor[base + 1] ?? 0) + g;
+      somaCor[base + 2] = (somaCor[base + 2] ?? 0) + b;
+      contaCor[cy * GRADE + cx] = (contaCor[cy * GRADE + cx] ?? 0) + 1;
     }
   }
 
@@ -134,6 +164,10 @@ export async function medirPeca(entrada: {
       const c = conta[i] ?? 0;
       return c === 0 ? 0 : s / c;
     }),
+    assinatura: somaCor.map((v, i) => {
+      const c = contaCor[Math.floor(i / 3)] ?? 0;
+      return c === 0 ? 0 : v / c / 255;
+    }),
   };
 }
 
@@ -146,6 +180,24 @@ export async function medirPeca(entrada: {
  * recortadas do MESMO arquivo ficam perto de zero; desenhos diferentes não.
  */
 export const distanciaDeSilhueta = (a: readonly number[], b: readonly number[]): number => {
+  if (a.length === 0 || a.length !== b.length) return Number.NaN;
+  let total = 0;
+  for (let i = 0; i < a.length; i += 1) total += Math.abs((a[i] ?? 0) - (b[i] ?? 0));
+  return total / a.length;
+};
+
+/**
+ * A distância VISUAL entre duas artes, de 0 (a mesma imagem) a 1.
+ *
+ * Média da diferença absoluta célula a célula, sobre a cor média. É a conta que
+ * responde à queixa do dono: "estão todas com a mesma ideia de arte".
+ *
+ * Ela é a irmã invertida de `distanciaDeSilhueta`. Aquela prova que as versões
+ * da logo são a MESMA coisa; esta prova que as artes são coisas DIFERENTES. As
+ * duas medem a mesma grandeza — o que muda é de que lado do limiar a resposta
+ * certa fica.
+ */
+export const distanciaVisual = (a: readonly number[], b: readonly number[]): number => {
   if (a.length === 0 || a.length !== b.length) return Number.NaN;
   let total = 0;
   for (let i = 0; i < a.length; i += 1) total += Math.abs((a[i] ?? 0) - (b[i] ?? 0));

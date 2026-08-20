@@ -69,17 +69,30 @@ test('PROVA: a marca que o motor produz PASSA na regua da marca', async (t) => {
     promptDoSimbolo: 'um círculo aberto, azul, sobre fundo liso',
     procedencia: { modelo: 'teste', preset: 'imagem-marca' },
     decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: null,
+    briefingsDasArtes: null,
   });
   assert.equal(
     r.aprovado,
     true,
     JSON.stringify(
-      r.vereditos.filter((v) => v.estado !== 'passou'),
+      r.vereditos.filter((v) => v.estado === 'reprovou'),
       null,
       2,
     ),
   );
-  assert.equal(r.comPendencia, false);
+  /**
+   * As pendências são EXATAMENTE as da apresentação, e isso é a regra falando.
+   *
+   * Este teste cobre o que sai do símbolo: as versões, o recorte, a cor, a
+   * procedência. A apresentação não está aqui — e marca sem apresentação não é
+   * marca pronta, então M7, M8 e M9 ficam pendentes. Se um dia elas passarem a
+   * verde sem ninguém montar a apresentação, é porque a regra afrouxou.
+   */
+  assert.deepEqual(
+    r.vereditos.filter((v) => v.estado === 'pendente').map((v) => v.codigo),
+    ['M7', 'M8', 'M9'],
+  );
 });
 
 test('PROVA: as tres versoes sao o MESMO simbolo, e a distancia diz isso', async (t) => {
@@ -128,6 +141,8 @@ test('PROVA: versoes de DESENHOS diferentes reprovam em M4', async (t) => {
     promptDoSimbolo: 'p',
     procedencia: { modelo: 'teste', preset: 'imagem-marca' },
     decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: null,
+    briefingsDasArtes: null,
   });
   rmSync(um, { force: true });
   rmSync(outro, { force: true });
@@ -164,6 +179,8 @@ test('PROVA: recorte que NAO pegou reprova em M2, e o defeito e invisivel no bra
     promptDoSimbolo: 'p',
     procedencia: { modelo: 'teste', preset: 'imagem-marca' },
     decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: null,
+    briefingsDasArtes: null,
   });
   const m2 = r.vereditos.find((v) => v.codigo === 'M2');
   assert.equal(m2?.estado, 'reprovou');
@@ -181,6 +198,8 @@ test('PROVA: cor que some no branco reprova em M5', () => {
     promptDoSimbolo: 'p',
     procedencia: { modelo: 'teste', preset: 'imagem-marca' },
     decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: null,
+    briefingsDasArtes: null,
   });
   const m5 = r.vereditos.find((v) => v.codigo === 'M5');
   assert.equal(m5?.estado, 'reprovou');
@@ -200,6 +219,8 @@ test('PROVA: M5 e uma regra que DISPARA, e nao decoracao', () => {
       promptDoSimbolo: 'p',
       procedencia: { modelo: 'teste', preset: 'imagem-marca' },
       decisaoDaCor: { por: 'cliente', motivo: '' },
+      apresentacao: null,
+      briefingsDasArtes: null,
     }).vereditos.find((v) => v.codigo === 'M5')?.estado;
 
   assert.equal(com('#0F4C81'), 'passou', 'azul profundo se lê sobre branco');
@@ -213,6 +234,8 @@ test('PROVA: sem medicao nenhuma, NADA fica verde na regua da marca', () => {
     promptDoSimbolo: null,
     procedencia: null,
     decisaoDaCor: null,
+    apresentacao: null,
+    briefingsDasArtes: null,
   });
   const verdes = r.vereditos.filter((v) => v.estado === 'passou');
   assert.equal(verdes.length, 0, `virou verde sem medida: ${verdes.map((v) => v.codigo)}`);
@@ -228,6 +251,8 @@ test('PROVA: o Orbis escolher a cor e legitimo; escolher em SILENCIO nao e', () 
     cor: '#0F4C81',
     promptDoSimbolo: 'p',
     procedencia: { modelo: 'teste', preset: 'imagem-marca' },
+    apresentacao: null,
+    briefingsDasArtes: null,
   } as const;
 
   const comMotivo = conferirMarca({
@@ -241,4 +266,86 @@ test('PROVA: o Orbis escolher a cor e legitimo; escolher em SILENCIO nao e', () 
 
   const emSilencio = conferirMarca({ ...base, decisaoDaCor: { por: 'orbis', motivo: '' } });
   assert.equal(emSilencio.vereditos.find((v) => v.codigo === 'M6')?.estado, 'reprovou');
+});
+
+test('PROVA M9: artes do MESMO briefing sao variacoes de uma ideia, e reprovam', () => {
+  // A queixa do dono: "estão todas com a mesma ideia de arte". A causa não era
+  // o gerador — foi pedir N imagens com `count: N` num prompt só, que devolve N
+  // variações de UMA ideia por construção.
+  const base = {
+    pecas: null,
+    distanciaEntreVersoes: null,
+    cor: '#0F4C81',
+    promptDoSimbolo: 'p',
+    procedencia: { modelo: 'teste', preset: 'imagem-marca' },
+    decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: null,
+  } as const;
+
+  const iguais = conferirMarca({
+    ...base,
+    briefingsDasArtes: ['consultório vazio', 'consultório vazio', 'consultório vazio'],
+  });
+  const m9 = iguais.vereditos.find((v) => v.codigo === 'M9');
+  assert.equal(m9?.estado, 'reprovou');
+  assert.match(m9?.motivo ?? '', /MESMO briefing/);
+
+  const distintas = conferirMarca({
+    ...base,
+    briefingsDasArtes: ['a recepção vazia', 'as mãos no plano de tratamento', 'a conversa'],
+  });
+  assert.equal(distintas.vereditos.find((v) => v.codigo === 'M9')?.estado, 'passou');
+});
+
+test('PROVA M9: sem registro de briefing, fica PENDENTE — nunca verde', () => {
+  const r = conferirMarca({
+    pecas: null,
+    distanciaEntreVersoes: null,
+    cor: '#0F4C81',
+    promptDoSimbolo: 'p',
+    procedencia: { modelo: 'teste', preset: 'imagem-marca' },
+    decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: null,
+    briefingsDasArtes: null,
+  });
+  assert.equal(r.vereditos.find((v) => v.codigo === 'M9')?.estado, 'pendente');
+});
+
+test('PROVA M8: a apresentacao que CORTA uma imagem reprova', () => {
+  // Aconteceu duas vezes: um conceito de banner recortado pelo `object-fit`, e
+  // o logotipo da CAPA esticado a 10,2 de proporção onde o arquivo é 1,0. Nas
+  // duas quem viu foi a medida, não o olho.
+  const r = conferirMarca({
+    pecas: null,
+    distanciaEntreVersoes: null,
+    cor: '#0F4C81',
+    promptDoSimbolo: 'p',
+    procedencia: { modelo: 'teste', preset: 'imagem-marca' },
+    decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: {
+      paginas: 11,
+      transbordos: [],
+      recortadas: ['Sorriso Vivo (capa)'],
+      quebradas: [],
+    },
+    briefingsDasArtes: null,
+  });
+  const m8 = r.vereditos.find((v) => v.codigo === 'M8');
+  assert.equal(m8?.estado, 'reprovou');
+  assert.match(m8?.motivo ?? '', /recortada/);
+  assert.equal(r.aprovado, false);
+});
+
+test('PROVA M7: apresentacao curta demais nao explica sistema nenhum', () => {
+  const r = conferirMarca({
+    pecas: null,
+    distanciaEntreVersoes: null,
+    cor: '#0F4C81',
+    promptDoSimbolo: 'p',
+    procedencia: { modelo: 'teste', preset: 'imagem-marca' },
+    decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: { paginas: 3, transbordos: [], recortadas: [], quebradas: [] },
+    briefingsDasArtes: null,
+  });
+  assert.equal(r.vereditos.find((v) => v.codigo === 'M7')?.estado, 'reprovou');
 });

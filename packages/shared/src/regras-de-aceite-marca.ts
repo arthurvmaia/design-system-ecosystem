@@ -27,7 +27,17 @@ import type { PecaDaMarca } from './schemas/marca.js';
  */
 
 /** Os códigos que esta régua produz, na ordem. */
-export const CODIGOS_DA_REGUA_DE_MARCA = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'] as const;
+export const CODIGOS_DA_REGUA_DE_MARCA = [
+  'M1',
+  'M2',
+  'M3',
+  'M4',
+  'M5',
+  'M6',
+  'M7',
+  'M8',
+  'M9',
+] as const;
 
 /** O lado que as versões derivadas têm de ter. O motor as desenha em 1024. */
 export const LADO_DA_LOGO = 1024;
@@ -77,6 +87,31 @@ export type MarcaParaAceite = {
   readonly procedencia: { readonly modelo: string; readonly preset: string } | null;
   /** A cor foi decidida por quem? Quando foi o Orbis, o motivo tem de existir. */
   readonly decisaoDaCor: { readonly por: 'cliente' | 'orbis'; readonly motivo: string } | null;
+  /**
+   * A APRESENTAÇÃO, medida. `null` = ninguém mediu (ou ela não existe).
+   *
+   * Regra do dono: marca sem apresentação não é marca pronta. Um punhado de
+   * PNGs obriga quem recebe a adivinhar qual é a logo e quando usar cada versão
+   * — o trabalho que contratar uma marca vinha evitar.
+   */
+  readonly apresentacao: {
+    readonly paginas: number;
+    /** Elementos que passam da borda da página. Na impressão, eles somem. */
+    readonly transbordos: readonly string[];
+    /** Imagens que TÊM de aparecer inteiras e estão sendo recortadas. */
+    readonly recortadas: readonly string[];
+    /** Imagens que não carregaram. Ocupam lugar e não mostram nada. */
+    readonly quebradas: readonly string[];
+  } | null;
+  /**
+   * O briefing de CADA arte da apresentação. `null` = ninguém registrou.
+   *
+   * É a pergunta que responde "estão todas com a mesma ideia?" de forma exata:
+   * duas artes do mesmo briefing são, por construção, variações de uma ideia.
+   * A alternativa que tentei antes — medir a distância visual — não separa as
+   * classes, e o porquê está medido acima.
+   */
+  readonly briefingsDasArtes: readonly string[] | null;
 };
 
 /**
@@ -100,6 +135,28 @@ const DISTANCIA_MAXIMA = 0.35;
  * reprovava toda silhueta correta, porque contava o antialiasing como tinta.
  */
 const MEIO_TOM_MAXIMO = 0.12;
+
+/** As páginas que a apresentação tem de ter, no mínimo, para explicar o sistema. */
+const PAGINAS_MINIMAS = 8;
+
+/**
+ * Por que NÃO há um piso de distância visual entre as artes.
+ *
+ * A primeira versão desta regra media a diferença média de cor por célula e
+ * reprovava abaixo de 0,08 — um número que eu escolhi, não medi. Medido depois,
+ * nas artes reais, contra pares de classe conhecida:
+ *
+ *   0,225  0,207  0,188  0,129   pares que são A MESMA ideia
+ *   0,174  0,259                 pares que são ideias DIFERENTES
+ *
+ * As duas faixas se CRUZAM. Um par da mesma ideia (0,225) está mais distante
+ * que um par de ideias diferentes (0,174), e nenhum piso separa as classes.
+ * A conta mede composição e paleta; "ideia" não é nenhuma das duas.
+ *
+ * Uma régua que não separa o certo do errado não é uma régua: é um número que
+ * às vezes concorda. Ela saiu, e no lugar entrou a pergunta que tem resposta
+ * EXATA — de que briefing cada arte veio.
+ */
 
 const passou = (codigo: string, titulo: string): VereditoDaRegra => ({
   codigo,
@@ -288,6 +345,87 @@ export const conferirMarca = (m: MarcaParaAceite): ResultadoDeAceite => {
     vereditos.push(pendente('M6', TITULO_M6, 'Ninguém registrou quem decidiu a cor.'));
   } else {
     vereditos.push(passou('M6', TITULO_M6));
+  }
+
+  // M7 ─────────────────────────────────────────────────────────────────────
+  const TITULO_M7 = 'A apresentação existe, e explica o sistema';
+  if (m.apresentacao === null) {
+    vereditos.push(
+      pendente(
+        'M7',
+        TITULO_M7,
+        'Não há apresentação, ou ninguém a mediu. Marca sem apresentação obriga quem recebe a adivinhar qual é a logo e quando usar cada versão, que é o trabalho que contratar uma marca vinha evitar.',
+      ),
+    );
+  } else if (m.apresentacao.paginas < PAGINAS_MINIMAS) {
+    vereditos.push(
+      reprovou(
+        'M7',
+        TITULO_M7,
+        `A apresentação tem ${m.apresentacao.paginas} página(s), abaixo das ${PAGINAS_MINIMAS} que o sistema precisa para ser explicado. Menos que isso é capa e galeria, não documento.`,
+      ),
+    );
+  } else {
+    vereditos.push(passou('M7', TITULO_M7));
+  }
+
+  // M8 ─────────────────────────────────────────────────────────────────────
+  // A apresentação nasceu sem régua, e a primeira consequência apareceu na
+  // primeira leitura: um conceito de banner saiu recortado, com a headline
+  // cortada no meio, numa página cujo propósito é mostrar a peça inteira. Quem
+  // viu foi o olho, ao abrir o PDF.
+  const TITULO_M8 = 'A apresentação não corta nem esconde nada';
+  if (m.apresentacao === null) {
+    vereditos.push(pendente('M8', TITULO_M8, 'Ninguém mediu a geometria da apresentação.'));
+  } else {
+    const problemas = [
+      ...m.apresentacao.quebradas.map((q) => `imagem que não carregou: ${q}`),
+      ...m.apresentacao.recortadas.map((r) => `recortada quando devia aparecer inteira: ${r}`),
+      ...m.apresentacao.transbordos.map((t) => `passa da borda da página: ${t}`),
+    ];
+    vereditos.push(
+      problemas.length === 0
+        ? passou('M8', TITULO_M8)
+        : reprovou(
+            'M8',
+            TITULO_M8,
+            `${problemas.join('; ')}. O que passa da borda some na impressão, e o que é recortado numa página de aplicação vira outra peça.`,
+          ),
+    );
+  }
+
+  // M9 ─────────────────────────────────────────────────────────────────────
+  // "Estão todas com a mesma ideia de arte." A causa não era o gerador: foi
+  // pedir N imagens com `count: N` num prompt só, o que devolve N variações de
+  // UMA ideia por construção. Cada arte precisa do PRÓPRIO briefing, e isso se
+  // confere no registro, não no pixel.
+  const TITULO_M9 = 'Cada arte veio do próprio briefing';
+  if (m.briefingsDasArtes === null) {
+    vereditos.push(
+      pendente(
+        'M9',
+        TITULO_M9,
+        'Ninguém registrou de que briefing cada arte veio. Sem isso não dá para saber se são N ideias ou N variações de uma.',
+      ),
+    );
+  } else if (m.briefingsDasArtes.length < 2) {
+    vereditos.push(passou('M9', TITULO_M9));
+  } else {
+    const vistos = new Map<string, number>();
+    for (const b of m.briefingsDasArtes) {
+      const chave = b.trim().toLowerCase();
+      vistos.set(chave, (vistos.get(chave) ?? 0) + 1);
+    }
+    const repetidos = [...vistos.values()].filter((q) => q > 1);
+    vereditos.push(
+      repetidos.length === 0
+        ? passou('M9', TITULO_M9)
+        : reprovou(
+            'M9',
+            TITULO_M9,
+            `${repetidos.reduce((t, q) => t + q, 0)} das ${m.briefingsDasArtes.length} artes saíram do MESMO briefing. Pedir várias num prompt só devolve variações de uma ideia, e o cliente pagou por várias: cada arte precisa do próprio.`,
+          ),
+    );
   }
 
   return {

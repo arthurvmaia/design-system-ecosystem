@@ -28,6 +28,7 @@ import {
   comporPeca,
   coresDerivadas,
   cssDaFonte,
+  medirApresentacaoPronta,
   renderizarApresentacao,
 } from '@ds/creative';
 import { PedidoDeMarca, contrasteRatio, ehJobId, marcaDir, marcaPedidoPath } from '@ds/shared';
@@ -200,9 +201,48 @@ const principal = async (): Promise<void> => {
       }),
     });
 
+    /**
+     * A apresentação é MEDIDA antes de virar entrega.
+     *
+     * Ela nasceu sem régua, e a primeira consequência apareceu na primeira
+     * leitura: um banner recortado com a headline cortada no meio. Quem viu foi
+     * o olho, e o olho não escala.
+     */
+    const medida = await medirApresentacaoPronta(navegador, pronta.html);
+    /**
+     * O briefing de cada arte, lido do registro.
+     *
+     * É o que M9 confere: duas artes do mesmo briefing são, por construção,
+     * variações de uma ideia. Medir a distância visual não serve — os pares de
+     * mesma ideia e de ideias diferentes se CRUZAM na escala, e o porquê está
+     * medido na régua.
+     */
+    const arquivoDosBriefings = join(artesDir, 'briefings.json');
+    const briefings: string[] | null = existsSync(arquivoDosBriefings)
+      ? (Object.values(
+          JSON.parse(readFileSync(arquivoDosBriefings, 'utf8')) as Record<string, string>,
+        ) as string[])
+      : null;
+
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'apresentacao.pdf'), pronta.pdf);
     writeFileSync(join(dir, 'apresentacao.html'), pronta.html, 'utf8');
+    writeFileSync(
+      join(dir, 'apresentacao.medida.json'),
+      JSON.stringify(
+        {
+          paginas: medida.paginas,
+          transbordos: medida.transbordos,
+          recortadas: medida.recortadas,
+          quebradas: medida.quebradas,
+          familiaAplicada: medida.familiaAplicada,
+          briefings,
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
 
     console.log('');
     console.log(`  ${pedido.nome} — apresentação em ${pronta.paginas} páginas`);

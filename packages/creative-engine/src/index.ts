@@ -22,3 +22,5 @@ export * from './marca/pacote-navegador.js';
 export * from './marca/pacote.js';
 export * from './marca/apresentacao-html.js';
 export * from './marca/apresentacao.js';
+export * from './marca/apresentacao-medir.js';
+export * from './marca/apresentacao-conferir.js';
