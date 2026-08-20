@@ -660,9 +660,42 @@ export type PecaCriativa = {
     caminho: string | null;
     estado: 'aprovada' | 'reprovada' | 'falhou';
     motivo: string | null;
+    /**
+     * A FOLHA DE CONFERÊNCIA, regra a regra.
+     *
+     * Ela sempre viajou do servidor e este tipo não a declarava, então a tela
+     * não tinha como saber que uma peça `aprovada` carregava pendência: o
+     * `estado` gravado só conhece três palavras, e "aprovada com ressalva" vira
+     * "aprovada" ao encostar no disco. O rótulo honesto é DERIVADO daqui, por
+     * `rotuloDaConferencia`. `null` nas peças anteriores à régua.
+     */
+    conferencia:
+      | {
+          codigo: string;
+          titulo: string;
+          estado: 'passou' | 'reprovou' | 'pendente';
+          motivo: string;
+        }[]
+      | null;
   }[];
   aprovadas: number;
+  /** Quantas das aprovadas têm pendência nomeada. Derivado da folha, no servidor. */
+  comRessalva: number;
   custoGasto: number | null;
+};
+
+/**
+ * Quanto custa uma variação, medido — não escrito na tela.
+ *
+ * `medidoEm` e `validaAte` viajam junto porque um preço sem data é palpite se
+ * passando por número: quando a tabela vence, a rota recusa em vez de responder
+ * com a mesma confiança de sempre.
+ */
+export type CustosCriativos = {
+  medidoEm: string;
+  validaAte: string;
+  porVariacao: { imagem: number; video: number };
+  detalhe: { imagem: string; video: string };
 };
 
 /**
@@ -964,6 +997,63 @@ export const api = {
   // ── Meus sites (versões geradas em disco) ───────────────────────────────
   listMeusProjetos: () => jsonFetch<{ items: MeusProjetosItem[] }>('/api/meus-projetos'),
   listPecasCriativas: () => jsonFetch<{ items: PecaCriativa[] }>('/api/criativos'),
+  custosCriativos: () => jsonFetch<CustosCriativos>('/api/criativos/custos'),
+  /**
+   * Cria o pedido criativo.
+   *
+   * A `chaveDeEnvio` é o que impede o mesmo clique de virar dois pedidos pagos:
+   * o servidor deriva o id do job dela, então repetir a chamada devolve o
+   * MESMO job em vez de abrir outro. Ela nasce quando a tela monta o pedido, e
+   * só muda quando a pessoa começa um envio novo.
+   */
+  /**
+   * Manda o arquivo do cliente ANTES de o pedido existir.
+   *
+   * Sem `Content-Type`: o navegador precisa escrever o `boundary` do multipart
+   * sozinho, e fixar o cabeçalho aqui quebraria o corpo.
+   */
+  subirArquivoCriativo: async (
+    chaveDeEnvio: string,
+    file: File,
+    /**
+     * Qual arquivo do pedido é este. A imagem da peça e o logotipo da marca vão
+     * para gavetas diferentes: sem o papel, mandar um apagaria o outro.
+     */
+    papel: 'imagem' | 'logotipo' = 'imagem',
+  ) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(
+      `/api/criativos/rascunhos/${encodeURIComponent(chaveDeEnvio)}/arquivo?papel=${papel}`,
+      { method: 'POST', body: fd, credentials: 'include' },
+    );
+    if (!res.ok) {
+      const corpo = await res.text();
+      let msg = 'Não consegui receber o arquivo.';
+      try {
+        const p = JSON.parse(corpo) as { message?: string };
+        if (typeof p.message === 'string' && p.message.trim() !== '') msg = p.message;
+      } catch {
+        // corpo não-JSON: fica a frase genérica
+      }
+      throw new Error(msg);
+    }
+    return (await res.json()) as { caminho: string; tipo: 'imagem' | 'video' | null };
+  },
+  criarPedidoCriativo: (
+    chaveDeEnvio: string,
+    pedido: unknown,
+    /** A credencial desta ação. Ausente = o servidor responde 428 e a tela pede. */
+    senhaDeAcao?: string,
+  ) =>
+    jsonFetch<{ job: { id: string; label: string; status: string }; repetido: boolean }>(
+      '/api/criativos',
+      {
+        method: 'POST',
+        body: JSON.stringify({ chaveDeEnvio, pedido }),
+        headers: senhaDeAcao === undefined ? undefined : { [CABECALHO_DA_ACAO]: senhaDeAcao },
+      },
+    ),
   meusProjetosContagem: () => jsonFetch<{ total: number }>('/api/meus-projetos/contagem'),
   abrirPasta: (id: string) =>
     jsonFetch<{ ok: boolean }>(`/api/meus-projetos/${id}/abrir-pasta`, { method: 'POST' }),

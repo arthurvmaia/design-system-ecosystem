@@ -1,6 +1,9 @@
 import { Mascote } from '@/components/Mascote';
 import { type PecaCriativa, api, arquivoCriativoUrl } from '@/lib/api';
 import { ROTULO_DO_FORMATO } from '@/routes/criativos/partes';
+// Do subcaminho, e não da raiz: `@ds/shared` puxa `node:fs` por outros
+// módulos, e a tela não roda em Node. A régua em si é aritmética pura.
+import { ressalvasDaConferencia, rotuloDaConferencia } from '@ds/shared/regras-de-aceite-criativo';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Download, Sparkles } from 'lucide-react';
 
@@ -129,6 +132,15 @@ function CartaoDaPeca({ peca }: { peca: PecaCriativa }) {
           {peca.variacoes.length > 0 && (
             <div>
               {peca.aprovadas} de {peca.variacoes.length} aprovadas
+              {peca.comRessalva > 0 && (
+                // A ressalva entra no MESMO lugar do número, e não numa nota de
+                // rodapé: "3 de 3 aprovadas" era exatamente a frase que sumia
+                // com a pendência que a régua tinha nomeado.
+                <span style={{ color: 'var(--color-fg-subtle)' }}>
+                  {' '}
+                  ({peca.comRessalva} com ressalva)
+                </span>
+              )}
             </div>
           )}
           {peca.custoGasto !== null && (
@@ -177,6 +189,11 @@ function Variacao({
 }) {
   const aprovada = variacao.estado === 'aprovada' && variacao.caminho !== null;
   const url = aprovada ? arquivoCriativoUrl(jobId, variacao.caminho ?? '') : null;
+  // O rótulo é DERIVADO da folha, não do `estado` gravado: o estado tem três
+  // palavras e a régua tem quatro respostas. Uma peça sem folha não é uma peça
+  // aprovada — é uma peça que ninguém mediu, e a tela diz isso.
+  const rotulo = rotuloDaConferencia(variacao.conferencia);
+  const ressalvas = ressalvasDaConferencia(variacao.conferencia);
 
   return (
     <div className="border" style={{ borderColor: 'var(--color-border)' }}>
@@ -226,6 +243,25 @@ function Variacao({
           >
             {variacao.estado === 'falhou' ? 'Não saiu: ' : 'Reprovada: '}
             {variacao.motivo}
+          </p>
+        )}
+        {rotulo === 'aprovada com ressalva' && (
+          <p
+            className="mt-1.5 text-[11.5px] leading-snug"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            Aprovada com ressalva:{' '}
+            {ressalvas.map((r) => `${r.codigo}, ${r.titulo.toLowerCase()}`).join('; ')}. Baixa, e o
+            que ficou por medir vai escrito.
+          </p>
+        )}
+        {rotulo === 'sem folha' && variacao.estado === 'aprovada' && (
+          <p
+            className="mt-1.5 text-[11.5px] leading-snug"
+            style={{ color: 'var(--color-fg-muted)' }}
+          >
+            Sem folha de conferência: esta peça foi produzida antes da régua, e ninguém mediu se ela
+            saiu boa.
           </p>
         )}
       </div>

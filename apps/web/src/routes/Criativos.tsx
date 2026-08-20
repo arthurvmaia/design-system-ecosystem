@@ -1,11 +1,11 @@
 import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
-import { api } from '@/lib/api';
+import { PrecisaDaSenhaDeAcao, api } from '@/lib/api';
 import { loadFont } from '@/lib/font-loader';
 import { TRATAMENTO } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
+import { DirecaoManual } from '@/routes/criativos/DirecaoManual';
 import {
-  CUSTO_FALSO_POR_VARIACAO,
   ROTULO_DO_FORMATO,
   VARIACOES_PADRAO,
   VOZ_POR_CAMPO,
@@ -21,8 +21,10 @@ import {
   OrigemDaImagem,
   PedidoCriativo,
   TextoDaPeca,
+  coresDerivadas,
+  tetoComFolga,
 } from '@ds/shared/schemas';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowRight,
@@ -47,9 +49,16 @@ import { Link } from 'react-router-dom';
  * mais recente — perguntar de novo o que o app já sabe é o erro que faz a
  * experiência parecer burocracia.
  *
- * O que é de ensaio: o custo (número marcado como estimativa) e o botão final,
- * que só avisa o que ACONTECERIA. Nenhum job entra na fila, nenhum crédito é
- * gasto e o arquivo escolhido no upload nunca sai desta tela.
+ * O botão final REGISTRA o pedido: ele pede a credencial da ação, o servidor a
+ * confere (428) e o job entra na fila com o id derivado da chave deste envio,
+ * de modo que clicar duas vezes devolve o mesmo pedido em vez de abrir dois e
+ * cobrar duas vezes. O custo mostrado é o MEDIDO, vindo do servidor.
+ *
+ * O upload também é real: o arquivo vai para o servidor no ato de escolher, e o
+ * que fica guardado é o caminho que ele devolveu. Antes só o `file.name` ficava
+ * na tela, e o pedido nascia citando um arquivo que não existia em lugar
+ * nenhum: "upload vence geração" era uma promessa que só cairia na hora de
+ * produzir, depois de a pessoa ter confirmado o gasto.
  *
  * Quem chega aqui vem de duas portas: o `ConviteOrbisCriativos` na etapa de
  * Marca do wizard (a porta que a espec previu no passo 6, já ligada) e a
@@ -108,18 +117,35 @@ export function CriativosPage() {
   };
   const [objetivo, setObjetivo] = useState<ObjetivoDaPeca | null>(null);
 
-  // passo 2 — sua marca
+  // passo 2 — a direção da marca
   const [marcaNome, setMarcaNome] = useState('');
   const [corPrincipal, setCorPrincipal] = useState('');
   const [editandoMarca, setEditandoMarca] = useState(false);
   const [marcaSemeada, setMarcaSemeada] = useState(false);
+  /**
+   * O resto da direção: o que a peça precisa saber para parecer daquela marca.
+   *
+   * A tela mostrava logotipo, paleta, tipografia e voz e escrevia "paleta,
+   * tipografia e voz vêm junto". Não vinham: o pedido levava `marca` e
+   * `corPrincipal`, e todo o resto morria aqui. Agora cada um destes viaja.
+   */
+  const [coresDeApoio, setCoresDeApoio] = useState<string[]>([]);
+  const [fonteTitulos, setFonteTitulos] = useState('');
+  const [tom, setTom] = useState('');
+  const [estiloVisual, setEstiloVisual] = useState('');
+  const [assinatura, setAssinatura] = useState('');
+  /** O caminho que o servidor devolveu para o logotipo, na gaveta do rascunho. */
+  const [logotipoNome, setLogotipoNome] = useState<string | null>(null);
 
   // passo 3 — a peça
   const [formato, setFormato] = useState<FormatoCriativo | null>(null);
   const [origem, setOrigem] = useState<'upload' | 'gerar' | null>(null);
   /**
-   * Só o NOME do arquivo fica aqui: nesta fase nada sobe para lugar nenhum.
-   * O upload de verdade é do handler do job (passo 3 da espec).
+   * O caminho que o SERVIDOR devolveu depois de receber o arquivo.
+   *
+   * Guardar `file.name` era o defeito: o pedido nascia citando um arquivo que
+   * não existia em lugar nenhum, e a promessa "upload vence geração" só cairia
+   * na hora de produzir, depois de a pessoa já ter confirmado o gasto.
    */
   const [arquivoNome, setArquivoNome] = useState<string | null>(null);
   const [descricao, setDescricao] = useState('');
@@ -131,6 +157,15 @@ export function CriativosPage() {
   // passo 4 — conferir
   const [confirmando, setConfirmando] = useState(false);
   const [pedidoConferido, setPedidoConferido] = useState<PedidoCriativo | null>(null);
+  const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
+  /**
+   * A chave DESTE envio. Ela viaja com o pedido e o servidor deriva o id do job
+   * dela, então repetir o clique devolve o mesmo job em vez de abrir outro e
+   * cobrar duas vezes. Só troca quando um envio dá certo: enquanto a pessoa
+   * corrige e tenta de novo, continua sendo o mesmo pedido.
+   */
+  const [chaveDeEnvio, setChaveDeEnvio] = useState(() => crypto.randomUUID());
+  const qc = useQueryClient();
 
   // A mesma api da tela de projetos: a marca vem preenchida de lá, com um
   // "mudar" discreto — não cobrar de quem já tem.
@@ -149,8 +184,62 @@ export function CriativosPage() {
     if (marcaSemeada || marcaDoProjeto === null) return;
     setMarcaNome(marcaDoProjeto.brandName);
     setCorPrincipal(marcaDoProjeto.corPrimaria);
+    // As cores de apoio são o resto da paleta, na ordem do projeto. A principal
+    // sai da lista: ela já tem dono, e guardá-la duas vezes é como as duas
+    // cópias divergem.
+    setCoresDeApoio(
+      marcaDoProjeto.amostras
+        .map((c) => c.hex)
+        .filter((hex) => hex.toLowerCase() !== marcaDoProjeto.corPrimaria.toLowerCase()),
+    );
+    setFonteTitulos(marcaDoProjeto.fonteTitulos);
+    // A voz vira UMA frase de direção. Ela guia quem escreve; nunca vira texto
+    // na peça.
+    setTom(
+      [...marcaDoProjeto.tons, ...marcaDoProjeto.arquetipos, marcaDoProjeto.vozObservacao ?? '']
+        .filter((p) => p.trim() !== '')
+        .join(', '),
+    );
     setMarcaSemeada(true);
   }, [marcaSemeada, marcaDoProjeto]);
+
+  /**
+   * O logotipo herdado do projeto vira arquivo na gaveta do rascunho.
+   *
+   * A tela conhece o logotipo por URL do projeto, e a composição precisa de um
+   * arquivo dentro da pasta do job — é o que o contrato quer dizer com
+   * "relativo à pasta do job". Buscar e reenviar usa o mesmo caminho já testado
+   * do upload da peça, em vez de abrir um segundo jeito de um arquivo chegar.
+   *
+   * Falhar aqui não trava o pedido: a marca volta a assinar em texto, que é
+   * como toda peça assinava antes. O que não pode é o pedido DIZER que tem
+   * logotipo sem o arquivo ter chegado, e disso o servidor cuida.
+   */
+  useEffect(() => {
+    const url = marcaDoProjeto?.logoUrl ?? null;
+    if (url === null || editandoMarca || logotipoNome !== null) return;
+    let cancelado = false;
+    void (async () => {
+      try {
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const nome = url.split('/').pop() ?? 'logotipo.png';
+        const enviado = await api.subirArquivoCriativo(
+          chaveDeEnvio,
+          new File([blob], nome, { type: blob.type }),
+          'logotipo',
+        );
+        if (!cancelado) setLogotipoNome(enviado.caminho);
+      } catch {
+        // Sem logotipo, a marca assina em texto. O passo 4 mostra qual dos dois
+        // vai acontecer, então ninguém confirma achando outra coisa.
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [marcaDoProjeto, editandoMarca, logotipoNome, chaveDeEnvio]);
 
   // A prévia da tipografia usa a fonte REAL do projeto. O font-loader deduplica
   // (pedir 2 vezes não repete <link>), e fonte fora do catálogo Google cai no
@@ -161,7 +250,26 @@ export function CriativosPage() {
     loadFont(marcaDoProjeto.fonteCorpo);
   }, [marcaDoProjeto]);
 
-  const custoEstimado = tipo === null ? 0 : CUSTO_FALSO_POR_VARIACAO[tipo] * VARIACOES_PADRAO;
+  /**
+   * O custo vem do servidor, que o lê da tabela MEDIDA. Ele não muda enquanto a
+   * pessoa preenche o formulário, então uma hora de cache é folgado.
+   */
+  const custos = useQuery({
+    queryKey: ['criativos', 'custos'],
+    queryFn: api.custosCriativos,
+    staleTime: 60 * 60 * 1000,
+  });
+  const porVariacao = tipo === null ? 0 : (custos.data?.porVariacao[tipo] ?? 0);
+  const custoEstimado = porVariacao * VARIACOES_PADRAO;
+  const tetoDoJob = tetoComFolga(porVariacao, VARIACOES_PADRAO);
+
+  /**
+   * Declarado ANTES de `montarPedido` de propósito: as pendências do passo 4
+   * chamam `montarPedido()` durante o render, e uma const declarada depois
+   * estouraria em zona morta — um erro que o TypeScript não acusa porque a
+   * leitura acontece dentro de uma função.
+   */
+  const corValida = CorDaPaleta.shape.hex.safeParse(corPrincipal).success;
 
   /** O payload como o contrato o quer — vazio vira null, nunca string oca. */
   const montarPedido = (): unknown => ({
@@ -182,7 +290,26 @@ export function CriativosPage() {
     },
     restricoes: restricoes.trim(),
     variacoes: VARIACOES_PADRAO,
-    tetoDeCreditos: custoEstimado,
+    tetoDeCreditos: tetoDoJob,
+    estimativa: custoEstimado,
+    // A peça é COMPOSTA por nós, e compor sem a cor da marca significaria
+    // escolher uma. A tela já tinha a cor; ela só não viajava.
+    corPrincipal: corValida ? corPrincipal : null,
+    /**
+     * A direção de marca. Cada campo só entra se tiver valor: string vazia
+     * viraria "o cliente digitou nada", e o contrato trata ausência e vazio
+     * como coisas diferentes de propósito.
+     */
+    direcao: {
+      coresDeApoio: coresDeApoio.filter(
+        (hex) => CorDaPaleta.shape.hex.safeParse(hex).success && hex !== corPrincipal,
+      ),
+      logotipo: logotipoNome,
+      fonteTitulos: fonteTitulos.trim() === '' ? null : fonteTitulos.trim(),
+      tom: tom.trim(),
+      estiloVisual: estiloVisual.trim(),
+      assinatura: assinatura.trim() === '' ? null : assinatura.trim(),
+    },
     // Nenhum campo de claim na tela = nenhum claim autorizado. É o único
     // default seguro: sem digitação, a peça não afirma preço, desconto, prazo
     // nem frete.
@@ -275,22 +402,82 @@ export function CriativosPage() {
   };
 
   /**
-   * A credencial não é conferida aqui de propósito: nesta fase nada dispara,
-   * então não há gasto para assinar. Quando o job real existir, quem confere é
-   * o servidor (428), como nas outras frentes — o diálogo já ensaia o gesto.
+   * O arquivo vai para o servidor no ATO de escolher, e o que fica guardado é o
+   * caminho que ele devolveu. O pedido passa a citar algo que existe.
    */
-  const confirmar = () => {
-    setConfirmando(false);
-    if (pedidoConferido === null) return;
-    const d = DIMENSAO_DO_FORMATO[pedidoConferido.formato];
-    toast.ok(
-      `Conferi o pedido: ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} (${d.largura}×${d.altura}) para "${pedidoConferido.marca}" entrariam na fila agora. Não enfileirei nada: esta tela ainda ensaia com dados falsos.`,
-    );
-  };
+  const subirArquivo = useMutation({
+    mutationFn: async (file: File) => await api.subirArquivoCriativo(chaveDeEnvio, file),
+    onSuccess: (r) => setArquivoNome(r.caminho),
+    onError: (e) => {
+      setArquivoNome(null);
+      toast.erro(e instanceof Error ? e.message : 'Não consegui receber o arquivo.');
+    },
+  });
+  const subindoArquivo = subirArquivo.isPending;
+
+  /**
+   * O logotipo sobe pela MESMA rota do arquivo da peça, num papel diferente.
+   *
+   * Papéis separados porque cada um tem sua gaveta no rascunho: com um slot só,
+   * mandar a foto apagaria a logo e o pedido nasceria prometendo uma marca que
+   * não está lá.
+   */
+  const subirLogotipo = useMutation({
+    mutationFn: async (file: File) =>
+      await api.subirArquivoCriativo(chaveDeEnvio, file, 'logotipo'),
+    onSuccess: (r) => setLogotipoNome(r.caminho),
+    onError: (e) => {
+      setLogotipoNome(null);
+      toast.erro(e instanceof Error ? e.message : 'Não consegui receber o logotipo.');
+    },
+  });
+
+  /**
+   * Qual cor VAI virar o botão, pela mesma conta que o compositor usa.
+   *
+   * Sai do contrato, e não de uma segunda implementação aqui: a prévia que
+   * promete uma cor e a peça que entrega outra é o defeito que só aparece
+   * depois de pago.
+   */
+  const corDoBotao = useMemo(
+    () => (corValida ? coresDerivadas(corPrincipal, coresDeApoio) : null),
+    [corValida, corPrincipal, coresDeApoio],
+  );
+
+  /**
+   * A credencial vai ao SERVIDOR, que é quem decide (428). O diálogo coletava a
+   * senha e jogava fora o que foi digitado: o gesto existia e não valia nada.
+   */
+  const enviar = useMutation({
+    mutationFn: async (senhaDeAcao?: string) =>
+      await api.criarPedidoCriativo(chaveDeEnvio, montarPedido(), senhaDeAcao),
+    onSuccess: (res) => {
+      setConfirmando(false);
+      setErroDaSenha(null);
+      qc.invalidateQueries({ queryKey: ['queue'] });
+      qc.invalidateQueries({ queryKey: ['criativos'] });
+      const d = pedidoConferido === null ? null : DIMENSAO_DO_FORMATO[pedidoConferido.formato];
+      toast.ok(
+        res.repetido
+          ? 'Este pedido já estava na fila: reaproveitei o mesmo, em vez de abrir outro e cobrar duas vezes.'
+          : `Pedido na fila${d === null ? '' : ` (${d.largura}×${d.altura})`}. Quem produz é o estúdio, então ele não sai na hora: acompanhe em Minhas peças.`,
+      );
+      // Chave nova: o próximo envio é outro pedido, e não uma repetição deste.
+      setChaveDeEnvio(crypto.randomUUID());
+    },
+    onError: (e) => {
+      // 428 é o servidor pedindo a confirmação do gasto, não uma falha.
+      if (e instanceof PrecisaDaSenhaDeAcao) {
+        setErroDaSenha(e.message);
+        setConfirmando(true);
+        return;
+      }
+      setConfirmando(false);
+      toast.erro(e instanceof Error ? e.message : 'Não consegui registrar o pedido.');
+    },
+  });
 
   const bordaDeChip = (ativo: boolean) => (ativo ? 'var(--color-primary)' : 'var(--color-border)');
-
-  const corValida = CorDaPaleta.shape.hex.safeParse(corPrincipal).success;
 
   // A amostra que corresponde à cor eleita, para a tela dizer o NOME dela.
   // Cor digitada à mão no caminho manual pode não casar com amostra nenhuma;
@@ -709,6 +896,24 @@ export function CriativosPage() {
                   />
                 </div>
               </div>
+              <DirecaoManual
+                corDoBotao={corDoBotao}
+                coresDeApoio={coresDeApoio}
+                setCoresDeApoio={setCoresDeApoio}
+                logotipoNome={logotipoNome}
+                subindoLogotipo={subirLogotipo.isPending}
+                onLogotipo={(file) => subirLogotipo.mutate(file)}
+                onTirarLogotipo={() => setLogotipoNome(null)}
+                fonteTitulos={fonteTitulos}
+                setFonteTitulos={setFonteTitulos}
+                assinatura={assinatura}
+                setAssinatura={setAssinatura}
+                tom={tom}
+                setTom={setTom}
+                estiloVisual={estiloVisual}
+                setEstiloVisual={setEstiloVisual}
+                mostraEstilo={origem !== 'upload'}
+              />
               {marcaDoProjeto !== null && (
                 <button
                   type="button"
@@ -798,13 +1003,17 @@ export function CriativosPage() {
             >
               <Upload size={14} />
               <span className="text-[12.5px]">
-                {arquivoNome ?? 'Escolher o arquivo. Nesta fase ele fica só aqui na tela'}
+                {subindoArquivo ? 'Recebendo o arquivo…' : (arquivoNome ?? 'Escolher o arquivo')}
               </span>
               <input
                 type="file"
                 accept={midia.aceita}
                 className="hidden"
-                onChange={(e) => setArquivoNome(e.target.files?.[0]?.name ?? null)}
+                disabled={subindoArquivo}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f !== undefined) subirArquivo.mutate(f);
+                }}
               />
             </label>
           )}
@@ -958,18 +1167,28 @@ export function CriativosPage() {
             <Coins size={16} style={{ color: 'rgb(var(--acento))' }} aria-hidden />
             <div className="min-w-0 flex-1">
               <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
-                {custoEstimado} créditos estimados · teto do job: {custoEstimado}
+                {custos.isPending
+                  ? 'Consultando o custo…'
+                  : `${custoEstimado} créditos estimados · teto do job: ${tetoDoJob}`}
               </span>
               <p className="mt-0.5 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-                Número de ensaio: o valor real sai do simulate_cost quando o motor entrar. Esta tela
-                não cobra nada.
+                {custos.data === undefined ? (
+                  'Sem o custo medido eu não deixo confirmar: pedir sem saber quanto custa é o que este teto existe para impedir.'
+                ) : (
+                  <>
+                    {tipo === 'video' ? custos.data.detalhe.video : custos.data.detalhe.imagem},
+                    medido em {custos.data.medidoEm}. O teto tem folga de uma variação: é o tamanho
+                    exato da tentativa a mais que você pode pedir depois de ver o resultado. Esta
+                    tela ainda não cobra nada.
+                  </>
+                )}
               </p>
             </div>
             <span
               className="ds-tag rounded-none border px-2 py-0.5 text-[10px]"
               style={{ borderColor: 'rgb(var(--acento) / 0.5)', color: 'rgb(var(--acento))' }}
             >
-              estimativa
+              medido
             </span>
           </div>
         </section>
@@ -1027,8 +1246,9 @@ export function CriativosPage() {
               Conferir e gerar
             </button>
             <p className="mt-2 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              Este botão pede a credencial de ação. Nesta fase da construção, nada entra na fila: eu
-              só mostro o aviso do que aconteceria.
+              Este botão pede a credencial de ação e registra o pedido na fila. Quem produz é o
+              estúdio, então a peça não sai na hora: ela aparece em Minhas peças quando ficar
+              pronta.
             </p>
           </div>
         )}
@@ -1038,12 +1258,12 @@ export function CriativosPage() {
         aberto={confirmando}
         oQueVaiFazer={
           pedidoConferido !== null
-            ? `Produzir ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} para "${pedidoConferido.marca}". Estimativa de ensaio: ${custoEstimado} créditos.`
+            ? `Produzir ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} para "${pedidoConferido.marca}". Estimativa: ${custoEstimado} créditos, com teto de ${tetoDoJob}.`
             : ''
         }
-        ocupado={false}
-        erro={null}
-        aoConfirmar={() => confirmar()}
+        ocupado={enviar.isPending}
+        erro={erroDaSenha}
+        aoConfirmar={(senha) => enviar.mutate(senha)}
         aoFechar={() => setConfirmando(false)}
       />
     </div>

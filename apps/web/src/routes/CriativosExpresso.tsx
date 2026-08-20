@@ -1,10 +1,9 @@
 import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
-import { api } from '@/lib/api';
+import { PrecisaDaSenhaDeAcao, api } from '@/lib/api';
 import { TRATAMENTO } from '@/lib/orbis';
 import { toast } from '@/lib/toast';
 import {
-  CUSTO_FALSO_POR_VARIACAO,
   ROTULO_DO_FORMATO,
   VARIACOES_PADRAO,
   VOZ_POR_CAMPO,
@@ -17,8 +16,9 @@ import {
   FormatoCriativo,
   OrigemDaImagem,
   PedidoCriativo,
+  tetoComFolga,
 } from '@ds/shared/schemas';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Coins, Zap } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -41,11 +41,11 @@ import { Link } from 'react-router-dom';
  * diálogo de confirmação. O que o contrato reprova aparece com a voz do Orbis,
  * pela mesma tabela da tela completa (`criativos/partes.ts`).
  *
- * Tudo é ENSAIO, como no resto da frente: custo falso rotulado, credencial de
- * ação ensaiada no diálogo e um aviso do que ENTRARIA na fila. Nenhum job
- * entra, nenhum crédito é gasto. E a trava do dono continua valendo na
- * produção real: geração paga nunca sai em silêncio — a tela diz isso por
- * extenso ao lado do custo.
+ * O pedido ENTRA na fila, com custo medido e credencial conferida pelo servidor.
+ * Expresso é atalho de tela, nunca de gasto: a mesma credencial, a mesma chave
+ * de envio contra clique duplo e o mesmo teto dos quatro passos. A trava do
+ * dono continua valendo: geração paga nunca sai em silêncio, e a tela diz isso
+ * por extenso ao lado do custo.
  */
 export function CriativosExpressoPage() {
   // a marca: herdada do projeto mais recente, ou nome + 1 cor à mão
@@ -62,6 +62,10 @@ export function CriativosExpressoPage() {
   const [mostrarPendencias, setMostrarPendencias] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [pedidoConferido, setPedidoConferido] = useState<PedidoCriativo | null>(null);
+  const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
+  /** A chave deste envio: é ela que impede o clique duplo de virar dois pedidos pagos. */
+  const [chaveDeEnvio, setChaveDeEnvio] = useState(() => crypto.randomUUID());
+  const qc = useQueryClient();
 
   const projetos = useQuery({ queryKey: ['projects'], queryFn: api.listProjects });
 
@@ -81,7 +85,14 @@ export function CriativosExpressoPage() {
     setMarcaSemeada(true);
   }, [marcaSemeada, marcaDoProjeto]);
 
-  const custoEstimado = CUSTO_FALSO_POR_VARIACAO.imagem * VARIACOES_PADRAO;
+  const custos = useQuery({
+    queryKey: ['criativos', 'custos'],
+    queryFn: api.custosCriativos,
+    staleTime: 60 * 60 * 1000,
+  });
+  const porVariacao = custos.data?.porVariacao.imagem ?? 0;
+  const custoEstimado = porVariacao * VARIACOES_PADRAO;
+  const tetoDoJob = tetoComFolga(porVariacao, VARIACOES_PADRAO);
 
   /**
    * O payload como o contrato o quer, igual ao dos 4 passos. As decisões do
@@ -101,7 +112,11 @@ export function CriativosExpressoPage() {
     texto: { semTexto: true, headline: null, cta: null },
     restricoes: '',
     variacoes: VARIACOES_PADRAO,
-    tetoDeCreditos: custoEstimado,
+    tetoDeCreditos: tetoDoJob,
+    estimativa: custoEstimado,
+    // A peça é composta com a cor da marca. Sem ela, a composição escolheria
+    // uma cor por conta — que é inventar material do cliente.
+    corPrincipal: corValida ? corPrincipal : null,
     // Nenhum campo de claim na tela = nenhum claim autorizado: sem digitação,
     // a peça não afirma preço, desconto, prazo nem frete.
   });
@@ -147,18 +162,35 @@ export function CriativosExpressoPage() {
   };
 
   /**
-   * A credencial não é conferida aqui de propósito, como nos 4 passos: nesta
-   * fase nada dispara, então não há gasto para assinar. Quando o job real
-   * existir, quem confere é o servidor (428) — o diálogo já ensaia o gesto.
+   * Quem confere a credencial é o SERVIDOR (428), como nas outras frentes. O
+   * atalho não afrouxa a trava: expresso é atalho de tela, nunca de gasto.
    */
-  const confirmar = () => {
-    setConfirmando(false);
-    if (pedidoConferido === null) return;
-    const d = DIMENSAO_DO_FORMATO[pedidoConferido.formato];
-    toast.ok(
-      `Conferi o pedido: ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} (${d.largura}×${d.altura}) para "${pedidoConferido.marca}", sem texto na arte, entrariam na fila agora. Não enfileirei nada: esta tela ainda ensaia com dados falsos.`,
-    );
-  };
+  const enviar = useMutation({
+    mutationFn: async (senhaDeAcao?: string) =>
+      await api.criarPedidoCriativo(chaveDeEnvio, montarPedido(), senhaDeAcao),
+    onSuccess: (res) => {
+      setConfirmando(false);
+      setErroDaSenha(null);
+      qc.invalidateQueries({ queryKey: ['queue'] });
+      qc.invalidateQueries({ queryKey: ['criativos'] });
+      const d = pedidoConferido === null ? null : DIMENSAO_DO_FORMATO[pedidoConferido.formato];
+      toast.ok(
+        res.repetido
+          ? 'Este pedido já estava na fila: reaproveitei o mesmo, em vez de abrir outro e cobrar duas vezes.'
+          : `Pedido na fila${d === null ? '' : ` (${d.largura}×${d.altura})`}. Quem produz é o estúdio, então ele não sai na hora: acompanhe em Minhas peças.`,
+      );
+      setChaveDeEnvio(crypto.randomUUID());
+    },
+    onError: (e) => {
+      if (e instanceof PrecisaDaSenhaDeAcao) {
+        setErroDaSenha(e.message);
+        setConfirmando(true);
+        return;
+      }
+      setConfirmando(false);
+      toast.erro(e instanceof Error ? e.message : 'Não consegui registrar o pedido.');
+    },
+  });
 
   const corValida = CorDaPaleta.shape.hex.safeParse(corPrincipal).success;
 
@@ -423,13 +455,21 @@ export function CriativosExpressoPage() {
         <Coins size={16} style={{ color: 'rgb(var(--acento))' }} aria-hidden />
         <div className="min-w-0 flex-1">
           <span className="text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
-            {custoEstimado} créditos estimados · teto do job: {custoEstimado}
+            {custos.isPending
+              ? 'Consultando o custo…'
+              : `${custoEstimado} créditos estimados · teto do job: ${tetoDoJob}`}
           </span>
           <p className="mt-0.5 text-[12px]" style={{ color: 'var(--color-fg-muted)' }}>
-            Número de ensaio: o valor real sai do simulate_cost quando o motor entrar, e esta tela
-            não cobra nada. Na produção real, cada imagem gasta crédito do Magnific, na casa de{' '}
-            {CUSTO_FALSO_POR_VARIACAO.imagem} por variação, e o motor pergunta antes de gastar:
-            geração paga nunca sai em silêncio, nem no expresso.
+            {custos.data === undefined ? (
+              'Sem o custo medido eu não deixo confirmar: pedir sem saber quanto custa é o que este teto existe para impedir.'
+            ) : (
+              <>
+                {custos.data.detalhe.imagem}, medido em {custos.data.medidoEm}: {porVariacao}{' '}
+                créditos por variação. O teto tem folga de uma variação, que é o tamanho da
+                tentativa a mais que você pode pedir depois de ver o resultado. Geração paga nunca
+                sai em silêncio, nem no expresso, e esta tela ainda não cobra nada.
+              </>
+            )}
           </p>
         </div>
         <span
@@ -469,8 +509,8 @@ export function CriativosExpressoPage() {
           Conferir o pedido
         </button>
         <p className="mt-2 text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-          Este botão pede a credencial de ação. Nesta fase da construção, nada entra na fila: eu só
-          mostro o aviso do que aconteceria.
+          Este botão pede a credencial de ação e registra o pedido na fila. Quem produz é o estúdio,
+          então a peça não sai na hora: ela aparece em Minhas peças quando ficar pronta.
         </p>
       </div>
 
@@ -478,12 +518,12 @@ export function CriativosExpressoPage() {
         aberto={confirmando}
         oQueVaiFazer={
           pedidoConferido !== null
-            ? `Produzir ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} para "${pedidoConferido.marca}", sem texto na arte. Estimativa de ensaio: ${custoEstimado} créditos.`
+            ? `Produzir ${pedidoConferido.variacoes} variações de ${ROTULO_DO_FORMATO[pedidoConferido.formato]} para "${pedidoConferido.marca}", sem texto na arte. Estimativa: ${custoEstimado} créditos, com teto de ${tetoDoJob}.`
             : ''
         }
-        ocupado={false}
-        erro={null}
-        aoConfirmar={() => confirmar()}
+        ocupado={enviar.isPending}
+        erro={erroDaSenha}
+        aoConfirmar={(senha) => enviar.mutate(senha)}
         aoFechar={() => setConfirmando(false)}
       />
     </div>
