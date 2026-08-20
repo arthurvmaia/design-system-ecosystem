@@ -37,6 +37,7 @@ export const CODIGOS_DA_REGUA_DE_MARCA = [
   'M7',
   'M8',
   'M9',
+  'M10',
 ] as const;
 
 /** O lado que as versões derivadas têm de ter. O motor as desenha em 1024. */
@@ -112,6 +113,19 @@ export type MarcaParaAceite = {
    * classes, e o porquê está medido acima.
    */
   readonly briefingsDasArtes: readonly string[] | null;
+  /**
+   * O ARRANJO de cada conceito de banner. `null` = ninguém registrou.
+   *
+   * É a irmã de `briefingsDasArtes`, para o defeito irmão. O dono reclamou duas
+   * vezes da página de conceitos: primeiro *"estão todas com a mesma ideia de
+   * arte"* — que era o prompt, e virou M9 — e depois **"você fez 1 estilo de
+   * banner só para os dois"**, que é do MOTOR. O compositor tinha um arranjo só,
+   * então dois conceitos saíam com a mesma composição e fotos diferentes.
+   *
+   * A pergunta é de PROCEDÊNCIA, e não de pixel, pela mesma razão medida em
+   * M9: distância visual não separa as classes.
+   */
+  readonly arranjosDosConceitos: readonly string[] | null;
 };
 
 /**
@@ -424,6 +438,41 @@ export const conferirMarca = (m: MarcaParaAceite): ResultadoDeAceite => {
             'M9',
             TITULO_M9,
             `${repetidos.reduce((t, q) => t + q, 0)} das ${m.briefingsDasArtes.length} artes saíram do MESMO briefing. Pedir várias num prompt só devolve variações de uma ideia, e o cliente pagou por várias: cada arte precisa do próprio.`,
+          ),
+    );
+  }
+
+  // M10 ────────────────────────────────────────────────────────────────────
+  // "Você fez 1 estilo de banner só para os dois." Numa página de conceito, a
+  // página existe justamente para mostrar abordagens DIFERENTES — dois
+  // conceitos com o mesmo arranjo são uma abordagem mostrada duas vezes, com
+  // fotos trocadas. Arranjo é geometria e não custa crédito: recompor num
+  // arranjo diferente é de graça, então não há desculpa de orçamento aqui.
+  const TITULO_M10 = 'Cada conceito usou um arranjo diferente';
+  if (m.arranjosDosConceitos === null) {
+    vereditos.push(
+      pendente(
+        'M10',
+        TITULO_M10,
+        'Ninguém registrou que arranjo cada conceito usou. Sem isso não dá para saber se são N abordagens ou a mesma composição com N fotos.',
+      ),
+    );
+  } else if (m.arranjosDosConceitos.length < 2) {
+    vereditos.push(passou('M10', TITULO_M10));
+  } else {
+    const vistos = new Map<string, number>();
+    for (const a of m.arranjosDosConceitos) {
+      const chave = a.trim().toLowerCase();
+      vistos.set(chave, (vistos.get(chave) ?? 0) + 1);
+    }
+    const repetidos = [...vistos.entries()].filter(([, q]) => q > 1);
+    vereditos.push(
+      repetidos.length === 0
+        ? passou('M10', TITULO_M10)
+        : reprovou(
+            'M10',
+            TITULO_M10,
+            `${repetidos.map(([a, q]) => `${q} conceitos em "${a}"`).join('; ')}. A página de conceito existe para mostrar abordagens diferentes, e recompor noutro arranjo não gasta crédito nenhum.`,
           ),
     );
   }
