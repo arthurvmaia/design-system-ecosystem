@@ -218,6 +218,96 @@ export const claimsAutorizados = (
     .filter((par): par is [keyof AutorizacoesDeClaim, string] => par[1] !== null)
     .map(([tipo, texto]) => ({ tipo, texto }));
 
+// ── A direção de marca ───────────────────────────────────────────────────────
+
+/** `#RRGGBB`, a mesma forma que `CorDaPaleta` cobra — sem importar `brand.ts` para cá. */
+const HEX = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'A cor precisa estar em #RRGGBB.');
+
+/**
+ * A DIREÇÃO DA MARCA: o que a peça precisa saber para parecer daquela marca.
+ *
+ * ## Por que ela existe
+ *
+ * O pedido levava duas coisas sobre a marca: a grafia do nome e uma cor. A tela
+ * dos quatro passos, no caminho de quem tem projeto, mostrava logotipo, paleta,
+ * tipografia e voz, e escrevia em letra miúda "paleta, tipografia e voz vêm
+ * junto". Não vinham: `montarPedido` mandava `marca` e `corPrincipal`, e o
+ * resto morria no navegador. A peça saía com o nome da marca em `system-ui`
+ * sobre uma cor — que é o quanto dá para fazer com o que chegava.
+ *
+ * ## O critério do que entra aqui
+ *
+ * Um criativo de tráfego pago tem cinco segundos e um objetivo. Cada campo
+ * abaixo só existe porque a COMPOSIÇÃO consegue usá-lo e a RÉGUA consegue
+ * medi-lo — pedir o que não vira pixel é formulário cobrando trabalho de quem
+ * preenche e devolvendo nada.
+ *
+ * E a separação de sempre vale aqui inteira: `logotipo`, `coresDeApoio`,
+ * `fonteTitulos` e `assinatura` são **fato** (o cliente forneceu, e a peça usa
+ * exatamente aquilo); `tom` e `estiloVisual` são **direção** (guiam quem
+ * escreve e quem pede o pixel, e nunca viram texto na peça sozinhos).
+ */
+export const DirecaoDeMarca = z.object({
+  /**
+   * As cores além da principal, na ordem de preferência da marca.
+   *
+   * A principal é a faixa de leitura. A primeira daqui que passar no piso de
+   * contraste contra ela vira o ACENTO — o botão. Num criativo de tráfego o
+   * botão é o elemento de conversão, e ele sair numa inversão calculada do
+   * preto-e-branco em vez da segunda cor da marca é a diferença entre a peça
+   * parecer da marca e parecer de um gerador.
+   *
+   * Três, e não uma paleta inteira: a peça tem faixa, tinta e botão. Cor que a
+   * composição não tem onde pôr é campo que cobra e descarta.
+   */
+  coresDeApoio: z.array(HEX).max(3).default([]),
+  /**
+   * O logotipo, relativo à pasta do job. `null` = a marca assina em texto.
+   *
+   * É a maior diferença visual entre um banner genérico e o anúncio de uma
+   * marca. Entra como imagem com `object-fit: contain` e altura calculada —
+   * nunca esticado, porque logo deformada é a falha que o cliente reconhece
+   * antes de qualquer outra.
+   */
+  logotipo: z.string().min(1).nullable().default(null),
+  /**
+   * A família tipográfica dos títulos, como o catálogo de fontes a nomeia.
+   *
+   * `null` = a fonte da casa. Quando vem preenchida, a composição EMBUTE o
+   * arquivo da fonte na peça e mede se ela realmente aplicou: pedir uma família
+   * que o navegador não tem faz o texto sair noutra letra sem avisar ninguém, e
+   * a peça diria ser da marca sem ser.
+   */
+  fonteTitulos: z.string().min(1).max(80).nullable().default(null),
+  /**
+   * Como a marca fala, em poucas palavras. DIREÇÃO, nunca texto da peça.
+   *
+   * Guia quem escreve a headline e o CTA. Não vira legenda: um tom colado na
+   * arte seria exatamente o "conteúdo inventado" que o resto deste contrato
+   * existe para impedir.
+   */
+  tom: z.string().max(200).default(''),
+  /**
+   * Como as imagens desta marca parecem — luz, cenário, acabamento. DIREÇÃO.
+   *
+   * Entra no prompt quando a origem é `gerar`, e é ignorada quando é `upload`:
+   * material do cliente não se reinterpreta.
+   */
+  estiloVisual: z.string().max(300).default(''),
+  /**
+   * Onde encontrar a marca: `@perfil`, `site.com.br`. FATO, e opcional.
+   *
+   * Um criativo de tráfego que não diz para onde ir gasta a impressão. Só entra
+   * se o cliente digitou — inventar um @ é inventar material, e um @ errado
+   * manda a verba para o perfil de outra pessoa.
+   */
+  assinatura: z.string().min(1).max(80).nullable().default(null),
+});
+export type DirecaoDeMarca = z.infer<typeof DirecaoDeMarca>;
+
+/** A direção vazia: nenhuma informação, nenhuma invenção. */
+export const DIRECAO_VAZIA: DirecaoDeMarca = DirecaoDeMarca.parse({});
+
 // ── O pedido ─────────────────────────────────────────────────────────────────
 
 /**
@@ -257,8 +347,87 @@ export const PedidoCriativo = z.object({
    * ausência de digitação, a peça não afirma nada.
    */
   autorizacoesDeClaim: AutorizacoesDeClaim.default({}),
+  /**
+   * Qual preset do catálogo produzir (`imagem-padrao`, `imagem-marca`, …).
+   *
+   * É o nome DO PRODUTO, nunca o slug do provedor. O slug muda por transporte —
+   * o mesmo modelo se chama `imagen-nano-banana-2-flash` no MCP e
+   * `text-to-image/nano-banana-pro-flash` no REST — e gravar um deles no pedido
+   * amarraria a peça ao transporte que estava ligado no dia.
+   *
+   * `null` = o motor resolve pelo tipo e pelo formato.
+   */
+  preset: z.string().min(1).nullable().default(null),
+  /**
+   * O custo estimado que foi MOSTRADO a quem confirmou, em créditos.
+   *
+   * Fica no pedido, e não só na tela, porque é metade da conta: sem ele,
+   * comparar o que se prometeu com o que se gastou depende da memória de
+   * alguém. `null` nos pedidos anteriores a esta medição.
+   */
+  estimativa: z.number().min(0).nullable().default(null),
+  /**
+   * A cor principal da marca, em `#RRGGBB`.
+   *
+   * A peça é COMPOSTA por nós — faixa de leitura, título, botão — e compor sem
+   * a cor do cliente significaria escolher uma. Escolher cor por ele é inventar
+   * material, que é justamente o que este contrato existe para impedir em preço,
+   * prazo e depoimento; não há razão para a cor ser exceção.
+   *
+   * Uma só, e não uma paleta: o resto é DERIVADO por cálculo (a tinta que se lê
+   * sobre ela, o par do botão), então pedir três seria pedir duas a mais para
+   * chegar no mesmo lugar. `null` nos pedidos anteriores a esta composição.
+   */
+  corPrincipal: HEX.nullable().default(null),
+  /**
+   * O resto da direção de marca: logotipo, cores de apoio, fonte, tom, estilo e
+   * assinatura.
+   *
+   * Separada de `corPrincipal` e de `marca` de propósito. Esses dois são o
+   * mínimo que trava o pedido — sem eles a peça não sai —, e todo o resto é
+   * material que MELHORA a peça quando existe e não pode travá-la quando falta.
+   * Misturar as duas naturezas no mesmo nível faria o parse reprovar um pedido
+   * legítimo de quem ainda não tem logotipo.
+   *
+   * O default vazio é o mesmo princípio de `autorizacoesDeClaim`: na ausência
+   * de material, a peça não inventa nenhum.
+   */
+  direcao: DirecaoDeMarca.default(DIRECAO_VAZIA),
 });
 export type PedidoCriativo = z.infer<typeof PedidoCriativo>;
+
+/**
+ * As cores da peça na ordem em que a composição as quer: a principal primeiro.
+ *
+ * Uma função, e não um campo, porque a principal já tem dono (`corPrincipal`) e
+ * guardá-la duas vezes é a receita conhecida para as duas cópias divergirem.
+ */
+export const coresDoPedido = (p: {
+  readonly corPrincipal: string | null;
+  readonly direcao: DirecaoDeMarca;
+}): readonly string[] =>
+  p.corPrincipal === null ? p.direcao.coresDeApoio : [p.corPrincipal, ...p.direcao.coresDeApoio];
+
+/**
+ * O teto do job, dado o custo de UMA variação.
+ *
+ * Mora no CONTRATO, e não na tela, porque é a mesma conta dos dois lados: a
+ * tela mostra o número antes de confirmar, e o servidor confere o mesmo número
+ * quando o pedido chega. Duas cópias divergem, e a que divergir decide sozinha
+ * quanto do saldo de alguém pode queimar.
+ *
+ * O teto nascia IGUAL à estimativa, e isso deixava o pedido sem margem
+ * nenhuma: `problemasDaEntregaCriativa` recusa fechar um job cujo gasto passou
+ * do teto, então uma variação a mais — a tentativa que o cliente tem direito de
+ * pedir, ou uma peça refeita depois de falha técnica — travava o job para
+ * sempre, com a arte paga em disco e nenhum caminho para fechá-lo.
+ *
+ * A folga é de UMA variação, e não uma porcentagem inventada: é o tamanho
+ * exato da tentativa incluída, e por isso a tela consegue explicá-la em uma
+ * frase.
+ */
+export const tetoComFolga = (custoPorVariacao: number, variacoes: number): number =>
+  custoPorVariacao * (variacoes + 1);
 
 // ── O resultado ──────────────────────────────────────────────────────────────
 
@@ -286,6 +455,28 @@ export const VariacaoCriativa = z
     estado: EstadoDaVariacao,
     /** Por que reprovou ou falhou — a frase que o Orbis mostra. Null quando aprovada. */
     motivo: z.string().min(1).nullable().default(null),
+    /**
+     * A FOLHA DE CONFERÊNCIA: o que cada regra respondeu sobre esta peça.
+     *
+     * Existe porque `aprovada` é uma afirmação forte — a docstring acima a
+     * define como "passou a verificação (dimensão exata, texto legível, nada
+     * inventado, produto preservado)" — e sem a folha ela vira palavra dada.
+     * Com a folha, quem recebe vê O QUE foi medido, e o que ficou pendente
+     * viaja com a peça em vez de sumir.
+     *
+     * `null` nos resultados anteriores a esta régua.
+     */
+    conferencia: z
+      .array(
+        z.object({
+          codigo: z.string().min(1),
+          titulo: z.string().min(1),
+          estado: z.enum(['passou', 'reprovou', 'pendente']),
+          motivo: z.string().default(''),
+        }),
+      )
+      .nullable()
+      .default(null),
   })
   .superRefine((v, ctx) => {
     if (v.estado === 'aprovada' && v.caminho === null) {
@@ -345,6 +536,27 @@ export const problemasDaEntregaCriativa = (entrada: {
   pedido: unknown;
   /** O caminho relativo à pasta do job existe em disco? */
   existe: (caminhoRelativo: string) => boolean;
+  /**
+   * A dimensão MEDIDA no arquivo, lida por quem tem acesso ao disco.
+   *
+   * Existe para o portão conferir sozinho em vez de acreditar na folha: ela é
+   * escrita por quem produziu, e uma entrega que confia na própria declaração
+   * não tem portão nenhum. `undefined` quando o chamador não sabe medir —
+   * e aí a conferência de dimensão simplesmente não acontece, em vez de
+   * inventar um verde.
+   */
+  dimensaoDe?: (caminhoRelativo: string) => { largura: number; altura: number } | null;
+  /**
+   * O que o RAZÃO diz que foi gasto e o que ainda está em voo.
+   *
+   * O `custoGasto` do resultado é escrito por quem produziu; o razão é o
+   * registro lançamento a lançamento. Enquanto o portão olhava só o primeiro, a
+   * conferência de teto comparava um número que nasce zerado — `0 > teto` nunca
+   * dispara, e "orçamento contado" virava frase.
+   *
+   * `undefined` quando o chamador não tem o razão em mãos.
+   */
+  razao?: { gasto: number; empenhado: number };
 }): string[] => {
   const problemas: string[] = [];
 
@@ -370,11 +582,91 @@ export const problemasDaEntregaCriativa = (entrada: {
     }
   }
 
+  /**
+   * Aprovada sem folha de conferência é palavra dada.
+   *
+   * `aprovada` afirma que a peça passou na verificação. Sem a folha, ninguém
+   * consegue dizer O QUE foi verificado — e um carimbo verde que ninguém
+   * consegue auditar é pior que peça reprovada com motivo, porque a reprovada
+   * avisa e esta não. O que ficou PENDENTE também viaja aqui: a ressalva
+   * acompanha a peça em vez de sumir entre a produção e a entrega.
+   */
+  for (const [n, v] of lido.data.variacoes.entries()) {
+    if (v.estado !== 'aprovada') continue;
+    if (v.conferencia === null || v.conferencia.length === 0) {
+      problemas.push(
+        `variação ${n + 1} está aprovada sem folha de conferência: "aprovada" afirma que alguém mediu, e aqui não há o que mostrar.`,
+      );
+      continue;
+    }
+    const reprovadas = v.conferencia.filter((r) => r.estado === 'reprovou');
+    if (reprovadas.length > 0) {
+      problemas.push(
+        `variação ${n + 1} está aprovada com ${reprovadas.length} regra(s) REPROVADA(S) na folha (${reprovadas.map((r) => r.codigo).join(', ')}): o veredito contradiz a medição.`,
+      );
+    }
+  }
+
   // O teto vem do PEDIDO, nunca de constante nossa: cada job tem o seu.
   const pedido = PedidoCriativo.safeParse(entrada.pedido);
-  if (pedido.success && lido.data.custoGasto > pedido.data.tetoDeCreditos) {
+
+  /**
+   * O razão é a fonte do que foi gasto; o resultado tem de concordar com ele.
+   *
+   * Divergência aqui não é detalhe de contabilidade: é a entrega afirmando ao
+   * cliente um custo que os lançamentos não sustentam. E reserva em voo na hora
+   * de fechar é dinheiro sem dono — ou o provedor cobrou e ninguém debitou, ou
+   * não cobrou e ninguém liberou.
+   */
+  if (entrada.razao !== undefined) {
+    if (entrada.razao.empenhado > 0) {
+      problemas.push(
+        `há ${entrada.razao.empenhado} crédito(s) empenhados e sem desfecho no razão: ou o provedor cobrou e falta debitar, ou não cobrou e falta liberar. Fechar assim deixa dinheiro em voo sem dono.`,
+      );
+    }
+    if (lido.data.custoGasto !== entrada.razao.gasto) {
+      problemas.push(
+        `o resultado diz ${lido.data.custoGasto} crédito(s) e o razão registra ${entrada.razao.gasto}: a entrega estaria afirmando ao cliente um custo que os lançamentos não sustentam.`,
+      );
+    }
+  }
+
+  /**
+   * A dimensão é conferida NOS BYTES, e não na folha.
+   *
+   * A folha diz o que quem produziu mediu. Se o arquivo for trocado depois, ou
+   * se a folha for escrita à mão, ela continua dizendo que está tudo certo — e
+   * o portão que só lê a folha carimba a mentira. Aqui a medida sai do arquivo.
+   */
+  if (pedido.success && entrada.dimensaoDe !== undefined) {
+    const esperada = DIMENSAO_DO_FORMATO[pedido.data.formato];
+    for (const [n, v] of lido.data.variacoes.entries()) {
+      if (v.estado !== 'aprovada' || v.caminho === null) continue;
+      const medida = entrada.dimensaoDe(v.caminho);
+      if (medida === null) {
+        // "Não consegui medir" não pode virar "passou". Pular em silêncio era o
+        // caminho pelo qual um `.mp4` entregue como aprovado nunca tinha a
+        // dimensão conferida — e uma imagem parada entregue como vídeo saía
+        // limpa.
+        problemas.push(
+          `variação ${n + 1} está aprovada e eu não consigo medir ${v.caminho}: aprovar o que não foi medido é o carimbo que esta conferência existe para impedir.`,
+        );
+        continue;
+      }
+      if (medida.largura !== esperada.largura || medida.altura !== esperada.altura) {
+        problemas.push(
+          `variação ${n + 1} está aprovada mas o arquivo mede ${medida.largura}×${medida.altura}, e o formato ${pedido.data.formato} pede ${esperada.largura}×${esperada.altura}.`,
+        );
+      }
+    }
+  }
+
+  // O gasto conferido é o do RAZÃO quando ele existe: o do resultado é
+  // declaração de quem produziu, e nasce zerado.
+  const gasto = entrada.razao?.gasto ?? lido.data.custoGasto;
+  if (pedido.success && gasto > pedido.data.tetoDeCreditos) {
     problemas.push(
-      `o job gastou ${lido.data.custoGasto} crédito(s) e o teto do pedido era ${pedido.data.tetoDeCreditos}: o motor devia ter PARADO no teto, e fechar aqui registraria o estouro como sucesso.`,
+      `o job gastou ${gasto} crédito(s) e o teto do pedido era ${pedido.data.tetoDeCreditos}: o motor devia ter PARADO no teto, e fechar aqui registraria o estouro como sucesso.`,
     );
   }
 

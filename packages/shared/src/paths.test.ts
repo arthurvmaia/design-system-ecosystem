@@ -4,10 +4,12 @@ import { test } from 'node:test';
 import {
   criativosDir,
   criativosRootDir,
+  dentroDaRaiz,
   ehChaveDeSegmento,
   ehDesignSystemId,
   ehNomeDeVersao,
   ehProjectId,
+  estaContido,
   podeApagarDesignSystem,
   projectDir,
   topLevelDirs,
@@ -110,6 +112,46 @@ test('criativos: o id do job vira pasta, e id torto não vira caminho', () => {
   assert.ok(criativosDir('job_abc123').endsWith(join('criativos', 'job_abc123')));
   assert.throws(() => criativosDir('job_../../etc'));
   assert.throws(() => criativosDir('ds_abc123'));
+});
+
+/**
+ * A guarda de contenção, agora num idioma só.
+ *
+ * O caso que a motivou é o primeiro daqui: a rota de criativos conferia com
+ * `alvo.startsWith(raiz)` — comparação de TEXTO, sem separador —, e as três
+ * rotas vizinhas conferiam com `relative()`. As duas contas discordam
+ * exatamente quando duas pastas irmãs compartilham prefixo, que é o caso comum
+ * de um id sequencial.
+ */
+
+const DENTRO = join(sep === '/' ? '/acervo' : 'C:', 'criativos', 'job_ab');
+
+test('PROVA: irmao com prefixo comum nao passa por dentro da raiz', () => {
+  // `criativos/job_ab` e `criativos/job_abc` são pastas DIFERENTES cujos
+  // caminhos começam igual. O `startsWith` de texto aprovava a segunda.
+  const irmao = join(sep === '/' ? '/acervo' : 'C:', 'criativos', 'job_abc', 'segredo.png');
+  assert.equal(estaContido(DENTRO, irmao), false);
+  assert.equal(dentroDaRaiz(DENTRO, join('..', 'job_abc', 'segredo.png')), null);
+});
+
+test('o caso bom: arquivo declarado dentro da pasta do job', () => {
+  const alvo = dentroDaRaiz(DENTRO, join('variacoes', 'v1.png'));
+  assert.notEqual(alvo, null);
+  assert.ok((alvo as string).endsWith(join('job_ab', 'variacoes', 'v1.png')));
+});
+
+test('recusa o que já se sabe errado antes de resolver', () => {
+  assert.equal(dentroDaRaiz(DENTRO, ''), null);
+  assert.equal(dentroDaRaiz(DENTRO, '..'), null);
+  assert.equal(dentroDaRaiz(DENTRO, join('a', '..', '..', 'b')), null);
+  // Barra invertida é separador no Windows: uma conta feita só com `/` deixaria passar.
+  assert.equal(dentroDaRaiz(DENTRO, 'a\\..\\..\\b'), null);
+  assert.equal(dentroDaRaiz(DENTRO, sep === '/' ? '/etc/passwd' : 'C:\\Windows\\win.ini'), null);
+});
+
+test('a propria raiz nao esta dentro de si mesma: diretorio nao e arquivo', () => {
+  assert.equal(estaContido(DENTRO, DENTRO), false);
+  assert.equal(dentroDaRaiz(DENTRO, '.'), null);
 });
 
 test('nome de versão gerada: só nome simples de pasta', () => {

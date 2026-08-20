@@ -55,6 +55,102 @@ export const enqueueJob = (
   return job;
 };
 
+/** O que aconteceu ao tentar enfileirar com uma chave de envio. */
+export type ResultadoDoEnfileiramento =
+  | { readonly estado: 'criado'; readonly job: QueueJob }
+  /** Mesma chave, mesmo pedido: devolve o job de antes, sem criar outro. */
+  | { readonly estado: 'repetido'; readonly job: QueueJob }
+  /** Mesma chave, pedido DIFERENTE: a chave já foi usada para outra coisa. */
+  | { readonly estado: 'conflito'; readonly job: QueueJob };
+
+/**
+ * Enfileira UMA VEZ, por chave de envio.
+ *
+ * ## O problema
+ *
+ * `enqueueJob` sorteia o id (`Date.now()` + aleatório), então clicar duas vezes
+ * cria dois jobs. Para `extract` isso custa uma captura repetida; para
+ * `criativo` custa DINHEIRO — dois jobs, dois lotes de variações, duas
+ * cobranças, e o cliente pediu uma peça.
+ *
+ * ## Por que o id É a chave
+ *
+ * A alternativa era guardar as chaves usadas numa tabela e conferir antes de
+ * gravar. São duas escritas em armazenamentos diferentes, sem transação comum:
+ * uma queda no meio deixa ou a chave sem job (o retry devolve sucesso apontando
+ * para nada) ou o job sem chave (o retry cria o segundo, e cobra de novo).
+ *
+ * Derivar o id da chave resolve numa syscall: `writeFileSync` com `flag: 'wx'`
+ * cria com exclusividade e FALHA se o arquivo já existe. O sistema de arquivos
+ * já é o registro de unicidade que a tabela tentaria ser.
+ *
+ * Quem chama passa o id já derivado (`job_<hash da chave>`), porque a forma do
+ * hash é decisão de quem conhece o pedido, não desta camada.
+ */
+export const enfileirarUmaVez = (entrada: {
+  readonly id: string;
+  readonly type: QueueJobType;
+  readonly label: string;
+  readonly payload: Record<string, unknown>;
+  /** Os dois pedidos são o mesmo? Comparação de quem conhece o payload. */
+  readonly mesmoPedido: (anterior: Record<string, unknown>) => boolean;
+}): ResultadoDoEnfileiramento | null => {
+  if (jobInvalido(entrada.id)) return null;
+  ensureDirs();
+
+  const job: QueueJob = {
+    id: entrada.id,
+    type: entrada.type,
+    label: entrada.label,
+    status: 'pendente',
+    createdAt: Date.now(),
+    completedAt: null,
+    payload: entrada.payload,
+    result: null,
+    error: null,
+  };
+
+  /**
+   * O `wx` sozinho não basta, e essa era a falha do desenho anterior.
+   *
+   * Ele protege `pendente/`, e um job que FECHOU não mora mais lá: o
+   * `finishJob` o move para `concluido/`. Sem esta conferência, a mesma chave
+   * de envio abria um SEGUNDO job pago com o mesmo id — e o `finishJob` dele
+   * sobrescrevia `concluido/<id>.json`, apagando o custo já registrado do
+   * primeiro. O comentário antigo aqui afirmava cobrir os dois casos, e cobria
+   * um.
+   *
+   * O `wx` continua depois, e continua sendo o que fecha a corrida entre dois
+   * envios simultâneos: esta leitura resolve o passado, ele resolve o instante.
+   */
+  const jaFechado = getJob(entrada.id);
+  if (jaFechado !== null) {
+    return {
+      estado: entrada.mesmoPedido(jaFechado.payload) ? 'repetido' : 'conflito',
+      job: jaFechado,
+    };
+  }
+
+  const caminho = join(queuePendingDir(), `${entrada.id}.json`);
+  try {
+    writeFileSync(caminho, JSON.stringify(job, null, 2), { encoding: 'utf8', flag: 'wx' });
+    return { estado: 'criado', job };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
+
+  const anterior = getJob(entrada.id);
+  if (anterior === null) {
+    // Existe o arquivo mas não dá para lê-lo. Tratar como conflito é o lado
+    // seguro: criar outro job aqui seria cobrar de novo por precaução.
+    return { estado: 'conflito', job };
+  }
+  return {
+    estado: entrada.mesmoPedido(anterior.payload) ? 'repetido' : 'conflito',
+    job: anterior,
+  };
+};
+
 /**
  * Antes de `cancelado` existir, cancelar gravava `erro` com a palavra no campo
  * `error`. Esses arquivos continuam em disco e continuariam acusando falha,
@@ -258,7 +354,24 @@ export const setJobResult = (id: string, result: Record<string, unknown>): Queue
   return updated;
 };
 
-/** Move um job de pendente para concluído, anexando resultado ou erro. */
+/**
+ * Move um job de pendente para concluído, anexando resultado ou erro.
+ *
+ * ## Quando o job já saiu de pendente
+ *
+ * Havia um caso em que o trabalho terminava e o resultado era jogado fora: a
+ * pessoa cancela o pedido enquanto ele está sendo produzido, o `cancelJob` move
+ * o arquivo para `concluido/`, e quando o produtor chega aqui o `pendente/` já
+ * não existe — a função devolvia `null` e o `result` morria com ela.
+ *
+ * Para `extract` isso custava um reprocessamento. Para `criativo` custa a
+ * PROVA DO GASTO: o `custoGasto` vive no resultado, e sem ele o crédito que já
+ * saiu da conta não aparece em lugar nenhum.
+ *
+ * Então o resultado é anexado ao job cancelado. O status **continua**
+ * `cancelado` — cancelar foi decisão de quem clicou, e promover para
+ * `concluido` reescreveria a história. O que se preserva é a evidência.
+ */
 export const finishJob = (
   id: string,
   outcome: { result?: Record<string, unknown>; error?: string },
@@ -266,7 +379,19 @@ export const finishJob = (
   if (jobInvalido(id)) return null;
   ensureDirs();
   const pendingPath = join(queuePendingDir(), `${id}.json`);
-  if (!existsSync(pendingPath)) return null;
+  if (!existsSync(pendingPath)) {
+    const jaFechado = join(queueDoneDir(), `${id}.json`);
+    if (!existsSync(jaFechado)) return null;
+    const anterior = JSON.parse(readFileSync(jaFechado, 'utf8')) as QueueJob;
+    if (anterior.status !== 'cancelado') return null;
+    const comEvidencia: QueueJob = {
+      ...anterior,
+      result: { ...(anterior.result ?? {}), ...(outcome.result ?? {}) },
+      error: outcome.error ?? anterior.error,
+    };
+    writeFileSync(jaFechado, JSON.stringify(comEvidencia, null, 2), 'utf8');
+    return comEvidencia;
+  }
 
   const job = JSON.parse(readFileSync(pendingPath, 'utf8')) as QueueJob;
   const updated: QueueJob = {
