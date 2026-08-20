@@ -577,8 +577,8 @@ export function CriativosPage() {
       {/* ── Passo 1: o pedido ─────────────────────────────────────────────── */}
       {passo === 0 && (
         <section className="ds-fade-in mt-6">
-          <span className="ds-label">imagem ou vídeo?</span>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <span className="ds-label">o que você precisa?</span>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {(
               [
                 {
@@ -632,6 +632,63 @@ export function CriativosPage() {
                 </span>
               </button>
             ))}
+
+            {/*
+              A terceira porta: quem AINDA NÃO TEM marca.
+
+              Ela já existia, e não aqui: era uma faixa larga DEPOIS do objetivo
+              da peça. A decisão anterior estava escrita e a razão dela continua
+              certa — "uma marca não tem formato de canal, nem origem de imagem,
+              nem copy: nada do que os passos 2 a 4 perguntam", então ela não
+              pode ser um terceiro `tipo`, senão metade do wizard teria de se
+              esconder conforme a escolha.
+
+              O que mudou foi a evidência: o dono olhou esta grade, contou dois
+              cartões e perguntou onde estava o terceiro. A faixa ficava abaixo
+              da dobra e não era encontrada por quem chega sem marca — que é
+              exatamente quem ela existe para atender. E o contrato já dizia onde
+              ela deveria estar: "a porta fica no passo 1, ao lado de imagem e
+              vídeo".
+
+              Então ela sobe para a grade e continua sendo LINK, não escolha: a
+              borda tracejada e a seta dizem que daqui se SAI, enquanto os dois
+              cartões cheios dizem o que esta peça vai ser. A objeção antiga era
+              ao terceiro TIPO, e essa continua valendo — este não é um.
+            */}
+            <Link
+              to="/criativos/marca"
+              className="flex items-start gap-3 rounded-none border border-dashed p-4 text-left transition-colors hover:border-[var(--color-signal)]"
+              style={{ borderColor: 'var(--color-border)', background: 'transparent' }}
+            >
+              <span
+                className="grid h-10 w-10 shrink-0 place-items-center"
+                style={{ background: 'rgb(var(--acento) / 0.12)', color: 'rgb(var(--acento))' }}
+                aria-hidden
+              >
+                <Sparkles size={18} strokeWidth={1.6} />
+              </span>
+              <span className="min-w-0">
+                <span
+                  className="block text-[14px] font-medium"
+                  style={{ color: 'var(--color-fg)' }}
+                >
+                  Ainda não tenho marca
+                </span>
+                <span
+                  className="mt-0.5 block text-[12px]"
+                  style={{ color: 'var(--color-fg-muted)' }}
+                >
+                  Símbolo, logo, cores e a apresentação em PDF. Depois as peças saem dela.
+                </span>
+                <span
+                  className="mt-1.5 inline-flex items-center gap-1 text-[12px]"
+                  style={{ color: 'rgb(var(--acento))' }}
+                >
+                  Criar a marca
+                  <ArrowRight size={13} strokeWidth={1.8} />
+                </span>
+              </span>
+            </Link>
           </div>
 
           <div className="mt-6">
@@ -654,42 +711,6 @@ export function CriativosPage() {
               ))}
             </div>
           </div>
-
-          {/*
-            A MARCA é o terceiro caminho, e ele sai daqui em vez de virar um
-            terceiro cartão na mesma grade.
-
-            Uma marca não tem formato de canal, nem origem de imagem, nem copy:
-            nada do que os passos 2 a 4 perguntam. Como cartão, ela obrigaria
-            metade do wizard a se esconder conforme a escolha, e passo que some
-            é passo que alguém preenche sem saber que não vale. Como porta, ela
-            leva para a tela que faz as perguntas DELA.
-          */}
-          <Link
-            to="/criativos/marca"
-            className="mt-6 flex items-start gap-3 rounded-none border p-4 transition-colors hover:border-[var(--color-signal)]"
-            style={{ borderColor: 'var(--color-border)' }}
-          >
-            <span
-              className="grid h-10 w-10 shrink-0 place-items-center"
-              style={{ background: 'rgb(var(--acento) / 0.12)', color: 'rgb(var(--acento))' }}
-              aria-hidden
-            >
-              <Sparkles size={18} strokeWidth={1.6} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[14px] font-medium" style={{ color: 'var(--color-fg)' }}>
-                Ainda não tenho marca
-              </span>
-              <span
-                className="mt-0.5 block text-[12.5px] leading-snug"
-                style={{ color: 'var(--color-fg-muted)' }}
-              >
-                Crio a marca inteira: símbolo, versões da logo, favicons, paleta e a apresentação em
-                PDF. Depois as peças saem dela.
-              </span>
-            </span>
-          </Link>
         </section>
       )}
 
