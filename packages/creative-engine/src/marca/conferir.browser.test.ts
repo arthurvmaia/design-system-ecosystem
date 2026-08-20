@@ -71,7 +71,8 @@ test('PROVA: a marca que o motor produz PASSA na regua da marca', async (t) => {
     decisaoDaCor: { por: 'cliente', motivo: '' },
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   assert.equal(
     r.aprovado,
@@ -87,13 +88,13 @@ test('PROVA: a marca que o motor produz PASSA na regua da marca', async (t) => {
    *
    * Este teste cobre o que sai do símbolo: as versões, o recorte, a cor, a
    * procedência. A apresentação não está aqui — e marca sem apresentação não é
-   * marca pronta, então M7, M8, M9 e M10 ficam pendentes. Se um dia elas
+   * marca pronta, então M7, M8, M9, M10 e M11 ficam pendentes. Se um dia elas
    * passarem a verde sem ninguém montar a apresentação, é porque a regra
    * afrouxou.
    */
   assert.deepEqual(
     r.vereditos.filter((v) => v.estado === 'pendente').map((v) => v.codigo),
-    ['M7', 'M8', 'M9', 'M10'],
+    ['M7', 'M8', 'M9', 'M10', 'M11'],
   );
 });
 
@@ -145,7 +146,8 @@ test('PROVA: versoes de DESENHOS diferentes reprovam em M4', async (t) => {
     decisaoDaCor: { por: 'cliente', motivo: '' },
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   rmSync(um, { force: true });
   rmSync(outro, { force: true });
@@ -184,7 +186,8 @@ test('PROVA: recorte que NAO pegou reprova em M2, e o defeito e invisivel no bra
     decisaoDaCor: { por: 'cliente', motivo: '' },
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   const m2 = r.vereditos.find((v) => v.codigo === 'M2');
   assert.equal(m2?.estado, 'reprovou');
@@ -204,7 +207,8 @@ test('PROVA: cor que some no branco reprova em M5', () => {
     decisaoDaCor: { por: 'cliente', motivo: '' },
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   const m5 = r.vereditos.find((v) => v.codigo === 'M5');
   assert.equal(m5?.estado, 'reprovou');
@@ -226,7 +230,8 @@ test('PROVA: M5 e uma regra que DISPARA, e nao decoracao', () => {
       decisaoDaCor: { por: 'cliente', motivo: '' },
       apresentacao: null,
       briefingsDasArtes: null,
-      arranjosDosConceitos: null,
+      propostasDosConceitos: null,
+      conceitosSemMobile: null,
     }).vereditos.find((v) => v.codigo === 'M5')?.estado;
 
   assert.equal(com('#0F4C81'), 'passou', 'azul profundo se lê sobre branco');
@@ -242,7 +247,8 @@ test('PROVA: sem medicao nenhuma, NADA fica verde na regua da marca', () => {
     decisaoDaCor: null,
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   const verdes = r.vereditos.filter((v) => v.estado === 'passou');
   assert.equal(verdes.length, 0, `virou verde sem medida: ${verdes.map((v) => v.codigo)}`);
@@ -260,7 +266,8 @@ test('PROVA: o Orbis escolher a cor e legitimo; escolher em SILENCIO nao e', () 
     procedencia: { modelo: 'teste', preset: 'imagem-marca' },
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   } as const;
 
   const comMotivo = conferirMarca({
@@ -293,7 +300,8 @@ test('PROVA M9: artes do MESMO briefing sao variacoes de uma ideia, e reprovam',
   const iguais = conferirMarca({
     ...base,
     briefingsDasArtes: ['consultório vazio', 'consultório vazio', 'consultório vazio'],
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   const m9 = iguais.vereditos.find((v) => v.codigo === 'M9');
   assert.equal(m9?.estado, 'reprovou');
@@ -302,7 +310,8 @@ test('PROVA M9: artes do MESMO briefing sao variacoes de uma ideia, e reprovam',
   const distintas = conferirMarca({
     ...base,
     briefingsDasArtes: ['a recepção vazia', 'as mãos no plano de tratamento', 'a conversa'],
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   assert.equal(distintas.vereditos.find((v) => v.codigo === 'M9')?.estado, 'passou');
 });
@@ -317,7 +326,8 @@ test('PROVA M9: sem registro de briefing, fica PENDENTE — nunca verde', () => 
     decisaoDaCor: { por: 'cliente', motivo: '' },
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   assert.equal(r.vereditos.find((v) => v.codigo === 'M9')?.estado, 'pendente');
 });
@@ -340,7 +350,8 @@ test('PROVA M8: a apresentacao que CORTA uma imagem reprova', () => {
       quebradas: [],
     },
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   const m8 = r.vereditos.find((v) => v.codigo === 'M8');
   assert.equal(m8?.estado, 'reprovou');
@@ -358,12 +369,13 @@ test('PROVA M7: apresentacao curta demais nao explica sistema nenhum', () => {
     decisaoDaCor: { por: 'cliente', motivo: '' },
     apresentacao: { paginas: 3, transbordos: [], recortadas: [], quebradas: [] },
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   assert.equal(r.vereditos.find((v) => v.codigo === 'M7')?.estado, 'reprovou');
 });
 
-test('PROVA M10: dois conceitos no MESMO arranjo sao uma abordagem so, e reprovam', () => {
+test('PROVA M10: dois conceitos na MESMA proposta sao uma direcao so, e reprovam', () => {
   // A segunda queixa do dono, e ela é do MOTOR e não do prompt: "você fez 1
   // estilo de banner só para os dois". O compositor tinha um arranjo só, então
   // dois conceitos saíam com a mesma composição e fotos diferentes.
@@ -380,20 +392,26 @@ test('PROVA M10: dois conceitos no MESMO arranjo sao uma abordagem so, e reprova
 
   const iguais = conferirMarca({
     ...base,
-    arranjosDosConceitos: ['faixa-inferior', 'faixa-inferior'],
+    propostasDosConceitos: ['faixa-inferior', 'faixa-inferior'],
+    conceitosSemMobile: null,
   });
   const m10 = iguais.vereditos.find((v) => v.codigo === 'M10');
   assert.equal(m10?.estado, 'reprovou');
-  assert.match(m10?.motivo ?? '', /abordagens diferentes/);
+  assert.match(m10?.motivo ?? '', /propostas diferentes/);
 
   const distintos = conferirMarca({
     ...base,
-    arranjosDosConceitos: ['faixa-inferior', 'tela-dividida'],
+    propostasDosConceitos: ['faixa-inferior', 'tela-dividida'],
+    conceitosSemMobile: null,
   });
   assert.equal(distintos.vereditos.find((v) => v.codigo === 'M10')?.estado, 'passou');
 
   // Um conceito só não tem com quem se repetir.
-  const sozinho = conferirMarca({ ...base, arranjosDosConceitos: ['veu-cheio'] });
+  const sozinho = conferirMarca({
+    ...base,
+    propostasDosConceitos: ['veu-cheio'],
+    conceitosSemMobile: null,
+  });
   assert.equal(sozinho.vereditos.find((v) => v.codigo === 'M10')?.estado, 'passou');
 });
 
@@ -409,7 +427,8 @@ test('PROVA M10: sem registro de arranjo, fica PENDENTE — nunca verde', () => 
     decisaoDaCor: null,
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   assert.equal(r.vereditos.find((v) => v.codigo === 'M10')?.estado, 'pendente');
   assert.equal(
@@ -432,10 +451,38 @@ test('a folha da marca cobre a REGUA inteira: nenhum codigo some', () => {
     decisaoDaCor: null,
     apresentacao: null,
     briefingsDasArtes: null,
-    arranjosDosConceitos: null,
+    propostasDosConceitos: null,
+    conceitosSemMobile: null,
   });
   assert.deepEqual(
     r.vereditos.map((v) => v.codigo),
     [...CODIGOS_DA_REGUA_DE_MARCA],
   );
+});
+
+test('PROVA M11: conceito sem versao mobile REPROVA', () => {
+  // Um banner de site vive num site responsivo, e o telefone e onde a maior
+  // parte das pessoas o ve. Entregar so a versao larga e entregar metade.
+  const base = {
+    pecas: null,
+    distanciaEntreVersoes: null,
+    cor: '#0F4C81',
+    promptDoSimbolo: 'p',
+    procedencia: { modelo: 'teste', preset: 'imagem-marca' },
+    decisaoDaCor: { por: 'cliente', motivo: '' },
+    apresentacao: null,
+    briefingsDasArtes: null,
+    propostasDosConceitos: null,
+  } as const;
+
+  const faltando = conferirMarca({ ...base, conceitosSemMobile: ['arte-completa-1.png'] });
+  const m11 = faltando.vereditos.find((v) => v.codigo === 'M11');
+  assert.equal(m11?.estado, 'reprovou');
+  assert.match(m11?.motivo ?? '', /recortar a versão larga não serve/);
+
+  const completo = conferirMarca({ ...base, conceitosSemMobile: [] });
+  assert.equal(completo.vereditos.find((v) => v.codigo === 'M11')?.estado, 'passou');
+
+  const ninguemConferiu = conferirMarca({ ...base, conceitosSemMobile: null });
+  assert.equal(ninguemConferiu.vereditos.find((v) => v.codigo === 'M11')?.estado, 'pendente');
 });

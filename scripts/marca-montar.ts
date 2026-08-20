@@ -175,7 +175,8 @@ const principal = async (): Promise<void> => {
        */
       apresentacao: null,
       briefingsDasArtes: null,
-      arranjosDosConceitos: null,
+      propostasDosConceitos: null,
+      conceitosSemMobile: null,
     });
 
     /**

@@ -38,6 +38,7 @@ export const CODIGOS_DA_REGUA_DE_MARCA = [
   'M8',
   'M9',
   'M10',
+  'M11',
 ] as const;
 
 /** O lado que as versões derivadas têm de ter. O motor as desenha em 1024. */
@@ -114,18 +115,41 @@ export type MarcaParaAceite = {
    */
   readonly briefingsDasArtes: readonly string[] | null;
   /**
-   * O ARRANJO de cada conceito de banner. `null` = ninguém registrou.
+   * A PROPOSTA VISUAL de cada conceito de banner. `null` = ninguém registrou.
    *
-   * É a irmã de `briefingsDasArtes`, para o defeito irmão. O dono reclamou duas
-   * vezes da página de conceitos: primeiro *"estão todas com a mesma ideia de
-   * arte"* — que era o prompt, e virou M9 — e depois **"você fez 1 estilo de
-   * banner só para os dois"**, que é do MOTOR. O compositor tinha um arranjo só,
-   * então dois conceitos saíam com a mesma composição e fotos diferentes.
+   * É a irmã de `briefingsDasArtes`, para o defeito irmão — e ela custou três
+   * rodadas para achar o nome certo. O dono reclamou do mesmo problema três
+   * vezes: *"estão todas com a mesma ideia de arte"* (era o prompt, virou M9),
+   * *"você fez 1 estilo de banner só para os dois"* (era o compositor ter um
+   * arranjo só) e, depois de dois consertos de geometria, *"por que você está
+   * fazendo só nesse estilo?"*.
    *
-   * A pergunta é de PROCEDÊNCIA, e não de pixel, pela mesma razão medida em
-   * M9: distância visual não separa as classes.
+   * As duas primeiras correções trocaram o LAYOUT e mantiveram a linguagem
+   * visual: bloco na cor da marca, texto branco, foto de gente sorrindo, três
+   * vezes seguidas. Geometria diferente não é proposta diferente.
+   *
+   * Uma proposta visual é uma direção inteira — que peso de cor, que assunto,
+   * que registro — e ela sai do BRIEFING da marca, nunca de um cardápio fixo de
+   * estilos. Um cardápio é o mesmo erro com outro dono: ele devolve as mesmas
+   * duas ideias para clínica, padaria e escritório de advocacia.
+   *
+   * A pergunta continua sendo de PROCEDÊNCIA, e não de pixel, pela razão medida
+   * em M9: distância visual não separa as classes.
    */
-  readonly arranjosDosConceitos: readonly string[] | null;
+  readonly propostasDosConceitos: readonly string[] | null;
+  /**
+   * Os conceitos que NÃO têm versão mobile. `null` = ninguém conferiu.
+   *
+   * Um banner de site vive num site responsivo, e o telefone é onde a maior
+   * parte das pessoas o vê. Entregar só a versão larga é entregar metade — e a
+   * outra metade não se obtém recortando esta, porque o texto foi diagramado
+   * para a largura que o recorte destrói.
+   *
+   * Isto é diferente do criativo de tráfego pago, que também é vertical e NÃO é
+   * o mesmo produto: aquele é para quem nunca ouviu falar da marca e vive na
+   * frente Criativos, com copy de venda e orçamento próprios.
+   */
+  readonly conceitosSemMobile: readonly string[] | null;
 };
 
 /**
@@ -448,20 +472,20 @@ export const conferirMarca = (m: MarcaParaAceite): ResultadoDeAceite => {
   // conceitos com o mesmo arranjo são uma abordagem mostrada duas vezes, com
   // fotos trocadas. Arranjo é geometria e não custa crédito: recompor num
   // arranjo diferente é de graça, então não há desculpa de orçamento aqui.
-  const TITULO_M10 = 'Cada conceito usou um arranjo diferente';
-  if (m.arranjosDosConceitos === null) {
+  const TITULO_M10 = 'Cada conceito é uma proposta visual diferente';
+  if (m.propostasDosConceitos === null) {
     vereditos.push(
       pendente(
         'M10',
         TITULO_M10,
-        'Ninguém registrou que arranjo cada conceito usou. Sem isso não dá para saber se são N abordagens ou a mesma composição com N fotos.',
+        'Ninguém registrou que proposta visual cada conceito seguiu. Sem isso não dá para saber se são N direções ou a mesma direção com N fotos.',
       ),
     );
-  } else if (m.arranjosDosConceitos.length < 2) {
+  } else if (m.propostasDosConceitos.length < 2) {
     vereditos.push(passou('M10', TITULO_M10));
   } else {
     const vistos = new Map<string, number>();
-    for (const a of m.arranjosDosConceitos) {
+    for (const a of m.propostasDosConceitos) {
       const chave = a.trim().toLowerCase();
       vistos.set(chave, (vistos.get(chave) ?? 0) + 1);
     }
@@ -472,8 +496,34 @@ export const conferirMarca = (m: MarcaParaAceite): ResultadoDeAceite => {
         : reprovou(
             'M10',
             TITULO_M10,
-            `${repetidos.map(([a, q]) => `${q} conceitos em "${a}"`).join('; ')}. A página de conceito existe para mostrar abordagens diferentes, e recompor noutro arranjo não gasta crédito nenhum.`,
+            `${repetidos.map(([a, q]) => `${q} conceitos em "${a}"`).join('; ')}. A página de conceito existe para mostrar propostas diferentes — direções inteiras tiradas do briefing, e não o mesmo desenho noutra geometria.`,
           ),
+    );
+  }
+
+  // M11 ────────────────────────────────────────────────────────────────────
+  // Um banner de site vive num site responsivo, e o telefone é onde a maior
+  // parte das pessoas o vê. Entregar só a versão larga é entregar metade — e a
+  // outra metade não se obtém recortando esta, porque o texto foi diagramado
+  // para a largura que o recorte destrói.
+  const TITULO_M11 = 'Cada conceito tem versão desktop e mobile';
+  if (m.conceitosSemMobile === null) {
+    vereditos.push(
+      pendente(
+        'M11',
+        TITULO_M11,
+        'Ninguém conferiu se os conceitos têm versão mobile. Um banner de site sem a versão de telefone é meia entrega.',
+      ),
+    );
+  } else if (m.conceitosSemMobile.length === 0) {
+    vereditos.push(passou('M11', TITULO_M11));
+  } else {
+    vereditos.push(
+      reprovou(
+        'M11',
+        TITULO_M11,
+        `Sem versão mobile: ${m.conceitosSemMobile.join(', ')}. O telefone é onde a maior parte vê o banner, e recortar a versão larga não serve — o texto foi diagramado para a largura que o recorte destrói.`,
+      ),
     );
   }
 

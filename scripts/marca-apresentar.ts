@@ -164,7 +164,32 @@ const principal = async (): Promise<void> => {
      * a apresentação diz isso na página de pendências. Um "aprovado" aqui seria
      * o carimbo verde que esta casa já pagou para aprender a não dar.
      */
-    const artesProntas = artes.filter((a) => a.startsWith('arte-') && a.endsWith('.png')).sort();
+    /**
+     * As artes PRONTAS, e a convenção que separa desktop de mobile.
+     *
+     * `arte-*.png` é a versão larga (o banner do site no computador) e
+     * `arte-*-mobile.png` é a do telefone. Ela não é um recorte da primeira: o
+     * texto foi diagramado para a largura que o recorte destruiria, então cada
+     * uma é uma peça — e M11 recusa a entrega que só tem metade.
+     */
+    const ehMobile = (a: string): boolean => a.endsWith('-mobile.png');
+    const todasAsProntas = artes.filter((a) => a.startsWith('arte-') && a.endsWith('.png')).sort();
+    const artesProntas = todasAsProntas.filter((a) => !ehMobile(a));
+    const mobileDe = (a: string): string => a.replace(/\.png$/, '-mobile.png');
+    const conceitosSemMobile = artesProntas.filter((a) => !todasAsProntas.includes(mobileDe(a)));
+
+    /**
+     * A PROPOSTA VISUAL de cada arte, lida do registro.
+     *
+     * Não é o layout: é a direção inteira — que peso de cor, que assunto, que
+     * registro —, e ela sai do briefing da marca. Duas geometrias da mesma
+     * direção continuam sendo uma direção só, que foi o defeito que três
+     * rodadas de conserto de layout não resolveram.
+     */
+    const arquivoDasPropostas = join(artesDir, 'propostas.json');
+    const propostaPorArte: Record<string, string> = existsSync(arquivoDasPropostas)
+      ? (JSON.parse(readFileSync(arquivoDasPropostas, 'utf8')) as Record<string, string>)
+      : {};
 
     const usados = new Set<ArranjoDaPeca>();
     const arranjoPorConceito: Record<string, ArranjoDaPeca> = {};
@@ -218,13 +243,17 @@ const principal = async (): Promise<void> => {
 
     for (const [i, arquivo] of artesProntas.entries()) {
       const caminho = join(artesDir, arquivo);
+      const proposta = propostaPorArte[arquivo];
       compostos.push({
         titulo: `Conceito ${i + 1}`,
-        legenda:
-          'Arte gerada por completo — imagem e texto saíram juntos do gerador. A grafia foi conferida a olho, e não medida no documento.',
+        legenda: `${proposta === undefined ? '' : `${proposta} `}Arte gerada por completo — imagem e texto saíram juntos do gerador. A grafia foi conferida a olho, e não medida no documento.`,
         imagem: comoDataUri(caminho),
       });
       paraOPacote.push({ nome: arquivo, bytes: readFileSync(caminho) });
+      const doTelefone = join(artesDir, mobileDe(arquivo));
+      if (existsSync(doTelefone)) {
+        paraOPacote.push({ nome: mobileDe(arquivo), bytes: readFileSync(doTelefone) });
+      }
     }
 
     for (const [i, arquivo] of (artesProntas.length > 0 ? [] : bannersCrus).entries()) {
@@ -392,6 +421,11 @@ const principal = async (): Promise<void> => {
     pendencias.push(
       'O símbolo em vetor (SVG) ainda não foi produzido. Para aplicação em tamanho muito grande (fachada, veículo), ele é necessário.',
     );
+    if (conceitosSemMobile.length > 0) {
+      pendencias.push(
+        `Falta a versão de telefone de: ${conceitosSemMobile.join(', ')}. O banner de site precisa das duas, e a do telefone não é um recorte da larga — o texto foi diagramado para a largura que o recorte destruiria.`,
+      );
+    }
     if (artesProntas.length > 0) {
       pendencias.push(
         'Os banners foram gerados por completo — imagem e texto saíram juntos do gerador. A grafia da marca e da chamada foi conferida a olho, e não medida no documento como nas peças compostas: confira o texto antes de publicar.',
@@ -482,7 +516,15 @@ const principal = async (): Promise<void> => {
      * folha toda a partir daqui apagaria as seis primeiras com `pendente`, que
      * é o mesmo carimbo errado ao contrário.
      */
-    const REGRAS_DA_APRESENTACAO = ['M7', 'M8', 'M9', 'M10'];
+    /**
+     * As regras cuja evidência só existe AQUI.
+     *
+     * Regra nova da apresentação é entrada nova nesta lista, senão ela nunca sai de
+     * pendente: `marca:montar` grava todas as quatro como pendentes e é este passo
+     * que as recompõe. Aconteceu com M11 na primeira rodada — a régua a produzia e a
+     * folha nunca a recebia.
+     */
+    const REGRAS_DA_APRESENTACAO = ['M7', 'M8', 'M9', 'M10', 'M11'];
     const arquivoDoResultado = join(dir, 'resultado.json');
     if (existsSync(arquivoDoResultado)) {
       const lido = ResultadoDeMarca.safeParse(JSON.parse(readFileSync(arquivoDoResultado, 'utf8')));
@@ -512,7 +554,16 @@ const principal = async (): Promise<void> => {
             quebradas: medida.quebradas.map((q) => `página ${q.pagina}: ${q.alt}`),
           },
           briefingsDasArtes: briefings,
-          arranjosDosConceitos: Object.values(arranjoPorConceito),
+          /**
+           * A proposta de cada conceito sai do registro quando a arte veio
+           * pronta, e do arranjo quando ela foi composta aqui: nos dois casos é
+           * a direção declarada, que é o que M10 confere.
+           */
+          propostasDosConceitos:
+            artesProntas.length > 0
+              ? artesProntas.map((a) => propostaPorArte[a] ?? a)
+              : Object.values(arranjoPorConceito),
+          conceitosSemMobile: artesProntas.length > 0 ? conceitosSemMobile : null,
         }).vereditos.filter((v) => REGRAS_DA_APRESENTACAO.includes(v.codigo));
 
         const anteriores = (lido.data.conferencia ?? []).filter(

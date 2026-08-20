@@ -331,6 +331,52 @@ são o mesmo símbolo, a transparente é transparente de verdade, a monocromáti
 silhueta, a cor se lê sobre branco, e o prompt ficou registrado. Recorte que
 falhou não vira entrega.
 
+**A ARTE é gerada por inteiro no Magnific.** Regra do dono: *"delegue tudo para
+o magnific em questão de imagem e vídeo"*. O prompt descreve a peça completa —
+foto, layout, cor da marca, chamada e botão — e o motor só busca o arquivo
+pronto (`arte-completa-N.png` em `artes/`). O compositor continua inteiro e
+continua sendo o caminho quando a arte chega crua.
+
+O que isso CUSTA, e tem de ser declarado na apresentação em vez de escondido: a
+régua da peça mede o DOCUMENTO, e arte gerada não tem documento. C2 (texto
+literal), C3 (grafia da marca), C4 (contraste) e C11 (tipografia) saem do DOM
+que o compositor monta; sobre um PNG, responder qualquer uma exigiria OCR. Elas
+não são respondidas, e a página de pendências diz isso. Confira a grafia com o
+olho, letra por letra — acento em português é onde o modelo mais erra.
+
+**Existe brand kit no Magnific, e ele resolve a tipografia.** `brandKitId` no
+`images_generate` faz o provedor aplicar paleta, logo e tipografia da marca
+sozinho. `brand_kit_list` NÃO está exposto no MCP, então o kit tem de ser criado
+no app pelo dono; com o id na mão, passe-o em toda geração daquela marca.
+
+**Dois conceitos são duas PROPOSTAS VISUAIS, e elas saem do BRIEFING.** Esta é a
+regra que custou três rodadas para acertar, e ela vale para qualquer marca. O
+dono reclamou do mesmo defeito três vezes: *"estão todas com a mesma ideia de
+arte"*, *"você fez 1 estilo de banner só para os dois"* e, depois de dois
+consertos de geometria, *"por que você está fazendo só nesse estilo?"*.
+
+As duas primeiras correções trocaram o LAYOUT e mantiveram a linguagem visual:
+bloco na cor da marca, texto branco, foto de gente sorrindo — três vezes.
+**Geometria diferente não é proposta diferente.** Uma proposta é uma direção
+inteira: que peso de cor (claro ou escuro), que assunto (o que a marca FAZ ou
+quem ela atende), que registro (editorial, documental, gráfico).
+
+E ela sai do briefing daquela marca, **nunca de um cardápio fixo de estilos** —
+um cardápio é o mesmo erro com outro dono, porque devolve as mesmas duas ideias
+para clínica, padaria e escritório de advocacia. Exemplo do que funcionou, com o
+briefing "clínica de bairro, famílias, prevenção, explicar antes de tratar":
+uma proposta pegou *explicar* (fundo claro, azul como tinta, o plano de
+tratamento como assunto) e a outra pegou *bairro* (foto quente de hora dourada,
+família na rua, azul só no botão). **M10** recusa dois conceitos na mesma
+proposta, lendo `artes/propostas.json`.
+
+**Todo banner de site tem versão DESKTOP e MOBILE.** O telefone é onde a maior
+parte vê o banner, e a versão do telefone NÃO é um recorte da larga: o texto foi
+diagramado para a largura que o recorte destrói. A convenção é
+`arte-completa-N.png` e `arte-completa-N-mobile.png`, e **M11** recusa a entrega
+que só tem metade. Isso é diferente do criativo de tráfego pago, que também é
+vertical e é outro produto — ver abaixo.
+
 **Os CONCEITOS de banner são quatro ARRANJOS, não quatro fotos.** O compositor
 tinha um layout só, e dois conceitos saíam com a mesma composição — o dono viu.
 Hoje `comporPeca` aceita `faixa-inferior`, `tela-dividida`, `veu-cheio` e
