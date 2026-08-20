@@ -340,6 +340,12 @@ gasta crédito nenhum). **M10** recusa dois conceitos no mesmo arranjo, conferin
 a PROCEDÊNCIA registrada em `artes/arranjos.json` — nunca a distância de pixel,
 que já se provou incapaz de separar as classes.
 
+**Onze regras verdes não são uma peça boa.** O banner passou em C1..C11 e o dono
+reprovou de olho: a faixa tinha 52% da peça e a foto 48%. **C12** mede o que
+sobrou da foto (piso de metade, porque uma peça em que a foto é a menor parte é
+um painel de texto com uma tira de imagem), e a disposição da faixa passou a ser
+DERIVADA — em peça larga ela vira uma linha só, e a foto voltou para 60-71%.
+
 **Sobre FOTO, o contraste é amostrado, não declarado.** Os arranjos `veu-cheio` e
 `texto-sobre-imagem` tiram o texto da faixa sólida, e ali o par declarado
 continuaria saindo bonito e deixaria de descrever a peça. O motor amostra o pior

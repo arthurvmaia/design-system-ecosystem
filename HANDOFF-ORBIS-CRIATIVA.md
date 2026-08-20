@@ -104,6 +104,18 @@ cubo cobre TODA foto. Medido: 0,56 para `#1E2F4F`, 0,66 para `#0050c4`, 0,40 par
 branco — a faixa onde um véu editorial vive. A conta não foi calibrada para dar
 isso; deu.
 
+**A disposição da faixa também é derivada.** Num banner 3× mais largo que alto,
+empilhar marca, headline e botão gasta altura que a peça não tem; em linha, os
+três dividem a largura que sobra de graça. Vence a que preserva mais o corpo da
+letra e, no empate, a que gasta menos altura — e é o segundo critério que faz o
+trabalho, porque as duas cabem com o corpo ideal e o fator empata. Medido: a
+faixa foi de 52% para 40% da peça.
+
+**C12 mede o que sobrou da FOTO**, e essa regra nasceu de uma peça que passou em
+onze e o dono reprovou de olho. Piso de metade, porque uma peça em que a foto é
+a menor parte é um painel de texto com uma tira de imagem em cima. Medido antes
+de o número existir: 48% na reprovada, 56/60/100/100 nas outras.
+
 Na apresentação, cada conceito é composto, MEDIDO pela régua da peça e só então
 vira conceito — se reprovar, o comando tenta o arranjo seguinte, porque recompor
 não gasta nada. Dois conceitos não podem sair no mesmo arranjo, e **M10** confere
@@ -120,7 +132,7 @@ pnpm criativo:compor <job> <n> --fundo <o mesmo arquivo> --arranjo veu-cheio
 - **`packages/creative-engine`** (`@ds/creative`) — o motor. Catálogo, preço
   datado, razão, composição em DOM, fonte embutida com cache, recorte das
   versões da logo, favicon/`.ico`, e a apresentação.
-- **`packages/shared/src/regras-de-aceite-criativo.ts`** — **C1..C11**.
+- **`packages/shared/src/regras-de-aceite-criativo.ts`** — **C1..C12**.
 - **`packages/shared/src/regras-de-aceite-marca.ts`** — **M1..M10**.
 - **`packages/shared/src/schemas/marca.ts`** — contrato, estágios pagos e o
   portão da entrega da marca.
@@ -185,6 +197,21 @@ extremo — dois terços estourados e um escuro —, a banda escolhida dava **1,
 no pixel que o texto realmente pegava. Hoje o compositor põe o bloco nas três
 posições e mede o que o TEXTO pega em cada uma. Três passadas de layout, todas de
 graça, e a única pergunta que corresponde à peça.
+
+**Onze regras verdes não são uma peça boa.** O banner recomposto passou em C1 a
+C11 — dimensão exata, texto dentro do quadro, marca presente, contraste acima do
+piso, tipografia da marca — e o dono olhou e disse que estava péssimo. Nenhuma
+das onze perguntava a PROPORÇÃO: a faixa tinha 52% da peça e a foto 48%. Quando
+uma régua completa aprova o que o olho reprova, o buraco não está no veredito,
+está na lista de perguntas.
+
+**A trava tem de ficar onde a medição não alcança.** A primeira tentativa de
+consertar aquilo foi capar a faixa em 50% da altura. Medido: sozinho, não mudou
+nada — a estimativa já cabia no orçamento menor, e quem consertou foi a
+disposição em linha (52% → 40%). Aplicado de verdade, quebrou C2 no teto do
+schema: uma headline de 200 caracteres não entra numa faixa capada nem no menor
+corpo de letra, e texto fora do quadro é falha pior que faixa gorda. A trava
+saiu; quem cobra a proporção é C12, que mede.
 
 **Armadilhas de linguagem que custaram tempo:**
 
