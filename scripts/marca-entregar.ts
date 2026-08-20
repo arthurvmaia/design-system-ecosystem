@@ -110,16 +110,36 @@ const ENTREGA: readonly {
    * outra oferta, outro CTA —, e entregá-lo como um recorte do banner promete
    * ao cliente uma coisa que a pasta não tem.
    */
+  /**
+   * Os dois nomes existem porque as artes podem vir de dois caminhos.
+   *
+   * `arte-completa-*` é a arte gerada por inteiro (imagem e texto juntos, do
+   * gerador); `conceito-*-site` é a composta pelo motor sobre um pixel cru. A
+   * entrega não escolhe entre eles — copia o que existir, e nenhum dos dois é
+   * obrigatório.
+   */
   {
-    de: 'artes/conceito-1-site.png',
+    de: 'artes/arte-completa-1.png',
     pasta: 'Artes prontas',
     para: 'Banner do site 1.png',
     obrigatorio: false,
   },
   {
-    de: 'artes/conceito-2-site.png',
+    de: 'artes/arte-completa-2.png',
     pasta: 'Artes prontas',
     para: 'Banner do site 2.png',
+    obrigatorio: false,
+  },
+  {
+    de: 'artes/conceito-1-site.png',
+    pasta: 'Artes prontas',
+    para: 'Banner do site 1 (composto).png',
+    obrigatorio: false,
+  },
+  {
+    de: 'artes/conceito-2-site.png',
+    pasta: 'Artes prontas',
+    para: 'Banner do site 2 (composto).png',
     obrigatorio: false,
   },
 ];

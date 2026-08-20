@@ -149,6 +149,23 @@ const principal = async (): Promise<void> => {
      * e dois conceitos no mesmo arranjo são uma abordagem com duas fotos.
      * Arranjo é geometria: nenhum deles custa crédito, então repetir não tem
      */
+    /**
+     * As artes PRONTAS: o pixel já chega com a copy dentro.
+     *
+     * Regra do dono: *"delegue tudo para o magnific em questão de imagem e
+     * vídeo"* — o prompt descreve a peça inteira e o motor só busca o arquivo.
+     * Uma arte assim não passa pelo compositor, porque não há o que compor.
+     *
+     * O que se PERDE, e fica declarado em vez de escondido: a régua da peça mede
+     * o documento, e aqui não há documento. C2 (o texto literal), C3 (a grafia
+     * da marca), C4 (o contraste) e C11 (a tipografia) saem do DOM que o
+     * compositor monta; sobre um PNG gerado, responder qualquer uma delas
+     * exigiria OCR. Então elas não são respondidas — a conferência é de olho, e
+     * a apresentação diz isso na página de pendências. Um "aprovado" aqui seria
+     * o carimbo verde que esta casa já pagou para aprender a não dar.
+     */
+    const artesProntas = artes.filter((a) => a.startsWith('arte-') && a.endsWith('.png')).sort();
+
     const usados = new Set<ArranjoDaPeca>();
     const arranjoPorConceito: Record<string, ArranjoDaPeca> = {};
 
@@ -199,7 +216,18 @@ const principal = async (): Promise<void> => {
         temFoto: true,
       });
 
-    for (const [i, arquivo] of bannersCrus.entries()) {
+    for (const [i, arquivo] of artesProntas.entries()) {
+      const caminho = join(artesDir, arquivo);
+      compostos.push({
+        titulo: `Conceito ${i + 1}`,
+        legenda:
+          'Arte gerada por completo — imagem e texto saíram juntos do gerador. A grafia foi conferida a olho, e não medida no documento.',
+        imagem: comoDataUri(caminho),
+      });
+      paraOPacote.push({ nome: arquivo, bytes: readFileSync(caminho) });
+    }
+
+    for (const [i, arquivo] of (artesProntas.length > 0 ? [] : bannersCrus).entries()) {
       const copy = copyDosBanners[i] ?? copyDosBanners[0];
       if (copy === undefined) continue;
 
@@ -364,6 +392,11 @@ const principal = async (): Promise<void> => {
     pendencias.push(
       'O símbolo em vetor (SVG) ainda não foi produzido. Para aplicação em tamanho muito grande (fachada, veículo), ele é necessário.',
     );
+    if (artesProntas.length > 0) {
+      pendencias.push(
+        'Os banners foram gerados por completo — imagem e texto saíram juntos do gerador. A grafia da marca e da chamada foi conferida a olho, e não medida no documento como nas peças compostas: confira o texto antes de publicar.',
+      );
+    }
 
     const pronta = await renderizarApresentacao(navegador, {
       nome: pedido.nome,
@@ -517,6 +550,14 @@ const principal = async (): Promise<void> => {
     );
     for (const [conceito, arranjo] of Object.entries(arranjoPorConceito)) {
       console.log(`    ${conceito}: ${ARRANJO[arranjo].rotulo} (${arranjo})`);
+    }
+    if (artesProntas.length > 0) {
+      console.log(
+        `    ${artesProntas.length} arte(s) PRONTA(S), com o texto já dentro do pixel: ${artesProntas.join(', ')}`,
+      );
+      console.log(
+        '    A régua da peça não roda sobre elas — não há documento para medir. A grafia é conferência de olho, e a apresentação declara isso.',
+      );
     }
     console.log(`  Compostas sem gastar crédito: ${paraOPacote.map((p) => p.nome).join(', ')}`);
     console.log('');
