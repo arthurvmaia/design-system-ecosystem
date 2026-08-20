@@ -22,8 +22,10 @@ import {
   dentroDaRaiz,
   ehJobId,
   enfileirarUmaVez,
+  jobNaFila,
   listDoneJobs,
   listPendingJobs,
+  removerRegistroDoJob,
   rotuloDaConferencia,
 } from '@ds/shared';
 import { Hono } from 'hono';
@@ -775,4 +777,53 @@ criativosRoute.get('/:jobId/arquivo', (c) => {
     cabecalhos['Content-Security-Policy'] = 'sandbox';
   }
   return new Response(new Uint8Array(buf), { headers: cabecalhos });
+});
+
+/**
+ * Excluir uma peça criativa, com os arquivos dela.
+ *
+ * ## Por que ela recusa o que está na fila
+ *
+ * Apagar a pasta de um job que está sendo processado é um estrago que esta casa
+ * já viveu com um projeto: o `DELETE` levou tudo e quem processava seguiu
+ * escrevendo, sem saber de nada. O resultado nasceu órfão — completo em disco,
+ * invisível na tela. Aqui a recusa é 409, e a mensagem diz o que fazer.
+ *
+ * ## Por que ela apaga a PASTA e o registro
+ *
+ * Deixar a pasta seria deixar em disco o pixel pago, o razão e a conferência de
+ * um pedido que a pessoa mandou sumir — e a listagem os recupera do disco
+ * mesmo sem registro, então ele voltaria para a tela no próximo carregamento.
+ *
+ * ## Por que ela pede a credencial da ação
+ *
+ * Não porque custe crédito: porque é irreversível. Entrar no app e apagar
+ * trabalho pago são decisões de peso diferente, e uma sessão aberta não devia
+ * autorizar as duas.
+ */
+criativosRoute.delete('/:jobId', (c) => {
+  const recusa = exigeSenhaDeAcao(c);
+  if (recusa !== null) return recusa;
+
+  const jobId = c.req.param('jobId');
+  if (!ehJobId(jobId)) return c.json({ error: 'id_invalido' }, 400);
+
+  if (jobNaFila(jobId)) {
+    return c.json(
+      {
+        error: 'na_fila',
+        message:
+          'Este pedido ainda está na fila, senhor. Apagar a pasta agora deixaria quem processa escrevendo no vazio. Espere terminar, ou tire-o da fila antes.',
+      },
+      409,
+    );
+  }
+
+  const pasta = criativosDir(jobId);
+  const tinhaPasta = existsSync(pasta);
+  const registros = removerRegistroDoJob(jobId);
+  if (!tinhaPasta && registros === 0) return c.json({ error: 'nao_encontrado' }, 404);
+  if (tinhaPasta) rmSync(pasta, { recursive: true, force: true });
+
+  return c.json({ ok: true });
 });

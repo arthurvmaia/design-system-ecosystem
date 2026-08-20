@@ -31,6 +31,7 @@ export function ConfirmarAcaoCara({
   ocupado,
   erro,
   exigeCredencial = true,
+  pergunta,
   aoConfirmar,
   aoFechar,
 }: {
@@ -45,6 +46,15 @@ export function ConfirmarAcaoCara({
    * seguro para quem ainda não perguntou.
    */
   exigeCredencial?: boolean;
+  /**
+   * A frase que FECHA o pedido de confirmação.
+   *
+   * Ausente, é a de gastar — que era a única ação quando este diálogo nasceu.
+   * Ela deixou de servir para todas: "antes de eu pôr a máquina para trabalhar"
+   * dito sobre um apagar descreve o oposto do que vai acontecer, e uma
+   * confirmação que descreve errado o que confirma é pior que nenhuma.
+   */
+  pergunta?: string;
   aoConfirmar: (senha: string) => void;
   aoFechar: () => void;
 }) {
@@ -82,8 +92,8 @@ export function ConfirmarAcaoCara({
             >
               {oQueVaiFazer}{' '}
               {exigeCredencial
-                ? 'Antes de eu pôr a máquina para trabalhar, me confirme a credencial.'
-                : 'Confirma que é para eu pôr a máquina para trabalhar?'}
+                ? `${pergunta ?? 'Antes de eu pôr a máquina para trabalhar,'} me confirme a credencial.`
+                : (pergunta ?? 'Confirma que é para eu pôr a máquina para trabalhar?')}
             </p>
           </div>
         </div>

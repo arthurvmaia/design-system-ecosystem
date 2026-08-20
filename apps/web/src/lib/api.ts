@@ -1033,11 +1033,26 @@ export const api = {
   // ── Meus sites (versões geradas em disco) ───────────────────────────────
   listMeusProjetos: () => jsonFetch<{ items: MeusProjetosItem[] }>('/api/meus-projetos'),
   listPecasCriativas: () => jsonFetch<{ items: PecaCriativa[] }>('/api/criativos'),
+  /**
+   * Apaga a peça e os arquivos dela. Irreversível, e por isso pede a credencial
+   * da ação — o servidor recusa com 409 se o pedido ainda estiver na fila.
+   */
+  excluirPecaCriativa: (jobId: string, credencial: string) =>
+    jsonFetch<{ ok: true }>(`/api/criativos/${jobId}`, {
+      method: 'DELETE',
+      headers: { [CABECALHO_DA_ACAO]: credencial },
+    }),
 
   // ── Marca ────────────────────────────────────────────────────────────────
   /** O que a marca custa, com a conta aberta por estágio. Vem do contrato. */
   custosDaMarca: () => jsonFetch<CustosDaMarca>('/api/marcas/custos'),
   listMarcas: () => jsonFetch<{ items: MarcaCriada[] }>('/api/marcas'),
+  /** Apaga a marca e os arquivos dela. Mesmas condições da peça. */
+  excluirMarca: (jobId: string, credencial: string) =>
+    jsonFetch<{ ok: true }>(`/api/marcas/${jobId}`, {
+      method: 'DELETE',
+      headers: { [CABECALHO_DA_ACAO]: credencial },
+    }),
   /**
    * Cria o pedido de marca.
    *

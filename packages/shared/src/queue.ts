@@ -4,6 +4,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -179,6 +180,37 @@ const readJobs = (dir: string): QueueJob[] => {
 
 export const listPendingJobs = (): QueueJob[] => readJobs(queuePendingDir());
 export const listDoneJobs = (): QueueJob[] => readJobs(queueDoneDir());
+
+/**
+ * Este job está na fila esperando para ser processado?
+ *
+ * `pendente/` é a definição: um job só sai de lá quando termina, então a pasta
+ * cobre tanto o que aguarda a vez quanto o que está sendo processado AGORA.
+ *
+ * Existe para a exclusão. Apagar a pasta de um job que está sendo processado é
+ * o estrago que já aconteceu uma vez com um projeto: o `DELETE` levou tudo e
+ * quem processava seguiu escrevendo, sem saber de nada, e o resultado nasceu
+ * órfão — completo em disco, invisível na tela.
+ */
+export const jobNaFila = (jobId: string): boolean => listPendingJobs().some((j) => j.id === jobId);
+
+/**
+ * Tira o registro do job da fila, esteja ele em `pendente/` ou em `concluido/`.
+ *
+ * Devolve quantos arquivos removeu — zero é uma resposta legítima: um job
+ * recuperado do disco nunca teve registro, e a pasta dele existe assim mesmo.
+ */
+export const removerRegistroDoJob = (jobId: string): number => {
+  let removidos = 0;
+  for (const dir of [queuePendingDir(), queueDoneDir()]) {
+    const arquivo = join(dir, `${jobId}.json`);
+    if (existsSync(arquivo)) {
+      rmSync(arquivo, { force: true });
+      removidos += 1;
+    }
+  }
+  return removidos;
+};
 
 /**
  * Jobs da fila que ainda vão mexer neste projeto.
