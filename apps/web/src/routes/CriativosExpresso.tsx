@@ -3,6 +3,7 @@ import { Mascote } from '@/components/Mascote';
 import { PrecisaDaSenhaDeAcao, api } from '@/lib/api';
 import { useChaveDeEnvio } from '@/lib/chave-de-envio';
 import { TRATAMENTO } from '@/lib/orbis';
+import { useExigeCredencialDeAcao } from '@/lib/sessao';
 import { toast } from '@/lib/toast';
 import {
   ROTULO_DO_FORMATO,
@@ -50,6 +51,7 @@ import { Link } from 'react-router-dom';
  * por extenso ao lado do custo.
  */
 export function CriativosExpressoPage() {
+  const exigeCredencial = useExigeCredencialDeAcao();
   // a marca: herdada do projeto mais recente, ou nome + 1 cor à mão
   const [marcaNome, setMarcaNome] = useState('');
   const [corPrincipal, setCorPrincipal] = useState('');
@@ -517,6 +519,7 @@ export function CriativosExpressoPage() {
       </div>
 
       <ConfirmarAcaoCara
+        exigeCredencial={exigeCredencial}
         aberto={confirmando}
         oQueVaiFazer={
           pedidoConferido !== null

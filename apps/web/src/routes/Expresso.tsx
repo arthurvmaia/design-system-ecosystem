@@ -2,6 +2,7 @@ import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
 import { type KitAutomaticoSugestao, PrecisaDaSenhaDeAcao, api } from '@/lib/api';
 import { TRATAMENTO } from '@/lib/orbis';
+import { useExigeCredencialDeAcao } from '@/lib/sessao';
 import { toast } from '@/lib/toast';
 import { useTrabalho } from '@/lib/trabalho';
 import { useReveal } from '@/lib/use-reveal';
@@ -34,6 +35,7 @@ type Resultado = {
 };
 
 export function ExpressoPage() {
+  const exigeCredencial = useExigeCredencialDeAcao();
   const [objetivo, setObjetivo] = useState<ObjetivoDoSite | null>(null);
   const [nicho, setNicho] = useState('');
   const [marca, setMarca] = useState('');
@@ -297,6 +299,7 @@ export function ExpressoPage() {
       )}
 
       <ConfirmarAcaoCara
+        exigeCredencial={exigeCredencial}
         aberto={pedindoSenha}
         oQueVaiFazer="Montar o kit, criar a marca e gerar o site, tudo de uma vez."
         ocupado={disparar.isPending}

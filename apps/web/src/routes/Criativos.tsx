@@ -4,6 +4,7 @@ import { PrecisaDaSenhaDeAcao, api } from '@/lib/api';
 import { useChaveDeEnvio } from '@/lib/chave-de-envio';
 import { loadFont } from '@/lib/font-loader';
 import { TRATAMENTO } from '@/lib/orbis';
+import { useExigeCredencialDeAcao } from '@/lib/sessao';
 import { toast } from '@/lib/toast';
 import { DirecaoManual } from '@/routes/criativos/DirecaoManual';
 import {
@@ -89,6 +90,7 @@ const PASSOS = ['o pedido', 'sua marca', 'a peça', 'conferir'] as const;
 // ── A tela ───────────────────────────────────────────────────────────────────
 
 export function CriativosPage() {
+  const exigeCredencial = useExigeCredencialDeAcao();
   const [passo, setPasso] = useState(0);
   /**
    * As pendências só aparecem depois de a pessoa TENTAR avançar. Abrir o passo
@@ -1293,6 +1295,7 @@ export function CriativosPage() {
       </div>
 
       <ConfirmarAcaoCara
+        exigeCredencial={exigeCredencial}
         aberto={confirmando}
         oQueVaiFazer={
           pedidoConferido !== null

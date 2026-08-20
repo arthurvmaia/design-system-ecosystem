@@ -3,6 +3,7 @@ import { Mascote } from '@/components/Mascote';
 import { PrecisaDaSenhaDeAcao, api } from '@/lib/api';
 import { useChaveDeEnvio } from '@/lib/chave-de-envio';
 import { TRATAMENTO } from '@/lib/orbis';
+import { useExigeCredencialDeAcao } from '@/lib/sessao';
 import { toast } from '@/lib/toast';
 import {
   CorDaPaleta,
@@ -35,6 +36,7 @@ import { useState } from 'react';
  * escolhida pelo Orbis com o motivo escrito ao lado.
  */
 export function CriativosMarcaPage() {
+  const exigeCredencial = useExigeCredencialDeAcao();
   const [chaveDeEnvio, renovarChaveDeEnvio] = useChaveDeEnvio('criativos:marca');
   const [nome, setNome] = useState('');
   const [oQueFaz, setOQueFaz] = useState('');
@@ -342,6 +344,7 @@ export function CriativosMarcaPage() {
       </div>
 
       <ConfirmarAcaoCara
+        exigeCredencial={exigeCredencial}
         aberto={confirmando}
         oQueVaiFazer={
           custos.data === undefined

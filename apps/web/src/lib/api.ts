@@ -184,6 +184,15 @@ export type SessaoDoPortao = {
   nivel: 'admin' | 'visita' | null;
   /** Este servidor tem credencial de visita configurada. */
   temVisita?: boolean;
+  /**
+   * Este servidor exige a credencial DA AÇÃO em cada gasto?
+   *
+   * `ORBIS_SENHA_ACAO` é opcional. Ausente no servidor, ele deixa passar — e a
+   * interface pedia assim mesmo, obrigando quem usa a máquina local a inventar
+   * um texto qualquer para o botão habilitar. Ausente aqui, o padrão é `true`,
+   * que é o lado seguro para quem ainda não recebeu a resposta.
+   */
+  exigeAcao?: boolean;
 };
 
 export type SegmentRecord = {

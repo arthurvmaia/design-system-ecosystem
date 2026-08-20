@@ -245,6 +245,22 @@ export const cookieDeSessao = (opts: {
 /** O cabeçalho onde a credencial da ação viaja. Nunca na URL: URL vai para log. */
 export const CABECALHO_DA_ACAO = 'x-orbis-acao';
 
+/**
+ * Esta tranca está de pé?
+ *
+ * A interface precisa saber, e antes ela não tinha como. O diálogo pedia a
+ * credencial SEMPRE, inclusive numa máquina local sem `ORBIS_SENHA_ACAO`, onde
+ * a docstring acima promete que "esta tranca não existe e o app se comporta
+ * como antes". Tela e servidor discordavam sobre uma tranca — e quem via isso
+ * era quem estava tentando usar o app, tendo de inventar um texto qualquer para
+ * o botão habilitar.
+ *
+ * A CONFIRMAÇÃO continua acontecendo dos dois jeitos: o atrito é o ponto, e ele
+ * não vem da senha e sim de a pessoa ter de dizer que quis este gasto. O que
+ * some, quando a tranca está desligada, é só o campo que não protege nada.
+ */
+export const trancaDeAcaoAtiva = (): boolean => naoVazia(process.env.ORBIS_SENHA_ACAO) !== null;
+
 export const senhaDeAcaoConfere = (tentativa: string | undefined): boolean => {
   const esperada = naoVazia(process.env.ORBIS_SENHA_ACAO);
   if (esperada === null) return true; // tranca desligada

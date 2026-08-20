@@ -11,6 +11,7 @@ import {
   nivelDaSenha,
   nivelDaSessao,
   temNivelDeVisita,
+  trancaDeAcaoAtiva,
 } from '../lib/portao.js';
 
 /**
@@ -62,13 +63,26 @@ const conexaoSegura = (c: Context): boolean => {
 /** Onde a pessoa está: precisa digitar, já entrou (e em que nível), ou o servidor não tem credencial. */
 orbisRoute.get('/sessao', (c) => {
   const estado = estadoDoPortao();
-  if (estado === 'desligado') return c.json({ estado, dentro: true, nivel: 'admin' });
-  if (estado === 'sem-credencial') return c.json({ estado, dentro: false, nivel: null });
+  // `exigeAcao` viaja em TODOS os ramos: é a interface que precisa dele para
+  // saber se pede a credencial do gasto, e ela pergunta uma vez só.
+  const exigeAcao = trancaDeAcaoAtiva();
+  if (estado === 'desligado') {
+    return c.json({ estado, dentro: true, nivel: 'admin', exigeAcao });
+  }
+  if (estado === 'sem-credencial') {
+    return c.json({ estado, dentro: false, nivel: null, exigeAcao });
+  }
   const nivel = nivelDaSessao(
     lerCookieDaSessao(c.req.header('cookie')),
     Math.floor(Date.now() / 1000),
   );
-  return c.json({ estado, dentro: nivel !== null, nivel, temVisita: temNivelDeVisita() });
+  return c.json({
+    estado,
+    dentro: nivel !== null,
+    nivel,
+    temVisita: temNivelDeVisita(),
+    exigeAcao,
+  });
 });
 
 orbisRoute.post('/entrar', async (c) => {
