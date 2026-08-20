@@ -54,7 +54,8 @@
     "biblioteca:conferir": "tsx scripts/conferir-peca.ts",
     "marca:espelhar": "tsx scripts/marca-espelhar.ts",
     "marca:derivar": "tsx scripts/marca-derivar.ts",
-    "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json"
+    "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json",
+    "marca:montar": "tsx scripts/marca-montar.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

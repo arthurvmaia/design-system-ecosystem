@@ -267,6 +267,45 @@ nenhuma peça visual nasce fora do motor.
    pendência sai "aprovada com ressalva", com a ressalva nomeada. Feche com
    `pnpm fila:concluir`.
 
+### `marca`
+
+O cliente pediu a MARCA, não uma peça. O payload segue `PedidoDeMarca`
+(`packages/shared/src/schemas/marca.ts`) e a saída mora em `marcas/<job>/` —
+fora de `criativos/`, porque uma marca não vence, não tem canal e é INSUMO das
+outras duas frentes: a faxina de criativos não pode levá-la junto.
+
+**Uma geração, e só uma.** O símbolo nasce UMA vez e as três versões saem dele
+por cálculo. Pedir "o mesmo símbolo em fundo branco" ao gerador abre um pedido
+NOVO e ele desenha outro símbolo: foi assim que a marca chegava em três modelos
+diferentes em vez de uma marca em três roupas. **Teto: 75 créditos por pedido**,
+que é exatamente o custo de uma geração com `imagem-marca`.
+
+```powershell
+pnpm marca:montar <job> --prompt                  # o prompt EXATO, montado do briefing
+mcp: account_balance                              # o saldo ANTES
+pnpm criativo:razao reservar <job> simbolo 75     # empenha; RECUSA se não couber
+mcp: images_generate ... (preset imagem-marca)    # só depois do empenho
+#   baixe o arquivo para marcas/<job>/simbolo-original.png
+pnpm criativo:razao debitar <job> simbolo 75      # o provedor cobrou
+pnpm marca:montar <job> --simbolo simbolo-original.png
+mcp: account_balance                              # o saldo DEPOIS; a diferença é achado
+```
+
+**Passe o prompt sem reescrever.** Ele é montado por regra a partir do briefing,
+e é ele que fica gravado no resultado — é o que faz a marca ser reproduzível
+(M6). Reescrever transforma "tentar de novo" em "começar de novo", e cada
+tentativa custa 75.
+
+**O que o prompt exige do gerador não é gosto.** Fundo liso de cor única é a
+condição que torna o recorte exato em vez de estimativa; sem texto porque
+modelo erra letra e a grafia da marca é fato; sem sombra nem degradê porque
+meio-tom impede a versão monocromática de ser silhueta.
+
+**A régua é M1..M6** (`docs/regras-de-aceite.md`) e ela mede o que faz uma marca
+ser INUTILIZÁVEL, não se ficou bonita: as três versões são o mesmo símbolo, a
+transparente é transparente de verdade, a monocromática é silhueta, a cor se lê
+sobre branco, e o prompt ficou registrado. Recorte que falhou não vira entrega.
+
 ### `ajustar`
 
 Um retoque num site **já gerado**: "esse título está pequeno", "esse azul não é
@@ -399,6 +438,7 @@ pnpm db:migrate       # aplica migrations
 pnpm criativo:precos  # catálogo de presets + tabela de preço MEDIDA, e o que falta medir
 pnpm criativo:compor  # compõe UMA variação na medida exata, mede no navegador e roda C1..C11
 pnpm criativo:razao   # ver/reservar/debitar/liberar o crédito de um job criativo
+pnpm marca:montar     # o prompt do símbolo (--prompt) e a marca inteira (--simbolo <arq>)
 pnpm marca:derivar    # do símbolo saem as 3 versões da logo, por cálculo (não gasta crédito)
 pnpm marca:espelhar   # regrava o espelho do recorte na frente de Lojas (--seco só confere)
 pnpm fila             # lista a fila

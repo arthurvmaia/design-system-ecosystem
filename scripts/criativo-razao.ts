@@ -43,7 +43,15 @@ import {
   podeProduzir,
   reservaAberta,
 } from '@ds/creative';
-import { PedidoCriativo, criativoPedidoPath, criativosDir, ehJobId } from '@ds/shared';
+import {
+  PedidoCriativo,
+  PedidoDeMarca,
+  criativoPedidoPath,
+  criativosDir,
+  ehJobId,
+  marcaDir,
+  marcaPedidoPath,
+} from '@ds/shared';
 import { executadoDireto } from './executado-direto.js';
 
 const USO = `Uso:
@@ -66,7 +74,7 @@ const morrer: (msg: string) => never = (msg) => {
   process.exit(1);
 };
 
-const caminhoDoRazao = (jobId: string): string => join(criativosDir(jobId), 'razao.json');
+const caminhoDoRazao = (jobId: string): string => join(casaDoJob(jobId).dir, 'razao.json');
 
 const lerLancamentos = (jobId: string): Lancamento[] => {
   const arquivo = caminhoDoRazao(jobId);
@@ -147,7 +155,7 @@ const comTrava = <T>(jobId: string, acao: () => T): T => {
  */
 const acrescentar = (jobId: string, novo: Lancamento): void =>
   comTrava(jobId, () => {
-    const dir = criativosDir(jobId);
+    const dir = casaDoJob(jobId).dir;
     mkdirSync(dir, { recursive: true });
     const lancamentos = [...lerLancamentos(jobId), novo];
     const destino = caminhoDoRazao(jobId);
@@ -156,18 +164,46 @@ const acrescentar = (jobId: string, novo: Lancamento): void =>
     renameSync(temporario, destino);
   });
 
+/**
+ * A CASA de um job: onde mora o pedido dele, e portanto o razão.
+ *
+ * O razão serve as duas frentes que gastam crédito. A peça criativa mora em
+ * `criativos/<job>/` e a marca em `marcas/<job>/`, e são pastas diferentes de
+ * propósito: uma marca não é peça — ela não tem canal, não vence, e é INSUMO do
+ * site e da loja, então a faxina de criativos não pode levá-la junto.
+ *
+ * Um razão por frente seria duas contabilidades para o mesmo saldo, e a segunda
+ * nasceria sem trava e sem teto. Aqui a conta é uma só, e ela descobre onde o
+ * job vive pelo pedido que existe.
+ */
+const casaDoJob = (jobId: string): { readonly dir: string; readonly pedido: string } => {
+  const comoCriativo = { dir: criativosDir(jobId), pedido: criativoPedidoPath(jobId) };
+  if (existsSync(comoCriativo.pedido)) return comoCriativo;
+  const comoMarca = { dir: marcaDir(jobId), pedido: marcaPedidoPath(jobId) };
+  if (existsSync(comoMarca.pedido)) return comoMarca;
+  return morrer(
+    [
+      `Não achei o pedido de ${jobId}.`,
+      `Procurei em ${comoCriativo.pedido}`,
+      `e em ${comoMarca.pedido}.`,
+      'Sem pedido não há teto, e sem teto não há onde parar.',
+    ].join('\n  '),
+  );
+};
+
 const tetoDoPedido = (jobId: string): number => {
-  const arquivo = criativoPedidoPath(jobId);
-  if (!existsSync(arquivo)) {
-    return morrer(
-      `Não achei o pedido de ${jobId} (${arquivo}). Sem ele não há teto, e sem teto não há onde parar.`,
-    );
-  }
-  const lido = PedidoCriativo.safeParse(JSON.parse(readFileSync(arquivo, 'utf8')));
-  if (!lido.success) {
-    return morrer(`O pedido de ${jobId} não passa no contrato: ${lido.error.issues[0]?.message}`);
-  }
-  return lido.data.tetoDeCreditos;
+  const arquivo = casaDoJob(jobId).pedido;
+  const cru: unknown = JSON.parse(readFileSync(arquivo, 'utf8'));
+  // Os dois contratos declaram `tetoDeCreditos`, e é só ele que interessa aqui.
+  // Qual dos dois validar não muda a conta, e adivinhar pela pasta traria um
+  // ramo a mais que reprovaria pedido legítimo da outra frente.
+  const comoCriativo = PedidoCriativo.safeParse(cru);
+  if (comoCriativo.success) return comoCriativo.data.tetoDeCreditos;
+  const comoMarca = PedidoDeMarca.safeParse(cru);
+  if (comoMarca.success) return comoMarca.data.tetoDeCreditos;
+  return morrer(
+    `O pedido de ${jobId} não passa em nenhum dos dois contratos: ${comoCriativo.error.issues[0]?.message}`,
+  );
 };
 
 /** O teto desta rodada, se o dono declarou. Sem default de propósito. */
