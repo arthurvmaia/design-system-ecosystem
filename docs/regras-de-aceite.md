@@ -386,15 +386,31 @@ documento, não sobre o pixel.
 Foi por causa desse caso que a composição passou a derivar o corpo da letra do
 comprimento do texto, em vez de usar uma fração fixa da largura.
 
-### C3. A grafia da marca está exata
+### C3. A marca está na peça, exata
 
-*Por que:* a grafia é FATO, não estilo. É o único pedaço da peça que não admite
+*Por que:* a marca é FATO, não estilo. É o único pedaço da peça que não admite
 interpretação.
 
-*Como se confere:* a marca aparece no texto renderizado com a caixa exata. Se
-aparece só ignorando maiúsculas, REPROVA — `text-transform: uppercase` muda o
-que se vê sem mudar o documento, e "iFood" vira "IFOOD" na tela continuando
-"iFood" no DOM.
+*Como se confere:* depende de COMO ela assina, porque "exata" quer dizer coisas
+diferentes nos dois casos.
+
+Assinando em **texto**: a grafia é procurada no texto do papel `marca`, com a
+caixa exata. Se aparece só ignorando maiúsculas, REPROVA, porque
+`text-transform: uppercase` muda o que se vê sem mudar o documento: "iFood" vira
+"IFOOD" na tela e continua "iFood" no DOM.
+
+A busca é no PAPEL, e não na peça toda. Varrendo todos os textos, uma headline
+que mencionasse a marca satisfazia a regra enquanto a linha da marca estava com
+outra grafia, ou ausente. Sem a geometria medida não há como saber qual texto é
+de qual papel, e aí a varredura larga é o que há: o veredito diz isso na frase,
+em vez de afirmar mais do que mediu.
+
+Assinando em **logotipo**: o arquivo carregou (`naturalWidth` maior que zero) e
+a proporção dele na peça bate com a do arquivo, com 2% de folga de
+arredondamento. As duas coisas são invisíveis para qualquer leitura de texto.
+Uma imagem que não carrega continua ocupando lugar, então a peça sai com um
+buraco onde deveria estar a marca e nenhuma medida de geometria reclama; e um
+logotipo esticado é a falha que o dono da marca reconhece antes de todas.
 
 ### C4. O texto se lê no tamanho real
 
@@ -466,13 +482,24 @@ auditável. Quando o cliente pedir "outra igual a essa", não há como.
 dois vierem corrompidos, os dois concordam e ambos passam — a régua fica verde
 sobre uma peça que mostra "cole��o".
 
-*Como se confere:* o texto renderizado não contém o caractere de substituição
-(U+FFFD). Ele é o rastro que sobra quando alguma etapa leu os bytes com a
-codificação errada.
+*Como se confere:* duas assinaturas, porque a corrupção tem duas formas.
+
+A primeira é a **perda**: o texto não contém o caractere de substituição
+(U+FFFD), que é o rastro que sobra quando alguma etapa leu os bytes com a
+codificação errada e não soube o que fazer com eles.
+
+A segunda é o **embaralhamento**, e ela não deixa rastro nenhum. Quando bytes de
+UTF-8 são lidos como se fossem de uma tabela de um byte, "coleção" vira
+"coleÃ§Ã£o": nada se perdeu, cada byte virou um caractere válido, e não há U+FFFD
+para denunciar. A regra procura a assinatura desse acidente (um `Ã` ou `Â`
+seguido de um caractere da faixa de continuação, ou o `â€` das aspas
+tipográficas), que português correto nunca produz. Há teste com "coleção",
+"Estação" e "São João" provando que ela não acusa peça boa.
 
 *Falhou:* a primeira peça composta deste repositório saiu com o CTA
 "Ver a cole��o", e as nove regras da época ficaram verdes. Quem percebeu foi o
-olho, ao abrir o PNG. Esta regra existe para o olho não precisar ser o único.
+olho, ao abrir o PNG. Esta regra existe para o olho não precisar ser o único —
+e a segunda assinatura existe porque a primeira só pegava metade dos casos.
 
 ### C11. A peça saiu na tipografia da marca
 
