@@ -4,16 +4,18 @@
  * Uso:
  *   pnpm criativo:compor <job_id> <n> --fundo <arquivo>
  *
- * O `<n>` é o número da variação (1, 2, …). O `--fundo` é o arquivo que serve
- * de imagem: o que veio do provedor, ou o que o cliente enviou. Quando o pedido
- * é de upload, ele já sabe qual é e o `--fundo` pode ser omitido.
+ * O `<n>` é o número da variação (1, 2, …). O `--fundo` é o pixel que veio do
+ * provedor. Quando o pedido é de UPLOAD, o fundo é o arquivo do cliente e o
+ * `--fundo` é recusado se apontar para outro: upload vence geração, e trocar o
+ * material dele em silêncio é o contrário do que ele pediu.
  *
  * ## Por que isto é um comando
  *
  * Porque é a parte DETERMINÍSTICA da produção, e ela não pode depender de quem
  * está processando lembrar de fazê-la. Aqui acontecem, na ordem: a composição
- * na dimensão exata, a leitura do texto que o navegador entregou, a conferência
- * pelas regras C1..C9 e a gravação da folha junto da peça.
+ * na dimensão exata, a leitura do texto E DA GEOMETRIA que o navegador
+ * entregou, a conferência pelas regras C1..C11 e a gravação da folha junto da
+ * peça.
  *
  * O que este comando NÃO faz é gerar imagem. O pixel entra por parâmetro,
  * porque quem fala com o provedor é o agente — e porque separar as duas coisas
@@ -21,7 +23,7 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { ArquivoDoRazao, comporPeca, coresDerivadas, cssDaFonte, lerRazao } from '@ds/creative';
 import {
   PedidoCriativo,
@@ -78,16 +80,41 @@ const principal = async (): Promise<void> => {
     );
   }
 
+  /** Um caminho do pedido ou da linha de comando, resolvido contra a pasta do job. */
+  const resolverNoJob = (caminho: string): string =>
+    isAbsolute(caminho) ? resolve(caminho) : resolve(join(dir, caminho));
+
   // O fundo: o do upload quando o pedido é de upload; senão, o que veio no
   // parâmetro. Peça sem imagem nenhuma continua possível — a faixa é o fundo.
-  const doUpload = pedido.imagem.origem === 'upload' ? pedido.imagem.caminhoDoUpload : null;
-  const escolhido = fundoArg ?? doUpload;
-  const fundo =
-    escolhido === null || escolhido === undefined
-      ? null
-      : isAbsolute(escolhido)
-        ? escolhido
-        : join(dir, escolhido);
+  const doUpload =
+    pedido.imagem.origem === 'upload' && pedido.imagem.caminhoDoUpload !== null
+      ? resolverNoJob(pedido.imagem.caminhoDoUpload)
+      : null;
+  const doParametro = fundoArg === undefined ? null : resolverNoJob(fundoArg);
+
+  /**
+   * `--fundo` NÃO passa por cima do arquivo do cliente.
+   *
+   * Enquanto o parâmetro vencia, um `--fundo` apontando para outro arquivo
+   * trocava o material do cliente e a régua não via: `uploadPreservado`
+   * perguntava se ALGUM fundo existia, não se era o dele. C5 ficava verde
+   * exatamente no caso que ela existe para pegar, e C7 e C8 passavam junto,
+   * porque `houvePixelGerado` continuava falso.
+   *
+   * Recusar é o lado certo. "Upload vence geração" é a regra que organiza este
+   * contrato inteiro, e uma peça derivada do arquivo do cliente (recortada,
+   * tratada) é material que precisa de contrato próprio, não de um parâmetro
+   * que substitui em silêncio.
+   */
+  if (doUpload !== null && doParametro !== null && doParametro !== doUpload) {
+    morrer(
+      `Este pedido tem arquivo do cliente (${pedido.imagem.caminhoDoUpload}) e o --fundo aponta para outro (${fundoArg}).\n  ` +
+        'Upload vence geração: trocar o material dele por outro é o contrário do que ele pediu.\n  ' +
+        'Componha sem --fundo, ou aponte para o arquivo do próprio upload.',
+    );
+  }
+
+  const fundo = doUpload ?? doParametro;
   if (fundo !== null && !existsSync(fundo)) morrer(`O fundo não existe: ${fundo}`);
 
   /**
@@ -185,9 +212,17 @@ const principal = async (): Promise<void> => {
     hash: sha(peca.png),
     hashesIrmas,
     houveUpload,
-    // O upload vira o FUNDO da peça, então ele está lá por construção. Quando a
-    // composição passar a recortar ou mascarar o produto, isto vira medição.
-    uploadPreservado: houveUpload ? fundo !== null : null,
+    /**
+     * O upload está na peça? A pergunta é de IDENTIDADE, não de existência.
+     *
+     * Isto perguntava `fundo !== null` — se ALGUM fundo existia. Com o
+     * `--fundo` podendo apontar para outro arquivo, a resposta era "sim" sobre
+     * uma peça que tinha trocado o material do cliente por outro, e C5 ficava
+     * verde justamente no caso que ela existe para pegar. Hoje o parâmetro é
+     * recusado antes de chegar aqui, e esta linha confere a identidade, não a
+     * presença: são duas defesas para o mesmo erro, e a segunda mede.
+     */
+    uploadPreservado: houveUpload ? fundo !== null && fundo === doUpload : null,
     procedencia: {
       modelo: houvePixelGerado ? (pedido.preset ?? 'imagem-padrao') : 'composicao',
       preset: pedido.preset ?? 'imagem-padrao',
