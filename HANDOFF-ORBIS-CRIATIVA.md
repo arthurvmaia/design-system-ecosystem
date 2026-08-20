@@ -174,40 +174,34 @@ sequência real.
 
 ## 5. O que FALTA
 
-### Pendências técnicas
-
-**C. O job entra na fila ANTES do upload e do retrato.**
-`apps/server/src/routes/criativos.ts` — se o `renameSync` falhar, o job fica
-enfileirado e cobrável citando um arquivo que não existe, e o reenvio cai em
-`repetido` sem reparar. *Correção:* o id é determinístico, então gravar
-`pedido.json` e o upload **antes** de `enfileirarUmaVez`.
-
-**E. `--fundo` sobrescreve o upload do cliente**, e C5/C7/C8 ficam verdes:
-`uploadPreservado` pergunta se *algum* fundo existe, não se é o do cliente.
-
-**F. `fila:concluir` reescreve o retrato do pedido** incondicionalmente
-(`scripts/fila-concluir.ts`), e confere o teto contra o payload da fila — o lado
-mutável — em vez do retrato.
-
-**G. Dívida declarada**, na saída completa da revisão
-(`~/.claude/.../tasks/wwuk09phr.output`): C3 casa substring em qualquer papel;
-C10 é cego a mojibake que não gere U+FFFD; o portão aceita folha com uma regra
-só; `razao.json` é read-modify-write sem trava; a chave de envio vive só na
-memória da aba (F5 abre um segundo job).
+As pendências técnicas C, E, F e a dívida G fecharam. O que sobrou depende de
+decisão, não de trabalho.
 
 ### Criação de marca: metade construída
 
 O **recorte** está pronto, testado por pixel e disponível para as três frentes
-(`pnpm marca:derivar`). Falta a metade que **gera o símbolo**, e ela depende de
-duas decisões do dono (abaixo). Enquanto isso não vier, `tipo: 'marca'` NÃO
-entra no contrato: vender o que não tem rota de produção é o defeito nº 6 que a
-revisão pegou no vídeo.
+(`pnpm marca:derivar`). Falta a metade que **gera o símbolo**, e ela depende do
+teto de crédito (abaixo). Enquanto isso não vier, `tipo: 'marca'` NÃO entra no
+contrato: vender o que não tem rota de produção é o defeito nº 6 que a revisão
+pegou no vídeo.
+
+### Dívida declarada que continua
+
+**89 erros de tipo em `scripts/`**, fora os de criativo e de marca (que estão
+limpos). A pasta não tinha typecheck nenhum — 56 arquivos, todos os comandos que
+o processamento roda —, e foi por isso que uma referência solta a
+`pedidoDeReferencia` passou batido durante a própria correção de F. Hoje há
+`pnpm typecheck:scripts`, mas ele NÃO entra no `verificar` até essa limpeza.
+
+**O app da frente de Lojas tem 94 erros de tipo pré-existentes**, e um
+`cloudflare:workers` que não resolve. Nada disso é da consolidação do motor de
+marca: medido antes e depois, o número não mudou.
 
 ### Decisões que continuam com o dono
 
 1. **Teto de crédito da criação de marca.** O símbolo custa 75 (preset
    `imagem-marca`, Nano Banana Pro) por tentativa. Sem teto declarado, nada é
-   gerado.
+   gerado — e é a única peça que falta para a criação de marca ficar completa.
 2. **Vídeo:** manter a venda fechada no POST (feito) ou construir a rota agora?
 3. **Exposição:** o app vai ser alcançado por túnel ou por mais de uma pessoa nos
    próximos dias? Se sim, sobem para bloqueante: exigir `Origin` em todo
@@ -219,8 +213,6 @@ revisão pegou no vídeo.
    como ESPELHO verificado por teste (`pnpm marca:espelhar`). Entrando no
    workspace, o espelho morre e vira um `import`.
 
----
-
 ## 6. Como continuar
 
 ```powershell
@@ -230,9 +222,9 @@ pnpm criativo:precos    # confere se a tabela de preço ainda vale (vence em 14/
 pnpm marca:espelhar --seco  # confere se o recorte da frente de Lojas está em dia
 ```
 
-A ordem que eu seguiria: **C** e **F** (as duas que podem cobrar por um arquivo
-que não existe), depois **E**, depois a dívida **G**. Com o teto declarado, a
-geração do símbolo fecha a criação de marca.
+Com o teto declarado, a geração do símbolo fecha a criação de marca — é o
+próximo passo de produto. Depois disso, a limpeza dos 89 erros de `scripts/`
+para o `typecheck:scripts` poder entrar no `verificar` como portão.
 
 ### O que NÃO fazer
 
