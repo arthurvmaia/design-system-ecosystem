@@ -9,7 +9,7 @@ import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
 import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
-import { derivarLogos } from "@/lib/logo-derivar";
+import { converterParaBlob, derivarLogos } from "@/lib/logo-derivar";
 
 /**
  * O balcão do cliente: quatro passos e uma loja na mão.
@@ -352,9 +352,19 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             if (!resposta.ok) throw new Error("UPLOAD_FALHOU");
             return (await resposta.json() as { url: string }).url;
           };
-          prontas.logo = await subir(versoes.transparente, "logotipo");
-          prontas["logo-fundo-branco"] = await subir(versoes.fundoBranco, "logotipo-fundo-branco");
-          prontas["logo-fundo-preto"] = await subir(versoes.fundoPreto, "logotipo-fundo-preto");
+          /* As versões chegam como data URI, e não como Blob, porque o mesmo
+             algoritmo roda aqui e dentro do Playwright do motor — e Blob não
+             atravessa a fronteira entre a página e o Node. Converter aqui é o
+             preço de haver UMA implementação do recorte para as três frentes. */
+          prontas.logo = await subir(converterParaBlob(versoes.transparente), "logotipo");
+          prontas["logo-fundo-branco"] = await subir(
+            converterParaBlob(versoes.fundoBranco),
+            "logotipo-fundo-branco",
+          );
+          prontas["logo-fundo-preto"] = await subir(
+            converterParaBlob(versoes.fundoPreto),
+            "logotipo-fundo-preto",
+          );
           setImagensGeradas({ ...prontas });
         } catch {
           /* o recorte falhou (fundo que não era liso, por exemplo): a loja

@@ -19,6 +19,9 @@
     "kits:provar": "tsx scripts/kits-provar.ts",
     "projeto:de-kit": "tsx scripts/projeto-de-kit.ts",
     "site:gerar": "tsx scripts/site-gerar.ts",
+    "criativo:compor": "tsx scripts/criativo-compor.ts",
+    "criativo:precos": "tsx scripts/criativo-precos.ts",
+    "criativo:razao": "tsx scripts/criativo-razao.ts",
     "fila": "tsx scripts/fila.ts",
     "extrair": "tsx scripts/extrair.ts",
     "explorar": "tsx scripts/explorar.ts",
@@ -48,7 +51,9 @@
     "resegmentar": "tsx scripts/resegmentar.ts",
     "biblioteca:deduplicar": "tsx scripts/deduplicar-biblioteca.ts",
     "biblioteca:religar": "tsx scripts/religar-biblioteca.ts",
-    "biblioteca:conferir": "tsx scripts/conferir-peca.ts"
+    "biblioteca:conferir": "tsx scripts/conferir-peca.ts",
+    "marca:espelhar": "tsx scripts/marca-espelhar.ts",
+    "marca:derivar": "tsx scripts/marca-derivar.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
@@ -63,6 +68,7 @@
     "pnpm": ">=9.0.0"
   },
   "dependencies": {
+    "@ds/creative": "workspace:^",
     "@ds/explorer": "workspace:^",
     "@ds/indexer": "workspace:^",
     "@ds/segmenter": "workspace:^",

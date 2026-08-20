@@ -1,12 +1,4 @@
-/* ATENÇÃO: ARQUIVO ESPELHADO. NÃO EDITE AQUI.
- *
- * O original mora em `packages/creative-engine/src/marca/derivar-navegador.ts`,
- * no motor criativo, porque as três frentes do portal precisam do MESMO recorte:
- * a logo do site, a da loja e a do criativo têm de ser a mesma logo.
- *
- * Para mudar o algoritmo, edite o original e rode `pnpm marca:espelhar`.
- * Editar aqui faz a suíte reprovar, de propósito.
- */
+/// <reference lib="dom" />
 
 /**
  * AS VERSÕES DA LOGO, derivadas de UM símbolo — o algoritmo, canônico.
