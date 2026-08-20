@@ -270,6 +270,15 @@ export const PecaDaMarca = z.enum([
   'lockup-horizontal',
   'lockup-vertical',
   'nome-por-extenso',
+  /**
+   * O símbolo em VETOR, traçado do recorte.
+   *
+   * É a peça que faltava para tamanho grande: fachada, veículo, bordado. A
+   * espec proíbe "SVG que seja apenas bitmap disfarçado", e a diferença se mede
+   * — um arquivo com `<image>` e base64 dentro é o PNG com outra extensão, e
+   * ampliá-lo devolve o mesmo borrão.
+   */
+  'logotipo-svg',
   /** Os favicons, nos lados de `LADOS_DO_FAVICON`. */
   'favicon-16',
   'favicon-32',

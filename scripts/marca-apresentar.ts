@@ -464,9 +464,18 @@ const principal = async (): Promise<void> => {
     pendencias.push(
       'Conversão para impressão (CMYK) depende do perfil da gráfica e não foi verificada. Peça a prova de cor antes de imprimir em escala.',
     );
-    pendencias.push(
-      'O símbolo em vetor (SVG) ainda não foi produzido. Para aplicação em tamanho muito grande (fachada, veículo), ele é necessário.',
-    );
+    /**
+     * A pendência do vetor só existe enquanto o vetor não existe.
+     *
+     * Ela era incondicional, e uma pendência que não some quando o problema
+     * acaba ensina o cliente a ignorar a página de pendências inteira.
+     */
+    const arquivoDoVetor = join(dir, 'logotipo.svg');
+    if (!existsSync(arquivoDoVetor)) {
+      pendencias.push(
+        'O símbolo em vetor (SVG) ainda não foi produzido. Para aplicação em tamanho muito grande (fachada, veículo), ele é necessário.',
+      );
+    }
     if (conceitosSemMobile.length > 0) {
       pendencias.push(
         `Falta a versão de telefone de: ${conceitosSemMobile.join(', ')}. O banner de site precisa das duas, e a do telefone não é um recorte da larga — o texto foi diagramado para a largura que o recorte destruiria.`,
@@ -632,6 +641,26 @@ const principal = async (): Promise<void> => {
          * já vale nos dois comandos que o gravam; faltava valer no que o
          * reescreve por último.
          */
+        /**
+         * O vetor entra na lista de peças do resultado.
+         *
+         * Ele nasce fora do `derivarPacoteDaMarca` — é uma geração paga, e não
+         * um recorte —, então `marca:montar` não o conhece. Sem entrar aqui,
+         * ele ficaria em disco e fora da entrega: o portão só confere os
+         * arquivos que o resultado CITA.
+         *
+         * A medida sai do próprio arquivo. Um SVG sem `width`/`height` ainda
+         * tem `viewBox`, e é dele que a caixa real vem.
+         */
+        const pecas = [...lido.data.pecas];
+        if (existsSync(arquivoDoVetor) && !pecas.some((x) => x.peca === 'logotipo-svg')) {
+          const svg = readFileSync(arquivoDoVetor, 'utf8');
+          const caixa = /viewBox="\s*[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)/.exec(svg);
+          const largura = Math.round(Number(caixa?.[1] ?? 0)) || 1024;
+          const altura = Math.round(Number(caixa?.[2] ?? 0)) || 1024;
+          pecas.push({ peca: 'logotipo-svg', caminho: 'logotipo.svg', largura, altura });
+        }
+
         const arquivoDoRazao = join(dir, 'razao.json');
         let custoGasto = lido.data.custoGasto;
         if (existsSync(arquivoDoRazao)) {
@@ -647,7 +676,7 @@ const principal = async (): Promise<void> => {
         }
         writeFileSync(
           arquivoDoResultado,
-          JSON.stringify({ ...lido.data, conferencia: folha, custoGasto }, null, 2),
+          JSON.stringify({ ...lido.data, pecas, conferencia: folha, custoGasto }, null, 2),
           'utf8',
         );
 

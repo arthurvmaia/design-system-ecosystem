@@ -119,6 +119,16 @@ const ENTREGA: readonly {
    * obrigatório.
    */
   {
+    /**
+     * O vetor. Nome que diz QUANDO usar, como todos os outros desta pasta:
+     * quem abre procurando "a logo para o letreiro" não sabe o que é SVG.
+     */
+    de: 'logotipo.svg',
+    pasta: 'Logo',
+    para: 'Logo em vetor (fachada, veiculo, bordado).svg',
+    obrigatorio: false,
+  },
+  {
     de: 'artes/arte-completa-1.png',
     pasta: 'Artes prontas',
     para: 'Banner do site 1.png',
