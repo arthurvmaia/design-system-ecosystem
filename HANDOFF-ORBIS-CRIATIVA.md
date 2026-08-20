@@ -5,18 +5,25 @@ O `HANDOFF.md` descreve o produto; o `HANDOFF-RETOMADA.md` descreve onde a frent
 de Design Systems parou. Este descreve **o que foi construído, o que já foi
 medido e o que falta**.
 
-Estado do repositório: branch **`orbis-criativa`**, seis commits a partir de
+Estado do repositório: branch **`orbis-criativa`**, 13 commits a partir de
 `275931b`. Árvore limpa. Suíte com **uma** falha, pré-existente e sem relação
 com este trabalho (`scripts/acervo-regressao.test.ts`, 7,1% de bytes duplicados
 no acervo local da máquina — a mesma que o `HANDOFF-RETOMADA.md` já registrava).
 
 ```
-ad83142  Os documentos param de prometer o que ninguem faz
-e6e1e78  Um motor de marca so, para as tres frentes do portal
-4d62218  O servidor da frente Criativos: pedido, upload por papel e custo medido
-f018f84  A direcao de marca chega ate a peca, em vez de morrer no navegador
-eed3d3b  A regua para de medir o documento e passa a medir a PECA
-07d2569  O contrato do pedido criativo, o preco MEDIDO e o razao de credito
+  d9fcd9e Handoff: C, E, F e a divida G fecharam
+  e7139af O razao ganha trava, e a chave de envio sobrevive ao F5 (divida G)
+  22f0d08 Docs: o texto de C3 e C10 que nao tinha chegado no commit anterior
+  22bcb7f A divida G da regua: papel certo, mojibake e folha inteira
+  9a8b629 `--fundo` para de passar por cima do arquivo do cliente (E)
+  d5cfd36 O job para de nascer cobravel apontando para o vazio (C e F)
+  2255589 Handoff: o que a regua passou a medir, e o que ainda falta
+  ad83142 Os documentos param de prometer o que ninguem faz
+  e6e1e78 Um motor de marca so, para as tres frentes do portal
+  4d62218 O servidor da frente Criativos: pedido, upload por papel e custo medido
+  f018f84 A direcao de marca chega ate a peca, em vez de morrer no navegador
+  eed3d3b A regua para de medir o documento e passa a medir a PECA
+  07d2569 O contrato do pedido criativo, o preco MEDIDO e o razao de credito
 ```
 
 O plano completo, com a matriz de lacunas e as fases, está em
