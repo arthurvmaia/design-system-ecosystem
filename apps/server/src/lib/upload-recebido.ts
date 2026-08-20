@@ -47,6 +47,52 @@ export type RecusaDeUpload = {
  * vira um retângulo preto na tela e no site entregue, e nada avisa. `analisarVideo`
  * só recusa quando TEM CERTEZA; o que ela não sabe afirmar, passa.
  */
+/**
+ * A assinatura de cada formato de imagem, nos primeiros bytes do arquivo.
+ *
+ * Chamam-se "números mágicos" e existem porque a extensão é o que o REMETENTE
+ * diz, e o conteúdo é o que o arquivo É. Um HTML com script dentro salvo como
+ * `foto.png` passava por aqui: o nome dizia imagem, ninguém abria o arquivo, e
+ * ele ia parar servido pelo mesmo servidor que o app.
+ *
+ * O `nosniff` global impede que o navegador o EXECUTE como página, e essa é a
+ * defesa que vale mesmo — mas ela é do navegador do usuário. Uma segunda
+ * conferência aqui não custa nada e não depende de cliente nenhum se comportar.
+ */
+const ASSINATURAS: readonly { readonly nome: string; readonly bytes: readonly number[] }[] = [
+  { nome: 'png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  { nome: 'jpeg', bytes: [0xff, 0xd8, 0xff] },
+  { nome: 'gif', bytes: [0x47, 0x49, 0x46, 0x38] },
+  // BMP, que aparece em captura de tela de Windows.
+  { nome: 'bmp', bytes: [0x42, 0x4d] },
+];
+
+/** WebP e AVIF vivem dentro de um contêiner, então a marca não fica no byte 0. */
+const contemNoInicio = (bytes: Uint8Array, texto: string, ate: number): boolean => {
+  const alvo = [...texto].map((ch) => ch.charCodeAt(0));
+  for (let i = 0; i + alvo.length <= Math.min(bytes.length, ate); i += 1) {
+    if (alvo.every((b, j) => bytes[i + j] === b)) return true;
+  }
+  return false;
+};
+
+/**
+ * Estes bytes são de uma imagem que a web abre?
+ *
+ * `null` quando o arquivo é curto demais para afirmar — e aí ele PASSA, pela
+ * mesma regra do vídeo logo abaixo: recusar o que não se sabe afirmar
+ * transformaria esta conferência numa fonte de recusa injusta.
+ */
+export const pareceImagem = (bytes: Uint8Array): boolean | null => {
+  if (bytes.length < 12) return null;
+  for (const a of ASSINATURAS) {
+    if (a.bytes.every((b, i) => bytes[i] === b)) return true;
+  }
+  // WebP: "RIFF" no começo e "WEBP" no byte 8. AVIF/HEIC: "ftyp" perto do topo.
+  if (contemNoInicio(bytes, 'WEBP', 16) || contemNoInicio(bytes, 'ftyp', 16)) return true;
+  return false;
+};
+
 export const conferirUpload = (opts: {
   readonly nome: string;
   readonly tamanho: number;
@@ -62,6 +108,22 @@ export const conferirUpload = (opts: {
   }
 
   const ext = extname(opts.nome).toLowerCase();
+
+  /**
+   * A extensão diz IMAGEM? Então o conteúdo tem de ser imagem.
+   *
+   * A recusa é 415 e a frase diz o que houve de verdade: "o nome termina em
+   * .png e o conteúdo não é de imagem" é acionável; "arquivo inválido" manda a
+   * pessoa adivinhar.
+   */
+  if (EXT_IMAGEM.has(ext) && pareceImagem(opts.bytes) === false) {
+    return {
+      status: 415,
+      error: 'conteudo_nao_e_imagem',
+      message: `O nome termina em ${ext}, mas o conteúdo do arquivo não é de imagem. Reenvie o arquivo original, ou exporte de novo a partir do editor.`,
+    };
+  }
+
   if (EXT_VIDEO.has(ext)) {
     const analise = analisarVideo(opts.bytes);
     if (!analise.tocaNaWeb && analise.motivo !== null) {

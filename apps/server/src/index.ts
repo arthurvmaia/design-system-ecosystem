@@ -6,6 +6,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { cabecalhosDeSeguranca } from './lib/cabecalhos-de-seguranca.js';
 import { getExecutionMode } from './lib/execution-mode.js';
 import {
   avisoDoSegredoDeSessao,
@@ -40,6 +41,9 @@ const app = new Hono();
 const agoraEmS = (): number => Math.floor(Date.now() / 1000);
 
 app.use('*', logger());
+// Antes de tudo: os cabeçalhos valem para TODA resposta, inclusive as de erro e
+// as que não chegam a passar pelo portão.
+app.use('*', cabecalhosDeSeguranca);
 // Devolver o próprio `origin` liberava qualquer site a chamar esta API com
 // credenciais — inclusive um site aberto por acaso no navegador, já que o
 // servidor escuta em localhost. Fixamos na origem do app, que é o que o

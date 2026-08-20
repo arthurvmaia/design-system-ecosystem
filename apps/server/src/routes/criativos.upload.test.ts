@@ -46,6 +46,21 @@ const montar = async (t: { after: (fn: () => void) => void }) => {
 
   const app = new Hono().route('/api/criativos', criativosRoute);
 
+  /**
+   * Um PNG de MENTIRA, mas com o cabeçalho de verdade.
+   *
+   * Os bytes seguintes continuam sendo o texto que cada teste quer identificar —
+   * o que importa aqui é o caminho do arquivo, não o pixel. O cabeçalho entra
+   * porque a rota passou a conferir o CONTEÚDO e não só a extensão: um `.png`
+   * cujos bytes não são de imagem é recusado com 415, e é isso que se quer.
+   *
+   * Sem ele, estes testes passariam a exercitar a recusa em vez do caminho
+   * feliz — e diriam que a rota está quebrada quando ela está certa.
+   */
+  const CABECALHO_PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const comoPng = (texto: string): Blob =>
+    new Blob([CABECALHO_PNG, new TextEncoder().encode(texto)], { type: 'image/png' });
+
   const subir = async (
     chave: string,
     nome: string,
@@ -53,7 +68,7 @@ const montar = async (t: { after: (fn: () => void) => void }) => {
     papel?: 'imagem' | 'logotipo',
   ) => {
     const fd = new FormData();
-    fd.append('file', new Blob([conteudo], { type: 'image/png' }), nome);
+    fd.append('file', comoPng(conteudo), nome);
     const q = papel === undefined ? '' : `?papel=${papel}`;
     return await app.request(`http://x/api/criativos/rascunhos/${chave}/arquivo${q}`, {
       method: 'POST',
@@ -68,7 +83,7 @@ const montar = async (t: { after: (fn: () => void) => void }) => {
       body: JSON.stringify({ chaveDeEnvio: chave, pedido }),
     });
 
-  return { shared, subir, enviar, root };
+  return { app, shared, subir, enviar, root };
 };
 
 test('PROVA: pedido de upload SEM arquivo enviado nao entra', async (t) => {
@@ -100,7 +115,9 @@ test('o arquivo enviado vira o caminho do pedido, dentro da pasta do job', async
   // E o arquivo está LÁ, não só citado.
   const alvo = join(shared.criativoUploadDir(job.id), caminho);
   assert.ok(existsSync(alvo), 'o arquivo do cliente mudou de casa junto com o pedido');
-  assert.equal(readFileSync(alvo, 'utf8'), 'bytes-de-mentira');
+  // O cabeçalho PNG vai na frente de todo fixture agora, então o que se
+  // confere é a MARCA que este teste escreveu, e não o arquivo inteiro.
+  assert.ok(readFileSync(alvo, 'utf8').endsWith('bytes-de-mentira'));
 });
 
 test('o rascunho e esvaziado depois de o pedido entrar', async (t) => {
@@ -127,7 +144,9 @@ test('reenviar TROCA o arquivo do rascunho, em vez de acumular', async (t) => {
   const dentro = readdirSync(shared.criativoUploadDir(job.id));
   assert.equal(dentro.length, 1, 'um envio, um arquivo');
   assert.equal(dentro[0], caminho);
-  assert.equal(readFileSync(join(shared.criativoUploadDir(job.id), caminho), 'utf8'), 'segunda');
+  assert.ok(
+    readFileSync(join(shared.criativoUploadDir(job.id), caminho), 'utf8').endsWith('segunda'),
+  );
 });
 
 test('sem arquivo no corpo, a rota de upload recusa', async (t) => {
@@ -217,8 +236,8 @@ test('PROVA: a imagem e o logotipo tem GAVETAS separadas, um nao apaga o outro',
   assert.equal(r.status, 202);
   const { job } = (await r.json()) as { job: { id: string } };
   const dir = shared.criativoUploadDir(job.id);
-  assert.equal(readFileSync(join(dir, foto.caminho), 'utf8'), 'a-foto');
-  assert.equal(readFileSync(join(dir, logo.caminho), 'utf8'), 'a-logo');
+  assert.ok(readFileSync(join(dir, foto.caminho), 'utf8').endsWith('a-foto'));
+  assert.ok(readFileSync(join(dir, logo.caminho), 'utf8').endsWith('a-logo'));
 });
 
 test('PROVA: os dois campos do pedido nunca apontam para o MESMO arquivo', async (t) => {
@@ -248,7 +267,7 @@ test('PROVA: os dois campos do pedido nunca apontam para o MESMO arquivo', async
   );
   const dir = shared.criativoUploadDir(job.id);
   assert.equal(readdirSync(dir).length, 2, 'os dois arquivos sobrevivem');
-  assert.equal(readFileSync(join(dir, logo.caminho), 'utf8'), 'a-logo-da-marca');
+  assert.ok(readFileSync(join(dir, logo.caminho), 'utf8').endsWith('a-logo-da-marca'));
 });
 
 test('papel desconhecido recusa, em vez de guardar num lugar que ninguem le', async (t) => {
@@ -335,4 +354,34 @@ test('PROVA: chave reusada para pedido DIFERENTE continua sendo conflito', async
   const outro = await enviar('conf', { ...base, marca: 'Outra Marca Inteira' });
   assert.equal(outro.status, 409);
   assert.equal(((await outro.json()) as { error: string }).error, 'chave_ja_usada');
+});
+
+test('PROVA: .png cujo CONTEUDO nao e imagem e recusado', async (t) => {
+  // A extensão é o que o remetente DIZ; o conteúdo é o que o arquivo É. Um HTML
+  // com script salvo como foto.png passava: o nome dizia imagem, ninguém abria o
+  // arquivo, e ele ia parar servido pelo mesmo servidor que o app.
+  const { app } = await montar(t);
+  const fd = new FormData();
+  fd.append(
+    'file',
+    new Blob(['<html><script>alert(1)</script></html>'], { type: 'image/png' }),
+    'foto.png',
+  );
+  const r = await app.request('http://x/api/criativos/rascunhos/html-disfarcado/arquivo', {
+    method: 'POST',
+    body: fd,
+  });
+  assert.equal(r.status, 415);
+  const corpo = (await r.json()) as { error: string; message: string };
+  assert.equal(corpo.error, 'conteudo_nao_e_imagem');
+  assert.match(corpo.message, /o conteúdo do arquivo não é de imagem/);
+});
+
+test('um PNG de verdade continua entrando', async (t) => {
+  // O contraponto, e ele é a metade que importa: sem este, a regra acima estaria
+  // provada por uma recusa que poderia estar recusando tudo.
+  const { subir } = await montar(t);
+  const r = await subir('png-de-verdade', 'boa.png', 'pixels');
+  // 201: a rota CRIA o arquivo do rascunho.
+  assert.equal(r.status, 201, await r.text());
 });
