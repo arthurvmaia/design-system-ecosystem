@@ -36,6 +36,8 @@ export type LogosEmBytes = {
   readonly transparente: Uint8Array;
   readonly fundoBranco: Uint8Array;
   readonly fundoPreto: Uint8Array;
+  /** A silhueta branca com fundo transparente: a versão para fundo escuro. */
+  readonly negativo: Uint8Array;
 };
 
 /**
@@ -100,6 +102,7 @@ export const derivarLogosDaMarca = async (
       transparente: bytesDoDataUri(versoes.transparente),
       fundoBranco: bytesDoDataUri(versoes.fundoBranco),
       fundoPreto: bytesDoDataUri(versoes.fundoPreto),
+      negativo: bytesDoDataUri(versoes.negativo),
     };
   } finally {
     await pagina.close();

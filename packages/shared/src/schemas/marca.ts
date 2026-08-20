@@ -189,6 +189,14 @@ export const PecaDaMarca = z.enum([
   'logotipo-fundo-branco',
   /** A silhueta, para bordado, carimbo e uma tinta só. */
   'logotipo-fundo-preto',
+  /**
+   * O NEGATIVO: a silhueta branca com fundo transparente.
+   *
+   * É a versão que vai por cima de fundo escuro. A falta dela tem um custo que
+   * só apareceu na peça pronta: o logotipo colorido sobre uma faixa da PRÓPRIA
+   * cor da marca some, e nenhuma leitura de texto percebe.
+   */
+  'logotipo-negativo',
   /** O símbolo como o gerador o entregou, antes do recorte. */
   'simbolo-original',
 ]);

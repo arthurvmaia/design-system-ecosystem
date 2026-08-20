@@ -1,7 +1,7 @@
 # Plano de endurecimento do Orbis, roteirizado pelo Frieren DAST-AI
 
 > **Quem escreveu:** sessão paralela de segurança, 20/08/2026.
-> **Estado:** três dos cinco achados JÁ CORRIGIDOS, commitados na branch `seguranca-dast`.
+> **Estado:** **os cinco achados da primeira passada estão CORRIGIDOS**, mais um sexto da segunda passada. Tudo na branch `seguranca-dast`, em três commits. A seção 6 traz o que a segunda passada encontrou e ainda espera decisão do dono.
 > **Este arquivo não é versionado de propósito.** Ele é o canal entre as duas abas, e não conteúdo do repositório. Tracká-lo faria o `git merge` da branch de segurança falhar com "untracked working tree file would be overwritten", que é o erro mais chato possível na hora mais errada possível. O "porquê" de cada correção mora no código e na mensagem do commit, que é onde este repositório sempre pôs as razões.
 
 ---
@@ -73,7 +73,7 @@ Mora em `packages/shared` porque há quatro lugares no repositório que abrem UR
 
 **O que ficou:** a segunda pergunta, mais o teste que a prova (`tools.test.ts`, o caso da unidade vizinha).
 
-### A3. Desligar a suíte inteira de fora — NÃO CORRIGIDO, arquivo ocupado
+### A3. Desligar a suíte inteira de fora — CORRIGIDO
 
 `business_logic_agent` + `auth_agent`. Risco alto no formato Vercel, nenhum no formato túnel.
 
@@ -81,15 +81,19 @@ Mora em `packages/shared` porque há quatro lugares no repositório que abrem UR
 
 CORS não cobre isto: ele decide quem LÊ a resposta, não quem MANDA o pedido.
 
-**Correção certa** (a que cobre a classe inteira, e não só esta rota): no guarda de `apps/server/src/index.ts`, para todo método que não é leitura, exigir que `Origin` bata com `WEB_ORIGIN` ou que `Sec-Fetch-Site` seja `same-origin`. É o mesmo lugar onde a tranca do nível `visita` já mora, pelo mesmo motivo escrito lá.
+**O que ficou:** `apps/server/src/lib/origem-permitida.ts`, ligado no guarda de `index.ts`. Cobre a classe inteira, e não só esta rota.
 
-**Por que não entrou:** `index.ts` foi alterado no commit da outra branch.
+Três decisões que valem saber:
 
-### A4. O erro de qualquer rota devolve a mensagem crua — NÃO CORRIGIDO, arquivo ocupado
+- **Entra ANTES do portão**, e não depois, porque o caso pior é o de portão DESLIGADO (`ORBIS_LOCAL=1`): ali não há sessão para conferir, e o formulário alcança `localhost:8787` sem credencial nenhuma. Depois do `desligado` a conferência ficaria de fora justamente onde mais faz falta.
+- **Duas origens valem:** o `WEB_ORIGIN` declarado e a origem do PRÓPRIO pedido. A segunda existe porque o endereço do túnel é sorteado na hora e nunca está no `.env`; conferir só contra `WEB_ORIGIN` trancaria o app para fora de si mesmo.
+- **Ausência de `Origin` LIBERA**, e isso não é buraco: o navegador não tem como omitir esse cabeçalho numa escrita feita por uma página, então "sem `Origin`" só acontece em `curl`, script, teste e `PROCESSAR.bat`. Recusar ali quebraria a automação inteira sem fechar porta nenhuma.
 
-Risco baixo. `apps/server/src/index.ts:141`, no `onError`: `message: err.message`. O `asset.ts` tem o cuidado declarado de não vazar caminho físico, e o `onError` vaza por fora dele. Um `ENOENT` leva `C:\Users\arthur.maia\...` até o navegador, e num túnel público isso sai para a internet. Correção: texto fixo na resposta, detalhe só no `console.error` que já está lá.
+### A4. O erro de qualquer rota devolve a mensagem crua — CORRIGIDO
 
-**Por que não entrou:** mesmo arquivo do A3.
+Risco baixo. `apps/server/src/index.ts`, no `onError`: `message: err.message`. O `asset.ts` tem o cuidado declarado de não vazar caminho físico, e o `onError` desfazia esse cuidado por fora. Um `ENOENT` levava `C:\Users\arthur.maia\...` até o navegador, e num túnel público isso sai para a internet.
+
+**O que ficou:** texto fixo na resposta, detalhe só no `console.error` que já estava lá. Conferido antes: `internal_error` não é lido em lugar nenhum do front.
 
 ### A5. A página do portão saía sem cabeçalho de segurança — CORRIGIDO
 
@@ -112,44 +116,3 @@ A CSP tem essa diretiva SÓ. Mandar `default-src` daqui quebraria o bundle do ap
 
 ---
 
-## 3. O que ficou de fora, e por quê
-
-**Dois arquivos, os dois porque a outra branch os alterou.** A regra desta aba era não escrever onde ela escreveu, e ela vale até o fim:
-
-| Arquivo | O que falta ali |
-|---|---|
-| `apps/server/src/index.ts` | A3 (checagem de origem nas escritas) e A4 (`onError` sem `err.message`) |
-| `apps/server/.env.example` | Documentar o `ORBIS_PERMITIR_REDE_INTERNA` |
-
-O trecho do `.env.example`, pronto para colar depois do merge:
-
-```
-# Buscar na rede interna (localhost, 10.x, 192.168.x, o metadata das nuvens).
-# Desligado por padrão, e é de propósito: a URL da extração é digitada por quem
-# usa o app, e sem isto ela alcançaria a própria máquina e a rede de quem
-# hospeda o servidor. Ligue só quando o alvo for um site SEU rodando local.
-ORBIS_PERMITIR_REDE_INTERNA=
-```
-
-**Também não auditado nesta passada**, para ninguém achar que está coberto: o front (`apps/web`) em profundidade, o `preview.ts` inteiro (1327 linhas, com montagem de HTML por `innerHTML` dentro do documento sandbox), o `packages/engine-v2`, o app de lojas Shopify, e os outros três pontos de fetch (`packages/explorer/src/explore.ts:315`, `packages/explorer/src/browser.ts:223`, `packages/engine-v2/src/engine.ts:451`) — o guarda existe e é importável, mas só o `fetch-url.ts` foi ligado nele, porque é o único que a rota `POST /api/design-systems` alcança.
-
----
-
-## 4. O que foi medido
-
-| | |
-|---|---|
-| Testes novos | 26 (16 no guarda de destino, 7 na guarda de caminho, 3 no restante) |
-| Suíte rápida | 1818 testes, 1816 passando, 1 pulado |
-| Única falha | `acervo-regressao`, fase 3: 7,1% de bytes duplicados entre segmentos contra meta de 5% |
-| A falha é minha? | **Não.** Rodada com as mudanças guardadas no stash, ela falha idêntica. Mede o acervo em `~/design-system-ecosystem`, não o código. |
-| `pnpm typecheck` | 13 pacotes, 13 passando |
-| `pnpm lint` | 545 arquivos, limpo |
-
----
-
-## 5. O que muda para quem usa o app
-
-**Nada, na tela.** Nenhuma correção mexe em layout, fluxo ou botão. É o objetivo: o que muda é o que dá para fazer contra o app, e não o que ele faz.
-
-Há **uma** mudança de comportamento visível, e ela é deliberada: extrair um endereço que aponte para a própria máquina ou para a rede interna passa a ser recusado com explicação, em vez de aceito. Quem precisar disso liga `ORBIS_PERMITIR_REDE_INTERNA=1`. Um site público, que é o caso normal, continua igual.

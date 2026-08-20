@@ -52,6 +52,15 @@ export type LogosDerivadas = {
   readonly fundoBranco: string;
   /** A silhueta do mesmo símbolo, branca, sobre preto. */
   readonly fundoPreto: string;
+  /**
+   * O NEGATIVO: a mesma silhueta branca, com fundo transparente.
+   *
+   * É a versão que vai por cima de qualquer fundo escuro — e a falta dela tem
+   * um custo que só aparece na peça pronta: o logotipo colorido sobre uma faixa
+   * da própria cor da marca some, e nenhuma leitura de texto percebe.
+   * Aconteceu num criativo de tráfego, e é por isso que ela existe.
+   */
+  readonly negativo: string;
 };
 
 /**
@@ -181,16 +190,22 @@ export async function derivarLogos(origem: string): Promise<LogosDerivadas> {
    * centralizado com respiro. Centralizar antes de recortar centralizaria o
    * quadro, não a forma — e o gerador quase nunca põe o símbolo no meio exato.
    */
+  /**
+   * Desenha uma versão. Máscara e fundo são independentes de propósito.
+   *
+   * A ordem é: o símbolo recortado entra; se for silhueta, o ALFA dele vira
+   * máscara e recebe uma cor só; se houver fundo, ele é pintado ATRÁS. Assim as
+   * quatro versões saem das mesmas duas chaves, em vez de cada uma ter seu
+   * caminho — e a negativa, que é máscara sem fundo, deixa de ser um caso
+   * especial e passa a ser uma combinação.
+   */
   const desenhar = (fundo: string | null, silhueta: boolean): string => {
     const canvas = document.createElement('canvas');
     canvas.width = LADO;
     canvas.height = LADO;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('CANVAS_INDISPONIVEL');
-    if (fundo !== null) {
-      ctx.fillStyle = fundo;
-      ctx.fillRect(0, 0, LADO, LADO);
-    }
+
     const disponivel = LADO * (1 - MARGEM * 2);
     const escala = Math.min(disponivel / util.largura, disponivel / util.altura);
     const larguraFinal = util.largura * escala;
@@ -207,24 +222,28 @@ export async function derivarLogos(origem: string): Promise<LogosDerivadas> {
       larguraFinal,
       alturaFinal,
     );
+
     if (silhueta) {
       /* Monocromática de verdade: a máscara é o ALFA do recorte, pintada de uma
          cor só. É esta versão que sobrevive a bordado, carimbo e uma tinta. */
       ctx.globalCompositeOperation = 'source-in';
       ctx.fillStyle = BRANCO;
       ctx.fillRect(0, 0, LADO, LADO);
-      ctx.globalCompositeOperation = 'destination-over';
-      ctx.fillStyle = PRETO;
-      ctx.fillRect(0, 0, LADO, LADO);
-      ctx.globalCompositeOperation = 'source-over';
     }
+    if (fundo !== null) {
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = fundo;
+      ctx.fillRect(0, 0, LADO, LADO);
+    }
+    ctx.globalCompositeOperation = 'source-over';
     return canvas.toDataURL('image/png');
   };
 
   return {
     transparente: desenhar(null, false),
     fundoBranco: desenhar(BRANCO, false),
-    fundoPreto: desenhar(null, true),
+    fundoPreto: desenhar(PRETO, true),
+    negativo: desenhar(null, true),
   };
 }
 

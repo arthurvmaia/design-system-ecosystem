@@ -235,10 +235,11 @@ test('PROVA: o logotipo entra SEM deformar, e a regua mede a proporcao', async (
 
   const marca = peca.caixas.find((c) => c.papel === 'marca');
   assert.ok(marca !== undefined);
-  assert.deepEqual(
-    marca.imagem,
-    { larguraReal: 600, alturaReal: 200 },
-    'a régua precisa da dimensão REAL do arquivo para saber se ele deformou',
+  assert.equal(marca.imagem?.larguraReal, 600);
+  assert.equal(marca.imagem?.alturaReal, 200);
+  assert.ok(
+    marca.imagem?.tinta != null && marca.imagem?.fundoAtras != null,
+    'a régua precisa da tinta e do fundo para saber se a marca SE VÊ',
   );
   const proporcao = (marca.direita - marca.esquerda) / (marca.base - marca.topo);
   assert.ok(Math.abs(proporcao - 3) < 0.06, `saiu na proporção ${proporcao.toFixed(2)}, não 3`);

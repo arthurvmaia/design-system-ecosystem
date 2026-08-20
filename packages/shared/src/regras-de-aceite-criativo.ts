@@ -1,4 +1,5 @@
 import type { ResultadoDeAceite, VereditoDaRegra } from './regras-de-aceite.js';
+import { contrasteRatio } from './schemas/brand.js';
 import {
   DIMENSAO_DO_FORMATO,
   type FormatoCriativo,
@@ -73,7 +74,23 @@ export type CaixaDoPapel = {
    * deformada? A proporção do arquivo contra a proporção da caixa responde
    * exato, e logo esticada é a falha que o cliente reconhece antes de todas.
    */
-  readonly imagem?: { readonly larguraReal: number; readonly alturaReal: number } | null;
+  readonly imagem?: {
+    readonly larguraReal: number;
+    readonly alturaReal: number;
+    /**
+     * A tinta DOMINANTE da imagem, em `#RRGGBB`, e o fundo em que ela pousa.
+     *
+     * Existe porque um logotipo pode carregar, não deformar, estar dentro do
+     * quadro — e mesmo assim não aparecer. Medido num criativo de tráfego
+     * real: o logotipo saiu na cor da marca sobre a faixa de leitura, que é a
+     * MESMA cor, e sumiu. Nenhuma leitura de texto percebe isso, e a peça foi
+     * aprovada com a marca invisível.
+     *
+     * `null` quando ninguém amostrou o pixel.
+     */
+    readonly tinta?: string | null;
+    readonly fundoAtras?: string | null;
+  } | null;
   /**
    * A opacidade COMPUTADA do elemento.
    *
@@ -310,15 +327,40 @@ export const conferirVariacaoCriativa = (v: VariacaoParaAceite): ResultadoDeAcei
         proporcaoDoArquivo === 0
           ? 1
           : Math.abs(proporcaoNaPeca - proporcaoDoArquivo) / proporcaoDoArquivo;
-      vereditos.push(
-        desvio <= DESVIO_DE_PROPORCAO
-          ? passou('C3', TITULO_C3)
-          : reprovou(
-              'C3',
-              TITULO_C3,
-              `O logotipo saiu deformado: o arquivo é ${logotipo.larguraReal}×${logotipo.alturaReal} (proporção ${proporcaoDoArquivo.toFixed(2)}) e na peça ele ocupa ${larguraNaPeca}×${alturaNaPeca} (proporção ${proporcaoNaPeca.toFixed(2)}). Marca esticada é a primeira coisa que o dono dela percebe.`,
-            ),
-      );
+      const separacao =
+        logotipo.tinta === null ||
+        logotipo.tinta === undefined ||
+        logotipo.fundoAtras === null ||
+        logotipo.fundoAtras === undefined
+          ? null
+          : contrasteRatio(logotipo.tinta, logotipo.fundoAtras);
+      if (desvio > DESVIO_DE_PROPORCAO) {
+        vereditos.push(
+          reprovou(
+            'C3',
+            TITULO_C3,
+            `O logotipo saiu deformado: o arquivo é ${logotipo.larguraReal}×${logotipo.alturaReal} (proporção ${proporcaoDoArquivo.toFixed(2)}) e na peça ele ocupa ${larguraNaPeca}×${alturaNaPeca} (proporção ${proporcaoNaPeca.toFixed(2)}). Marca esticada é a primeira coisa que o dono dela percebe.`,
+          ),
+        );
+      } else if (separacao === null) {
+        vereditos.push(
+          pendente(
+            'C3',
+            TITULO_C3,
+            'O logotipo carregou e não deformou, e ninguém amostrou se ele SE VÊ sobre o fundo em que pousou. Logotipo na cor da marca sobre uma faixa da mesma cor some, e nenhuma leitura de texto percebe.',
+          ),
+        );
+      } else if (!Number.isFinite(separacao) || separacao < PISO_DE_CONTRASTE_DA_PECA) {
+        vereditos.push(
+          reprovou(
+            'C3',
+            TITULO_C3,
+            `O logotipo tem ${Number.isFinite(separacao) ? `${separacao.toFixed(2)}:1` : 'contraste incalculável'} contra o fundo em que pousou (${logotipo.tinta} sobre ${logotipo.fundoAtras}), abaixo do piso de ${PISO_DE_CONTRASTE_DA_PECA}:1. A marca está na peça e não se vê — use a versão negativa sobre fundo escuro, ou a colorida sobre claro.`,
+          ),
+        );
+      } else {
+        vereditos.push(passou('C3', TITULO_C3));
+      }
     }
   } else if (v.textoRenderizado === null) {
     vereditos.push(pendente('C3', TITULO_C3, 'Ninguém leu o que a peça renderizou.'));

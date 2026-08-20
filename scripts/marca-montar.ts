@@ -114,10 +114,12 @@ const principal = async (): Promise<void> => {
       logotipo: join(dir, 'logotipo.png'),
       'logotipo-fundo-branco': join(dir, 'logotipo-fundo-branco.png'),
       'logotipo-fundo-preto': join(dir, 'logotipo-fundo-preto.png'),
+      'logotipo-negativo': join(dir, 'logotipo-negativo.png'),
     };
     writeFileSync(arquivos.logotipo as string, versoes.transparente);
     writeFileSync(arquivos['logotipo-fundo-branco'] as string, versoes.fundoBranco);
     writeFileSync(arquivos['logotipo-fundo-preto'] as string, versoes.fundoPreto);
+    writeFileSync(arquivos['logotipo-negativo'] as string, versoes.negativo);
 
     /**
      * O resto do pacote, também por CÁLCULO e também de graça.

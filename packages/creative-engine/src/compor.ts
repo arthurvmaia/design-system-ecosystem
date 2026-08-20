@@ -380,27 +380,83 @@ export const htmlDaPeca = (e: EntradaDaComposicao): string => {
  * os tipos de DOM — e ele não é código de navegador, é código que MANDA um
  * navegador fazer uma coisa.
  */
-const LER_PAPEIS = `() => Array.from(document.querySelectorAll('[data-papel]')).map((el) => {
-  const r = el.getBoundingClientRect();
-  const ehImagem = el.tagName === 'IMG';
-  return {
-    papel: el.getAttribute('data-papel') || '',
-    // Numa imagem, \`innerText\` é vazio: o nome da marca vive no \`alt\`, e é
-    // dali que a leitura da grafia sai quando a marca assina por logotipo.
-    texto: ehImagem ? (el.getAttribute('alt') || '').trim() : el.innerText.trim(),
-    esquerda: Math.round(r.left),
-    topo: Math.round(r.top),
-    direita: Math.round(r.right),
-    base: Math.round(r.bottom),
-    opacidade: Number(getComputedStyle(el).opacity),
-    // \`naturalWidth\` zero é a imagem que NÃO carregou. O elemento continua com
-    // caixa, então nenhuma medida de geometria percebe o buraco — é o mesmo
-    // caso que \`conferir-site.ts\` já pega nos sites gerados.
-    imagem: ehImagem
-      ? { larguraReal: el.naturalWidth, alturaReal: el.naturalHeight }
-      : null,
+const LER_PAPEIS = `() => {
+  /**
+   * A cor do navegador (rgb/rgba) vira #RRGGBB. Alfa zero devolve null: não é cor.
+   *
+   * A classe é [0-9] e não \\d de propósito. Este texto vive dentro de um
+   * template literal, e ali uma barra invertida seguida de letra é escape
+   * DESCONHECIDO: o JavaScript a descarta e entrega só a letra. A regex virava
+   * /d+/ e procurava a letra "d" — casava com nada, \`fundoAtras\` saía null, e
+   * C3 ficava eternamente pendente sem que nada acusasse.
+   */
+  const paraHex = (cru) => {
+    const n = (cru || '').match(/[0-9]+([.][0-9]+)?/g);
+    if (!n || n.length < 3) return null;
+    if (n.length > 3 && Number(n[3]) === 0) return null;
+    const h = (v) => Number(v).toString(16).padStart(2, '0');
+    return '#' + h(n[0]) + h(n[1]) + h(n[2]);
   };
-})`;
+
+  /** A primeira cor OPACA subindo pelos ancestrais: é o fundo em que a peça pousa. */
+  const fundoAtrasDe = (el) => {
+    let p = el.parentElement;
+    while (p) {
+      const cor = paraHex(getComputedStyle(p).backgroundColor);
+      if (cor !== null) return cor;
+      p = p.parentElement;
+    }
+    return null;
+  };
+
+  /**
+   * A tinta DOMINANTE de uma imagem: a cor opaca mais frequente, em degraus
+   * grossos. Grossos porque a borda macia de um recorte cria dezenas de tons
+   * que não são a cor da marca, e contá-los diluiria a resposta.
+   */
+  const tintaDe = (img) => {
+    if (!img.naturalWidth) return null;
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, 64, 64);
+    const d = ctx.getImageData(0, 0, 64, 64).data;
+    const conta = new Map();
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 200) continue;
+      const chave = (d[i] >> 4) * 4096 + (d[i + 1] >> 4) * 256 + (d[i + 2] >> 4) * 16;
+      conta.set(chave, (conta.get(chave) || 0) + 1);
+    }
+    let melhor = null; let quantas = 0;
+    for (const [k, n] of conta) { if (n > quantas) { quantas = n; melhor = k; } }
+    if (melhor === null) return null;
+    const h = (v) => Math.min(255, v).toString(16).padStart(2, '0');
+    return '#' + h(Math.floor(melhor / 4096) * 16) + h((Math.floor(melhor / 256) % 16) * 16) + h((Math.floor(melhor / 16) % 16) * 16);
+  };
+
+  return Array.from(document.querySelectorAll('[data-papel]')).map((el) => {
+    const r = el.getBoundingClientRect();
+    const ehImagem = el.tagName === 'IMG';
+    return {
+      papel: el.getAttribute('data-papel') || '',
+      texto: ehImagem ? (el.getAttribute('alt') || '').trim() : el.innerText.trim(),
+      esquerda: Math.round(r.left),
+      topo: Math.round(r.top),
+      direita: Math.round(r.right),
+      base: Math.round(r.bottom),
+      opacidade: Number(getComputedStyle(el).opacity),
+      imagem: ehImagem
+        ? {
+            larguraReal: el.naturalWidth,
+            alturaReal: el.naturalHeight,
+            tinta: tintaDe(el),
+            fundoAtras: fundoAtrasDe(el),
+          }
+        : null,
+    };
+  });
+}`;
 
 /**
  * Compõe e fotografa, na dimensão exata.
