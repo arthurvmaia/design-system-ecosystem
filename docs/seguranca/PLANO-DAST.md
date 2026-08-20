@@ -14,7 +14,8 @@ A outra aba estava com trabalho grande e não commitado quando isto começou. De
 2. **Worktree separado.** O código foi escrito em `Desktop/orbis-suite-seguranca`, que é um `git worktree` do mesmo repositório: diretório próprio, branch própria (`seguranca-dast`, saindo de `main`), `.git` compartilhado. Enquanto ela commitava em `orbis-criativa`, eu commitava em `seguranca-dast`, e nenhuma das duas viu a outra.
 3. **Nenhum comando de git que mexesse na árvore dela.** Nada de checkout, stash, add ou commit em `Desktop/orbis-suite`.
 4. **O app não foi subido.** As portas 8787, 5173, 3000 e 4000 continuaram sendo dela.
-5. **Colisão medida antes de cada arquivo, não presumida.** `git diff --name-only main orbis-criativa -- <arquivo>` mais `git status --porcelain -- <arquivo>`. Dois arquivos foram descartados por esse teste, e estão listados na seção 3.
+5. **Colisão medida antes de cada arquivo, não presumida.** `git diff --name-only main orbis-criativa -- <arquivo>` mais `git status --porcelain -- <arquivo>`. Dois arquivos (`index.ts` e `.env.example`) foram adiados por esse teste enquanto ela ainda escrevia neles, e só entraram depois que ela commitou.
+6. **O merge foi testado, e não prometido.** `git merge-tree` para simular, e depois um merge de verdade num ramo à parte (`seguranca-com-criativa`), com a suíte rodada em cima do resultado combinado. A seção 6 traz o único conflito e como resolvê-lo.
 
 ### O que fazer com o worktree quando isto acabar
 
@@ -116,3 +117,122 @@ A CSP tem essa diretiva SÓ. Mandar `default-src` daqui quebraria o bundle do ap
 
 ---
 
+## 3. A segunda passada: o que serve HTML
+
+A primeira passada olhou a porta de entrada e o caminho da extração. Esta olhou onde o app SERVE conteúdo que não é dele.
+
+### B1. O HTML extraído rodava com a sessão de quem entrou — CORRIGIDO
+
+`xss_agent`. Risco alto.
+
+**O que era:** `GET /vault/<ds>/` redireciona para `design-system.html`, servido como `text/html` NA MESMA ORIGEM do app, sem CSP e sem sandbox. E o que mora ali não é conteúdo nosso: é o HTML extraído de um site de terceiro, com os scripts dele dentro.
+
+**Medido no acervo desta máquina:** 57 capturas no vault. As primeiras já trazem `<script src="https://cdn.tailwindcss.com">`, `code.iconify.design` e scripts do próprio site capturado.
+
+Abrir esse endereço numa aba fazia o script de outra pessoa rodar com a origem do app e a sessão aberta. Dali ele fala com a API como se fosse você. O cookie é `SameSite=Lax`, que acompanha navegação de primeiro nível, então bastava o endereço.
+
+**O que ficou:** `Content-Security-Policy: sandbox` nos tipos que se leem como DOCUMENTO (`.html` e `.svg`), pela mesma lista e mesmo motivo do `routes/criativos.ts`. Mais `nosniff` em tudo, como o `routes/asset.ts` já fazia.
+
+Não custa nada, e o teste fixa a intenção: nada no app abre esses endereços. A prévia monta o documento dela e usa o vault só para CSS, imagem e fonte, que CSP de documento não afeta.
+
+**O que este achado ensina:** o app já sabia a resposta em DOIS lugares (o `CSP_PREVIA` do preview e o `sandbox` do criativos) e não a aplicava no terceiro. Mesma porta, três trancas diferentes.
+
+### B2. O site gerado abre em aba nova, sem CSP — ACHADO, espera decisão
+
+Risco médio, e **não confirmado com dado real**.
+
+`routes/site.ts` serve o site gerado como `text/html` na origem do app, sem CSP. O front o abre como documento de PRIMEIRO NÍVEL, não em iframe: `MeusProjetos.tsx:174` faz `window.open(siteUrl(...), '_blank', 'noopener')` e `PendenciasDeSites.tsx:224` é um `<a target="_blank">`.
+
+Sites gerados compõem peças extraídas de terceiros. Se script de terceiro viaja para dentro do bundle (o `CLAUDE.md` diz que o `runtime-local.ts` decide isso por script), o mesmo problema do B1 vale aqui.
+
+**Por que não corrigi:** as pastas `projects/*/generated/*` desta máquina estão VAZIAS, então não deu para confirmar se os sites gerados carregam script. E a correção não é a mesma do B1: `sandbox` daria origem opaca ao site, o cookie do portão não acompanharia os arquivos dele, e a prévia chegaria sem CSS. É exatamente o problema que o `routes/preview.ts` descreve por extenso e resolveu abandonando a origem opaca.
+
+**A correção provável** é uma CSP no formato do `CSP_PREVIA` (fechar `connect-src`, `base-uri`, `object-src`), e não `sandbox`. Só que `form-action 'none'` quebraria um site gerado com formulário de contato, que é caso de uso real. Isso é decisão de produto, não de segurança, e é sua.
+
+### B3. O `allow-same-origin` da prévia dá acesso ao `parent` — ACHADO, espera decisão
+
+Risco médio a alto, dependendo do que você extrai. **Lido, não executado: não montei prova de conceito.**
+
+Quatro elos, todos confirmados no código:
+
+1. `PreviewFrame.tsx:180` usa `sandbox="allow-scripts allow-same-origin"`.
+2. O documento da prévia é servido na MESMA origem do app (`routes/preview.ts` diz por extenso que isso é obrigatório desde que o portão passou a exigir credencial).
+3. O script do site extraído RODA ali por desenho ("o Tailwind CDN compila, o Lucide desenha os ícones").
+4. A página do app não tem `script-src` nenhum.
+
+`allow-scripts` junto com `allow-same-origin` é a combinação em que o sandbox deixa de isolar: o documento fica de mesma origem que o pai e alcança `parent.document`. O `CSP_PREVIA` protege o DOCUMENTO da prévia (`connect-src` fechado, e é uma boa defesa), mas não protege o que ele faz com o PAI: código injetado no pai roda sob a CSP do pai, que não existe.
+
+**Por que não mexi:** a origem compartilhada é uma escolha declarada e justificada no arquivo. Tirar o `allow-same-origin` reintroduziria o problema que ela resolve (prévia sem CSS). As saídas reais são servir prévia de outra origem com token no lugar do cookie, ou pôr `script-src` na página do app. As duas são mudanças de arquitetura, e quem decide é você.
+
+### B4. O front está limpo
+
+Varredura completa de `apps/web`: **zero** `dangerouslySetInnerHTML`, `innerHTML`, `eval`, `new Function`, `document.write` ou `srcDoc` montado com dado. O único `href` que recebe valor de fora é o do portal (`CriativosShell.tsx:90`), e ele vem de `/api/enderecos`, que já valida o formato do endereço. O escape do React cobre o resto.
+
+### B5. Observação menor
+
+`routes/site.ts` usa `mimeDoBundle` para servir extensão desconhecida "com cara de JS" como script. É deliberado (capturas antigas com `.17`), mas é farejamento de conteúdo numa rota que serve arquivo de terceiro. Vale um olhar quando o B2 for decidido.
+
+---
+
+## 4. O que ainda NÃO foi olhado
+
+Para ninguém confundir "não achei" com "não olhei":
+
+- O `routes/preview.ts` inteiro (1327 linhas). Li a CSP e o desenho de origem; não li as 1100 linhas de montagem de HTML, que incluem `innerHTML` dentro do documento de prévia.
+- O `packages/engine-v2` e o `packages/explorer`, que também abrem URL de fora. O guarda do A1 existe e é importável, mas só o `fetch-url.ts` foi ligado nele: é o único que a rota `POST /api/design-systems` alcança.
+- O app de lojas Shopify (`orbis-lojas-shopify`), que é deploy separado.
+- A frente Criativos por dentro (só li a defesa de `sandbox` dela).
+
+---
+
+## 5. O que foi medido
+
+| | |
+|---|---|
+| Testes novos | 44 (16 no guarda de destino, 12 no de origem, 7 no de caminho, 6 no vault, 3 no resto) |
+| Suíte na branch de segurança | 1836 testes, 1834 passando, 1 pulado |
+| Suíte com as duas branches JUNTAS | 1994 testes, 1992 passando |
+| `pnpm typecheck` | 13 pacotes sozinha, 14 juntas |
+| `pnpm lint` | limpo (548 arquivos sozinha, 597 juntas) |
+| Única falha | `acervo-regressao`, fase 3: 7,1% de bytes duplicados contra meta de 5% |
+| A falha é minha? | **Não.** Rodada com as mudanças guardadas no stash, falha idêntica. Mede o acervo em `~/design-system-ecosystem`, não o código. |
+
+---
+
+## 6. Como juntar
+
+Duas branches prontas:
+
+- **`seguranca-dast`** — só segurança, sai de `main`, três commits.
+- **`seguranca-com-criativa`** — as duas já juntas, com o conflito resolvido e a suíte rodada em cima do resultado combinado.
+
+O merge de `seguranca-dast` em `orbis-criativa` tem **um** conflito, e ele é de três linhas: a linha de import do `origem-permitida` ficou colada no bloco de import do `portao`, que a outra branch reescreveu. O git trata linhas adjacentes como um trecho só. As duas mudanças não se contradizem; a resolução é manter as duas, a minha em cima e o bloco dela embaixo.
+
+`.env.example`, `vault.ts` e `packages/shared/package.json` juntam sozinhos.
+
+Depois do merge, o worktree não serve mais para nada:
+
+```
+git worktree remove ..\orbis-suite-seguranca
+```
+
+---
+
+## 7. O que muda para quem usa o app
+
+**Nada, na tela.** Nenhuma correção mexe em layout, fluxo ou botão.
+
+Duas mudanças de comportamento, as duas deliberadas:
+
+1. Extrair um endereço que aponte para a própria máquina ou para a rede interna passa a ser recusado com explicação. Quem precisar liga `ORBIS_PERMITIR_REDE_INTERNA=1`.
+2. Abrir `/vault/<ds>/design-system.html` direto numa aba passa a mostrar a página sem executar os scripts dela. Nada no app usa esse endereço; a Galeria continua usando a prévia, que não mudou.
+
+E o que passa a ser impossível: ler arquivo do disco pelo campo de extrair, usar o app como binóculo para a rede de dentro, derrubar a suíte por um formulário de outro site, receber o caminho da máquina numa mensagem de erro, pôr o portão num iframe alheio, e rodar script de site extraído com a sessão de quem entrou.
+
+---
+
+## 8. O que continua sendo o maior risco, e não é nenhum destes
+
+O perímetro do app é **uma senha só**, compartilhada, na frente de um túnel público. Quem tiver ela entra em tudo. Estas oito correções reduzem o estrago de quem entrou; nenhuma delas muda o fato de que existe uma chave só e ela circula.
+
+Na prática, **manter o túnel desligado quando não está em uso** protege mais do que qualquer linha deste plano.

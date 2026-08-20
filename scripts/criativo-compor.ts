@@ -146,6 +146,18 @@ const principal = async (): Promise<void> => {
     );
   }
 
+  /**
+   * A copy DESTA variação.
+   *
+   * A lista por variação vence a de cima quando existe. É o que faz uma rodada
+   * de dois criativos testar duas mensagens em vez de duas fotos com a mesma
+   * frase — e num criativo de vendas a copy é metade do teste.
+   */
+  const copy = pedido.texto.porVariacao[n - 1] ?? {
+    headline: pedido.texto.headline,
+    cta: pedido.texto.cta,
+  };
+
   const cores = coresDerivadas(pedido.corPrincipal, pedido.direcao.coresDeApoio);
   if (pedido.direcao.coresDeApoio.length > 0 && !cores.acentoVeioDaMarca) {
     console.warn(
@@ -179,8 +191,8 @@ const principal = async (): Promise<void> => {
       fundo,
       marca: pedido.marca,
       logotipo,
-      headline: pedido.texto.headline,
-      cta: pedido.texto.cta,
+      headline: copy.headline,
+      cta: copy.cta,
       assinatura: pedido.direcao.assinatura,
       fonte:
         familiaPedida !== null && cssFonte !== null
@@ -205,8 +217,8 @@ const principal = async (): Promise<void> => {
     largura: peca.largura,
     altura: peca.altura,
     houvePixelGerado,
-    headline: pedido.texto.headline,
-    cta: pedido.texto.cta,
+    headline: copy.headline,
+    cta: copy.cta,
     textoRenderizado: peca.textos,
     caixasDosPapeis: peca.caixas,
     marca: pedido.marca,

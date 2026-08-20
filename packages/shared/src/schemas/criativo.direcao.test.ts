@@ -100,3 +100,53 @@ test('PROVA: o tom é DIREÇÃO, e o texto da peça continua sendo só o que se 
   assert.equal(pedido.texto.headline, 'Seu sorriso merece atenção');
   assert.equal(pedido.texto.cta, null, 'o tom não vira CTA');
 });
+
+/**
+ * A copy por VARIAÇÃO.
+ *
+ * A peça desta casa é, por regra do dono, um criativo de vendas com CTA — e num
+ * criativo de vendas testar copy é metade do teste. Com um texto por pedido,
+ * duas variações saíam com a mesma frase e a rodada só media imagem.
+ */
+
+test('PROVA: sem copy por variacao, todas usam a de cima', () => {
+  const p = PedidoCriativo.parse({ ...MINIMO, variacoes: 3 });
+  assert.deepEqual(p.texto.porVariacao, []);
+  assert.equal(p.texto.headline, 'Seu sorriso merece atenção');
+});
+
+test('PROVA: uma copy para cada variacao passa', () => {
+  const p = PedidoCriativo.parse({
+    ...MINIMO,
+    variacoes: 2,
+    texto: {
+      headline: 'a de cima',
+      porVariacao: [
+        { headline: 'Você entende antes de começar', cta: 'Agendar avaliação' },
+        { headline: 'A gente explica. Depois trata.', cta: 'Marcar horário' },
+      ],
+    },
+  });
+  assert.equal(p.texto.porVariacao[0]?.cta, 'Agendar avaliação');
+  assert.equal(p.texto.porVariacao[1]?.cta, 'Marcar horário');
+});
+
+test('PROVA: copy sobrando ou faltando REPROVA, em vez de virar palpite', () => {
+  // "Qual variação usa qual copy" não pode ser adivinhado por quem processa: é
+  // justamente o que se está testando.
+  const r = PedidoCriativo.safeParse({
+    ...MINIMO,
+    variacoes: 3,
+    texto: { headline: 'a', porVariacao: [{ headline: 'só uma', cta: null }] },
+  });
+  assert.equal(r.success, false);
+  assert.match(r.error?.issues[0]?.message ?? '', /1 copy\(s\) para 3/);
+});
+
+test('"sem texto" com copy por variacao e ambiguo, e reprova', () => {
+  const r = PedidoCriativo.safeParse({
+    ...MINIMO,
+    texto: { semTexto: true, porVariacao: [{ headline: 'a', cta: null }] },
+  });
+  assert.equal(r.success, false);
+});

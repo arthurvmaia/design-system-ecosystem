@@ -160,8 +160,39 @@ export const TextoDaPeca = z
     headline: z.string().min(1).max(LIMITES_DO_PEDIDO.headline).nullable().default(null),
     /** A chamada de ação, literal. Opcional mesmo com headline: nem toda peça tem botão. */
     cta: z.string().min(1).max(LIMITES_DO_PEDIDO.cta).nullable().default(null),
+    /**
+     * A copy de CADA variação, quando elas não devem dizer a mesma coisa.
+     *
+     * Vazio = todas usam a headline e o CTA de cima, e diferem só na imagem.
+     *
+     * Existe porque a peça criativa desta casa é, por regra do dono, um
+     * criativo de VENDAS com CTA — e num criativo de vendas testar copy é
+     * metade do teste. Com um texto por PEDIDO, duas variações saíam com a
+     * mesma frase e a rodada só media imagem: meia fatura, e a metade que
+     * costuma mover mais resultado ficava de fora.
+     *
+     * O tamanho é conferido contra `variacoes` no pedido, e não aqui: este
+     * objeto não conhece o irmão. Faltando ou sobrando entrada, o parse
+     * reprova, porque "qual variação usa qual copy" não pode ser adivinhado.
+     */
+    porVariacao: z
+      .array(
+        z.object({
+          headline: z.string().min(1).max(LIMITES_DO_PEDIDO.headline).nullable().default(null),
+          cta: z.string().min(1).max(LIMITES_DO_PEDIDO.cta).nullable().default(null),
+        }),
+      )
+      .max(8)
+      .default([]),
   })
   .superRefine((v, ctx) => {
+    if (v.semTexto && v.porVariacao.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['porVariacao'],
+        message: '"Sem texto" com copy por variação é ambíguo: qual dos dois vale?',
+      });
+    }
     if (!v.semTexto && v.headline === null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -314,86 +345,104 @@ export const DIRECAO_VAZIA: DirecaoDeMarca = DirecaoDeMarca.parse({});
  * O `payload` de um job `criativo` — o briefing inteiro, fonte da verdade.
  * Quem processa não vai ler o banco por fora: o que não está aqui não existe.
  */
-export const PedidoCriativo = z.object({
-  /**
-   * Nome da marca, com a GRAFIA EXATA. Trava se faltar porque modelo erra
-   * grafia de marca — e é justamente o que aparece na peça.
-   */
-  marca: z.string().min(1).max(LIMITES_DO_PEDIDO.marca),
-  /** Imagem ou vídeo — muda todo o resto: rota de geração, custo e verificação. */
-  tipo: z.enum(['imagem', 'video']),
-  /** Define a dimensão. Peça fora de medida não entra no lugar. */
-  formato: FormatoCriativo,
-  imagem: OrigemDaImagem,
-  texto: TextoDaPeca,
-  /** O que NÃO pode aparecer, nas palavras do cliente. Campo livre, opcional. */
-  restricoes: z.string().max(LIMITES_DO_PEDIDO.restricoes).default(''),
-  /**
-   * Quantas variações produzir. Padrão 2 (espec: assume e registra). Teto de 8
-   * porque cada variação gasta crédito e o MVP não tem galeria para absorver
-   * excesso — mais que isso é outro pedido.
-   */
-  variacoes: z.number().int().min(1).max(8).default(2),
-  /**
-   * Teto de gasto do job, em créditos. OBRIGATÓRIO e sem default de propósito:
-   * a contabilidade do motor é estimar antes, declarar o custo, debitar do
-   * teto e PARAR ao zerar em vez de estourar em silêncio — e parar exige saber
-   * onde fica o zero. Um default aqui seria o app decidindo sozinho quanto do
-   * saldo do cliente pode queimar.
-   */
-  tetoDeCreditos: z.number().positive(),
-  /**
-   * Default vazio = NENHUM claim autorizado. É o único default seguro: na
-   * ausência de digitação, a peça não afirma nada.
-   */
-  autorizacoesDeClaim: AutorizacoesDeClaim.default({}),
-  /**
-   * Qual preset do catálogo produzir (`imagem-padrao`, `imagem-marca`, …).
-   *
-   * É o nome DO PRODUTO, nunca o slug do provedor. O slug muda por transporte —
-   * o mesmo modelo se chama `imagen-nano-banana-2-flash` no MCP e
-   * `text-to-image/nano-banana-pro-flash` no REST — e gravar um deles no pedido
-   * amarraria a peça ao transporte que estava ligado no dia.
-   *
-   * `null` = o motor resolve pelo tipo e pelo formato.
-   */
-  preset: z.string().min(1).nullable().default(null),
-  /**
-   * O custo estimado que foi MOSTRADO a quem confirmou, em créditos.
-   *
-   * Fica no pedido, e não só na tela, porque é metade da conta: sem ele,
-   * comparar o que se prometeu com o que se gastou depende da memória de
-   * alguém. `null` nos pedidos anteriores a esta medição.
-   */
-  estimativa: z.number().min(0).nullable().default(null),
-  /**
-   * A cor principal da marca, em `#RRGGBB`.
-   *
-   * A peça é COMPOSTA por nós — faixa de leitura, título, botão — e compor sem
-   * a cor do cliente significaria escolher uma. Escolher cor por ele é inventar
-   * material, que é justamente o que este contrato existe para impedir em preço,
-   * prazo e depoimento; não há razão para a cor ser exceção.
-   *
-   * Uma só, e não uma paleta: o resto é DERIVADO por cálculo (a tinta que se lê
-   * sobre ela, o par do botão), então pedir três seria pedir duas a mais para
-   * chegar no mesmo lugar. `null` nos pedidos anteriores a esta composição.
-   */
-  corPrincipal: HEX.nullable().default(null),
-  /**
-   * O resto da direção de marca: logotipo, cores de apoio, fonte, tom, estilo e
-   * assinatura.
-   *
-   * Separada de `corPrincipal` e de `marca` de propósito. Esses dois são o
-   * mínimo que trava o pedido — sem eles a peça não sai —, e todo o resto é
-   * material que MELHORA a peça quando existe e não pode travá-la quando falta.
-   * Misturar as duas naturezas no mesmo nível faria o parse reprovar um pedido
-   * legítimo de quem ainda não tem logotipo.
-   *
-   * O default vazio é o mesmo princípio de `autorizacoesDeClaim`: na ausência
-   * de material, a peça não inventa nenhum.
-   */
-  direcao: DirecaoDeMarca.default(DIRECAO_VAZIA),
-});
+export const PedidoCriativo = z
+  .object({
+    /**
+     * Nome da marca, com a GRAFIA EXATA. Trava se faltar porque modelo erra
+     * grafia de marca — e é justamente o que aparece na peça.
+     */
+    marca: z.string().min(1).max(LIMITES_DO_PEDIDO.marca),
+    /** Imagem ou vídeo — muda todo o resto: rota de geração, custo e verificação. */
+    tipo: z.enum(['imagem', 'video']),
+    /** Define a dimensão. Peça fora de medida não entra no lugar. */
+    formato: FormatoCriativo,
+    imagem: OrigemDaImagem,
+    texto: TextoDaPeca,
+    /** O que NÃO pode aparecer, nas palavras do cliente. Campo livre, opcional. */
+    restricoes: z.string().max(LIMITES_DO_PEDIDO.restricoes).default(''),
+    /**
+     * Quantas variações produzir. Padrão 2 (espec: assume e registra). Teto de 8
+     * porque cada variação gasta crédito e o MVP não tem galeria para absorver
+     * excesso — mais que isso é outro pedido.
+     */
+    variacoes: z.number().int().min(1).max(8).default(2),
+    /**
+     * Teto de gasto do job, em créditos. OBRIGATÓRIO e sem default de propósito:
+     * a contabilidade do motor é estimar antes, declarar o custo, debitar do
+     * teto e PARAR ao zerar em vez de estourar em silêncio — e parar exige saber
+     * onde fica o zero. Um default aqui seria o app decidindo sozinho quanto do
+     * saldo do cliente pode queimar.
+     */
+    tetoDeCreditos: z.number().positive(),
+    /**
+     * Default vazio = NENHUM claim autorizado. É o único default seguro: na
+     * ausência de digitação, a peça não afirma nada.
+     */
+    autorizacoesDeClaim: AutorizacoesDeClaim.default({}),
+    /**
+     * Qual preset do catálogo produzir (`imagem-padrao`, `imagem-marca`, …).
+     *
+     * É o nome DO PRODUTO, nunca o slug do provedor. O slug muda por transporte —
+     * o mesmo modelo se chama `imagen-nano-banana-2-flash` no MCP e
+     * `text-to-image/nano-banana-pro-flash` no REST — e gravar um deles no pedido
+     * amarraria a peça ao transporte que estava ligado no dia.
+     *
+     * `null` = o motor resolve pelo tipo e pelo formato.
+     */
+    preset: z.string().min(1).nullable().default(null),
+    /**
+     * O custo estimado que foi MOSTRADO a quem confirmou, em créditos.
+     *
+     * Fica no pedido, e não só na tela, porque é metade da conta: sem ele,
+     * comparar o que se prometeu com o que se gastou depende da memória de
+     * alguém. `null` nos pedidos anteriores a esta medição.
+     */
+    estimativa: z.number().min(0).nullable().default(null),
+    /**
+     * A cor principal da marca, em `#RRGGBB`.
+     *
+     * A peça é COMPOSTA por nós — faixa de leitura, título, botão — e compor sem
+     * a cor do cliente significaria escolher uma. Escolher cor por ele é inventar
+     * material, que é justamente o que este contrato existe para impedir em preço,
+     * prazo e depoimento; não há razão para a cor ser exceção.
+     *
+     * Uma só, e não uma paleta: o resto é DERIVADO por cálculo (a tinta que se lê
+     * sobre ela, o par do botão), então pedir três seria pedir duas a mais para
+     * chegar no mesmo lugar. `null` nos pedidos anteriores a esta composição.
+     */
+    corPrincipal: HEX.nullable().default(null),
+    /**
+     * O resto da direção de marca: logotipo, cores de apoio, fonte, tom, estilo e
+     * assinatura.
+     *
+     * Separada de `corPrincipal` e de `marca` de propósito. Esses dois são o
+     * mínimo que trava o pedido — sem eles a peça não sai —, e todo o resto é
+     * material que MELHORA a peça quando existe e não pode travá-la quando falta.
+     * Misturar as duas naturezas no mesmo nível faria o parse reprovar um pedido
+     * legítimo de quem ainda não tem logotipo.
+     *
+     * O default vazio é o mesmo princípio de `autorizacoesDeClaim`: na ausência
+     * de material, a peça não inventa nenhum.
+     */
+    direcao: DirecaoDeMarca.default(DIRECAO_VAZIA),
+  })
+  .superRefine((v, ctx) => {
+    /**
+     * A copy por variação, se existe, cobre TODAS as variações.
+     *
+     * Sobrando ou faltando entrada, "qual variação usa qual copy" vira palpite
+     * de quem processa — e num criativo de vendas a copy é o que se está
+     * testando. Conferir aqui, e não em `TextoDaPeca`, porque só o pedido
+     * conhece os dois lados da conta.
+     */
+    if (v.texto.porVariacao.length > 0 && v.texto.porVariacao.length !== v.variacoes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['texto', 'porVariacao'],
+        message: `Há ${v.texto.porVariacao.length} copy(s) para ${v.variacoes} variação(ões). Ou uma para cada, ou nenhuma e todas usam a de cima.`,
+      });
+    }
+  });
 export type PedidoCriativo = z.infer<typeof PedidoCriativo>;
 
 /**
