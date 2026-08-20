@@ -162,7 +162,7 @@ const leiaMe = (nome: string, cor: string, temArtes: boolean): string =>
     '  icone-512         Para aplicativo e para o Google.',
     '',
     '',
-    `A SUA COR`,
+    'A SUA COR',
     '',
     `  ${cor}`,
     '',

@@ -199,6 +199,29 @@ export const PecaDaMarca = z.enum([
   'logotipo-negativo',
   /** O símbolo como o gerador o entregou, antes do recorte. */
   'simbolo-original',
+  /**
+   * Os LOCKUPS e o nome, que o motor desenha junto das versões.
+   *
+   * Eles faltavam aqui, e o buraco não era teórico: `derivarPacoteDaMarca`
+   * grava as doze peças abaixo, e `ResultadoDeMarca` só conhecia as cinco de
+   * cima. Medido no job de prova (Sorriso Vivo, doze peças em disco): o parse
+   * reprovava em OITO delas, então `problemasDaEntregaDeMarca` — o portão que
+   * o `fila:concluir` roda — recusava fechar qualquer marca que tivesse
+   * lockup ou favicon, que são todas.
+   *
+   * Esta lista tem de sair do que o motor PRODUZ, e não do que parecia bastar:
+   * peça nova em `pacote.ts` é entrada nova aqui, senão a entrega trava sem
+   * ninguém ver o que travou.
+   */
+  'lockup-horizontal',
+  'lockup-vertical',
+  'nome-por-extenso',
+  /** Os favicons, nos lados de `LADOS_DO_FAVICON`. */
+  'favicon-16',
+  'favicon-32',
+  'favicon-48',
+  'favicon-180',
+  'favicon-512',
 ]);
 export type PecaDaMarca = z.infer<typeof PecaDaMarca>;
 
