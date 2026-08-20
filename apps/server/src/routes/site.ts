@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, isAbsolute, join, normalize, relative } from 'node:path';
-import { ehNomeDeVersao, ehProjectId, projectGeneratedDir } from '@ds/shared';
+import { extname, join } from 'node:path';
+import { dentroDaRaiz, ehNomeDeVersao, ehProjectId, projectGeneratedDir } from '@ds/shared';
 import { Hono } from 'hono';
 import { mimeDoBundle } from '../lib/bundle-v2.js';
 
@@ -56,13 +56,8 @@ siteRoute.get('/:prjId/:versao/*', (c) => {
   );
   if (!relPath) relPath = 'index.html';
 
-  if (isAbsolute(relPath) || relPath.split(/[/\\]/).includes('..')) {
-    return c.json({ error: 'forbidden' }, 403);
-  }
-
-  const abs = normalize(join(dir, relPath));
-  const rel = relative(dir, abs);
-  if (rel.startsWith('..') || isAbsolute(rel)) return c.json({ error: 'forbidden' }, 403);
+  const abs = dentroDaRaiz(dir, relPath);
+  if (abs === null) return c.json({ error: 'forbidden' }, 403);
   if (!existsSync(abs) || statSync(abs).isDirectory()) {
     // Fallback de SPA não se aplica: sites gerados são estáticos com index.html.
     return c.json({ error: 'not_found', path: relPath }, 404);

@@ -16,6 +16,7 @@
     "@anthropic-ai/sdk": "^0.112.3",
     "@ds/classifier": "workspace:*",
     "@ds/composer": "workspace:*",
+    "@ds/creative": "workspace:*",
     "@ds/engine-v2": "workspace:*",
     "@ds/extractor": "workspace:*",
     "@ds/generator": "workspace:*",

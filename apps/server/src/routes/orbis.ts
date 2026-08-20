@@ -1,5 +1,6 @@
 import type { Context } from 'hono';
 import { Hono } from 'hono';
+import { esperar, registrarAcerto, registrarFalha } from '../lib/limite-de-tentativas.js';
 import {
   DURACAO_DA_SESSAO_S,
   NOME_DO_COOKIE,
@@ -94,8 +95,12 @@ orbisRoute.post('/entrar', async (c) => {
 
   const nivel = nivelDaSenha(senha);
   if (nivel === null) {
+    // A porta passa a custar tempo. Sem isto, com o app publicado por túnel,
+    // uma senha só e compartilhada aceitava quantos palpites a rede aguentasse.
+    await esperar(registrarFalha());
     return c.json({ error: 'credencial_invalida', message: 'Essa credencial não é a minha.' }, 401);
   }
+  registrarAcerto();
 
   const expira = Math.floor(Date.now() / 1000) + DURACAO_DA_SESSAO_S;
   c.header(

@@ -28,6 +28,7 @@ afterEach(() => {
   process.env.ORBIS_SENHA_VISITA = ambienteOriginal.ORBIS_SENHA_VISITA;
   process.env.ORBIS_SEGREDO = ambienteOriginal.ORBIS_SEGREDO;
   process.env.NODE_ENV = ambienteOriginal.NODE_ENV;
+  process.env.ORBIS_LOCAL = ambienteOriginal.ORBIS_LOCAL;
 });
 
 test('sem credencial em produção o portão FECHA, não abre', () => {
@@ -39,11 +40,36 @@ test('sem credencial em produção o portão FECHA, não abre', () => {
   assert.equal(senhaConfere('qualquer'), false);
 });
 
-test('sem credencial em desenvolvimento o portão fica desligado', () => {
+/**
+ * O caso que o desenho existia para proteger, e que nunca acontecia.
+ *
+ * A regra era "em desenvolvimento, desligado", e desenvolvimento era
+ * `NODE_ENV !== 'production'`. Como NADA neste repositório define `NODE_ENV`, um
+ * servidor publicado por túnel sem senha caía em "desenvolvimento" e servia o
+ * acervo inteiro para quem achasse o endereço.
+ */
+test('PROVA: sem senha e sem NODE_ENV, o portao FECHA em vez de abrir', () => {
+  process.env.ORBIS_SENHA = '';
+  process.env.ORBIS_LOCAL = '';
+  process.env.NODE_ENV = undefined;
+  assert.equal(estadoDoPortao(), 'sem-credencial');
+});
+
+test('sem credencial, a maquina local abre quando DECLARADA', () => {
   process.env.ORBIS_SENHA = '';
   process.env.NODE_ENV = 'development';
-  // É a sua máquina. Trancar o localhost só ensinaria a contornar.
+  process.env.ORBIS_LOCAL = '1';
+  // É a sua máquina, e você disse isso. Trancar o localhost só ensinaria a
+  // contornar — mas quem trabalha nele afirma que é ele, em vez de o servidor
+  // adivinhar.
   assert.equal(estadoDoPortao(), 'desligado');
+});
+
+test('ORBIS_LOCAL nao abre um servidor declarado como producao', () => {
+  process.env.ORBIS_SENHA = '';
+  process.env.ORBIS_LOCAL = '1';
+  process.env.NODE_ENV = 'production';
+  assert.equal(estadoDoPortao(), 'sem-credencial', 'producao vence a declaracao de local');
 });
 
 test('com credencial o portão está ativo nos dois ambientes', () => {

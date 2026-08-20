@@ -7,7 +7,13 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { getExecutionMode } from './lib/execution-mode.js';
-import { ehLeitura, estadoDoPortao, lerCookieDaSessao, nivelDaSessao } from './lib/portao.js';
+import {
+  avisoDoSegredoDeSessao,
+  ehLeitura,
+  estadoDoPortao,
+  lerCookieDaSessao,
+  nivelDaSessao,
+} from './lib/portao.js';
 import { appCompiladoExiste, appWebRoute } from './routes/app-web.js';
 import { assetRoute, frameRoute, libraryAssetRoute } from './routes/asset.js';
 import { criativosRoute } from './routes/criativos.js';
@@ -162,6 +168,9 @@ const boot = () => {
   console.log(`  data root : ${getRoot()}`);
   console.log(`  modo      : ${getExecutionMode()}`);
   console.log(`  listening : http://localhost:${port}`);
+
+  const aviso = avisoDoSegredoDeSessao();
+  if (aviso !== null) console.warn(`  aviso     : ${aviso}`);
 
   serve({ fetch: app.fetch, port });
 };
