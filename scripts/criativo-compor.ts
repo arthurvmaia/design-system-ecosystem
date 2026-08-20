@@ -2,7 +2,7 @@
  * Compõe UMA variação da peça, mede, confere e grava.
  *
  * Uso:
- *   pnpm criativo:compor <job_id> <n> --fundo <arquivo>
+ *   pnpm criativo:compor <job_id> <n> --fundo <arquivo> [--arranjo <nome>]
  *
  * O `<n>` é o número da variação (1, 2, …). O `--fundo` é o pixel que veio do
  * provedor. Quando o pedido é de UPLOAD, o fundo é o arquivo do cliente e o
@@ -20,12 +20,26 @@
  * O que este comando NÃO faz é gerar imagem. O pixel entra por parâmetro,
  * porque quem fala com o provedor é o agente — e porque separar as duas coisas
  * é o que permite recompor uma peça sem pagar de novo.
+ *
+ * ## O `--arranjo`, e por que ele existe aqui
+ *
+ * Arranjo é ONDE o texto pousa no quadro: faixa embaixo, tela dividida, véu
+ * cheio, texto sobre a imagem. É geometria pura, então trocar de arranjo custa
+ * ZERO crédito — o pixel já está em disco e a composição é refeita a partir
+ * dele. É exatamente por isso que a bandeira mora neste comando e não no
+ * pedido: ela é a ferramenta de quem está olhando uma peça que não ficou boa e
+ * quer a outra abordagem sem pagar de novo.
+ *
+ * Sem a bandeira, sai o arranjo de sempre. Nenhuma peça antiga muda sozinha.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { ArquivoDoRazao, comporPeca, coresDerivadas, cssDaFonte, lerRazao } from '@ds/creative';
 import {
+  ARRANJO,
+  ARRANJOS_EM_ORDEM,
+  ArranjoDaPeca,
   PedidoCriativo,
   ResultadoCriativo,
   conferirVariacaoCriativa,
@@ -37,7 +51,7 @@ import {
 import { chromium } from 'playwright';
 import { executadoDireto } from './executado-direto.js';
 
-const USO = 'Uso: pnpm criativo:compor <job_id> <n> [--fundo <arquivo>]';
+const USO = 'Uso: pnpm criativo:compor <job_id> <n> [--fundo <arquivo>] [--arranjo <nome>]';
 
 /**
  * Anotação no LADO ESQUERDO de propósito.
@@ -62,9 +76,29 @@ const principal = async (): Promise<void> => {
   const n = Number(args[1]);
   const iFundo = args.indexOf('--fundo');
   const fundoArg = iFundo >= 0 ? args[iFundo + 1] : undefined;
+  const iArranjo = args.indexOf('--arranjo');
+  const arranjoArg = iArranjo >= 0 ? args[iArranjo + 1] : undefined;
 
   if (jobId === undefined || !ehJobId(jobId)) morrer(`Id de job inválido.\n\n${USO}`);
   if (!Number.isInteger(n) || n < 1) morrer(`Número de variação inválido.\n\n${USO}`);
+
+  /**
+   * O arranjo é conferido contra o CONTRATO, e não aceito como texto solto.
+   *
+   * Um nome errado cairia no arranjo de sempre e a peça sairia igual à
+   * anterior, com quem pediu achando que tinha trocado de abordagem — o tipo de
+   * silêncio que só aparece na terceira recomposição idêntica.
+   */
+  const arranjo = arranjoArg === undefined ? undefined : ArranjoDaPeca.safeParse(arranjoArg);
+  if (arranjo !== undefined && !arranjo.success) {
+    morrer(
+      [
+        `Arranjo desconhecido: "${arranjoArg}".`,
+        `Os que existem são: ${ARRANJOS_EM_ORDEM.join(', ')}.`,
+        ...ARRANJOS_EM_ORDEM.map((a) => `  ${a} — ${ARRANJO[a].comoE}`),
+      ].join('\n  '),
+    );
+  }
 
   const dir = criativosDir(jobId as string);
   const arquivoDoPedido = criativoPedidoPath(jobId as string);
@@ -188,6 +222,7 @@ const principal = async (): Promise<void> => {
   try {
     peca = await comporPeca(navegador, {
       formato: pedido.formato,
+      arranjo: arranjo === undefined ? null : arranjo.data,
       fundo,
       marca: pedido.marca,
       logotipo,
@@ -315,6 +350,19 @@ const principal = async (): Promise<void> => {
 
   console.log('');
   console.log(`  ${nome} — ${peca.largura}×${peca.altura} — ${rotulo}`);
+  /**
+   * O arranjo e a origem do contraste aparecem no resumo.
+   *
+   * Sobre a foto, o número de C4 não é mais o par declarado: ele é o PIOR pixel
+   * medido sob o texto. Quem lê a folha precisa saber qual dos dois está
+   * vendo — e quem acabou de recompor precisa ver que o arranjo mudou mesmo.
+   */
+  console.log(`  Arranjo: ${ARRANJO[peca.arranjo].rotulo} (${peca.arranjo})`);
+  if (peca.contrasteAmostrado !== null) {
+    console.log(
+      `  O texto pousa na foto, então o contraste foi AMOSTRADO no pior pixel: ${peca.contrasteAmostrado.toFixed(2)}:1${peca.terco === null ? '' : ` — bloco no terço "${peca.terco}"`}`,
+    );
+  }
   for (const v of conferencia.vereditos) {
     const marca = v.estado === 'passou' ? '  ok  ' : v.estado === 'reprovou' ? ' FALHA' : ' pend.';
     console.log(
