@@ -325,10 +325,27 @@ condição que torna o recorte exato em vez de estimativa; sem texto porque
 modelo erra letra e a grafia da marca é fato; sem sombra nem degradê porque
 meio-tom impede a versão monocromática de ser silhueta.
 
-**A régua é M1..M6** (`docs/regras-de-aceite.md`) e ela mede o que faz uma marca
-ser INUTILIZÁVEL, não se ficou bonita: as três versões são o mesmo símbolo, a
-transparente é transparente de verdade, a monocromática é silhueta, a cor se lê
-sobre branco, e o prompt ficou registrado. Recorte que falhou não vira entrega.
+**A régua é M1..M10** (em `packages/shared/src/regras-de-aceite-marca.ts`) e ela
+mede o que faz uma marca ser INUTILIZÁVEL, não se ficou bonita: as três versões
+são o mesmo símbolo, a transparente é transparente de verdade, a monocromática é
+silhueta, a cor se lê sobre branco, e o prompt ficou registrado. Recorte que
+falhou não vira entrega.
+
+**Os CONCEITOS de banner são quatro ARRANJOS, não quatro fotos.** O compositor
+tinha um layout só, e dois conceitos saíam com a mesma composição — o dono viu.
+Hoje `comporPeca` aceita `faixa-inferior`, `tela-dividida`, `veu-cheio` e
+`texto-sobre-imagem`; o `marca:apresentar` compõe cada conceito, MEDE pela régua
+da peça e, se reprovar, tenta o arranjo seguinte (recompor é geometria e não
+gasta crédito nenhum). **M10** recusa dois conceitos no mesmo arranjo, conferindo
+a PROCEDÊNCIA registrada em `artes/arranjos.json` — nunca a distância de pixel,
+que já se provou incapaz de separar as classes.
+
+**Sobre FOTO, o contraste é amostrado, não declarado.** Os arranjos `veu-cheio` e
+`texto-sobre-imagem` tiram o texto da faixa sólida, e ali o par declarado
+continuaria saindo bonito e deixaria de descrever a peça. O motor amostra o pior
+pixel sob a caixa do texto. O alfa do véu é DERIVADO — o menor que faz o pior
+pixel possível vencer 3:1 —, então ele muda com a cor da marca e nunca é um
+número escolhido.
 
 ### `ajustar`
 
@@ -461,6 +478,7 @@ pnpm verificar        # lint + typecheck + test + portao de fidelidade
 pnpm db:migrate       # aplica migrations
 pnpm criativo:precos  # catálogo de presets + tabela de preço MEDIDA, e o que falta medir
 pnpm criativo:compor  # compõe UMA variação na medida exata, mede no navegador e roda C1..C11
+                      # --arranjo <nome> recompõe noutro layout, sem gastar crédito
 pnpm criativo:razao   # ver/reservar/debitar/liberar o crédito de um job criativo
 pnpm marca:montar     # o prompt do símbolo (--prompt) e a marca inteira (--simbolo <arq>)
 pnpm marca:apresentar # a apresentação em PDF, com todas as artes. OBRIGATÓRIA

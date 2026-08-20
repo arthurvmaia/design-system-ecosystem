@@ -12,32 +12,23 @@ limpa. Suíte com **uma** falha, pré-existente e sem relação com este trabalh
 
 ## 1. A PRÓXIMA COISA A FAZER
 
-**Os dois conceitos de banner têm o mesmo layout.** O dono viu e reclamou duas
-vezes: primeiro "estão todas com a mesma ideia de arte" (isso era o prompt, e
-foi consertado — cada arte tem briefing próprio agora), e depois **"você fez 1
-estilo de banner só para os dois"** — e essa segunda é do MOTOR, não do prompt.
+**Rodar o fluxo inteiro pela TELA.** Todos os jobs desta frente nasceram de
+script, e é a única prova que falta: criar uma marca pelo formulário de
+`/criativos/marca`, processá-la pelo `PROCESSAR.bat` e ver a pasta chegar no
+Desktop. O portão da tela pede a credencial do dono e ela nunca foi usada, então
+`pnpm dev` + o olho continuam sendo um passo que ninguém deu.
 
-`comporPeca` (`packages/creative-engine/src/compor.ts`) tem **um layout só**:
-foto em cima, faixa sólida embaixo com logo, headline e botão. Dois "conceitos"
-saem com a mesma composição e fotos diferentes, e num brandbook a página de
-conceito existe justamente para mostrar abordagens DIFERENTES.
+Isso não gasta crédito nenhum se a marca for a que já existe. O que se descobre
+ali é a classe de defeito que teste nenhum pega: campo que não envia, aviso que
+não aparece, botão que a pessoa não acha.
 
-O que falta é o compositor aceitar mais de um arranjo — por exemplo:
+Depois dela, em ordem de valor:
 
-- **faixa embaixo** (o que existe hoje);
-- **texto sobre a imagem**, alinhado ao terço vazio, sem faixa;
-- **tela dividida**: metade cor sólida com o texto, metade foto;
-- **imagem cheia com véu**, texto centralizado.
-
-Cada um é geometria, então nenhum custa crédito: os banners atuais podem ser
-recompostos de graça a partir dos pixels já pagos. E cada um precisa entrar na
-régua do mesmo jeito que o de hoje — C2 mede se o texto cabe no quadro, e um
-layout novo é uma nova chance de o texto não caber.
-
-**Cuidado com a armadilha já vivida:** não medir "layouts diferentes" por
-distância de pixel. Foi tentado com as artes e **não funciona** (ver §4). O que
-separa é a PROCEDÊNCIA: cada conceito declara qual arranjo usou, e dois
-conceitos com o mesmo arranjo reprovam.
+- **O SVG do símbolo** — 150 créditos, declarado como pendência na última página
+  do PDF. Sem ele não há fachada nem veículo.
+- **Os 40 erros de tipo em `scripts/`** (eram 89), todos pré-existentes. Os
+  arquivos de criativo e de marca estão limpos; `pnpm typecheck:scripts` existe e
+  não entra no `verificar` até essa limpeza.
 
 ---
 
@@ -48,6 +39,7 @@ conceitos com o mesmo arranjo reprovam.
 ```powershell
 pnpm criativo:precos                              # catálogo + tabela de preço medida
 pnpm criativo:compor <job> <n> [--fundo <arq>]    # compõe, mede no navegador, roda C1..C11
+           [--arranjo <nome>]                     # recompõe noutro layout, de graça
 pnpm criativo:razao ver|reservar|debitar|liberar  # o razão, que serve as DUAS frentes
 pnpm marca:montar <job> --prompt | --simbolo <a>  # o prompt do símbolo, e a marca
 pnpm marca:apresentar <job>                       # a apresentação em PDF, medida
@@ -75,15 +67,66 @@ tela /criativos/marca → POST /api/marcas (credencial 428; id = hash da chave;
      → pnpm marca:entregar <job> --para "<Desktop>"
 ```
 
+### Os ARRANJOS de banner
+
+`comporPeca` tinha **um layout só** — foto em cima, faixa sólida embaixo — e o
+dono viu: *"você fez 1 estilo de banner só para os dois"*. Hoje são quatro, e
+arranjo é geometria: nenhum custa crédito, então recompor um banner já pago
+noutro arranjo é de graça.
+
+| Arranjo | O que é | Em que o texto pousa |
+|---|---|---|
+| `faixa-inferior` | foto cheia, faixa sólida embaixo | cor sólida |
+| `tela-dividida` | parte ao meio no eixo LONGO: cor de um lado, foto do outro | cor sólida |
+| `veu-cheio` | foto cheia sob véu, texto centralizado | foto + véu |
+| `texto-sobre-imagem` | foto limpa, texto no terço MEDIDO | foto nua |
+
+Três decisões valem saber:
+
+**A escala saiu do quadro e passou a sair da CAIXA DO ARRANJO.** A coluna de uma
+tela dividida é metade da largura, e a mesma headline quebra ali em quase o dobro
+de linhas. Sem isso, trocar de arranjo seria trocar de chance de estourar o
+quadro sem nada dizer. Medido nos quatro arranjos × quatro formatos, com o texto
+no teto do schema: **C2 passa nos dezesseis** (`compor.browser.test.ts`).
+
+**O contraste deixou de ser sempre declarado.** Ele era exato porque nós
+escolhíamos as duas cores do par. Dois arranjos põem o texto sobre a foto, e ali
+o mesmo número continuaria saindo bonito e deixaria de descrever a peça — o
+defeito do `opacity:.85`, de novo. Então o arranjo declara em que o texto pousa:
+cor sólida usa o par declarado; sobre foto, o pixel é AMOSTRADO no pior caso sob
+a caixa do texto. Efeito colateral bom: o logotipo sobre foto deixou de ficar
+com C3 eternamente pendente, porque agora existe um fundo medido atrás dele.
+
+**O alfa do véu é DERIVADO, não escolhido.** É o menor que faz o pior pixel
+possível (branco puro para tinta clara, preto para tinta escura) ainda vencer o
+piso de 3:1. Como luminância e composição são monótonas, conferir o extremo do
+cubo cobre TODA foto. Medido: 0,56 para `#1E2F4F`, 0,66 para `#0050c4`, 0,40 para
+branco — a faixa onde um véu editorial vive. A conta não foi calibrada para dar
+isso; deu.
+
+Na apresentação, cada conceito é composto, MEDIDO pela régua da peça e só então
+vira conceito — se reprovar, o comando tenta o arranjo seguinte, porque recompor
+não gasta nada. Dois conceitos não podem sair no mesmo arranjo, e **M10** confere
+isso no registro (`artes/arranjos.json`), não no pixel.
+
+Para recompor uma peça da frente Criativos noutro arranjo, sem pagar de novo:
+
+```powershell
+pnpm criativo:compor <job> <n> --fundo <o mesmo arquivo> --arranjo veu-cheio
+```
+
 ### As peças de código
 
 - **`packages/creative-engine`** (`@ds/creative`) — o motor. Catálogo, preço
   datado, razão, composição em DOM, fonte embutida com cache, recorte das
   versões da logo, favicon/`.ico`, e a apresentação.
 - **`packages/shared/src/regras-de-aceite-criativo.ts`** — **C1..C11**.
-- **`packages/shared/src/regras-de-aceite-marca.ts`** — **M1..M9**.
+- **`packages/shared/src/regras-de-aceite-marca.ts`** — **M1..M10**.
 - **`packages/shared/src/schemas/marca.ts`** — contrato, estágios pagos e o
   portão da entrega da marca.
+- **`packages/shared/src/schemas/arranjo-da-peca.ts`** — os quatro arranjos e, em
+  cada um, o SUBSTRATO em que o texto pousa. É esse campo que decide se o
+  contraste é declarado ou amostrado.
 - **`apps/server/src/routes/marcas.ts`** — o POST, a listagem e o custo.
 - **`apps/web/src/routes/CriativosMarca.tsx`** — a tela.
 
@@ -134,10 +177,21 @@ cada arte), que é exata.
 **`count: N` num prompt só devolve N variações de UMA ideia.** Foi a causa das
 artes repetidas. Cada arte precisa do próprio briefing.
 
+**Medir a BANDA não é medir o BLOCO.** A escolha do terço em
+`texto-sobre-imagem` nasceu medindo qual terço do quadro carregava melhor a
+tinta. Ela mentia por construção: a banda é 33% da largura e o bloco de texto é
+42%, então o bloco alinhado ao terço bom sempre invade o vizinho. Medido no caso
+extremo — dois terços estourados e um escuro —, a banda escolhida dava **1,13:1**
+no pixel que o texto realmente pegava. Hoje o compositor põe o bloco nas três
+posições e mede o que o TEXTO pega em cada uma. Três passadas de layout, todas de
+graça, e a única pergunta que corresponde à peça.
+
 **Armadilhas de linguagem que custaram tempo:**
 
 - Dentro de um template literal, `\d` **não é escape**: o JS descarta a barra e
-  entrega a letra. A regex de cor virava `/d+/`. Use `[0-9]`.
+  entrega a letra. A regex de cor virava `/d+/`. Use `[0-9]`. Ela mordeu de novo
+  num `\(` de teste, que virou `(` e passou a casar qualquer caractere: dentro de
+  template literal, prefira `includes` a montar regex.
 - Uma crase dentro de um comentário de CSS **fecha o template literal**.
 - O esbuild embrulha funções em `__name(fn, "nome")`, e isso viaja na
   serialização para dentro da página. Declare `__name` antes do `evaluate`.
@@ -151,18 +205,21 @@ artes repetidas. Cada arte precisa do próprio briefing.
 
 ### Trabalho
 
-1. **Os layouts de banner** — §1. É a próxima coisa.
-2. **O SVG do símbolo** — 150 créditos, declarado como pendência na última
-   página do PDF. Sem ele não há fachada nem veículo.
-3. **A tela nunca foi conferida com o olho.** Ela compila, tem 6 testes de rota
+1. **A tela nunca foi conferida com o olho.** Ela compila, tem 6 testes de rota
    e o build passa, mas o portão pede a credencial do dono e ela não foi usada.
    Rode `pnpm dev` e abra `/criativos/marca`.
-4. **O fluxo nunca rodou pela TELA.** Todos os jobs desta sessão nasceram de
+2. **O fluxo nunca rodou pela TELA.** Todos os jobs desta frente nasceram de
    script. Criar uma marca pelo formulário e processá-la pelo `PROCESSAR.bat` é
-   a prova que falta.
-5. **89 erros de tipo em `scripts/`**, pré-existentes. `pnpm typecheck:scripts`
-   existe e NÃO entra no `verificar` até essa limpeza. Os arquivos de criativo e
-   de marca estão limpos.
+   a prova que falta. É a §1.
+3. **O SVG do símbolo** — 150 créditos, declarado como pendência na última
+   página do PDF. Sem ele não há fachada nem veículo.
+4. **40 erros de tipo em `scripts/`** (eram 89), pré-existentes.
+   `pnpm typecheck:scripts` existe e NÃO entra no `verificar` até essa limpeza.
+   Os arquivos de criativo e de marca estão limpos.
+5. **A régua da MARCA não está em `docs/regras-de-aceite.md`.** O documento tem
+   as seções da Galeria, do Site e da PEÇA; M1..M10 só existem como código e
+   docstring, e o `CLAUDE.md` aponta para lá como se estivessem. Gap
+   pré-existente, e agora com uma regra a mais dentro dele.
 
 ### Decisões do dono
 
