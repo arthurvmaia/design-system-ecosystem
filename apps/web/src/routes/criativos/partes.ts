@@ -2,9 +2,9 @@ import type { ProjectRecord } from '@/lib/api';
 import { mediaUrl } from '@/routes/projects/partes';
 import {
   ARQUETIPOS,
+  CAMPOS_DO_PEDIDO,
   type FormatoCriativo,
   LIMITES_DO_PEDIDO,
-  PedidoCriativo,
   TONS_DE_VOZ,
   normalizarProjectBranding,
 } from '@ds/shared/schemas';
@@ -38,7 +38,7 @@ export const ROTULO_DO_FORMATO: Record<FormatoCriativo, string> = {
  * O padrão de variações vem do CONTRATO, não de um número redigitado aqui: se
  * o default do schema mudar, as telas mudam junto sem ninguém lembrar delas.
  */
-export const VARIACOES_PADRAO: number = PedidoCriativo.shape.variacoes.parse(undefined);
+export const VARIACOES_PADRAO: number = CAMPOS_DO_PEDIDO.variacoes.parse(undefined);
 
 /**
  * O teto do job mora no CONTRATO (`tetoComFolga`, em `@ds/shared/schemas`), e

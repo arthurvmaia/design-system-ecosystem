@@ -12,6 +12,7 @@ import {
   vozDaIssue,
 } from '@/routes/criativos/partes';
 import {
+  CAMPOS_DO_PEDIDO,
   CorDaPaleta,
   DIMENSAO_DO_FORMATO,
   FormatoCriativo,
@@ -125,7 +126,7 @@ export function CriativosExpressoPage() {
   /** O que trava a tela, com o contrato decidindo e o Orbis dando a frase. */
   const pendencias = (): string[] => {
     const m: string[] = [];
-    const nome = PedidoCriativo.shape.marca.safeParse(marcaNome.trim());
+    const nome = CAMPOS_DO_PEDIDO.marca.safeParse(marcaNome.trim());
     if (!nome.success) {
       m.push(
         marcaNome.trim() === ''

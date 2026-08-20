@@ -16,6 +16,7 @@ import {
 import { SecaoCabecalho } from '@/routes/projects/etapas/marca/partes';
 import { familyName } from '@ds/shared/fonts';
 import {
+  CAMPOS_DO_PEDIDO,
   CorDaPaleta,
   DIMENSAO_DO_FORMATO,
   FormatoCriativo,
@@ -324,11 +325,11 @@ export function CriativosPage() {
   const pendenciasDoPasso = (p: number): string[] => {
     const m: string[] = [];
     if (p === 0) {
-      if (!PedidoCriativo.shape.tipo.safeParse(tipo).success)
+      if (!CAMPOS_DO_PEDIDO.tipo.safeParse(tipo).success)
         m.push('Escolha entre imagem e vídeo: essa escolha muda todo o resto do pedido.');
     }
     if (p === 1) {
-      const nome = PedidoCriativo.shape.marca.safeParse(marcaNome.trim());
+      const nome = CAMPOS_DO_PEDIDO.marca.safeParse(marcaNome.trim());
       if (!nome.success) {
         m.push(
           marcaNome.trim() === ''
@@ -366,7 +367,7 @@ export function CriativosPage() {
         cta: semTexto || cta.trim() === '' ? null : cta.trim(),
       });
       if (!rt.success) for (const issue of rt.error.issues) m.push(vozDaIssue(issue));
-      const rr = PedidoCriativo.shape.restricoes.safeParse(restricoes.trim());
+      const rr = CAMPOS_DO_PEDIDO.restricoes.safeParse(restricoes.trim());
       if (!rr.success) for (const issue of rr.error.issues) m.push(vozDaIssue(issue));
     }
     if (p === 3) {
