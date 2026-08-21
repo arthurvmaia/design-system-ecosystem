@@ -22,6 +22,35 @@ const INLINE_EXTENSION: Record<string, string> = { png: "png", jpg: "jpg", jpeg:
 /* o draft vem do cliente: decodificar data URI sem teto é convite a estourar a memória do worker */
 const MAX_INLINE_BYTES = 20 * 1024 * 1024;
 
+/**
+ * Percorre TODO valor de configuração do tema, deixando trocar cada texto.
+ *
+ * Globais, seções e blocos. Existia como três laços copiados em cada lugar que
+ * precisava mexer nos settings, e cada cópia esquecia um nível diferente — o
+ * mais comum era esquecer os blocos, que é justamente onde mora a imagem do
+ * slide. Um percurso só, usado por quem lê e por quem reescreve.
+ */
+export function percorrerValores(theme: ShopifyThemeImport, trocar: (valor: string) => string | null): number {
+  let trocados = 0;
+  const visit = (alvo: unknown) => {
+    if (!alvo || typeof alvo !== "object") return;
+    for (const [chave, valor] of Object.entries(alvo as Record<string, unknown>)) {
+      if (typeof valor === "string") {
+        const novo = trocar(valor);
+        if (novo !== null && novo !== valor) { (alvo as Record<string, unknown>)[chave] = novo; trocados += 1; }
+      } else visit(valor);
+    }
+  };
+  visit(theme.globalValues);
+  for (const page of theme.pages) {
+    for (const section of page.sections) {
+      visit(section.settings);
+      for (const block of section.blocks) visit(block.settings);
+    }
+  }
+  return trocados;
+}
+
 /** IDs de mídia do editor referenciados nos valores editados (globais, seções e blocos). */
 export function collectEditorMediaIds(theme: ShopifyThemeImport): string[] {
   const ids = new Set<string>();
@@ -41,7 +70,108 @@ export function collectEditorMediaIds(theme: ShopifyThemeImport): string[] {
       for (const block of section.blocks) visit(block.settings);
     }
   }
+  /**
+   * As CAPAS também, e elas não estão em setting nenhum.
+   *
+   * O mapa mora no marcador. Na prática cada capa costuma acabar num cartão de
+   * coleção e ser vista pelo percurso acima — mas "costuma" não é garantia:
+   * sobrando capa para vaga, ou num tema sem vitrine de coleção, o arquivo
+   * ficava de fora do pacote e a capa virava um endereço morto assim que saía
+   * desta máquina.
+   */
+  for (const capa of Object.values(theme.orbisCapas ?? {})) visit(capa);
   return Array.from(ids);
+}
+
+const REFERENCIA_DE_ARQUIVO = /^shopify:\/\/shop_images\/(.+)$/i;
+const PREFIXO_ORBIS = /^orbis-([0-9a-f]{8})-/i;
+const MIDIA_DO_EDITOR = /^\/api\/media\/([0-9a-fA-F-]{16,64})$/;
+
+/** Os oito primeiros dígitos de cada id de mídia que o tema referencia — inclusive nas capas. */
+export function prefixosDeMidia(theme: ShopifyThemeImport): string[] {
+  const prefixos = new Set<string>();
+  percorrerValores(theme, (valor) => {
+    const arquivo = REFERENCIA_DE_ARQUIVO.exec(valor)?.[1];
+    const id = arquivo ? PREFIXO_ORBIS.exec(arquivo)?.[1] : undefined;
+    if (id) prefixos.add(id.toLowerCase());
+    return null;
+  });
+  for (const capa of Object.values(theme.orbisCapas ?? {})) {
+    const id = MIDIA_DO_EDITOR.exec(capa)?.[1];
+    if (id) prefixos.add(id.slice(0, 8).toLowerCase());
+  }
+  return Array.from(prefixos);
+}
+
+/**
+ * RECONECTA as imagens da loja entregue — por duas fontes, nesta ordem.
+ *
+ * **1. O acervo desta máquina.** Quando a foto saiu daqui, o nome dela carrega
+ * a identidade: a exportação grava `orbis-<8 do id>-<arquivo>`. Se esse id ainda
+ * está em `media_files`, o arquivo é o MESMO, e apontar para `/api/media/<id>`
+ * devolve a imagem à biblioteca do editor, onde dá para trocá-la.
+ *
+ * **2. O próprio pacote.** Se o id não existe aqui — outro computador, banco
+ * limpo, loja de outra pessoa —, a arte ainda assim viajou dentro do ZIP, em
+ * `previa-local/imagens-para-a-shopify/`. Ela foi instalada como asset, e é
+ * para lá que a referência passa a apontar.
+ *
+ * Era só a fonte 1, e por isso a loja importada em outra máquina abria sem
+ * banner e sem logo, com o quadro de "conecte esta imagem" — enquanto o arquivo
+ * estava dentro do pacote que acabara de ser aberto.
+ *
+ * O que não casa com nenhuma das duas fica como está: inventar uma imagem no
+ * lugar de outra é pior que o quadro vazio, porque o quadro vazio avisa.
+ */
+export function reconectarImagens(
+  theme: ShopifyThemeImport,
+  midiaLocalPorPrefixo: Map<string, string>,
+  artesDoPacote: Map<string, string>,
+): { doAcervo: number; doPacote: number } {
+  let doAcervo = 0;
+  let doPacote = 0;
+  /* as artes do pacote também indexadas pelo prefixo do id, que é como a capa
+     se identifica: ela guarda `/api/media/<id>`, não o nome do arquivo */
+  const pacotePorPrefixo = new Map<string, string>();
+  for (const [nome, url] of artesDoPacote) {
+    const id = PREFIXO_ORBIS.exec(nome)?.[1]?.toLowerCase();
+    if (id && !pacotePorPrefixo.has(id)) pacotePorPrefixo.set(id, url);
+  }
+
+  percorrerValores(theme, (valor) => {
+    const arquivo = REFERENCIA_DE_ARQUIVO.exec(valor)?.[1];
+    if (!arquivo) return null;
+    const id = PREFIXO_ORBIS.exec(arquivo)?.[1]?.toLowerCase();
+    const completo = id ? midiaLocalPorPrefixo.get(id) : undefined;
+    if (completo) { doAcervo += 1; return `/api/media/${completo}`; }
+    const url = artesDoPacote.get(arquivo.toLowerCase());
+    if (url) { doPacote += 1; return url; }
+    return null;
+  });
+
+  /**
+   * As CAPAS seguem o mesmo caminho, e precisam dele tanto quanto.
+   *
+   * Elas não moram nos settings — moram no marcador —, então o percurso acima
+   * não as alcança. Guardadas como `/api/media/<id>`, funcionavam só na máquina
+   * que as gerou: em qualquer outra, a vitrine voltava a cair na foto de
+   * produto, que é exatamente o defeito que elas existem para corrigir.
+   */
+  if (theme.orbisCapas) {
+    const capas: Record<string, string> = {};
+    for (const [handle, valor] of Object.entries(theme.orbisCapas)) {
+      const id = MIDIA_DO_EDITOR.exec(valor)?.[1];
+      const prefixo = id?.slice(0, 8).toLowerCase();
+      const local = prefixo ? midiaLocalPorPrefixo.get(prefixo) : undefined;
+      if (id && local && local.toLowerCase() === id.toLowerCase()) { capas[handle] = valor; continue; }
+      const doPacoteUrl = prefixo ? pacotePorPrefixo.get(prefixo) : undefined;
+      if (doPacoteUrl) { capas[handle] = doPacoteUrl; doPacote += 1; continue; }
+      capas[handle] = valor;
+    }
+    theme.orbisCapas = capas;
+  }
+
+  return { doAcervo, doPacote };
 }
 
 function fnv1a(input: string): string {
@@ -317,7 +447,18 @@ export function exportThemeZip(
    * numa loja de roupa. O marcador é um JSON de uma linha em `assets/`, que a
    * Shopify aceita e ignora.
    */
-  if (theme.orbisNicheId) output[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(theme.orbisNicheId));
+  /* e as capas de coleção viajam no mesmo marcador: sem elas, reimportar a
+     própria loja devolve a vitrine com foto de produto sorteada pelo handle */
+  /* e o NOME próprio da loja viaja junto, com o modelo nativo do estúdio: sem
+     eles a loja importava com o id do TEMA de origem, por cima dele, e com o
+     conteúdo de demonstração no lugar da marca */
+  if (theme.orbisNicheId || theme.orbisCapas || theme.orbisLoja) {
+    output[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(theme.orbisNicheId ?? "", theme.orbisCapas ?? {}, {
+      nome: theme.orbisLoja?.nome,
+      slug: theme.orbisLoja?.slug,
+      customizacao: theme.orbisCustomizacao,
+    }));
+  }
 
   return { zip: zipSync(output), modified, warnings };
 }

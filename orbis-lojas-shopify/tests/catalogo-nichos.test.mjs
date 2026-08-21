@@ -58,11 +58,10 @@ test("os produtos inventados saíram do render e do fallback", async () => {
   assert.match(catalogo, /aliexpress\.com/);
 });
 
-test("tema sem nicho abre com o catálogo de demonstração, misturado e com capa por coleção", async () => {
+test("tema importado abre COMO VEIO: sem mercadoria emprestada", async () => {
   const layout = "<!doctype html><html><body>{{ content_for_layout }}</body></html>";
   const secao = `<p class="quantos">{{ collections.all.products.size }}</p>
 <p class="capa">{{ collections['moda-feminina'].featured_image | default: 'sem-imagem' }}</p>
-<p class="capa2">{{ collections['casa-e-cozinha'].featured_image | default: 'sem-imagem' }}</p>
 <ul>{% for produto in collections.all.products %}<li>{{ produto.title }}</li>{% endfor %}</ul>
 {% schema %}{"name":"Vitrine"}{% endschema %}`;
   const zip = zipSync({
@@ -77,46 +76,42 @@ test("tema sem nicho abre com o catálogo de demonstração, misturado e com cap
     const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
     const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
     const { PRODUTOS_POR_NICHO } = await server.ssrLoadModule("/lib/catalogo-nichos.ts");
+    /* a vitrine mostra o NOME, e o nome é derivado do título do fornecedor por
+       este módulo — perguntar a ele é perguntar à mesma fonte que decide */
+    const { nomeDeVitrine } = await server.ssrLoadModule("/lib/nome-de-produto.ts");
     const theme = await extractShopifyThemeBytes(zip, "cru.zip");
     const files = themeFilesFromZip(zip);
     const base = { theme, files, pageId: "index", assetBase: (path) => `/assets/${path}` };
 
     /**
-     * Tema importado ainda não é loja de ninguém — e é aberto justamente para
-     * avaliar como a loja VAI ficar. Vitrine vazia não responde isso: mostrava
-     * caixa cinza onde deveria haver produto. Então ele abre com catálogo de
-     * demonstração, e a prévia declara isso no selo.
+     * O TEMA IMPORTADO NÃO GANHA MERCADORIA.
+     *
+     * Houve uma versão que enchia o tema cru com um catálogo de exemplo, para o
+     * dono "avaliar como a loja vai ficar". Medido na tela: um Dawn recém
+     * importado abria com fone de ouvido, óculos de sol, bodysuit e pote de
+     * cozinha, e o cartão "Moda Masculina" saía com foto de fone.
+     *
+     * Quem importa um tema quer ver AQUELE tema. Vitrine cheia de coisa que não
+     * é dele não mostra como a loja vai ficar: mostra a loja de outra pessoa.
      */
     const cru = await renderThemePage(base);
-    assert.match(cru, /<p class="quantos">10<\/p>/, "tema cru abre com a vitrine de demonstração");
+    assert.match(cru, /<p class="quantos">0<\/p>/, "tema cru não pode inventar produto");
+    assert.match(cru, /<p class="capa">sem-imagem<\/p>/, "nem capa de coleção emprestada de produto");
+    for (const nicho of Object.keys(PRODUTOS_POR_NICHO)) {
+      for (const produto of (PRODUTOS_POR_NICHO[nicho] ?? []).slice(0, 2)) {
+        assert.ok(!cru.includes(produto.title), `catálogo vazou para o tema cru: ${produto.title}`);
+      }
+    }
 
     /**
-     * A objeção que criou a regra antiga: "todo tema fica igual ao lado".
-     * A resposta é o catálogo MISTURADO — se algum dia ele encolher para um
-     * nicho só, a variedade some e a objeção volta. Por isso o teste conta
-     * nichos, não produtos.
-     */
-    const nichosNaVitrine = Object.keys(PRODUTOS_POR_NICHO).filter((nicho) =>
-      (PRODUTOS_POR_NICHO[nicho] ?? []).some((produto) => cru.includes(produto.title)),
-    );
-    assert.ok(nichosNaVitrine.length >= 3, `demonstração precisa ser misturada, veio de ${nichosNaVitrine.length} nicho(s)`);
-
-    /* a segunda objeção: a mesma foto repetida em cada cartão de coleção */
-    const capa = cru.match(/<p class="capa">(.*?)<\/p>/)?.[1];
-    const capa2 = cru.match(/<p class="capa2">(.*?)<\/p>/)?.[1];
-    assert.ok(capa && capa !== "sem-imagem", "cartão de coleção precisa de capa");
-    assert.notEqual(capa, capa2, "cada coleção mostra uma foto diferente");
-
-    /**
-     * A fronteira: demonstração NÃO vaza para loja gerada. Quem escolheu óculos
-     * vê o catálogo de óculos — mercadoria de verdade da vitrine dele —, nunca
-     * a mistura de exemplo.
+     * A loja GERADA continua com vitrine, e é verdade: ela declarou o nicho, e
+     * aqueles produtos são a mercadoria dela.
      */
     const comNicho = await renderThemePage({ ...base, nicheId: "oculos" });
     assert.match(comNicho, /<p class="quantos">10<\/p>/, "a loja gerada por nicho mostra os 10 produtos");
-    assert.ok(comNicho.includes(PRODUTOS_POR_NICHO.oculos[0].title));
+    assert.ok(comNicho.includes(nomeDeVitrine(PRODUTOS_POR_NICHO.oculos[0])));
     for (const produto of PRODUTOS_POR_NICHO.roupas.slice(0, 2)) {
-      assert.ok(!comNicho.includes(produto.title), `demonstração vazou para a loja gerada: ${produto.title}`);
+      assert.ok(!comNicho.includes(nomeDeVitrine(produto)), `nicho errado vazou para a loja gerada: ${produto.title}`);
     }
   });
 });
@@ -140,6 +135,9 @@ test("a rota escolhe o produto e a variante: handle e ?variant chegam ao render"
     const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
     const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
     const { PRODUTOS_POR_NICHO } = await server.ssrLoadModule("/lib/catalogo-nichos.ts");
+    /* a vitrine mostra o NOME, e o nome é derivado do título do fornecedor por
+       este módulo — perguntar a ele é perguntar à mesma fonte que decide */
+    const { nomeDeVitrine } = await server.ssrLoadModule("/lib/nome-de-produto.ts");
     const VITRINE = PRODUTOS_POR_NICHO.oculos;
     const theme = await extractShopifyThemeBytes(zip, "rota.zip");
     const files = themeFilesFromZip(zip);
@@ -154,7 +152,7 @@ test("a rota escolhe o produto e a variante: handle e ?variant chegam ao render"
     const comHandle = await renderThemePage({ ...base, handle: alvo.handle });
     const comVariante = await renderThemePage({ ...base, handle: alvo.handle, variantId: segunda.id });
 
-    assert.ok(comHandle.includes(alvo.title), "o handle da rota não escolheu o produto");
+    assert.ok(comHandle.includes(nomeDeVitrine(alvo)), "o handle da rota não escolheu o produto");
     assert.ok(comHandle.length > 0 && semHandle.length > 0);
     assert.ok(comVariante.includes((segunda.price / 100).toFixed(2).replace(".", ",")), "o preço da variante escolhida não apareceu");
   });
@@ -212,6 +210,9 @@ test("o tema renderizado mostra produto real e o carrinho recebe a variante clic
     const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
     const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
     const { PRODUTOS_POR_NICHO } = await server.ssrLoadModule("/lib/catalogo-nichos.ts");
+    /* a vitrine mostra o NOME, e o nome é derivado do título do fornecedor por
+       este módulo — perguntar a ele é perguntar à mesma fonte que decide */
+    const { nomeDeVitrine } = await server.ssrLoadModule("/lib/nome-de-produto.ts");
     const VITRINE = PRODUTOS_POR_NICHO.oculos;
 
     const theme = await extractShopifyThemeBytes(zip, "catalogo.zip");
@@ -226,13 +227,21 @@ test("o tema renderizado mostra produto real e o carrinho recebe a variante clic
       cartItems: [{ variantId: variante.id, quantity: 2 }],
     });
 
-    /* a vitrine mostra os 10 produtos reais, com imagem da própria loja */
-    for (const produto of VITRINE) assert.ok(html.includes(produto.title), `faltou ${produto.title} na vitrine`);
+    /**
+     * A vitrine mostra os 10 produtos reais, com imagem da própria loja — e
+     * cada um pelo NOME, não pelo título do fornecedor.
+     *
+     * O título vem da AliExpress como lista de palavras-chave e, medido no
+     * arquivo, 88 dos 100 chegam cortados em 120 caracteres, no meio da
+     * palavra: "…animal de estimação bon". Quem procura o produto na página
+     * procura o nome dele.
+     */
+    for (const produto of VITRINE) assert.ok(html.includes(nomeDeVitrine(produto)), `faltou ${produto.title} na vitrine`);
     assert.ok(html.includes("aliexpress-media.com"), "imagem real do produto não foi renderizada");
 
     /* o carrinho casou a variante clicada, com quantidade e total certos */
     const esperado = (variante.price * 2 / 100).toFixed(2).replace(".", ",");
-    assert.ok(html.includes(`${primeiro.title}`), "o carrinho não mostrou o produto");
+    assert.ok(html.includes(nomeDeVitrine(primeiro)), "o carrinho não mostrou o produto");
     assert.ok(html.includes(`x2`), "o carrinho não mostrou a quantidade");
     assert.ok(html.includes(esperado), `o total da linha (${esperado}) não apareceu`);
   });

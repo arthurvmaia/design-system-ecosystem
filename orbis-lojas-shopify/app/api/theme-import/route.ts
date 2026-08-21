@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { getIdentity } from "@/lib/auth";
-import { ensureUser, importShopifyTheme, registerThemeSource } from "@/lib/data";
-import { extractShopifyThemePackage, type ShopifyThemeImageAsset } from "@/lib/shopify-theme";
+import { ensureUser, getD1, importShopifyTheme, registerThemeSource } from "@/lib/data";
+import { extractShopifyThemePackage, type ShopifyThemeImageAsset, type ShopifyThemeImport } from "@/lib/shopify-theme";
+import { prefixosDeMidia, reconectarImagens } from "@/lib/theme-export";
 
 const DATA_URI_MAX_FILE = 120 * 1024;
 const DATA_URI_MAX_TOTAL = 2 * 1024 * 1024;
@@ -36,14 +37,66 @@ export async function POST(request: Request) {
        de upload — sai numa lista só, que é o que a tela mostra */
     const fora = [...(imported.assetsForaDaInstalacao ?? []), ...instalados.fora];
     if (fora.length) imported.assetsForaDaInstalacao = fora;
+    /* as fotos que este app produziu voltam sozinhas: a Shopify não as põe no
+       ZIP, mas o nome delas carrega o id da mídia, e o arquivo está aqui */
+    const religadas = await religarImagensDaOrbis(viewer.id, imported);
     const result = await importShopifyTheme(viewer, imported);
     if (sourceKey) await registerThemeSource(viewer, result.themeId, imported, sourceKey, file.size);
-    return Response.json(result, { status: 201 });
+    return Response.json({
+      ...result,
+      imagensReligadas: religadas.doAcervo + religadas.doPacote,
+      /* separado porque as duas dizem coisas diferentes: o que veio do acervo
+         está na biblioteca do editor e dá para trocar; o que veio do pacote
+         viajou com a loja e funciona em qualquer máquina */
+      imagensDoAcervo: religadas.doAcervo,
+      imagensDoPacote: religadas.doPacote,
+    }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "SHOPIFY_IMPORT_FAILED";
     const invalid = message.startsWith("SHOPIFY_");
     return Response.json({ error: message }, { status: invalid ? 400 : 500 });
   }
+}
+
+/**
+ * RECONECTA as imagens da loja entregue.
+ *
+ * Um tema exportado da Shopify aponta as fotos como `shopify://shop_images/…`,
+ * e a Shopify não põe esse arquivo no ZIP: ele mora nos Arquivos da loja. Por
+ * isso reimportar uma loja trazia o banner em branco, com o quadro de "conecte
+ * esta imagem".
+ *
+ * Quem decide de onde a imagem volta é `reconectarImagens`, com duas fontes: o
+ * acervo desta máquina (quando o id ainda está em `media_files`) e o PRÓPRIO
+ * PACOTE, que carrega as artes em `previa-local/imagens-para-a-shopify/` e
+ * agora as instala como asset. A segunda é o que faz a loja voltar inteira em
+ * qualquer computador.
+ *
+ * A busca no banco é escopada ao DONO: mídia de um usuário não pode aparecer na
+ * loja de outro por coincidência de id.
+ */
+async function religarImagensDaOrbis(viewerId: string, tema: ShopifyThemeImport) {
+  /* as artes que vieram DENTRO do pacote, já instaladas e servíveis */
+  const artesDoPacote = new Map<string, string>();
+  for (const nome of tema.orbisArtes ?? []) {
+    const url = tema.assetUrls?.[nome];
+    if (url) artesDoPacote.set(nome.toLowerCase(), url);
+  }
+
+  const prefixos = prefixosDeMidia(tema);
+  const porPrefixo = new Map<string, string>();
+  if (prefixos.length) {
+    const lista = prefixos.slice(0, 60);
+    const condicoes = lista.map(() => "id LIKE ?").join(" OR ");
+    const linhas = await getD1()
+      .prepare(`SELECT id FROM media_files WHERE user_id = ? AND (${condicoes})`)
+      .bind(viewerId, ...lista.map((prefixo) => `${prefixo}%`))
+      .all<{ id: string }>();
+    for (const linha of linhas.results ?? []) porPrefixo.set(linha.id.slice(0, 8).toLowerCase(), linha.id);
+  }
+  if (!porPrefixo.size && !artesDoPacote.size) return { doAcervo: 0, doPacote: 0 };
+
+  return reconectarImagens(tema, porPrefixo, artesDoPacote);
 }
 
 /**

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import type { Viewer, BootstrapData, Project, Theme, TokenPackage, TokenTransaction } from "@/lib/types";
 import { DEFAULT_CUSTOMIZATION, normalizeCustomization } from "@/lib/business-rules.mjs";
-import type { ShopifyThemeImport } from "@/lib/shopify-theme";
+import { identidadeDoTemaImportado, type ShopifyThemeImport } from "@/lib/shopify-theme";
 
 type Identity = Omit<Viewer, "role">;
 
@@ -145,6 +145,29 @@ const schemaStatements = [
     idempotency_key TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
+  /**
+   * A CONEXÃO com a loja do cliente, viva só entre a ida e a volta do OAuth.
+   *
+   * O `estado` é a chave, e é ele que atravessa o passeio: sorteado na ida,
+   * conferido na volta, usado uma vez para instalar e apagado em seguida. Nada
+   * aqui é histórico; é uma linha de recado entre duas requisições.
+   *
+   * O token fica gravado por SEGUNDOS, o tempo entre o cliente aprovar e a
+   * instalação terminar. Guardar token de escrita da loja de alguém por mais
+   * tempo é assumir a responsabilidade de protegê-lo — e aí entram cifra,
+   * rotação e o webhook de desinstalação. Enquanto ele não sobrevive à
+   * instalação, nada disso é preciso.
+   */
+  `CREATE TABLE IF NOT EXISTS shopify_conexoes (
+    estado TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    loja TEXT NOT NULL,
+    token TEXT,
+    escopos TEXT,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
   `CREATE TRIGGER IF NOT EXISTS validate_payment_before_insert
     BEFORE INSERT ON payments
     WHEN NEW.tokens != (SELECT tokens FROM token_packages WHERE id = NEW.package_id)
@@ -256,6 +279,97 @@ async function initializeDatabase() {
     shrinePro.price,
     shrinePro.badge,
   ).run();
+
+  await removerTemasZumbis(db, themes.map((theme) => theme.id));
+  await removerAssetsOrfaos(db);
+}
+
+/**
+ * OS ASSETS DE TEMAS QUE JÁ NÃO EXISTEM.
+ *
+ * A partir de agora `deleteTheme` leva os assets junto. Só que o que já estava
+ * no disco não tem como ser alcançado por ele: a chave é
+ * `theme-assets/<dono>/<fingerprint>/…`, e o fingerprint saiu do banco junto
+ * com o tema. Ficariam ali para sempre, sem nenhum caminho de volta.
+ *
+ * Medido neste computador depois de o usuário apagar tudo pela tela: nenhum
+ * tema no banco, nenhum ZIP de origem no R2, e 2.365 objetos órfãos ocupando
+ * 342 MB.
+ *
+ * A regra é simples e não depende de histórico: fingerprint que nenhum tema
+ * VIVO declara não serve a ninguém. Reimportar o mesmo ZIP recria tudo, porque
+ * o fingerprint é do conteúdo.
+ */
+async function removerAssetsOrfaos(db: ReturnType<typeof getD1>) {
+  if (!env.MEDIA) return 0;
+  const vivos = new Set<string>();
+  const temas = await db.prepare("SELECT default_settings AS defaults FROM themes").all<{ defaults: string }>();
+  for (const tema of temas.results ?? []) {
+    const fingerprint = parseJson<{ shopify?: { sourceFingerprint?: string } }>(tema.defaults, {}).shopify?.sourceFingerprint;
+    if (fingerprint) vivos.add(fingerprint);
+  }
+
+  let cursor: string | undefined;
+  let apagados = 0;
+  let pendentes: string[] = [];
+  const descarregar = async () => {
+    if (!pendentes.length) return;
+    await env.MEDIA.delete(pendentes);
+    apagados += pendentes.length;
+    pendentes = [];
+  };
+  /* com cursor e em lotes: um acervo real passa de dois mil objetos, e listar
+     de uma vez devolve a primeira página em silêncio */
+  do {
+    const pagina = await env.MEDIA.list({ prefix: "theme-assets/", cursor, limit: 500 });
+    for (const objeto of pagina.objects as Array<{ key: string }>) {
+      const fingerprint = objeto.key.split("/")[2];
+      if (fingerprint && !vivos.has(fingerprint)) pendentes.push(objeto.key);
+      if (pendentes.length >= 200) await descarregar();
+    }
+    cursor = pagina.truncated ? pagina.cursor : undefined;
+  } while (cursor);
+  await descarregar();
+  return apagados;
+}
+
+/**
+ * OS ZUMBIS DO BOTÃO ANTIGO, que arquivava em vez de apagar.
+ *
+ * Um tema `archived` não sai por caminho nenhum: o `bootstrap` só devolve
+ * publicados, então ele é invisível, e a remoção pedia `status = 'published'`,
+ * então era indeletável. Ficava no banco para sempre.
+ *
+ * E não ficava quieto. `importShopifyTheme` grava com
+ * `ON CONFLICT(id) DO UPDATE SET status = 'published'`: importar qualquer tema
+ * que caia no mesmo id RESSUSCITA o zumbi — e o modelo nativo dele vira a base
+ * do tema novo, via `currentDefaults`. É assim que o conteúdo de uma loja
+ * apagada reaparecia dentro de uma importação recém-feita.
+ *
+ * A limpeza é estreita de propósito, e cada condição tem motivo:
+ *
+ * - só `archived`, porque nada no código de hoje arquiva tema: quem está assim
+ *   veio do botão antigo, e o usuário já mandou apagar uma vez;
+ * - só sem projeto apontando, porque apagar o tema de um projeto vivo deixaria
+ *   o projeto órfão na tela — pior que o zumbi;
+ * - nunca um id SEMEADO: o seed o recriaria oco, sem os dados Shopify, e um
+ *   tema vazio de volta na lista é mais confuso que um invisível fora dela.
+ */
+async function removerTemasZumbis(db: ReturnType<typeof getD1>, semeados: string[]) {
+  const marcadores = semeados.map(() => "?").join(", ");
+  const alvos = await db.prepare(`SELECT id FROM themes
+    WHERE status = 'archived'
+      AND id NOT IN (${marcadores})
+      AND id NOT IN (SELECT DISTINCT theme_id FROM projects)`)
+    .bind(...semeados).all<{ id: string }>();
+  for (const alvo of alvos.results ?? []) {
+    await db.batch([
+      db.prepare("DELETE FROM favorites WHERE theme_id = ?").bind(alvo.id),
+      db.prepare("DELETE FROM theme_imports WHERE theme_id = ?").bind(alvo.id),
+      db.prepare("DELETE FROM theme_unlocks WHERE theme_id = ?").bind(alvo.id),
+      db.prepare("DELETE FROM themes WHERE id = ?").bind(alvo.id),
+    ]);
+  }
 }
 
 export async function ensureUser(identity: Identity): Promise<Viewer> {
@@ -404,29 +518,152 @@ export async function deleteProject(viewer: Viewer, projectId: string) {
   return getBootstrap(viewer);
 }
 
+/**
+ * As imagens que SÓ aqueles projetos usavam.
+ *
+ * `media_files` não guarda de quem é o arquivo: ele é enviado antes de o
+ * projeto existir, então não há coluna que ligue os dois. O que existe é o
+ * texto: a customização do projeto guarda os endereços `/api/media/<id>` que o
+ * tema aponta. Lendo os dois lados dá para saber o que sai junto e o que fica.
+ *
+ * O "só" é a parte que importa. Um arquivo citado por OUTRO projeto que
+ * sobrevive não pode ser apagado — a loja daquele cliente ficaria com a imagem
+ * quebrada, e imagem quebrada em loja entregue é pior que arquivo a mais.
+ *
+ * Sem isso, cada loja gerada deixava as imagens dela no disco para sempre.
+ * Medido neste computador: 281 arquivos, 957 MB, com zero projetos vivos.
+ */
+const ENDERECO_DE_MIDIA = /\/api\/media\/([0-9a-fA-F-]{16,64})/g;
+
+async function apagarMidiaDosProjetos(projectIds: string[]) {
+  if (!projectIds.length) return;
+  const db = getD1();
+  const marcadores = projectIds.map(() => "?").join(", ");
+  const idsDe = (linhas: Array<{ customization: string }>) => {
+    const ids = new Set<string>();
+    for (const linha of linhas) {
+      for (const achado of String(linha.customization ?? "").matchAll(ENDERECO_DE_MIDIA)) ids.add(achado[1]);
+    }
+    return ids;
+  };
+
+  const saindo = await db.prepare(`SELECT customization FROM projects WHERE id IN (${marcadores})`)
+    .bind(...projectIds).all<{ customization: string }>();
+  const candidatos = idsDe(saindo.results);
+  if (!candidatos.size) return;
+
+  /* o que QUALQUER projeto sobrevivente ainda cita fica de pé */
+  const ficando = await db.prepare(`SELECT customization FROM projects WHERE id NOT IN (${marcadores})`)
+    .bind(...projectIds).all<{ customization: string }>();
+  const usados = idsDe(ficando.results);
+  const apagar = [...candidatos].filter((id) => !usados.has(id));
+  if (!apagar.length) return;
+
+  const alvos = await db.prepare(`SELECT id, storage_key AS storageKey FROM media_files WHERE id IN (${apagar.map(() => "?").join(", ")})`)
+    .bind(...apagar).all<{ id: string; storageKey: string }>();
+  for (const alvo of alvos.results) {
+    if (env.MEDIA && alvo.storageKey) await env.MEDIA.delete(alvo.storageKey);
+  }
+  if (alvos.results.length) {
+    await db.prepare(`DELETE FROM media_files WHERE id IN (${alvos.results.map(() => "?").join(", ")})`)
+      .bind(...alvos.results.map((alvo) => alvo.id)).run();
+  }
+}
+
+/**
+ * OS ASSETS INSTALADOS DO TEMA saem com ele.
+ *
+ * A importação copia cada imagem, CSS, JS e fonte do ZIP para
+ * `theme-assets/<dono>/<fingerprint>/…` no R2 — é de lá que a prévia serve o
+ * arquivo. A remoção do tema apagava o ZIP de origem e esquecia essa cópia,
+ * que é a MAIOR das duas: ela fica descompactada, arquivo por arquivo.
+ *
+ * Medido neste computador depois de o usuário apagar tudo pela tela: nenhum
+ * tema no banco, nenhum ZIP de origem no R2 — e 2.365 objetos de `theme-assets`
+ * órfãos, 342 MB, de temas que não existem mais. Ninguém tinha como alcançá-los:
+ * a chave depende de um fingerprint que saiu do banco junto com o tema.
+ */
+async function apagarAssetsDoTema(fingerprint: string, ownerId: string) {
+  if (!env.MEDIA || !/^[0-9a-f]{16}$/.test(fingerprint) || !ownerId) return 0;
+  const prefix = `theme-assets/${ownerId}/${fingerprint}/`;
+  let cursor: string | undefined;
+  let apagados = 0;
+  /* em lote e com cursor: um tema real passa de mil arquivos, e listar de uma
+     vez só devolve a primeira página em silêncio */
+  do {
+    const lote = await env.MEDIA.list({ prefix, cursor, limit: 500 });
+    const chaves = (lote.objects as Array<{ key: string }>).map((objeto) => objeto.key);
+    if (chaves.length) {
+      await env.MEDIA.delete(chaves);
+      apagados += chaves.length;
+    }
+    cursor = lote.truncated ? lote.cursor : undefined;
+  } while (cursor);
+  return apagados;
+}
+
 export async function deleteTheme(viewer: Viewer, themeId: string) {
   const db = getD1();
-  const theme = await db.prepare("SELECT id FROM themes WHERE id = ? AND status = 'published'")
-    .bind(themeId).first<{ id: string }>();
+  /**
+   * Existe é o bastante para ser apagado — publicado ou não.
+   *
+   * A guarda pedia `status = 'published'`, e isso trancava a porta justamente
+   * para quem mais precisava dela: os temas ARQUIVADOS pelo botão antigo, que
+   * arquivava em vez de apagar. Eles são invisíveis (o `bootstrap` só devolve
+   * publicados) E indeletáveis — a rota responde THEME_NOT_FOUND. Um estado do
+   * qual não se sai por caminho nenhum.
+   */
+  const theme = await db.prepare("SELECT id, default_settings AS defaults FROM themes WHERE id = ?")
+    .bind(themeId).first<{ id: string; defaults: string }>();
   if (!theme) throw new Error("THEME_NOT_FOUND");
 
-  const projects = await db.prepare("SELECT id FROM projects WHERE theme_id = ? AND user_id = ?")
-    .bind(themeId, viewer.id).all<{ id: string }>();
-  const source = await db.prepare("SELECT source_key AS sourceKey FROM theme_imports WHERE theme_id = ? AND user_id = ?")
-    .bind(themeId, viewer.id).first<{ sourceKey: string }>();
+  /**
+   * Nada aqui filtra por dono, e é de propósito.
+   *
+   * O tema inteiro está saindo. Uma linha que aponte para ele e sobreviva não
+   * fica "de outra pessoa": fica QUEBRADA, apontando para um id que não existe
+   * — e, como `projects` e `theme_unlocks` referenciam `themes` sem cascata, o
+   * banco recusaria a remoção e a limpeza terminaria pela metade, com o ZIP de
+   * origem já apagado do R2 lá em cima. Meio apagado é o pior estado dos três.
+   */
+  const projects = await db.prepare("SELECT id FROM projects WHERE theme_id = ?")
+    .bind(themeId).all<{ id: string }>();
+  const source = await db.prepare("SELECT source_key AS sourceKey, user_id AS userId FROM theme_imports WHERE theme_id = ?")
+    .bind(themeId).first<{ sourceKey: string; userId: string }>();
   if (source?.sourceKey && env.MEDIA) await env.MEDIA.delete(source.sourceKey);
+  /* e os ASSETS instalados do tema, que ninguém removia */
+  await apagarAssetsDoTema(parseJson<{ shopify?: { sourceFingerprint?: string } }>(theme.defaults, {}).shopify?.sourceFingerprint ?? "", source?.userId || viewer.id);
+  await apagarMidiaDosProjetos(projects.results.map((projeto) => projeto.id));
   for (const project of projects.results) {
     await db.batch([
       db.prepare("DELETE FROM project_versions WHERE project_id = ?").bind(project.id),
-      db.prepare("DELETE FROM theme_unlocks WHERE project_id = ? AND user_id = ?").bind(project.id, viewer.id),
-      db.prepare("DELETE FROM projects WHERE id = ? AND user_id = ?").bind(project.id, viewer.id),
+      db.prepare("DELETE FROM theme_unlocks WHERE project_id = ?").bind(project.id),
+      db.prepare("DELETE FROM projects WHERE id = ?").bind(project.id),
     ]);
   }
 
+  /**
+   * APAGAR é apagar. Antes isto ARQUIVAVA.
+   *
+   * O tema sumia da tela e continuava no banco para sempre. Medido neste
+   * computador: sete temas "apagados", todos ainda ali. E o pior não era o
+   * espaço, era o zumbi: o ZIP de origem em R2 JÁ ERA removido logo acima, de
+   * modo que a linha sobrevivente apontava para um arquivo que não existe mais.
+   * Tema arquivado sem origem não renderiza, não exporta e não volta — e se
+   * algum projeto ainda apontasse para ele, a prévia ficava girando sem dizer
+   * por quê.
+   *
+   * A ordem importa: `projects` e `theme_unlocks` referenciam `themes` SEM
+   * cascata, então eles saem primeiro (no laço acima) ou o banco recusa a
+   * remoção. `theme_imports` e `favorites` têm cascata e sairiam sozinhos;
+   * ficam explícitos porque depender de cascata que alguém pode trocar num
+   * `CREATE TABLE` é confiar em regra que não está escrita aqui.
+   */
   await db.batch([
-    db.prepare("DELETE FROM favorites WHERE user_id = ? AND theme_id = ?").bind(viewer.id, themeId),
-    db.prepare("DELETE FROM theme_imports WHERE theme_id = ? AND user_id = ?").bind(themeId, viewer.id),
-    db.prepare("UPDATE themes SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(themeId),
+    db.prepare("DELETE FROM favorites WHERE theme_id = ?").bind(themeId),
+    db.prepare("DELETE FROM theme_imports WHERE theme_id = ?").bind(themeId),
+    db.prepare("DELETE FROM theme_unlocks WHERE theme_id = ?").bind(themeId),
+    db.prepare("DELETE FROM themes WHERE id = ?").bind(themeId),
   ]);
   return getBootstrap(viewer);
 }
@@ -434,15 +671,35 @@ export async function deleteTheme(viewer: Viewer, themeId: string) {
 export async function importShopifyTheme(viewer: Viewer, imported: ShopifyThemeImport) {
   await ensureDatabase();
   const db = getD1();
-  const baseSlug = slugify(imported.themeName) || "tema-shopify";
-  const isShrine = /shrine/i.test(imported.themeName) || /shrine/i.test(imported.sourceFile);
-  const id = isShrine ? "shrine-pro" : `import-${baseSlug.slice(0, 48)}`;
-  const slug = isShrine ? "shrine-pro" : baseSlug.slice(0, 56);
+  /**
+   * UMA LOJA ENTREGUE NÃO É O TEMA DE ORIGEM.
+   *
+   * O id saía do `theme_info` do ZIP, e uma loja feita sobre o Dawn continua se
+   * chamando "Dawn": reimportá-la caía em `import-dawn`, o MESMO id do tema
+   * base do estúdio, e o `ON CONFLICT DO UPDATE` abaixo a gravava por cima
+   * dele. A loja do cliente virava o tema de todo mundo, e duas lojas feitas
+   * sobre o mesmo tema disputavam a mesma linha — a última a entrar apagava a
+   * anterior, sem aviso.
+   *
+   * Quem entrega declara o nome próprio no marcador (`orbisLoja`), e é ele que
+   * manda. Tema sem marcador segue pelo nome, como sempre.
+   */
+  const { id, slug, nome } = identidadeDoTemaImportado(imported);
+  const isShrine = id === "shrine-pro";
   const existing = await db.prepare("SELECT default_settings AS defaults FROM themes WHERE id = ?")
     .bind(id).first<{ defaults: string }>();
   const currentDefaults = normalizeCustomization(parseJson(existing?.defaults, DEFAULT_CUSTOMIZATION));
-  const defaults = normalizeCustomization({ ...currentDefaults, shopify: imported });
-  const displayName = isShrine ? "ShrinePro" : imported.themeName.slice(0, 80);
+  /**
+   * O modelo nativo vem da LOJA quando ela o traz.
+   *
+   * O tema Shopify não é a loja inteira: o estúdio tem um modelo próprio
+   * (cabeçalho, dobra, rodapé, cores), e ele desenha as telas que não passam
+   * pelo Liquid. Ele não viajava no pacote, então a importação o herdava do que
+   * já estivesse naquele id — na prática, o conteúdo de demonstração. A loja do
+   * cliente abria com a marca certa no tema e "CACTUS" em tudo o mais.
+   */
+  const defaults = normalizeCustomization({ ...currentDefaults, ...(imported.orbisCustomizacao ?? {}), shopify: imported });
+  const displayName = nome;
   const description = `${imported.compatibility.architecture} extraído por completo: ${imported.summary.fileCount} arquivos, ${imported.summary.templateCount} páginas, ${imported.summary.sectionDefinitionCount} tipos de seção e ${imported.summary.editableSettingCount} configurações editáveis.`;
   const languages = Array.from(new Set(imported.sourceFiles.filter((file) => file.kind === "locale" && !file.path.endsWith(".schema.json")).map((file) => file.path.split("/").at(-1)?.replace(/\.json$/i, "")).filter((value): value is string => Boolean(value)))).slice(0, 40);
 
@@ -530,6 +787,3 @@ function parseJson<T>(value: unknown, fallback: T): T {
   }
 }
 
-function slugify(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}

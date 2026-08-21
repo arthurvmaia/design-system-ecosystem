@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { strToU8, zipSync } from "fflate";
@@ -261,6 +262,265 @@ test("o tema entregue diz de que loja é, e a importação reconhece pelas cole�
     assert.equal(nicho(comColecoes(["novidades", "promocoes"])), "");
     /* tema cru continua sem nicho: é ele que abre com a vitrine de demonstração */
     assert.equal(nicho(comColecoes([])), "");
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * A LOJA ENTREGUE NÃO É O TEMA DE ORIGEM.
+ *
+ * Uma loja feita sobre o Dawn continua carregando o `theme_info` do Dawn: o
+ * `themeName` dela é "Dawn". Como o estúdio derivava o id do tema desse nome,
+ * importar a loja do cliente caía em `import-dawn` — o MESMO id do tema base —
+ * e o `ON CONFLICT DO UPDATE` a gravava por cima dele. Medido no acervo desta
+ * máquina: o tema `import-dawn` do estúdio estava com `sourceFile`
+ * "loja-claro-co.zip", ou seja, já era a loja do cliente ocupando a linha do
+ * tema. Duas lojas sobre o mesmo tema também disputavam a mesma linha, e a
+ * última a entrar apagava a anterior sem aviso.
+ */
+test("a loja entregue importa como ela mesma, e não por cima do tema de origem", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemeBytes, identidadeDoTemaImportado, ARQUIVO_DA_LOJA, marcadorDaLoja } =
+      await server.ssrLoadModule("/lib/shopify-theme.ts");
+
+    const temaBase = {
+      "layout/theme.liquid": "<html><body>{{ content_for_layout }}</body></html>",
+      "sections/lista.liquid": section("Lista"),
+      "templates/index.json": JSON.stringify({ sections: { c0: { type: "lista", settings: {} } }, order: ["c0"] }),
+      "config/settings_schema.json": JSON.stringify([
+        { name: "theme_info", theme_name: "Dawn", theme_version: "15.0", theme_author: "Shopify" },
+      ]),
+      "config/settings_data.json": JSON.stringify({ current: {} }),
+    };
+    const modeloNativo = { header: { brand: "Claro Co." }, hero: { headline: "Claro Co." } };
+
+    /* o tema cru: entra pelo nome dele, como sempre */
+    const cru = extractShopifyThemeBytes(archive(temaBase), "dawn.zip");
+    assert.equal(cru.orbisLoja, undefined, "tema sem marcador não inventa loja");
+    assert.equal(identidadeDoTemaImportado(cru).id, "import-dawn");
+
+    /* a loja entregue: mesmo themeName, identidade própria */
+    const daLoja = extractShopifyThemeBytes(archive({
+      ...temaBase,
+      [ARQUIVO_DA_LOJA]: marcadorDaLoja("oculos", {}, { nome: "Claro Co.", slug: "claro-co", customizacao: modeloNativo }),
+    }), "loja-claro-co.zip");
+    assert.equal(daLoja.themeName, "Dawn", "o theme_info continua sendo o do tema de origem");
+    assert.deepEqual(daLoja.orbisLoja, { nome: "Claro Co.", slug: "claro-co" });
+    assert.equal(identidadeDoTemaImportado(daLoja).id, "loja-claro-co");
+    assert.equal(identidadeDoTemaImportado(daLoja).nome, "Claro Co.", "a lista do estúdio mostra o nome da loja");
+
+    /* é ESTA a regressão: o id da loja não pode ser o do tema base */
+    assert.notEqual(
+      identidadeDoTemaImportado(daLoja).id,
+      identidadeDoTemaImportado(cru).id,
+      "a loja do cliente não pode gravar por cima do tema de origem",
+    );
+
+    /* e duas lojas sobre o mesmo tema não disputam a mesma linha */
+    const outra = extractShopifyThemeBytes(archive({
+      ...temaBase,
+      [ARQUIVO_DA_LOJA]: marcadorDaLoja("roupas", {}, { nome: "Vega Modas", slug: "vega-modas" }),
+    }), "loja-vega-modas.zip");
+    assert.notEqual(identidadeDoTemaImportado(outra).id, identidadeDoTemaImportado(daLoja).id);
+
+    /* o modelo nativo do estúdio viaja: sem ele a importação o herdava do que
+       estivesse naquele id, e a loja abria com o conteúdo de demonstração */
+    assert.deepEqual(daLoja.orbisCustomizacao, modeloNativo);
+    assert.equal(outra.orbisCustomizacao, undefined, "loja que não declara modelo não ganha um inventado");
+
+    /* o tema NÃO pode voltar dentro do modelo nativo: além da loja carregar duas
+       versões de si mesma, o marcador viraria um ciclo no JSON */
+    const comTemaDentro = extractShopifyThemeBytes(archive({
+      ...temaBase,
+      [ARQUIVO_DA_LOJA]: marcadorDaLoja("oculos", {}, {
+        nome: "Claro Co.", slug: "claro-co",
+        customizacao: { ...modeloNativo, shopify: { pages: [] } },
+      }),
+    }), "loja.zip");
+    assert.equal("shopify" in (comTemaDentro.orbisCustomizacao ?? {}), false);
+
+    /* meia identidade não vale: sem nome ou sem apelido o importador teria de
+       inventar a outra metade, que é o palpite que o marcador existe para evitar */
+    const meia = extractShopifyThemeBytes(archive({
+      ...temaBase,
+      [ARQUIVO_DA_LOJA]: marcadorDaLoja("oculos", {}, { nome: "Claro Co." }),
+    }), "loja.zip");
+    assert.equal(meia.orbisLoja, undefined);
+    assert.equal(identidadeDoTemaImportado(meia).id, "import-dawn");
+
+    /* o ShrinePro segue com id fixo — mas uma LOJA feita sobre ele não vira ele */
+    assert.equal(identidadeDoTemaImportado({ themeName: "ShrinePro", sourceFile: "shrine.zip" }).id, "shrine-pro");
+    assert.equal(
+      identidadeDoTemaImportado({ themeName: "ShrinePro", sourceFile: "loja-x.zip", orbisLoja: { nome: "Loja X", slug: "loja-x" } }).id,
+      "loja-loja-x",
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * A foto que ESTE app produziu volta sozinha na reimportação.
+ *
+ * Um tema exportado da Shopify aponta as fotos como `shopify://shop_images/…`
+ * e o arquivo não viaja no ZIP: ele mora nos Arquivos da loja. Por isso
+ * reimportar a própria loja trazia o banner em branco.
+ *
+ * Só que a exportação daqui grava o nome como `orbis-<8 do id>-<arquivo>`, e
+ * esse id é o da mídia. Se ela ainda está no banco, o arquivo é o MESMO e não
+ * há nada a adivinhar. Medido no acervo desta máquina: o Dawn importado pedia
+ * três imagens assim, e as três estavam guardadas.
+ */
+test("percorrerValores alcança global, seção E bloco, que é onde mora a imagem do slide", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { percorrerValores } = await server.ssrLoadModule("/lib/theme-export.ts");
+    const tema = {
+      globalValues: { logo: "shopify://shop_images/orbis-aaaaaaaa-logo.png", cor: "#fff" },
+      pages: [{
+        id: "index",
+        sections: [{
+          settings: { fundo: "shopify://shop_images/orbis-bbbbbbbb-fundo.png" },
+          /* o bloco é o nível que os laços copiados esqueciam, e é onde o
+             slideshow guarda a imagem do banner */
+          blocks: [{ settings: { image: "shopify://shop_images/orbis-cccccccc-banner.png", titulo: "Oi" } }],
+        }],
+      }],
+    };
+
+    /* primeiro só LÊ: devolver null não pode trocar nada */
+    const vistos = [];
+    const semTroca = percorrerValores(tema, (v) => { vistos.push(v); return null; });
+    assert.equal(semTroca, 0, "devolver null não troca valor nenhum");
+    assert.equal(vistos.length, 5, "todo texto é visitado, dos globais aos blocos");
+
+    /* agora troca, e os três níveis têm de ser alcançados */
+    const trocados = percorrerValores(tema, (v) => (v.startsWith("shopify://") ? `/api/media/${v.slice(-13, -4)}` : null));
+    assert.equal(trocados, 3);
+    assert.match(tema.globalValues.logo, /^\/api\/media\//);
+    assert.match(tema.pages[0].sections[0].settings.fundo, /^\/api\/media\//);
+    assert.match(tema.pages[0].sections[0].blocks[0].settings.image, /^\/api\/media\//, "o bloco não pode ficar de fora");
+    assert.equal(tema.pages[0].sections[0].blocks[0].settings.titulo, "Oi", "texto que não casa fica intacto");
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * A LOJA VOLTA INTEIRA — inclusive fora da máquina que a gerou.
+ *
+ * A reconexão tinha uma fonte só: o id da mídia no banco DESTE computador.
+ * Funcionava em casa e falhava em qualquer outro lugar, porque o arquivo da
+ * arte não está em `assets/` — a entrega o move para
+ * `previa-local/imagens-para-a-shopify/` para o pacote caber no teto de 50 MB
+ * da Shopify, e o importador descartava essa pasta inteira. A loja abria sem
+ * banner e sem logo, com o arquivo dentro do próprio ZIP que acabara de abrir.
+ */
+test("a imagem da loja volta do acervo ou do próprio pacote, e o resto fica como está", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { reconectarImagens, prefixosDeMidia } = await server.ssrLoadModule("/lib/theme-export.ts");
+
+    const idLocal = "aaaaaaaa-1111-2222-3333-444444444444";
+    const tema = () => ({
+      globalValues: { logo: "shopify://shop_images/orbis-aaaaaaaa-logo.png" },
+      pages: [{
+        id: "index",
+        sections: [{
+          id: "hero",
+          settings: { fundo: "shopify://shop_images/orbis-bbbbbbbb-banner.png" },
+          blocks: [{ id: "b1", settings: { foto: "shopify://shop_images/de-outra-loja.png", titulo: "Oi" } }],
+        }],
+      }],
+      orbisCapas: {
+        "oculos-de-sol": `/api/media/${idLocal}`,
+        polarizados: "/api/media/bbbbbbbb-1111-2222-3333-444444444444",
+      },
+    });
+
+    /* os prefixos varridos alcançam settings, blocos E capas */
+    assert.deepEqual(prefixosDeMidia(tema()).sort(), ["aaaaaaaa", "bbbbbbbb"]);
+
+    const acervo = new Map([["aaaaaaaa", idLocal]]);
+    const pacote = new Map([["orbis-bbbbbbbb-banner.png", "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png"]]);
+
+    const t = tema();
+    const contagem = reconectarImagens(t, acervo, pacote);
+
+    /* 1. o que está no acervo volta para a biblioteca do editor, onde dá para trocar */
+    assert.equal(t.globalValues.logo, `/api/media/${idLocal}`);
+    /* 2. o que não está volta do PACOTE — é isto que faz a loja abrir em outra máquina */
+    assert.equal(t.pages[0].sections[0].settings.fundo, "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png");
+    /* 3. o que não é nosso não é inventado: quadro vazio avisa, imagem errada não */
+    assert.equal(t.pages[0].sections[0].blocks[0].settings.foto, "shopify://shop_images/de-outra-loja.png");
+    assert.equal(t.pages[0].sections[0].blocks[0].settings.titulo, "Oi", "texto que não casa fica intacto");
+    assert.deepEqual(contagem, { doAcervo: 1, doPacote: 2 }, "a capa também conta");
+
+    /* as CAPAS seguem o mesmo caminho: sem isso a vitrine volta a cair na foto
+       de produto sorteada pelo handle, que é o defeito que elas corrigem */
+    assert.equal(t.orbisCapas["oculos-de-sol"], `/api/media/${idLocal}`, "capa que existe aqui fica como está");
+    assert.equal(t.orbisCapas.polarizados, "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png");
+
+    /* sem acervo nenhum — outra máquina — o pacote sozinho ainda entrega */
+    const fora = tema();
+    const soPacote = reconectarImagens(fora, new Map(), pacote);
+    assert.equal(fora.globalValues.logo, "shopify://shop_images/orbis-aaaaaaaa-logo.png", "sem arquivo, nada é inventado");
+    assert.equal(fora.pages[0].sections[0].settings.fundo, "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png");
+    assert.equal(soPacote.doAcervo, 0);
+  } finally {
+    await server.close();
+  }
+});
+
+test("a busca de mídia continua escopada ao dono", async () => {
+  const rota = await readFile(new URL("../app/api/theme-import/route.ts", import.meta.url), "utf8");
+  /* mídia de um usuário não pode aparecer na loja de outro por coincidência de id */
+  assert.match(rota, /WHERE user_id = \? AND/);
+  /* e a resposta diz quantas voltaram, e de onde */
+  assert.match(rota, /imagensDoAcervo: religadas\.doAcervo/);
+  assert.match(rota, /imagensDoPacote: religadas\.doPacote/);
+});
+
+/**
+ * A ARTE que viaja no pacote entra como asset instalável.
+ *
+ * Ela não está em `assets/` porque a Shopify recusa tema acima de 50 MB. Estava
+ * sendo descartada com o resto de `previa-local/`, e sem ela a loja importada
+ * fora desta máquina não tinha imagem nenhuma para mostrar.
+ */
+test("as artes da entrega viram asset da loja, sem deixar a prévia entrar no tema", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemePackage } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const png = strToU8("conteudo-de-imagem");
+    const zip = zipSync({
+      "Tema/config/settings_schema.json": strToU8(settingsSchema),
+      "Tema/config/settings_data.json": strToU8(JSON.stringify({ current: {} })),
+      "Tema/layout/theme.liquid": strToU8("{{ content_for_layout }}"),
+      "Tema/sections/hero.liquid": strToU8(section("Hero")),
+      "Tema/templates/index.json": strToU8(JSON.stringify({ sections: { hero: { type: "hero", settings: {} } }, order: ["hero"] })),
+      "Tema/assets/base.css": strToU8("body{}"),
+      "Tema/previa-local/index.html": strToU8("<html></html>"),
+      "Tema/previa-local/produtos-para-importar.csv": strToU8("Title\nvelho"),
+      "Tema/previa-local/imagens-para-a-shopify/orbis-aaaaaaaa-banner.png": png,
+      "Tema/previa-local/imagens-para-a-shopify/COMO-SUBIR-AS-IMAGENS.txt": strToU8("instrucoes"),
+      "Tema/previa-local/logo-da-marca/logo-extenso.svg": strToU8("<svg></svg>"),
+    });
+
+    const { theme, images } = extractShopifyThemePackage(zip, "loja.zip");
+    assert.deepEqual(theme.orbisArtes, ["orbis-aaaaaaaa-banner.png"]);
+    const arte = images.find((img) => img.name === "orbis-aaaaaaaa-banner.png");
+    assert.ok(arte, "a arte da entrega precisa ser instalada");
+    assert.equal(arte.path, "assets/orbis-aaaaaaaa-banner.png", "entra onde o tema procuraria a imagem");
+
+    /* e nada mais da prévia atravessa: nem o txt de instruções, nem o CSV, nem
+       o kit de logo — foi isso que fez cada loja nova nascer com o catálogo de
+       uma loja velha */
+    assert.equal(theme.sourceFiles.filter((f) => f.path.startsWith("previa-local/")).length, 0);
+    assert.equal(images.filter((img) => img.name.endsWith(".txt")).length, 0);
+    assert.equal(images.some((img) => img.name === "logo-extenso.svg"), false, "o kit de logo não é asset do tema");
   } finally {
     await server.close();
   }

@@ -1,25 +1,24 @@
-import { env } from "cloudflare:workers";
-import { strToU8, zipSync, unzipSync } from "fflate";
+import { strToU8, zipSync } from "fflate";
 import { z } from "zod";
 import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1, saveProject, unlockTheme } from "@/lib/data";
 import { brandCustomization, generateClientSite, sanitizeBrand } from "@/lib/site-generator.mjs";
 import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
-import { aplicarMarcaNoTema } from "@/lib/shopify-brand";
-import { ARQUIVO_DA_LOJA, marcadorDaLoja, themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
-import { collectEditorMediaIds, exportThemeZip, type EditorMediaFile } from "@/lib/theme-export";
+import { aplicarMarcaNoTema, handleDeColecao } from "@/lib/shopify-brand";
+import { ARQUIVO_DA_LOJA, marcadorDaLoja, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { pecasDaMarca } from "@/lib/marca-imagens";
 import { csvDeProdutos } from "@/lib/catalogo-csv";
 import { kitDeLogo } from "@/lib/kit-de-logo";
+import { montarTemaShopify } from "@/lib/pacote-da-loja";
 
 /**
  * Solicitação de loja do Fluxo Cliente.
  *
  * Conversa com o backend admin de verdade: desbloqueia o tema escolhido (os
  * triggers criam o projeto atomicamente), salva a customização com a marca
- * aplicada e devolve o site em ZIP. A gravação na Área de Trabalho acontece
- * depois, no middleware Node do dev server, porque aqui é workerd e não há
- * filesystem.
+ * aplicada e devolve o site em ZIP. O ZIP vai para o navegador e é ele quem
+ * grava: aqui é workerd, sem filesystem, e o app não escreve mais nada em
+ * disco por fora do download.
  *
  * ## A marca é regerada aqui, não recebida pronta
  *
@@ -67,6 +66,16 @@ const requestSchema = z.object({
     instagram: z.string().max(60).optional(),
     email: z.string().max(120).optional(),
     logoDataUri: z.string().max(2_000_000).optional(),
+    /**
+     * As coleções que o cliente escreveu na bancada.
+     *
+     * Sem este campo elas eram descartadas na porta: o servidor regerava a
+     * marca a partir do nicho e devolvia as coleções PADRÃO dele, então
+     * "Moda Fitness" digitado na tela virava "Alfaiataria" no pacote, sem
+     * nenhum aviso. Elas decidem as categorias do CSV, os cartões da vitrine e
+     * quantas capas a arte precisa cobrir.
+     */
+    collections: z.array(z.string().max(40)).max(12).optional(),
   }),
   /**
    * Imagens já geradas pelo provedor de IA, por chave de peça, como id de mídia
@@ -84,45 +93,6 @@ const requestSchema = z.object({
   imagensGeradas: z.array(z.string().max(40)).max(40).optional(),
 });
 
-/**
- * O tema Shopify completo, com a marca já gravada nos settings.
- *
- * Reaproveita o ZIP original preservado no R2 e o mesmo exportador da área do
- * estúdio, então o pacote sai com layout, templates, seções, snippets, assets e
- * locales — tudo que a Shopify exige para aceitar o upload. Sem o ZIP de origem
- * (tema antigo, importado antes da preservação) devolve nulo, e a entrega segue
- * só com a prévia local em vez de quebrar.
- */
-async function montarTemaShopify(viewerId: string, tema: ShopifyThemeImport): Promise<Record<string, Uint8Array> | null> {
-  if (!env.MEDIA || !/^[0-9a-f]{16}$/.test(tema.sourceFingerprint)) return null;
-  const objeto = await env.MEDIA.get(`themes/${viewerId}/${tema.sourceFingerprint}.zip`);
-  if (!objeto) return null;
-  const originais = themeFilesFromZip(new Uint8Array(await objeto.arrayBuffer()));
-  /* as imagens enviadas pelo cliente e as geradas viram `/api/media/<id>` nos
-     settings; sem carregá-las aqui, o ZIP sairia apontando para um endereço
-     que não existe fora deste computador, e a loja subiria sem banner */
-  const midias = await carregarMidias(viewerId, tema);
-  const { zip } = exportThemeZip(tema, originais, midias);
-  return unzipSync(zip) as Record<string, Uint8Array>;
-}
-
-/** Busca no D1 + R2 as imagens que o tema referencia, para virarem assets. */
-async function carregarMidias(viewerId: string, tema: ShopifyThemeImport) {
-  const midias = new Map<string, EditorMediaFile>();
-  const ids = collectEditorMediaIds(tema).slice(0, 60);
-  if (!ids.length || !env.MEDIA) return midias;
-  const marcadores = ids.map(() => "?").join(", ");
-  const linhas = await getD1()
-    .prepare(`SELECT id, storage_key AS storageKey, filename FROM media_files WHERE user_id = ? AND id IN (${marcadores})`)
-    .bind(viewerId, ...ids)
-    .all<{ id: string; storageKey: string; filename: string }>();
-  for (const linha of linhas.results ?? []) {
-    const arquivo = await env.MEDIA.get(linha.storageKey);
-    if (!arquivo) continue;
-    midias.set(linha.id, { filename: `orbis-${linha.id.slice(0, 8)}-${linha.filename}`, data: new Uint8Array(await arquivo.arrayBuffer()) });
-  }
-  return midias;
-}
 
 /** O tema escolhido só entra se estiver publicado — a lista da tela é a mesma. */
 async function temaPublicado(themeId: string) {
@@ -151,7 +121,7 @@ export async function POST(request: Request) {
     const criarMarca = parsed.data.criarMarca ?? Boolean(parsed.data.nicheId);
     const marca = criarMarca && parsed.data.nicheId
       ? gerarMarca({ nicheId: parsed.data.nicheId, semente: parsed.data.seed ?? "orbis", sobrescritas: parsed.data.brand })
-      : { ...parsed.data.brand, collections: [] as string[], announcement: "" };
+      : { ...parsed.data.brand, collections: parsed.data.brand.collections ?? [], announcement: "" };
     /* toda loja sai com logo, inclusive a preenchida à mão: sem isto o
        cabeçalho do site entregue ficava com o espaço da marca vazio */
     if (!marca.logoDataUri) marca.logoDataUri = logoDaMarca(marca).dataUri;
@@ -168,10 +138,63 @@ export async function POST(request: Request) {
     for (const peca of pecas) {
       const enviada = parsed.data.imagens?.[peca.chave];
       if (enviada) imagens[peca.chave] = enviada;
+      /**
+       * O ACOMPANHANTE de uma peça também entra.
+       *
+       * A composição do banner devolve dois arquivos por dobra — o largo e o
+       * alto —, e o alto se chama `<peça>-mobile`. Ele não está na lista de
+       * peças, porque não é uma geração: nasce da arte, no navegador.
+       *
+       * Sem esta linha ele era descartado aqui, calado, e o efeito era o
+       * contrário do pedido: o campo do celular ficava com o corte largo E o
+       * tema voltava a escrever o texto por cima, porque o sinal de "a arte já
+       * tem texto" nunca chegava. A lista continua fechada: só entra o que é
+       * acompanhante de uma peça que existe.
+       */
+      const acompanhante = parsed.data.imagens?.[`${peca.chave}-mobile`];
+      if (acompanhante) imagens[`${peca.chave}-mobile`] = acompanhante;
     }
 
+    /**
+     * O TEMA ESCOLHIDO — ou nenhum. Substituto em silêncio, nunca.
+     *
+     * O id caía num valor de reserva — o ShrinePro — quando o tema escolhido
+     * não fosse encontrado, e o remendo mentia de três jeitos ao mesmo tempo.
+     * O cliente escolhe um tema na tela, e se ele não
+     * estivesse publicado no instante do envio a loja saía sobre OUTRO tema,
+     * sem uma palavra. Pior: a marca só era aplicada quando `escolhido`
+     * existia, então nesse caso o pacote saía sem tema Shopify nenhum — só a
+     * prévia estática, que é justamente a entrega quebrada que o resto deste
+     * arquivo existe para não repetir. E hoje o próprio `shrine-pro` está
+     * arquivado, então a rede de segurança falha ao ser acionada.
+     *
+     * A lista que o cliente vê é a área Temas do estúdio (`/api/bootstrap`, só
+     * publicados). Se o que ele escolheu não está mais lá, a resposta certa é
+     * dizer isso.
+     */
     const escolhido = parsed.data.themeId ? await temaPublicado(parsed.data.themeId) : null;
-    const themeId = escolhido?.id ?? "shrine-pro";
+    if (!escolhido) {
+      return Response.json(
+        { error: parsed.data.themeId ? "THEME_NOT_AVAILABLE" : "THEME_REQUIRED" },
+        { status: parsed.data.themeId ? 404 : 400 },
+      );
+    }
+    const themeId = escolhido.id;
+
+    /**
+     * Tema sem dados Shopify não entrega loja — e isso se descobre ANTES de
+     * cobrar.
+     *
+     * Uma linha de tema pode existir sem `.shopify`: a semeada, por exemplo,
+     * nasce só com o modelo nativo. Seguindo daqui, o pacote sairia sem layout,
+     * sem templates e sem seções — um site estático com nome de loja, que a
+     * Shopify recusa na importação. Conferir depois do `unlockTheme` deixaria
+     * para trás um projeto criado e um desbloqueio cobrado por um pacote que
+     * não sobe.
+     */
+    let shopify: ShopifyThemeImport | null = null;
+    try { shopify = (JSON.parse(escolhido.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { shopify = null; }
+    if (!shopify) return Response.json({ error: "THEME_WITHOUT_SHOPIFY_DATA" }, { status: 409 });
 
     const unlocked = await unlockTheme(viewer, themeId, `client-site-${crypto.randomUUID()}`);
     const projectId = unlocked.projectId as string;
@@ -179,27 +202,54 @@ export async function POST(request: Request) {
     /* a customização base vem do gerador do site; quando o tema tem Shopify
        importado, ela leva junto o tema com a marca já aplicada */
     const customizacao = brandCustomization(marca) as unknown as Record<string, unknown>;
-    let alterados: string[] = [];
-    let temaComMarca: ShopifyThemeImport | null = null;
-    if (escolhido) {
-      let shopify: ShopifyThemeImport | null = null;
-      try { shopify = (JSON.parse(escolhido.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { shopify = null; }
-      if (shopify) {
-        const resultado = aplicarMarcaNoTema(shopify, {
-          ...marca,
-          imagens,
-          imagensGeradas: parsed.data.imagensGeradas ?? [],
-        });
-        /* o nicho fica gravado no tema do projeto: é o que faz a vitrine da
-           loja mostrar os produtos daquele nicho em toda rota de render */
-        temaComMarca = { ...resultado.theme, orbisNicheId: parsed.data.nicheId };
-        customizacao.shopify = temaComMarca;
-        alterados = resultado.alterados;
-      }
+    /**
+     * O modelo nativo ANTES de receber o tema.
+     *
+     * É esta cópia que viaja no marcador, e ela não pode ter o `shopify`
+     * dentro: além de a loja carregar duas versões de si mesma, `customizacao`
+     * passa a se referenciar e o `JSON.stringify` do marcador estoura em ciclo.
+     */
+    const modeloNativo = { ...customizacao };
+    const brand = sanitizeBrand(marca);
+    /**
+     * A capa de cada coleção, casada por HANDLE — e gravada, não só usada.
+     *
+     * Este mapa era montado na hora, dentro do pedido de prévia do fluxo do
+     * cliente, e morria com ele. Quem abrisse a MESMA loja no Editor via a
+     * vitrine com foto de produto sorteada pelo handle — e, com poucos
+     * produtos, a mesma foto repetida em três cartões.
+     *
+     * A posição é o que liga `colecao-2` a "Armações de grau": as duas listas
+     * saem da mesma lista de nomes, na mesma ordem.
+     */
+    const capasDeColecao: Record<string, string> = {};
+    for (const [indice, nome] of (marca.collections ?? []).entries()) {
+      const capa = imagens[`colecao-${indice + 1}`];
+      const handle = handleDeColecao(String(nome));
+      if (capa && handle) capasDeColecao[handle] = capa;
     }
+    const resultado = aplicarMarcaNoTema(shopify, {
+      ...marca,
+      /* explícita, e não herdada do formato do gerador: é ela que sorteia a
+         ordem da home, e o mesmo valor foi enviado na prévia */
+      semente: parsed.data.seed?.trim() || undefined,
+      imagens,
+      imagensGeradas: parsed.data.imagensGeradas ?? [],
+    });
+    /* o nicho faz a vitrine mostrar os produtos daquele nicho em toda rota de
+       render; as capas fazem cada cartão mostrar a coleção dele; e o NOME
+       PRÓPRIO impede que reimportar a loja grave por cima do tema de origem */
+    const temaComMarca: ShopifyThemeImport = {
+      ...resultado.theme,
+      orbisNicheId: parsed.data.nicheId,
+      ...(Object.keys(capasDeColecao).length ? { orbisCapas: capasDeColecao } : {}),
+      orbisLoja: { nome: brand.name, slug: brand.slug },
+      orbisCustomizacao: modeloNativo,
+    };
+    customizacao.shopify = temaComMarca;
+    const alterados = resultado.alterados;
     await saveProject(viewer, projectId, customizacao);
 
-    const brand = sanitizeBrand(marca);
     await getD1()
       .prepare("UPDATE projects SET name = ? WHERE id = ? AND user_id = ?")
       .bind(`Loja de ${brand.name}`, projectId, viewer.id)
@@ -374,7 +424,11 @@ export async function POST(request: Request) {
 
     /* o tema sai sabendo de que loja ele é: reimportar a própria loja tem de
        trazer a vitrine dela de volta, não o catálogo de demonstração */
-    if (parsed.data.nicheId) arquivos[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(parsed.data.nicheId));
+    arquivos[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(parsed.data.nicheId ?? "", capasDeColecao, {
+      nome: brand.name,
+      slug: brand.slug,
+      customizacao: modeloNativo,
+    }));
 
     const zip = zipSync(arquivos, { level: 6 });
     /**
@@ -389,6 +443,20 @@ export async function POST(request: Request) {
      */
     const TETO_DA_SHOPIFY = 50 * 1024 * 1024;
     const megas = (zip.byteLength / (1024 * 1024)).toFixed(1);
+
+    /**
+     * O projeto fica FINALIZADO — e só aqui.
+     *
+     * Não quando o cliente confirma, não quando a montagem começa: quando o
+     * pacote existe e está saindo. Marcar antes seria dizer "pronto" sobre uma
+     * loja que ainda pode falhar na linha seguinte, e o `catch` abaixo não teria
+     * como desdizer sem sobrescrever um estado que talvez já fosse outro.
+     */
+    await getD1()
+      .prepare("UPDATE projects SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?")
+      .bind(projectId, viewer.id)
+      .run();
+
     return new Response(zip.slice().buffer, {
       headers: {
         "content-type": "application/zip",

@@ -337,14 +337,90 @@ test("o nicho da loja viaja no ZIP exportado e volta na importação", async () 
     const cru = unzipSync(themeExport.exportThemeZip(theme, files).zip);
     assert.equal(cru[shopifyTheme.ARQUIVO_DA_LOJA], undefined, "tema sem nicho não pode inventar um");
 
-    const daLoja = { ...theme, orbisNicheId: "roupas" };
+    /* e as CAPAS viajam no mesmo marcador. Elas nasciam e morriam no pedido de
+       prévia do fluxo do cliente: o Editor, que abre o tema salvo e não tem
+       marca nenhuma, caía na foto de produto sorteada pelo handle. */
+    const daLoja = { ...theme, orbisNicheId: "roupas", orbisCapas: { basicos: "/api/media/aaaaaaaaaaaaaaaaaaaa" } };
     const { zip } = themeExport.exportThemeZip(daLoja, files);
     const exportado = unzipSync(zip);
     assert.ok(exportado[shopifyTheme.ARQUIVO_DA_LOJA], "o ZIP precisa levar o marcador");
-    assert.equal(JSON.parse(strFromU8(exportado[shopifyTheme.ARQUIVO_DA_LOJA])).orbisNicheId, "roupas");
+    const marcador = JSON.parse(strFromU8(exportado[shopifyTheme.ARQUIVO_DA_LOJA]));
+    assert.equal(marcador.orbisNicheId, "roupas");
+    assert.deepEqual(marcador.orbisCapas, { basicos: "/api/media/aaaaaaaaaaaaaaaaaaaa" });
 
-    /* o ciclo inteiro: o que sai daqui volta como a mesma loja */
-    assert.equal(shopifyTheme.extractShopifyThemeBytes(zip, "loja.zip").orbisNicheId, "roupas");
+    /* o ciclo inteiro: o que sai daqui volta como a mesma loja, com as capas */
+    const devolta = shopifyTheme.extractShopifyThemeBytes(zip, "loja.zip");
+    assert.equal(devolta.orbisNicheId, "roupas");
+    assert.deepEqual(devolta.orbisCapas, { basicos: "/api/media/aaaaaaaaaaaaaaaaaaaa" });
+
+    /* loja sem capa não declara capa: marcador com campo vazio faz quem lê
+       achar que a loja disse "sem capa", e o certo é ele nem perguntar */
+    const semCapa = unzipSync(themeExport.exportThemeZip({ ...theme, orbisNicheId: "roupas" }, files).zip);
+    assert.equal(JSON.parse(strFromU8(semCapa[shopifyTheme.ARQUIVO_DA_LOJA])).orbisCapas, undefined);
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * O NOME PRÓPRIO da loja viaja junto — e é o que impede a loja entregue de
+ * gravar por cima do tema de origem quando volta para o estúdio.
+ *
+ * Sem ele, uma loja feita sobre o Dawn se chama "Dawn" e importa em
+ * `import-dawn`, o id do tema base. Com ele, importa como ela mesma.
+ */
+test("o nome próprio da loja e o modelo do estúdio sobrevivem à exportação", async () => {
+  const { server, shopifyTheme, themeExport } = await loadModules();
+  try {
+    const original = buildFixtureZip();
+    const theme = shopifyTheme.extractShopifyThemeBytes(original, "fixture.zip");
+    const files = shopifyTheme.themeFilesFromZip(original);
+    const modeloNativo = { header: { brand: "Claro Co." }, hero: { headline: "Claro Co." } };
+
+    const daLoja = {
+      ...theme,
+      orbisNicheId: "oculos",
+      orbisLoja: { nome: "Claro Co.", slug: "claro-co" },
+      orbisCustomizacao: modeloNativo,
+    };
+    const { zip } = themeExport.exportThemeZip(daLoja, files);
+    const marcador = JSON.parse(strFromU8(unzipSync(zip)[shopifyTheme.ARQUIVO_DA_LOJA]));
+    assert.deepEqual(marcador.orbisLoja, { nome: "Claro Co.", slug: "claro-co" });
+    assert.deepEqual(marcador.orbisCustomizacao, modeloNativo);
+
+    const devolta = shopifyTheme.extractShopifyThemeBytes(zip, "loja-claro-co.zip");
+    assert.deepEqual(devolta.orbisLoja, { nome: "Claro Co.", slug: "claro-co" });
+    assert.deepEqual(devolta.orbisCustomizacao, modeloNativo);
+    assert.equal(shopifyTheme.identidadeDoTemaImportado(devolta).id, "loja-claro-co");
+    assert.notEqual(
+      shopifyTheme.identidadeDoTemaImportado(devolta).id,
+      shopifyTheme.identidadeDoTemaImportado(theme).id,
+      "exportar a loja e reimportá-la não pode ocupar a linha do tema de origem",
+    );
+
+    /* loja SEM nicho e SEM capa ainda ganha marcador, porque ela tem nome: é o
+       nome que decide onde ela entra no estúdio */
+    const soNome = unzipSync(themeExport.exportThemeZip({ ...theme, orbisLoja: { nome: "Vega", slug: "vega" } }, files).zip);
+    assert.ok(soNome[shopifyTheme.ARQUIVO_DA_LOJA], "loja com nome precisa se declarar mesmo sem nicho");
+
+    /* e o tema cru continua sem marcador nenhum: ele não é de ninguém */
+    const cru = unzipSync(themeExport.exportThemeZip(theme, files).zip);
+    assert.equal(cru[shopifyTheme.ARQUIVO_DA_LOJA], undefined);
+
+    /**
+     * A CAPA conta como imagem a empacotar, mesmo sem estar em setting nenhum.
+     *
+     * Ela mora no marcador. Na prática cai num cartão de coleção e o percurso a
+     * encontra — mas "na prática" não é garantia: sobrando capa para vaga, o
+     * arquivo ficava fora do pacote e a capa virava endereço morto fora desta
+     * máquina.
+     */
+    const idSoNaCapa = "cccccccc-1111-2222-3333-444444444444";
+    const ids = themeExport.collectEditorMediaIds({
+      ...theme,
+      orbisCapas: { polarizados: `/api/media/${idSoNaCapa}` },
+    });
+    assert.ok(ids.includes(idSoNaCapa), "capa fora dos settings precisa entrar na lista de mídia a empacotar");
   } finally {
     await server.close();
   }

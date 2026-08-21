@@ -306,3 +306,50 @@ test("comprar redesenha a gaveta e o contador: a lista vem dos ARQUIVOS e o alvo
   assert.match(aplicar, /alvo\.tagName\.indexOf\("-"\)>0/);
   assert.match(aplicar, /var fonte=mesmo\|\|conteudo/);
 });
+
+test("a moldura da prévia não deixa faixa branca morta no fim", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+
+  /* A moldura ESTICA até o palco (`min-height: 100%`) e é BRANCA. Quem morava
+     dentro dela parava na altura mínima (640px) e a diferença virava faixa
+     branca no fim — medido no editor: moldura de 913px com 658px de vitrine,
+     255px que não mostram nada, não recebem clique e ainda deixavam a loja
+     cortada no meio logo acima. Na vitrine simulada eram 651px.
+
+     `height: 100%` não resolvia: porcentagem de altura contra pai de altura
+     auto vira auto, e o pai aqui só tem min-height. Flex resolve. */
+  const moldura = css.match(/\.preview-frame \{[^}]*\}/)?.[0] ?? "";
+  assert.ok(moldura, "regra .preview-frame sumiu");
+  assert.match(moldura, /display: flex/, "sem flex, quem está dentro não estica");
+  assert.match(moldura, /flex-direction: column/);
+
+  /* `1 0 auto` e NÃO `1`: a vitrine simulada costuma ser mais alta que a
+     moldura e, com base zero, seria espremida e cortada pelo overflow. */
+  const dentro = css.match(/\.preview-frame > \.live-render-wrap[^{]*\{[^}]*\}/)?.[0] ?? "";
+  assert.ok(dentro, "as vitrines precisam de uma regra que as faça crescer");
+  assert.match(dentro, /\.storefront/, "a vitrine simulada cresce junto com a do render real");
+  assert.match(dentro, /flex: 1 0 auto/);
+
+  /* e o carregando também preenche: senão o branco só mudaria de hora */
+  assert.match(css, /\.live-render-loading \{[^}]*flex: 1 0 auto/);
+});
+
+test("a prévia do cliente mede a LOJA, não a própria moldura", async () => {
+  const previa = await readFile(new URL("../app/ClientPreviaReal.tsx", import.meta.url), "utf8");
+
+  /* `documentElement.scrollHeight` é uma catraca: a raiz cobre a janela do
+     quadro, então a medida nunca desce abaixo da altura que o quadro JÁ tem.
+     Medido: loja de 4000px que encolhe para 1200 (trocar de tema faz isso)
+     deixava o quadro em 4000 para sempre — 2800px de branco vagando no fim.
+     No tema real do acervo: 5449px que viravam 5000, e a conta antiga ficava
+     nos 5449. */
+  const medidor = previa.match(/function medirLoja[\s\S]*?return medida[^;]*;/)?.[0] ?? "";
+  assert.ok(medidor, "a medição da loja precisa morar numa função própria");
+  assert.match(medidor, /quadro\.style\.height = `\$\{ALTURA_INICIAL\}px`/, "encolhe ANTES de ler, senão mede a moldura");
+  assert.match(medidor, /corpo\.scrollHeight/, "o corpo tem altura de conteúdo; a raiz tem altura de janela");
+  assert.doesNotMatch(medidor, /documentElement/, "a catraca não pode voltar");
+
+  /* o piso de 900 é o valor de ENQUANTO não se mede; aplicado sobre medida
+     real, era ele próprio que fabricava branco em toda loja mais curta */
+  assert.doesNotMatch(medidor, /Math\.max\(ALTURA_INICIAL/);
+});

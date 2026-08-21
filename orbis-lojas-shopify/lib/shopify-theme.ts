@@ -1,4 +1,5 @@
 import { strFromU8, unzipSync, zipSync } from "fflate";
+import { MAX_UPLOAD_BYTES } from "./business-rules.mjs";
 import { NICHOS } from "./marca-generator.mjs";
 /* só o handle: `shopify-brand` importa daqui apenas TIPOS, que somem na
    compilação, então não há ciclo em tempo de execução. Reescrever a regra do
@@ -109,6 +110,68 @@ export type ShopifyThemeImport = {
   /** Nicho da loja gerada pela área do cliente; decide a vitrine de produtos. */
   orbisNicheId?: string;
   /**
+   * A capa de cada coleção, por handle — a que a Orbis gerou para aquele nome.
+   *
+   * Ela nascia e MORRIA no pedido de prévia: o fluxo do cliente montava o mapa
+   * na hora, a partir da marca em memória, e nada disso ficava no tema. Quem
+   * abrisse a mesma loja no Editor via a vitrine com foto de produto sorteada
+   * pelo handle — e, com poucos produtos, a MESMA foto em três cartões.
+   *
+   * Guardar aqui é o que faz a capa sobreviver ao fim do fluxo: o tema salvo no
+   * projeto já leva o mapa, e o marcador `assets/orbis-loja.json` o leva no ZIP,
+   * como já fazia com o nicho.
+   */
+  orbisCapas?: Record<string, string>;
+  /**
+   * O NOME de cada coleção, como a pessoa escreveu.
+   *
+   * O tema guarda handle: "organizacao", "cama-e-banho". Handle é slug — sem
+   * acento e sem maiúscula —, e quem monta a vitrine reconstruía o título a
+   * partir dele, devolvendo "Organizacao" e "Cama E Banho" na cara do cliente.
+   * O acento não some por descuido de digitação: some porque foi jogado fora
+   * na conversão e não havia por onde recuperá-lo. Agora há.
+   */
+  orbisColecoes?: string[];
+  /**
+   * A semente com que a home DESTA loja foi sorteada.
+   *
+   * Serve de trava, não de dado: aplicar a permutação duas vezes não é o mesmo
+   * que aplicá-la uma, então quem já foi sorteado com esta semente volta como
+   * está. Ver `sorteio-de-vitrine.ts`.
+   */
+  orbisSorteio?: string;
+  /**
+   * QUEM é esta loja — e não de que TEMA ela nasceu.
+   *
+   * Uma loja entregue continua carregando o `theme_info` do tema de origem: uma
+   * loja feita sobre o Dawn se chama "Dawn". O estúdio deriva o id do tema desse
+   * nome, então toda loja entregue importava como `import-dawn` — o MESMO id do
+   * tema base — e o `ON CONFLICT DO UPDATE` a gravava por cima dele. A loja do
+   * cliente virava o tema do estúdio, e duas lojas feitas sobre o mesmo tema
+   * disputavam a mesma linha.
+   *
+   * Com o nome próprio no marcador, cada loja importa como ela mesma.
+   */
+  orbisLoja?: { nome: string; slug: string };
+  /**
+   * O modelo NATIVO do estúdio (cabeçalho, dobra, rodapé, cores) desta loja.
+   *
+   * O tema Shopify não é a loja inteira: o estúdio tem um modelo próprio, e ele
+   * é quem desenha as telas que não passam pelo Liquid. Ele não viajava, então
+   * a importação o herdava do que já estivesse naquele id — na prática, o
+   * conteúdo de demonstração. A loja do cliente abria no estúdio com a marca
+   * certa no tema e "CACTUS" em tudo o mais.
+   */
+  orbisCustomizacao?: Record<string, unknown>;
+  /**
+   * Os nomes de arquivo das ARTES que vieram dentro do pacote entregue.
+   *
+   * É por eles que a reconexão sabe quais assets instalados são da loja, em vez
+   * de casar um `shopify://shop_images/<nome>` com qualquer arquivo do tema que
+   * por acaso tenha o mesmo nome.
+   */
+  orbisArtes?: string[];
+  /**
    * Arquivos de `assets/` que ficaram de FORA da instalação, com o motivo.
    *
    * Cada um destes é uma imagem quebrada esperando na prévia: o Liquid continua
@@ -158,7 +221,7 @@ const MAX_IMAGE_ASSETS = 800;
  * disso a plataforma recusaria o arquivo de qualquer jeito, então recusar aqui
  * é dizer a mesma coisa mais cedo — e agora dizendo, não em silêncio.
  */
-const MAX_IMAGE_ASSET_BYTES = 20 * 1024 * 1024;
+const MAX_IMAGE_ASSET_BYTES = MAX_UPLOAD_BYTES;
 
 export const MAX_THEME_ZIP_BYTES = 100 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 400 * 1024 * 1024;
@@ -196,6 +259,9 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
 
   const rootPrefix = normalizedPath(settingsSchemaEntry[0]).slice(0, -"config/settings_schema.json".length);
   const byRelativePath = new Map<string, Uint8Array>();
+  /* as artes da loja, que a entrega guarda fora de `assets/` para caber no teto
+     da Shopify; entram como asset na instalação, não como arquivo do tema */
+  const artesDaEntrega = new Map<string, Uint8Array>();
   for (const [path, value] of entries) {
     const normalized = normalizedPath(path);
     if (!normalized.startsWith(rootPrefix)) continue;
@@ -218,7 +284,28 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
      * Aqui se corta na raiz: prévia não é arquivo de tema, e a Shopify também
      * não a reconheceria.
      */
-    if (relativo.startsWith("previa-local/")) continue;
+    /**
+     * COM UMA EXCEÇÃO, e é ela que faz a loja voltar inteira.
+     *
+     * As artes da loja não estão em `assets/`: a entrega as MOVE para
+     * `imagens-para-a-shopify/`, porque a Shopify recusa tema acima de 50 MB e
+     * seis imagens em 4k passam disso sozinhas. Elas continuam dentro do
+     * pacote — só não no lugar onde um tema guarda imagem.
+     *
+     * Enquanto esta pasta era descartada junto com o resto, a loja só voltava
+     * com imagem se o id da mídia ainda existisse no banco DESTA máquina. Em
+     * outro computador ela importava sem banner e sem logo — e o arquivo estava
+     * ali o tempo todo, dentro do próprio ZIP.
+     */
+    if (relativo.startsWith("previa-local/")) {
+      if (relativo.startsWith(ARTES_DA_ENTREGA)) {
+        const nome = relativo.slice(ARTES_DA_ENTREGA.length);
+        if (nome && !nome.includes("/") && IMAGE_EXTENSIONS[nome.split(".").at(-1)?.toLowerCase() ?? ""]) {
+          artesDaEntrega.set(`assets/${nome}`, value);
+        }
+      }
+      continue;
+    }
     byRelativePath.set(relativo, value);
   }
 
@@ -319,18 +406,120 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
     pages,
   };
   const { assets, fora } = collectImageAssets(byRelativePath);
-  if (fora.length) theme.assetsForaDaInstalacao = fora;
+  /**
+   * As artes da entrega entram como asset — sem apagar nada do tema.
+   *
+   * Elas recebem o caminho `assets/<arquivo>`, que é onde o tema procuraria a
+   * imagem se ela tivesse ficado lá. O nome é `orbis-<8 do id>-<arquivo>`, então
+   * colisão com asset do tema é remotíssima; ainda assim quem já existe vence,
+   * porque sobrescrever arquivo do tema com arte da loja seria trocar uma coisa
+   * certa por outra.
+   */
+  const nomesDoTema = new Set(assets.map((asset) => asset.name));
+  const daEntrega = collectImageAssets(artesDaEntrega);
+  const artes = daEntrega.assets.filter((asset) => !nomesDoTema.has(asset.name));
+  if (artes.length) {
+    assets.push(...artes);
+    theme.orbisArtes = artes.map((asset) => asset.name);
+  }
+  const foraDeTudo = [...fora, ...daEntrega.fora];
+  if (foraDeTudo.length) theme.assetsForaDaInstalacao = foraDeTudo;
   const nicho = lerNichoDoTema(byRelativePath, pages);
   if (nicho) theme.orbisNicheId = nicho;
+  const capas = lerCapasDoTema(byRelativePath);
+  if (Object.keys(capas).length) theme.orbisCapas = capas;
+  const loja = lerLojaDoTema(byRelativePath);
+  if (loja) theme.orbisLoja = loja;
+  const customizacao = lerCustomizacaoDoTema(byRelativePath);
+  if (customizacao) theme.orbisCustomizacao = customizacao;
   return { theme, images: assets };
 }
 
 /** Onde um tema entregue pela Orbis guarda de que loja ele é. */
 export const ARQUIVO_DA_LOJA = "assets/orbis-loja.json";
 
+/**
+ * Onde a entrega guarda as ARTES da loja.
+ *
+ * Fora de `assets/` de propósito: a Shopify recusa tema acima de 50 MB, e a
+ * arte estava no pacote duas vezes — uma em `assets/` e outra na pasta de
+ * upload —, o que levava o ZIP a 140 MB. Ela ficou só aqui, com o nome que a
+ * referência do tema espera, para a pessoa subir em Content › Files.
+ *
+ * E é daqui que a importação as recupera: o arquivo viaja no pacote, então a
+ * loja volta inteira em qualquer computador, não só naquele que a gerou.
+ */
+export const ARTES_DA_ENTREGA = "previa-local/imagens-para-a-shopify/";
+
 /** O conteúdo do marcador, para quem monta o ZIP da entrega. */
-export function marcadorDaLoja(nicheId: string) {
-  return JSON.stringify({ orbisNicheId: nicheId }, null, 2);
+export function marcadorDaLoja(
+  nicheId: string,
+  capas: Record<string, string> = {},
+  loja: { nome?: string; slug?: string; customizacao?: Record<string, unknown> } = {},
+) {
+  const corpo: Record<string, unknown> = { orbisNicheId: nicheId };
+  /* as capas só aparecem quando existem: marcador com campo vazio faz quem lê
+     achar que a loja declarou "sem capa", e o certo é ele nem perguntar */
+  if (Object.keys(capas).length) corpo.orbisCapas = capas;
+  /* nome E apelido, ou nenhum dos dois: meia identidade faz o importador
+     inventar a outra metade, que é exatamente o palpite que isto evita */
+  if (loja.nome && loja.slug) corpo.orbisLoja = { nome: loja.nome.slice(0, 80), slug: loja.slug.slice(0, 56) };
+  if (loja.customizacao && Object.keys(loja.customizacao).length) corpo.orbisCustomizacao = loja.customizacao;
+  return JSON.stringify(corpo, null, 2);
+}
+
+/**
+ * Com que IDENTIDADE um tema importado entra no estúdio.
+ *
+ * Mora aqui, junto do marcador que a alimenta, e é pura de propósito: era uma
+ * linha dentro do `importShopifyTheme`, que precisa de banco para rodar, e por
+ * isso a regra mais consequente da importação não tinha teste nenhum.
+ *
+ * Três casos, nesta ordem: a loja que declara seu nome entra como ela mesma; o
+ * ShrinePro tem id fixo porque o estúdio o trata como tema de casa; o resto
+ * segue pelo nome do tema.
+ */
+export function identidadeDoTemaImportado(
+  imported: Pick<ShopifyThemeImport, "themeName" | "sourceFile" | "orbisLoja">,
+): { id: string; slug: string; nome: string } {
+  const loja = imported.orbisLoja;
+  const base = slugify(loja?.slug || loja?.nome || imported.themeName) || "tema-shopify";
+  if (loja) return { id: `loja-${base.slice(0, 48)}`, slug: `loja-${base.slice(0, 50)}`, nome: loja.nome.slice(0, 80) };
+  if (/shrine/i.test(imported.themeName) || /shrine/i.test(imported.sourceFile)) {
+    return { id: "shrine-pro", slug: "shrine-pro", nome: "ShrinePro" };
+  }
+  return { id: `import-${base.slice(0, 48)}`, slug: base.slice(0, 56), nome: imported.themeName.slice(0, 80) };
+}
+
+function slugify(value: string) {
+  /* `\p{M}` em vez do intervalo escrito à mão: a marca combinante literal some
+     em qualquer ferramenta que normalize o arquivo, e aí a regra para de tirar
+     acento sem ninguém perceber — "Óculos Já" viraria "-culos-j-" */
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+/** O nome próprio da loja, quando o pacote entregue o declara. */
+function lerLojaDoTema(byRelativePath: Map<string, Uint8Array>): { nome: string; slug: string } | null {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return null;
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisLoja;
+  if (!cru || typeof cru !== "object" || Array.isArray(cru)) return null;
+  const { nome, slug } = cru as { nome?: unknown; slug?: unknown };
+  if (typeof nome !== "string" || typeof slug !== "string" || !nome.trim() || !slug.trim()) return null;
+  return { nome: nome.slice(0, 80), slug: slug.slice(0, 56) };
+}
+
+/** O modelo nativo do estúdio que a loja entregue leva consigo. */
+function lerCustomizacaoDoTema(byRelativePath: Map<string, Uint8Array>): Record<string, unknown> | null {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return null;
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisCustomizacao;
+  if (!cru || typeof cru !== "object" || Array.isArray(cru)) return null;
+  /* o `shopify` NÃO entra: o tema já está sendo lido do ZIP, e deixar uma cópia
+     dentro do modelo nativo faria a loja carregar duas versões de si mesma */
+  const resto = { ...(cru as Record<string, unknown>) };
+  delete resto.shopify;
+  return Object.keys(resto).length ? resto : null;
 }
 
 /**
@@ -350,6 +539,25 @@ export function marcadorDaLoja(nicheId: string) {
  *    em roupas — e já estão gravadas nos templates. Exige maioria (metade das
  *    seis) para não confundir loja por coincidência de "Novidades".
  */
+/**
+ * As capas de coleção que a entrega gravou no marcador.
+ *
+ * Só o marcador, e sem palpite: capa de coleção não se deduz do resto do tema,
+ * e o palpite disponível — sortear uma foto de produto pelo handle — é
+ * exatamente o defeito que ela existe para corrigir.
+ */
+function lerCapasDoTema(byRelativePath: Map<string, Uint8Array>): Record<string, string> {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return {};
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisCapas;
+  if (!cru || typeof cru !== "object" || Array.isArray(cru)) return {};
+  const capas: Record<string, string> = {};
+  for (const [handle, url] of Object.entries(cru as Record<string, unknown>)) {
+    if (handle && typeof url === "string" && url) capas[handle.slice(0, 80)] = url.slice(0, 300);
+  }
+  return capas;
+}
+
 function lerNichoDoTema(byRelativePath: Map<string, Uint8Array>, pages: ShopifyPage[]): string {
   const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
   if (marcador) {

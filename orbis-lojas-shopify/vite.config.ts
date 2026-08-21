@@ -2,7 +2,7 @@ import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
-import { localDelivery } from "./build/local-delivery-plugin";
+import { desligarSuite } from "./build/desligar-plugin";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -59,7 +59,7 @@ export default defineConfig(async () => {
     plugins: [
       vinext(),
       sites(),
-      localDelivery(),
+      desligarSuite(),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         config: localBindingConfig,

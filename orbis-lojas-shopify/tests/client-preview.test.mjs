@@ -1,23 +1,64 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { createServer } from "vite";
 
 /** Fase 5: prévia no fluxo do cliente, alimentada pela marca que o gerador usa. */
 
-test("a prévia do cliente é a home real do tema, com a marca aplicada", async () => {
-  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
-  const previa = await readFile(new URL("../app/ClientPreviaReal.tsx", import.meta.url), "utf8");
-  const rota = await readFile(new URL("../app/api/theme-render/route.ts", import.meta.url), "utf8");
+/**
+ * A PRÉVIA AO VIVO existe em UMA etapa só: a revisão.
+ *
+ * Ela ocupava uma coluna de 340px em todo passo, e nenhum deles se decide
+ * olhando uma miniatura desse tamanho: escolher nicho, escrever a marca e
+ * escolher tema são decisões de conteúdo. A coluna ficava lá tirando largura
+ * de onde o trabalho acontece, para responder uma pergunta que ninguém tinha
+ * feito ainda.
+ *
+ * Na etapa 04 a pergunta é exatamente essa, então a prévia volta — em largura
+ * cheia, com o tema DE VERDADE e o par computador/celular.
+ */
+test("a prévia ao vivo só aparece na revisão, e lá aparece inteira", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
 
-  assert.match(flow, /className="cf-preview"/, "coluna de prévia presente");
-  /* a prévia recebe o tema escolhido e a MESMA marca que vai ao gerador */
-  assert.match(flow, /<ClientPreviaReal themeId=\{themeId\} nicheId=\{nicheId\}/);
-  /* e renderiza o tema de verdade, pelo mesmo motor da entrega */
-  assert.match(previa, /\/api\/theme-render/);
-  assert.match(rota, /aplicarMarcaNoTema\(base, marca\)/, "o servidor aplica a marca antes de renderizar");
-  /* vitrine, não editor: o quadro não navega nem compra */
-  const sandbox = previa.match(/sandbox="([^"]*)"/)?.[1] ?? "";
-  assert.equal(sandbox, "allow-same-origin", `o quadro da prévia não pode ganhar mais permissão que ler: veio "${sandbox}"`);
+  /**
+   * A coluna da direita existe, mas NÃO é a prévia da loja.
+   *
+   * A antiga acompanhava todo passo mostrando a loja inteira em 340px, e não
+   * ajudava nenhuma das decisões que aqueles passos cobram. A de agora aparece
+   * só no passo das artes e mostra AS ARTES — que é a pergunta daquele passo, e
+   * cabe nesse tamanho: para escolher entre "essa serve" e "essa não",
+   * miniatura basta.
+   */
+  assert.doesNotMatch(flow, /cf-preview/, "a coluna da prévia da loja não pode voltar");
+  assert.match(flow, /const temGaleria = passo === 2 && modo === "gerada" && galeria\.length > 0/);
+  assert.match(flow, /cf-layout \$\{temGaleria \? "" : "cf-layout-cheio"\}/, "sem galeria, uma coluna só");
+  /* e ela mostra IMAGEM, que é o que a lista de nomes não mostrava */
+  assert.match(flow, /className="cf-galeria"/);
+  assert.match(flow, /<img src=\{url\} alt=\{peca\.titulo\}/);
+
+  /* e ela está DENTRO do passo 3, que é o único lugar onde o componente é
+     citado — se aparecesse duas vezes, uma delas estaria em outra etapa */
+  assert.equal((flow.match(/<ClientPreviaReal/g) ?? []).length, 1, "uma prévia, uma etapa");
+  const revisao = flow.slice(flow.indexOf("{passo === 3 && ("));
+  assert.match(revisao.slice(0, revisao.indexOf("<footer")), /<ClientPreviaReal/, "a prévia mora na etapa 04");
+
+  /* o par computador/celular, que é o que a revisão pede */
+  assert.match(flow, /Computador/);
+  assert.match(flow, /Celular/);
+  const previa = await readFile(join(raiz, "app/ClientPreviaReal.tsx"), "utf8");
+  assert.match(previa, /desktop: 1280, mobile: 390/, "as duas larguras são de telas reais");
+
+  /* SÓ o aprovado entra na prévia: mostrar versão em análise seria prometer
+     uma loja diferente da que vai ser entregue */
+  assert.match(flow, /imagens: \{ \.\.\.marca\.imagens, \.\.\.urlsAprovadas\(artes\) \}/);
+
+  /* o quadro é para CONFERIR, não para usar: sem formulário e sem clique */
+  assert.match(previa, /sandbox="allow-same-origin"/);
+  const css = await readFile(join(raiz, "app/globals.css"), "utf8");
+  assert.match(css, /\.cpr-frame \{[^}]*pointer-events: none/);
 });
 
 test("a prévia só usa dados da marca; sem copy inventada", async () => {
@@ -75,26 +116,6 @@ test("o nicho é o CATÁLOGO e vale nos dois caminhos; a marca é outra pergunta
  * Foi o que aconteceu quando os temas do estúdio foram apagados: a área do
  * cliente não tinha o que renderizar e não contava isso a ninguém.
  */
-test("a prévia não fica prometendo uma loja quando não há tema", async () => {
-  const previa = await readFile(new URL("../app/ClientPreviaReal.tsx", import.meta.url), "utf8");
-
-  /* o estado é DERIVADO: sem tema é indisponível por construção, e ninguém
-     precisa lembrar de corrigir isso dentro de um efeito */
-  assert.match(previa, /const indisponivel = !themeId \|\| falhou;/);
-  /* e o HTML de um tema antigo não fica na tela depois que o tema sai */
-  assert.match(previa, /const paraMostrar = themeId && !falhou \? html : null;/);
-  /* e o texto do vazio vem de fora: só quem chamou sabe se falta escolher um
-     tema ou se não existe nenhum importado */
-  assert.match(previa, /semTema\?: string/);
-  assert.match(previa, /semTema \|\|/);
-
-  const flow = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
-  /* os três motivos são distintos: procurando, nenhum importado, nenhum escolhido */
-  assert.match(flow, /Procurando os temas do estúdio/);
-  assert.match(flow, /Nenhum tema importado ainda/);
-  assert.match(flow, /Escolha um tema para ver a prévia/);
-});
-
 /**
  * A arte gerada sobrevive a fechar a aba.
  *
@@ -111,7 +132,15 @@ test("as imagens geradas sobrevivem ao recarregar, presas à marca que as pediu"
      a arte da anterior ficaria órfã de qualquer jeito */
   assert.match(flow, /orbis:marca:\$\{nicho\}/);
   /* grava sempre que o mapa muda, e some quando ele esvazia */
-  assert.match(flow, /setItem\(cofre, JSON\.stringify\(\{ semente, imagens: imagensGeradas \}\)\)/);
+  assert.match(flow, /setItem\(cofre, JSON\.stringify\(\{ semente, artes, editadoAMao \}\)\)/);
+  /* o que a pessoa DIGITOU vai junto, e é o que mais custa a refazer: nome,
+     cores e principalmente as coleções não saem de semente nenhuma. Guardar só
+     quando existisse arte perdia justamente quem parou antes de gerar. */
+  assert.match(flow, /Object\.keys\(artes\)\.length \|\| Object\.keys\(editadoAMao\)\.length/);
+  /* e guarda a VIDA de cada peça, não só a URL: sem versão e aprovação no
+     disco, recarregar a página devolvia duas alterações novas de presente */
+  assert.match(flow, /salvo\?\.artes \?\? salvo\?\.imagens/, "o formato antigo continua sendo lido");
+  assert.match(flow, /const arte = arteLida\(valor\)/, "e passa pela leitura que impõe os limites");
   /* a leitura é EVENTO, não efeito: efeito com setState síncrono provoca
      render em cascata, e o lint do projeto reprova */
   assert.match(flow, /const abrirCofre = useCallback/);
@@ -122,4 +151,121 @@ test("as imagens geradas sobrevivem ao recarregar, presas à marca que as pediu"
   /* recomeçar é recomeçar: o cofre da marca antiga sai junto */
   const recomecar = flow.match(/function recomecar\(\)[\s\S]*?\n  \}/)?.[0] ?? "";
   assert.match(recomecar, /removeItem\(cofre\)/);
+});
+
+/**
+ * AS COLEÇÕES são escritas por quem vende, e chegam inteiras ao pacote.
+ *
+ * O nicho sugere um ponto de partida, mas quem sabe as categorias da própria
+ * loja é o dono dela: uma loja de roupa pode querer "Moda Fitness" e outra
+ * "Verão", e nenhuma lista nossa acerta as duas.
+ *
+ * O caminho é longo e tinha um buraco na porta: `collections` não estava no
+ * schema da rota, então o que a pessoa digitava era descartado e o servidor
+ * regerava as coleções PADRÃO do nicho por cima. "Moda Fitness" virava
+ * "Alfaiataria" no pacote, sem nenhum aviso.
+ */
+test("as coleções que o cliente escreve vencem as do nicho e chegam ao pacote", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const bancada = await readFile(join(raiz, "app/ClientMarcaBancada.tsx"), "utf8");
+
+  /* a opção fica logo abaixo de Marca e ANTES das imagens: é ela que decide
+     quantas capas a arte precisa cobrir */
+  const ordem = bancada.match(/const INSTRUMENTOS[\s\S]*?\];/)?.[0] ?? "";
+  const ids = [...ordem.matchAll(/id: "([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ids, ["marca", "colecoes", "imagens", "voz", "paleta", "tipografia", "contato", "redes"]);
+
+  /* nome vazio e nome repetido são barrados na ENTRADA, não três telas adiante
+     quando já viraram arquivo */
+  assert.match(bancada, /Escreva o nome da coleção/);
+  assert.match(bancada, /já está na lista/);
+  assert.match(bancada, /const jaExiste = /);
+  /* e o resumo da linha conta quantas existem */
+  assert.match(bancada, /coleções definidas/);
+
+  const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
+  assert.match(flow, /collections: marca\.collections\.map/, "o navegador precisa ENVIAR as coleções");
+  const rota = await readFile(join(raiz, "app/api/client-request/route.ts"), "utf8");
+  assert.match(rota, /collections: z\.array\(z\.string\(\)\.max\(40\)\)\.max\(12\)\.optional\(\)/, "e a rota precisa ACEITAR");
+
+  const server = await createServer({ configFile: false, root: raiz, server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { gerarMarca } = await server.ssrLoadModule("/lib/marca-generator.mjs");
+    const { csvDeProdutos } = await server.ssrLoadModule("/lib/catalogo-csv.ts");
+    const minhas = ["Vestidos", "Bolsas", "Calçados", "Moda Fitness"];
+
+    /* o que a pessoa escreveu vence o nicho */
+    const comEscolha = gerarMarca({ nicheId: "roupas", semente: "x", sobrescritas: { collections: [...minhas, "  ", ""] } });
+    assert.deepEqual(comEscolha.collections, minhas, "vazio e espaço em branco não entram");
+    /* apagar tudo devolve as do nicho: loja sem categoria nenhuma é pior */
+    const semNada = gerarMarca({ nicheId: "roupas", semente: "x", sobrescritas: { collections: ["  "] } });
+    assert.deepEqual(semNada.collections, gerarMarca({ nicheId: "roupas", semente: "x" }).collections);
+
+    /* e elas chegam ao CSV, que é o que a Shopify lê para CRIAR as coleções */
+    const csv = csvDeProdutos("roupas", minhas);
+    const naPrimeiraColuna = [...new Set(csv.split(/\r?\n/).slice(1).filter(Boolean).map((l) => l.split(",")[0].replace(/^"|"$/g, "")))].filter(Boolean);
+    assert.deepEqual(naPrimeiraColuna, minhas, "a coluna Collection do CSV precisa ter as coleções do cliente");
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * A COMPOSIÇÃO DAS PÁGINAS saiu do fluxo.
+ *
+ * Era uma escolha entre dois modelos que só mudava o site estático da pasta de
+ * prévia, não a loja que vai para a Shopify. Pedir uma decisão dessas a quem
+ * está criando a marca é cobrar atenção por algo que quase não muda o
+ * resultado. O modelo padrão continua valendo.
+ */
+test("o fluxo não pede escolha de composição de página", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
+  assert.doesNotMatch(flow, /Composição das páginas/);
+  assert.doesNotMatch(flow, /cf-template/, "o seletor de modelo não pode voltar");
+  /* e a revisão não anuncia uma escolha que ninguém fez */
+  assert.doesNotMatch(flow, /<dt>Modelo<\/dt>/);
+  /* o modelo padrão continua indo no pedido, senão a entrega perde o site */
+  assert.match(flow, /templateId,/);
+});
+
+/**
+ * A LOJA SAI SOBRE O TEMA QUE O CLIENTE ESCOLHEU — ou não sai.
+ *
+ * O servidor tinha `escolhido?.id ?? "shrine-pro"`, e o remendo mentia de três
+ * jeitos: trocava o tema escolhido por outro sem avisar; a marca só era
+ * aplicada quando `escolhido` existia, então nesse caso o pacote saía sem tema
+ * Shopify nenhum — só a prévia estática, a entrega quebrada que o resto do
+ * arquivo existe para não repetir; e o próprio `shrine-pro` está arquivado
+ * neste computador, então a rede de segurança falha ao ser acionada.
+ */
+test("o fluxo entrega sobre o tema escolhido na área Temas, e recusa em vez de substituir", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const flow = await readFile(join(raiz, "app/ClientFlow.tsx"), "utf8");
+  const rota = await readFile(join(raiz, "app/api/client-request/route.ts"), "utf8");
+
+  /* a lista que o cliente vê é a MESMA área Temas do estúdio */
+  assert.match(flow, /fetch\("\/api\/bootstrap"\)/);
+  assert.match(flow, /setTemas\(lista\)/);
+  /* e não dá para avançar sem escolher um */
+  assert.match(flow, /if \(!themeId\) return false;/);
+  /* o navegador precisa ENVIAR o tema escolhido */
+  assert.match(flow, /^\s+themeId,$/m);
+
+  /* e o servidor não pode arrumar um substituto */
+  assert.doesNotMatch(rota, /\?\? "shrine-pro"/, "substituir o tema em silêncio é o defeito que este teste guarda");
+  assert.match(rota, /const themeId = escolhido\.id;/, "o tema entregue é o escolhido, sem alternativa");
+  assert.match(rota, /THEME_NOT_AVAILABLE/, "tema escolhido que sumiu precisa ser dito, não trocado");
+  assert.match(rota, /THEME_REQUIRED/, "pedido sem tema é recusado, não completado por conta");
+  /* tema sem dados Shopify sairia como site estático, que a Shopify recusa */
+  assert.match(rota, /THEME_WITHOUT_SHOPIFY_DATA/);
+
+  /**
+   * E as três recusas vêm ANTES do desbloqueio. Depois dele já existe projeto
+   * criado e token cobrado por um pacote que não vai sair.
+   */
+  const unlock = rota.indexOf("await unlockTheme(");
+  for (const erro of ["THEME_NOT_AVAILABLE", "THEME_REQUIRED", "THEME_WITHOUT_SHOPIFY_DATA"]) {
+    assert.ok(rota.indexOf(erro) < unlock, `${erro} precisa ser conferido antes de cobrar o desbloqueio`);
+  }
 });

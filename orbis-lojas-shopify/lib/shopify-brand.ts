@@ -25,9 +25,19 @@
  */
 import { misturar, textoSobre } from "./marca-generator.mjs";
 import type { ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "./shopify-theme";
+import { sortearVitrine } from "./sorteio-de-vitrine";
 
 export type MarcaAplicavel = {
   name: string;
+  /**
+   * A semente desta marca — a mesma que desenhou a logo e sorteou a paleta.
+   *
+   * Aqui ela decide também a ORDEM da home: duas lojas do mesmo tema deixam de
+   * ser a mesma loja. Ver `sorteio-de-vitrine.ts`. Faltando, o nome da marca
+   * serve de semente: toda loja tem nome, e ele já distingue um cliente do
+   * outro.
+   */
+  semente?: string;
   slogan?: string;
   description?: string;
   primaryColor: string;
@@ -131,6 +141,19 @@ const CAMPO_DE_LISTA = /(collection_list|link_list|menu)/i;
  * lidas: elas estão nas lojas que já foram entregues.
  */
 function pecasDeBanner(imagens: Record<string, string>, papel: string): string[] {
+  /**
+   * O banner do celular é o ARQUIVO do celular, quando ele existe.
+   *
+   * A arte de cada dobra é composta duas vezes, uma por formato: 3000×1000 e
+   * 1080×1350, da mesma foto. O corte e a escrita são decididos na composição,
+   * então mandar o arquivo largo para o campo do celular jogaria fora
+   * exatamente o trabalho que faz o texto caber lá.
+   */
+  const doCelular = /mobile|celular/i.test(papel);
+  const compostas = Object.keys(imagens)
+    .filter((chave) => (doCelular ? /^banner-\d+-mobile$/ : /^banner-\d+$/).test(chave))
+    .sort();
+  if (compostas.length) return compostas.map((chave) => imagens[chave]);
   const daArte = Object.keys(imagens).filter((chave) => /^banner-\d+$/.test(chave)).sort();
   if (daArte.length) return daArte.map((chave) => imagens[chave]);
   const numeradas = Object.keys(imagens)
@@ -143,6 +166,25 @@ function pecasDeBanner(imagens: Record<string, string>, papel: string): string[]
 const ALTURA_DE_BANNER = /^(slide_height|image_height|banner_height|height)$/i;
 /** Só em seção de dobra do topo: em cartão ou galeria a altura adaptativa é o certo. */
 const SECAO_DE_BANNER = /(slideshow|image.?banner|hero|banner)/i;
+/**
+ * A dobra que RECEBE a frase, contada como as fotos são contadas: 0 é a
+ * primeira, 1 é a segunda.
+ *
+ * A primeira dobra é a foto e mais nada — é a regra do dono. A segunda é a que
+ * ele pediu com frase, e é a mesma dobra que recebe a arte `banner-2`, porque
+ * o índice que escolhe a foto é este. Texto e foto casam por construção.
+ */
+const DOBRA_COM_FRASE = 1;
+
+/**
+ * A ARTE daquela dobra, pelo mesmo índice.
+ *
+ * Quem compõe a arte (o fluxo do cliente) e quem cala o tema (aqui) precisam
+ * concordar sobre QUAL dobra leva a frase. Duas constantes separadas
+ * concordam até alguém mexer numa delas, e aí o texto sai assado numa foto e
+ * digitado sobre outra.
+ */
+export const ARTE_DA_DOBRA_COM_FRASE = `banner-${DOBRA_COM_FRASE + 1}`;
 
 /**
  * As famílias que o `font_picker` da Shopify aceita.
@@ -287,6 +329,25 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
   }
   const geradasPelaOrbis = new Set(marca.imagensGeradas ?? []);
   /**
+   * O SÍMBOLO GERADO pode ocupar o campo de logo do tema — desde que já venha
+   * recortado. E hoje ele vem.
+   *
+   * O campo era zerado sempre que a arte fosse nossa, e a razão era boa na
+   * época: o símbolo saía do modelo com fundo quadrado próprio, e o cabeçalho
+   * ficava com um retângulo colado sobre a página. Só que `derivarLogos` passou
+   * a recortar esse fundo, e `ClientFlow` troca `logo` pela versão
+   * TRANSPARENTE antes de guardar. O guarda sobreviveu ao motivo dele — e o
+   * resultado era a loja abrir e FECHAR sem logo, com o rodapé mostrando a
+   * moldura vazia do editor.
+   *
+   * A prova de que o recorte aconteceu é a versão derivada estar ali: as três
+   * nascem juntas, no mesmo bloco, e o recorte que falha não grava nenhuma. Sem
+   * ela, o campo continua vazio — é melhor o rodapé escrever o nome do que
+   * pendurar um quadrado.
+   */
+  const logoRecortada = Boolean(imagens["logo-fundo-branco"]);
+  const logoDoTema = imagens.logo && (!geradasPelaOrbis.has("logo") || logoRecortada) ? imagens.logo : "";
+  /**
    * As capas de coleção entram na ordem em que as seções as pedem.
    *
    * Aceita as duas famílias porque o conjunto de peças mudou: eram seis capas
@@ -300,6 +361,9 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
     .map((chave) => imagens[chave]);
   let proximaCapa = 0;
   let proximaColecao = 0;
+  /* os cartões de coleção que ficaram sem coleção: some com eles no fim, em vez
+     de repetir uma que já apareceu */
+  const vagasSobrando: Array<{ secao: { blocks: Array<unknown> }; alvo: unknown }> = [];
 
   /* 1. esquemas de cor: a loja inteira se pinta por aqui */
   const esquemas = valores.color_schemes;
@@ -353,9 +417,8 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
      * Logo enviado pelo cliente vence sempre: quem já tem marca tem logo.
      */
     if (definicao.type === "image_picker" && IMAGEM_DE_LOGO.test(`${definicao.id} ${definicao.label ?? ""}`)) {
-      const doCliente = imagens.logo && !geradasPelaOrbis.has("logo") ? imagens.logo : "";
-      if (valores[definicao.id] !== doCliente) {
-        valores[definicao.id] = doCliente;
+      if (valores[definicao.id] !== logoDoTema) {
+        valores[definicao.id] = logoDoTema;
         marcou(definicao.id);
       }
       continue;
@@ -369,6 +432,10 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
   /* 4. conteúdo das seções: marca sempre, texto do tema só se estiver no padrão */
   const schemaPorTipo = new Map(theme.sectionSchemas.map((schema) => [schema.type, schema]));
   const colecoes = (marca.collections ?? []).map(handleDeColecao).filter(Boolean);
+  /* e o NOME fica guardado junto: é aqui que o acento se perde, e é o único
+     ponto do caminho em que ele ainda existe para ser salvo */
+  const nomesDeColecao = (marca.collections ?? []).map((nome) => String(nome ?? "").trim()).filter(Boolean);
+  if (nomesDeColecao.length) theme.orbisColecoes = nomesDeColecao;
 
   /* qual dobra de banner é esta: decide QUAL foto ela recebe */
   let indiceDaDobra = 0;
@@ -436,19 +503,19 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
              *
              * O rodapé do Dawn tem um `image_picker` que não diz "logo" no id,
              * então ele caía na sobra e recebia uma FOTO DE PRODUTO: a loja
-             * fechava com um frasco onde deveria estar a marca. Como o campo de
-             * marca agora fica vazio de propósito (o tema escreve o nome), aqui
-             * também: vazio, e o rodapé mostra o nome da loja.
+             * fechava com um frasco onde deveria estar a marca. Aqui ele recebe
+             * a MARCA — a mesma regra do campo de logo do tema, e pelo mesmo
+             * motivo: o símbolo já vem recortado (ver `logoDoTema`). Sem marca
+             * para pôr, fica vazio e o rodapé escreve o nome da loja.
              */
             if (/footer|rodape/i.test(secao.type)) {
-              const doCliente = imagens.logo && !geradasPelaOrbis.has("logo") ? imagens.logo : "";
-              if (alvo.settings[definicao.id] !== doCliente) {
-                alvo.settings[definicao.id] = doCliente;
+              if (alvo.settings[definicao.id] !== logoDoTema) {
+                alvo.settings[definicao.id] = logoDoTema;
                 marcou(`${secao.type}.${definicao.id}`);
               }
               continue;
             }
-            const escolhida = IMAGEM_DE_LOGO.test(pista) ? imagens.logo
+            const escolhida = IMAGEM_DE_LOGO.test(pista) ? logoDoTema || imagens.logo
               : IMAGEM_DE_CELULAR.test(pista2)
                 ? bannersCelular[indiceDaDobra % Math.max(bannersCelular.length, 1)]
               : ehBanner
@@ -500,7 +567,20 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
              * coleções na importação. Elas passam a existir, com produto
              * dentro. Apontar para elas deixou de ser chute.
              */
-            alvo.settings[definicao.id] = colecoes[proximaColecao++ % colecoes.length];
+            /**
+             * SEM dar a volta na lista.
+             *
+             * Era `% colecoes.length`, e o resto da divisão fazia a sétima vaga
+             * receber a primeira coleção de novo. Medido na tela: o Dawn tem
+             * sete cartões em "Nossas Coleções", a loja tinha seis coleções, e
+             * "Novidades" aparecia duas vezes na mesma vitrine — com fotos
+             * diferentes, o que é pior, porque parece duas coleções.
+             *
+             * Acabaram as coleções, acabou o preenchimento: a vaga sobrando é
+             * apagada logo abaixo, e a vitrine mostra o que a loja tem.
+             */
+            if (proximaColecao >= colecoes.length) { vagasSobrando.push({ secao, alvo }); continue; }
+            alvo.settings[definicao.id] = colecoes[proximaColecao++];
             marcou(`${secao.type}.${definicao.id}`);
             continue;
           }
@@ -524,6 +604,68 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
            * escreveu continua intocado; só entra aqui o vazio, o placeholder
            * em inglês e o que é comprido demais para caber num botão.
            */
+          /**
+           * NA DOBRA DE BANNER não entra texto — com UMA exceção, e ela é
+           * pedida: a SEGUNDA dobra escreve uma frase.
+           *
+           * A regra do dono continua valendo na primeira: "não quero o texto",
+           * o banner é a foto, e quem quiser escrever ali escreve no editor da
+           * Shopify. Na segunda ele pediu o contrário, e a frase é o SLOGAN da
+           * marca — que nasce das manchetes do nicho escolhido
+           * (`marca-generator.mjs`) e por isso combina com o que a loja vende.
+           * Não é frase inventada aqui: é a mesma que a pessoa viu e aprovou na
+           * etapa da marca, e que ela pode trocar por lá.
+           *
+           * Só o TÍTULO, e só nessa dobra. Subtítulo e botão continuam vazios:
+           * três textos empilhados sobre a foto foi o que poluiu a dobra da
+           * primeira vez. E o subtítulo é conferido ANTES do título, senão
+           * `subheading` casaria com `heading` e ganharia a frase também.
+           *
+           * O resto limpa o que estiver escrito, inclusive o que o tema trouxe:
+           * deixar a frase antiga era o "Brilho no detalhe" reaparecendo por
+           * cima da foto nova. Vale no desktop E no celular, porque o campo é o
+           * mesmo — o texto do bloco serve os dois cortes.
+           */
+          if (dobraDeBanner && (PAPEL_TITULO.test(pista) || CAMPO_DE_SUBTITULO.test(pista) || CAMPO_DE_BOTAO.test(pista))) {
+            const ehTituloDaDobra = !CAMPO_DE_SUBTITULO.test(pista) && !CAMPO_DE_BOTAO.test(pista) && PAPEL_TITULO.test(pista);
+            /**
+             * E o tema fica CALADO quando a frase já está na arte.
+             *
+             * O dono viu a frase saindo como texto do tema por cima da foto e
+             * pediu o contrário: "o texto seja na imagem, não digitado". A
+             * composição assa a frase na arte (`comporBanner`), com véu medido
+             * e tipografia de verdade — o tema escrever de novo poria a mesma
+             * frase duas vezes na mesma foto, uma delas escorregando em tela
+             * estreita, que é o defeito que a composição existe para acabar.
+             *
+             * O sinal é o ARQUIVO DO CELULAR daquela dobra: ele só existe
+             * quando a composição rodou, porque é ela que corta os dois
+             * formatos. Sem composição — ela falhou, o cliente trouxe o
+             * próprio banner, ou a arte ainda não foi aprovada — o tema volta
+             * a escrever, senão a dobra fica muda.
+             *
+             * Fica UM caso torto, e ele é transitório: arte composta pelo
+             * código anterior a esta mudança tem o arquivo do celular mas não
+             * tem a frase assada, então aquela dobra sai sem frase nenhuma. Não
+             * há como distinguir isso pela chave — a diferença está nos pixels
+             * — e gerar as artes de novo resolve, que é o gesto que a pessoa já
+             * faz quando troca qualquer peça. Um campo persistido só para essa
+             * janela custaria mais que ela.
+             */
+            const arteLevaAFrase = Boolean(imagens[`${ARTE_DA_DOBRA_COM_FRASE}-mobile`]);
+            const frase = ehTituloDaDobra && indiceDaDobra === DOBRA_COM_FRASE && !arteLevaAFrase
+              ? (marca.slogan ?? "").trim()
+              : "";
+            /* vazio EXPLÍCITO, não ausente: campo ausente faz o Liquid cair no
+               padrão do schema, e o padrão do Dawn é "Image slide" e "Button
+               label" — a loja abriria com placeholder em inglês sobre a foto */
+            const valor = frase ? valorDeTexto(definicao, frase) : "";
+            if (alvo.settings[definicao.id] !== valor) {
+              alvo.settings[definicao.id] = valor;
+              marcou(`${secao.type}.${definicao.id}`);
+            }
+            continue;
+          }
           if (CAMPO_DE_BOTAO.test(pista)) {
             const texto = typeof atual === "string" ? atual : "";
             const rotuloDeVerdade = texto.trim() !== "" && texto.length <= 28 && texto !== definicao.default;
@@ -606,8 +748,39 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
     }
   }
 
+  /**
+   * O CARTÃO SEM COLEÇÃO é apagado, não preenchido de novo.
+   *
+   * O tema traz um número fixo de cartões — o Dawn traz sete —, e a loja tem as
+   * coleções que a pessoa escreveu. Quando sobra vaga, repetir uma coleção que
+   * já apareceu é o pior dos três caminhos: parece duas coleções diferentes,
+   * ainda mais porque cada cartão recebe a foto da sua vez. Deixar o cartão
+   * apontando para a coleção que o tema trazia é igualmente ruim, porque aquela
+   * coleção não existe na loja do cliente e o cartão abre vazio.
+   *
+   * Some com ele. A vitrine passa a mostrar exatamente o que a loja tem, que é
+   * a única das três respostas que é verdade.
+   */
+  for (const { secao, alvo } of vagasSobrando) {
+    const indice = secao.blocks.indexOf(alvo as never);
+    if (indice >= 0) secao.blocks.splice(indice, 1);
+  }
+
   /* último passo: nada sai daqui num formato que a Shopify recusaria */
-  return { theme, alterados, violacoes: violacoesDoTema(theme) };
+  /**
+   * A ORDEM da home sai da semente, e sai por ÚLTIMO.
+   *
+   * Por último porque é aqui que cada vaga já carrega o conteúdo dela: a
+   * permutação leva junto a coleção, a capa e a arte. Sorteando antes — como a
+   * primeira versão fazia — só as caixas se moviam, e caixas do mesmo tipo são
+   * quase idênticas: medido no Dawn, quatro clientes viam duas páginas.
+   *
+   * As dobras de banner ficam FORA. A primeira é calada e a segunda leva a
+   * frase, por pedido do dono, e a arte de cada uma foi composta para aquela
+   * vaga — mover isso seria passar por cima de uma decisão que tem autor.
+   */
+  const sorteada = sortearVitrine(theme, marca.semente?.trim() || marca.name, { naoMover: SECAO_DE_BANNER });
+  return { theme: sorteada.theme, alterados, violacoes: violacoesDoTema(sorteada.theme) };
 }
 
 /**

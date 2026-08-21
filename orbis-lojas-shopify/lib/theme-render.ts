@@ -7,6 +7,9 @@ import { Liquid, type TagToken, type TopLevelToken, type Context, type Emitter }
 import { strFromU8 } from "fflate";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
 import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
+import { nichoPorId } from "./marca-generator.mjs";
+import { handleDeColecao } from "./shopify-brand";
+import { descricaoDoProduto, nomeDeVitrine } from "./nome-de-produto";
 
 /** Item do carrinho simulado: o preview guarda só o essencial. */
 export type PreviewCartItem = { variantId: number; quantity: number };
@@ -25,6 +28,15 @@ export type RenderOptions = {
   handle?: string;
   /** Variante pedida na rota (?variant=), como o seletor de opções faz. */
   variantId?: number;
+  /**
+   * A capa de cada coleção, por handle.
+   *
+   * Sem isto a prévia escolhia uma foto de produto pelo hash do handle, e dois
+   * handles caíam no mesmo produto: a vitrine mostrava a mesma foto em duas
+   * coleções. Agora existe uma capa GERADA por coleção, e ela é a resposta
+   * certa — a foto sorteada vira só a reserva.
+   */
+  capasDeColecao?: Record<string, string>;
   /** Nicho da loja gerada: define quais produtos abastecem a vitrine. */
   nicheId?: string;
 };
@@ -197,42 +209,28 @@ function indexarLoja(produtos: ProdutoDaLoja[]): Loja {
 /**
  * Tema sem loja: nenhuma mercadoria injetada.
  *
- * Um tema importado que ainda não virou loja de ninguém tem de aparecer com o
- * que ELE traz. Enchendo de catálogo, todo tema ficava igual ao lado — os
- * mesmos produtos e, pior, a mesma foto repetida em cada cartão de coleção. E
- * era mentira: na loja de verdade quem preenche isso é o estoque do dono.
+ * Um tema importado que ainda não virou loja de ninguém aparece com o que ELE
+ * traz. Se traz produto, com produto; se não traz, sem produto.
  *
- * Continua valendo para quem pede a loja VAZIA de propósito; o que mudou é o
- * padrão do tema importado — ver `LOJA_DE_DEMONSTRACAO`.
+ * ## Por que a demonstração saiu
+ *
+ * Houve uma versão que enchia o tema cru com um catálogo de exemplo: dois
+ * produtos de cinco nichos, para o dono "avaliar como a loja vai ficar". O
+ * resultado, medido na tela: um Dawn recém-importado abria com fone de ouvido,
+ * óculos de sol, bodysuit e pote de cozinha, e os cartões de "Nossas Coleções"
+ * ganhavam fotos de mercadoria que o tema nunca teve — "Moda Masculina" com
+ * foto de fone.
+ *
+ * Quem importa um tema quer ver AQUELE tema. Uma vitrine cheia de coisa que não
+ * é do tema não mostra como a loja vai ficar: mostra como ficaria a loja de
+ * outra pessoa. E leva a decisões erradas, porque a grade parece resolvida
+ * quando na verdade quem vai preenchê-la é o estoque do dono.
+ *
+ * A vitrine com mercadoria continua existindo onde ela é verdade: a loja GERADA
+ * declara o nicho no marcador `assets/orbis-loja.json`, e aí os produtos são os
+ * daquela vitrine, de verdade.
  */
 const LOJA_VAZIA = indexarLoja([]);
-
-/**
- * O catálogo de DEMONSTRAÇÃO do tema importado.
- *
- * A regra de não injetar mercadoria nasceu certa e virou obstáculo: o dono abre
- * o tema justamente para avaliar como a loja vai ficar depois de gerada, e uma
- * vitrine vazia não responde essa pergunta — mostra caixas cinzas onde deveria
- * haver produto, e não dá para julgar nem a grade, nem o cartão, nem o preço.
- *
- * As duas objeções da regra antiga têm resposta agora:
- *
- * 1. "todo tema fica igual ao lado" — o catálogo é MISTURADO, dois produtos de
- *    cinco nichos diferentes, então a vitrine tem variedade de forma e de cor
- *    em vez de dez frascos iguais.
- * 2. "a mesma foto em cada cartão de coleção" — resolvido em `fotoDaColecao`,
- *    que dá uma foto diferente para cada coleção.
- *
- * A terceira, a que mais importa, é honestidade: isto é DEMONSTRAÇÃO e a prévia
- * diz isso por extenso no selo. Loja gerada continua mostrando o catálogo do
- * nicho escolhido, que é mercadoria de verdade da vitrine dela.
- */
-const LOJA_DE_DEMONSTRACAO = (() => {
-  const nichos = ["roupas", "oculos", "casa", "joias", "gadgets"];
-  const escolhidos: ProdutoDoNicho[] = [];
-  for (const nicho of nichos) escolhidos.push(...(PRODUTOS_POR_NICHO[nicho] ?? []).slice(0, 2));
-  return escolhidos.length ? indexarLoja(escolhidos.map(produtoDoNicho)) : LOJA_VAZIA;
-})();
 
 /**
  * O produto de uma loja sem mercadoria.
@@ -256,11 +254,9 @@ const LOJAS_POR_NICHO = new Map<string, Loja>();
 
 export function lojaDoNicho(nicheId: string | undefined): Loja {
   const chave = String(nicheId ?? "").trim();
-  /* Sem nicho é tema importado sendo avaliado: ele abre com o catálogo de
-     DEMONSTRAÇÃO, porque vitrine vazia não deixa julgar grade, cartão nem
-     preço — e é para isso que o dono abre o tema. A prévia declara no selo que
-     a mercadoria é de demonstração. */
-  if (!chave) return LOJA_DE_DEMONSTRACAO;
+  /* Sem nicho é tema importado: ele abre COMO VEIO, sem mercadoria emprestada.
+     Quem tem nicho é loja gerada, e aí os produtos são os da vitrine dela. */
+  if (!chave) return LOJA_VAZIA;
   const pronta = LOJAS_POR_NICHO.get(chave);
   if (pronta) return pronta;
   const fonte = PRODUTOS_POR_NICHO[chave];
@@ -274,21 +270,20 @@ export function lojaDoNicho(nicheId: string | undefined): Loja {
 
 /** Converte um produto do nicho (AliExpress) para o formato que os temas leem. */
 function produtoDoNicho(fonte: ProdutoDoNicho): ProdutoDaLoja {
-  const descricao = [
-    `<p>${fonte.title}</p>`,
-    fonte.rating ? `<p>Nota ${fonte.rating} na origem${fonte.sold ? `, ${fonte.sold}` : ""}.</p>` : "",
-  ].filter(Boolean).join("");
+  /* o anúncio do fornecedor vira nome de vitrine aqui, num lugar só: o cartão,
+     a página do produto, o carrinho e o alt da foto leem todos deste campo */
+  const nome = nomeDeVitrine(fonte);
   return produtoDoCatalogo({
     id: fonte.id,
     handle: fonte.handle,
-    title: fonte.title,
+    title: nome,
     vendor: "Curadoria da loja",
     type: "",
     tags: [],
     publishedAt: new Date().toISOString(),
-    descriptionHtml: descricao,
+    descriptionHtml: descricaoDoProduto(fonte),
     options: [{ name: "Título", position: 1, values: ["Padrão"] }],
-    images: fonte.images.map((src) => ({ src, width: 350, height: 350, alt: fonte.title, variantIds: [] })),
+    images: fonte.images.map((src) => ({ src, width: 350, height: 350, alt: nome, variantIds: [] })),
     variants: [{
       id: fonte.id, title: "Padrão", option1: "Padrão", option2: null, option3: null, sku: "",
       price: fonte.price, compareAtPrice: fonte.compareAtPrice, available: true, imageSrc: fonte.images[0] ?? null,
@@ -424,15 +419,59 @@ function buildCart(loja: Loja, items: PreviewCartItem[] | undefined) {
  * estável entre renders, senão a prévia troca de imagem a cada tecla digitada
  * no editor.
  */
-function fotoDaColecao(loja: Loja, handle: string) {
+function fotoDaColecao(loja: Loja, handle: string, vaga?: number) {
   if (!loja.produtos.length) return null;
-  const semente = [...String(handle ?? "")].reduce((n, c) => n + c.charCodeAt(0), 0);
+  /**
+   * Na LISTA, quem escolhe é a vaga; solta, é o handle.
+   *
+   * O hash do handle é determinístico mas não é distribuído: com sete coleções
+   * e dez produtos, três cartões vizinhos caíam no mesmo produto e a vitrine
+   * abria com a mesma foto repetida — o que parece defeito de carregamento.
+   * Numa lista a posição existe e resolve isso sem sorteio: enquanto houver
+   * produto, cada vaga pega um diferente.
+   */
+  const semente = typeof vaga === "number" ? vaga : [...String(handle ?? "")].reduce((n, c) => n + c.charCodeAt(0), 0);
   const produto = loja.produtos[semente % loja.produtos.length];
   return produto?.featured_image ?? produto?.images?.[0] ?? null;
 }
 
-function demoCollection(loja: Loja, handle: string) {
-  const title = handle ? handle.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Coleção em destaque";
+/**
+ * Ligação fica em minúscula no meio de um título.
+ *
+ * "Cama e banho" virava "Cama E Banho" porque a reconstrução punha maiúscula
+ * em toda palavra. É o mesmo defeito de sempre: o slug não carrega essa
+ * informação, e quem a inventa erra.
+ */
+const LIGACAO_NO_TITULO = new Set(["de", "do", "da", "dos", "das", "e", "ou", "a", "o", "as", "os", "em", "no", "na", "para", "com", "por"]);
+
+/**
+ * O TÍTULO de uma coleção: o nome que a pessoa escreveu, quando ele existe.
+ *
+ * O tema guarda handle, e handle é slug: "organizacao", "cama-e-banho". Sem os
+ * nomes de verdade, a vitrine mostrava "Organizacao", "Decoracao" e "Cama E
+ * Banho" na cara do cliente. O acento não sumiu por descuido de digitação: ele
+ * foi descartado na conversão para handle, e a reconstrução não tinha como
+ * adivinhá-lo de volta.
+ *
+ * Agora o nome viaja no tema (`orbisColecoes`) e o handle serve só para casar
+ * um com o outro. Sem esse mapa — tema antigo, coleção que não é da loja — o
+ * slug ainda é a última reserva, mas ao menos sem maiúscula em ligação.
+ */
+function tituloDaColecao(handle: string, nomes: Record<string, string> = {}): string {
+  if (!handle) return "Coleção em destaque";
+  const nome = nomes[handle];
+  if (nome) return nome;
+  return handle
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .map((palavra, indice) => (indice > 0 && LIGACAO_NO_TITULO.has(palavra) ? palavra : palavra.charAt(0).toUpperCase() + palavra.slice(1)))
+    .join(" ");
+}
+
+function demoCollection(loja: Loja, handle: string, capas: Record<string, string> = {}, vaga?: number, nomes: Record<string, string> = {}) {
+  const title = tituloDaColecao(handle, nomes);
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
     products: loja.produtos, products_count: loja.produtos.length, all_products_count: loja.produtos.length,
@@ -451,7 +490,9 @@ function demoCollection(loja: Loja, handle: string) {
      * imagem para loja sem mercadoria seria mentir sobre o que ela tem.
      */
     ...(() => {
-      const foto = fotoDaColecao(loja, handle);
+      /* a capa GERADA daquela coleção vem primeiro: ela foi pedida com o nome
+         da coleção dentro, então é a única que combina com o cartão */
+      const foto = capas[handle] ?? fotoDaColecao(loja, handle, vaga);
       return { image: foto, featured_image: foto };
     })(),
     all_tags: [...new Set(loja.produtos.flatMap((produto) => produto.tags))],
@@ -491,7 +532,9 @@ function flattenTranslations(source: Record<string, unknown>, prefix = "", out: 
 function resolveSettingValues(
   values: Record<string, ShopifyValue>,
   definitions: ShopifySettingDefinition[],
-  helpers: { loja: Loja; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
+  /* `vaga` é a posição do BLOCO na seção: no Dawn cada cartão da vitrine é um
+     bloco com o handle dentro, e é ela que impede a foto de reserva de repetir */
+  helpers: { loja: Loja; capas?: Record<string, string>; nomes?: Record<string, string>; vaga?: number; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
   /* O tipo da seção (ou do bloco) chega até aqui só por causa do placeholder:
      é o par seção+campo que diz qual FORMATO o vazio deve ter. */
   secao?: string,
@@ -513,9 +556,20 @@ function resolveSettingValues(
     }
     if (type === "image_picker") { resolved[id] = helpers.imageFor(value, secao, id); continue; }
     if (type === "color_scheme") { resolved[id] = helpers.schemeFor(value); continue; }
-    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : ""); continue; }
+    /* AQUI é por onde o cartão de coleção passa de verdade: o `settings` do
+       bloco guarda o handle, e era este caminho que ficava sem as capas — o
+       proxy de `collections[...]` só atende busca por handle escrita no Liquid */
+    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}, helpers.vaga, helpers.nomes ?? {}); continue; }
     if (type === "product") { resolved[id] = demoProduct(helpers.loja, typeof value === "string" ? value : "", 2); continue; }
-    if (type === "collection_list") { resolved[id] = ["colecao-1", "colecao-2", "colecao-3", "colecao-4"].map((handle) => demoCollection(helpers.loja, handle)); continue; }
+    if (type === "collection_list") {
+      /* as coleções DA LOJA quando elas existem: a lista fixa de "colecao-1..4"
+         mostrava quatro cartões inventados no lugar das coleções que a pessoa
+         escreveu */
+      const daLoja = Object.keys(helpers.capas ?? {});
+      const lista = daLoja.length ? daLoja : ["colecao-1", "colecao-2", "colecao-3", "colecao-4"];
+      resolved[id] = lista.map((handle, vaga) => demoCollection(helpers.loja, handle, helpers.capas ?? {}, vaga, helpers.nomes ?? {}));
+      continue;
+    }
     if (type === "product_list") { resolved[id] = helpers.loja.produtos; continue; }
     if (type === "link_list" || type === "menu") { resolved[id] = { title: "Menu", handle: String(value ?? "main-menu"), links: DEMO_LINKS, levels: 1 }; continue; }
     if (type === "blog") { const blogHandle = String(value ?? "blog"); resolved[id] = { title: "Blog", handle: blogHandle, url: `/blogs/${blogHandle}`, articles: [], articles_count: 0, all_tags: [] }; continue; }
@@ -667,7 +721,7 @@ function argPairs(args: unknown[]): Record<string, unknown> {
   return named;
 }
 
-export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId, nicheId }: RenderOptions): Promise<string> {
+export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId, nicheId, capasDeColecao }: RenderOptions): Promise<string> {
   /* a vitrine desta renderização: os produtos do nicho, ou o catálogo padrão */
   const loja = lojaDoNicho(nicheId);
   const assetPathByName = new Map<string, string>();
@@ -737,7 +791,22 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   };
 
   const allGlobalDefinitions = theme.globalGroups.flatMap((group) => group.settings);
-  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, imageFor, schemeFor, registerFont });
+  /* as capas geradas, uma por coleção, na mão de quem resolve os settings */
+  const capas = capasDeColecao ?? {};
+  /**
+   * O NOME de cada coleção, por handle.
+   *
+   * Primeiro o que o tema guardou — a pessoa escreveu, `aplicarMarcaNoTema`
+   * salvou. Depois o catálogo do nicho, que atende toda loja gerada por nicho,
+   * inclusive as feitas antes de o tema passar a guardar nome. Só então o
+   * slug, que é reserva e não fonte.
+   */
+  const nomes: Record<string, string> = {};
+  for (const nome of theme.orbisColecoes ?? nichoPorId(nicheId).colecoes ?? []) {
+    const chave = handleDeColecao(String(nome ?? ""));
+    if (chave && !nomes[chave]) nomes[chave] = String(nome).trim();
+  }
+  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, capas, nomes, imageFor, schemeFor, registerFont });
   if (schemeList.length) settings.color_schemes = schemeCollection;
 
   const localeFile =
@@ -768,14 +837,14 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   }
   const resolveSection = (section: ShopifySectionInstance) => {
     const schema = schemaByType.get(section.type);
-    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, imageFor, schemeFor, registerFont }, section.type);
+    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, capas, nomes, imageFor, schemeFor, registerFont }, section.type);
     const blocks = section.blocks.map((block, index) => {
       const blockSchema = schema?.blocks.find((item) => item.type === block.type);
       return {
         id: block.id, type: block.type,
         /* o formato do placeholder é da SEÇÃO: no Dawn a imagem do banner mora
            num bloco `slide`, cujo nome não diz que aquilo é um banner */
-        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, imageFor, schemeFor, registerFont }, section.type),
+        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, capas, nomes, vaga: index, imageFor, schemeFor, registerFont }, section.type),
         shopify_attributes: `data-block-id="${block.id}"`,
         index: index + 1, index0: index,
       };
@@ -783,7 +852,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     return { id: section.id, settings: resolvedSettings, blocks, index: 1, index0: 0, location: "template", type: section.type, disabled: section.disabled === true };
   };
 
-  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle));
+  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle, capas, undefined, nomes));
   const productsProxy = proxyWithFallback<unknown>({}, (handle) => demoProduct(loja, handle, 2));
   const linklistsProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: "Menu", handle, links: DEMO_LINKS, levels: 1 }));
   const pagesProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: handle, handle, content: "", url: `/pages/${handle}` }));
@@ -847,7 +916,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     /* o handle da rota escolhe o produto/coleção: é o que faz cada cartão
        clicado abrir o SEU produto, e o quick-add mostrar o certo */
     product: comVarianteSelecionada(demoProduct(loja, pageId.startsWith("product") ? handle ?? "" : ""), variantId),
-    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo"),
+    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo", capas, undefined, nomes),
     article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "/blogs/news/artigo-demo", tags: [], comments: [], comments_count: 0, comments_enabled: false },
     blog: { title: "Blog", url: "/blogs/news", articles: [], articles_count: 0, all_tags: [] },
     page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "/pages/pagina" },
@@ -887,6 +956,69 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   });
 
   /* ---------- filtros Shopify ---------- */
+
+  /**
+   * ARITMÉTICA DE INTEIRO, como no Liquid da Shopify.
+   *
+   * O Liquid da Shopify é Ruby: `divided_by` entre dois INTEIROS devolve
+   * inteiro. O LiquidJS devolve float. A diferença não é acadêmica — ela
+   * apareceu na tela, no selo de oferta do tema:
+   *
+   *     assign delta = compare | minus: current | times: 100
+   *     assign percentage = delta | divided_by: compare
+   *
+   * Na Shopify isso dá `73`. Aqui dava `73.95709177592371`, e o selo do produto
+   * saía escrito "73.95709177592371% OFF". O tema está certo; quem contava
+   * errado era o motor.
+   *
+   * Isto vale para QUALQUER tema, não só para este selo: divisão inteira é uma
+   * das contas mais comuns em Liquid de loja (porcentagem, coluna de grade,
+   * parcela). Um render que não a reproduz mostra uma loja que não é a que vai
+   * ao ar.
+   *
+   * Basta um dos lados ser fracionário para a conta voltar a ser em ponto
+   * flutuante, que é exatamente a regra do Ruby — e é por isso que os temas
+   * escrevem `divided_by: 100.0` quando querem casa decimal.
+   */
+  const numero = (valor: unknown): number => {
+    const n = typeof valor === "number" ? valor : parseFloat(String(valor ?? 0));
+    return Number.isFinite(n) ? n : 0;
+  };
+  /**
+   * O ARGUMENTO foi escrito como fracionário no tema?
+   *
+   * Esta é a parte que só o texto original responde. `divided_by: 100.0` chega
+   * ao filtro como o número 100, idêntico a `divided_by: 100` — e a diferença
+   * entre os dois é justamente o que decide se a conta é inteira. Os temas
+   * escrevem o `.0` de propósito quando querem casa decimal: é assim que o Dawn
+   * calcula escala de fonte e opacidade. Ler o número não bastaria; ler o
+   * TEXTO, sim.
+   *
+   * A comparação é com um literal numérico, não com "tem ponto": `divided_by:
+   * settings.body_scale` também tem ponto, e ali ele é caminho de propriedade.
+   */
+  const argumentoFracionario = (contexto: unknown): boolean => {
+    const token = (contexto as { token?: { getText?: () => string } } | undefined)?.token;
+    const texto = typeof token?.getText === "function" ? token.getText() : "";
+    return /:\s*-?\d+\.\d+\s*$/.test(texto);
+  };
+  const ehInteiro = (valor: unknown): boolean => Number.isInteger(numero(valor));
+  engine.registerFilter("divided_by", function (this: unknown, esquerda: unknown, direita: unknown) {
+    const a = numero(esquerda), b = numero(direita);
+    /* dividir por zero não pode derrubar a página: a Shopify devolve nada ali */
+    if (b === 0) return 0;
+    const inteira = ehInteiro(esquerda) && ehInteiro(direita) && !argumentoFracionario(this);
+    /* `Math.floor` e não `trunc`: Ruby arredonda para BAIXO, então -7/2 é -4 */
+    return inteira ? Math.floor(a / b) : a / b;
+  });
+  engine.registerFilter("modulo", function (this: unknown, esquerda: unknown, direita: unknown) {
+    const a = numero(esquerda), b = numero(direita);
+    if (b === 0) return 0;
+    /* o resto acompanha o SINAL DO DIVISOR, como em Ruby: -7 % 3 é 2, não -1 */
+    const resto = ((a % b) + b) % b;
+    return ehInteiro(esquerda) && ehInteiro(direita) && !argumentoFracionario(this) ? Math.floor(resto) : resto;
+  });
+
   const moneyFormat = (cents: unknown) => {
     const value = typeof cents === "number" ? cents / 100 : parseFloat(String(cents ?? 0)) / 100;
     return `R$ ${(Number.isFinite(value) ? value : 0).toFixed(2).replace(".", ",")}`;

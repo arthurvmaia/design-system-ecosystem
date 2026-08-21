@@ -22,8 +22,20 @@ import { LINK_DE_AFILIADO, SEM_LINK_DE_INDICACAO } from "@/app/shopify-afiliado"
  * a ser "quando terminar por lá, siga" em vez de "conta criada" — dizer o que
  * não se viu é o começo de uma tela que mente.
  */
-export function ContaShopify({ onSeguir, onVoltar }: { onSeguir: () => void; onVoltar: () => void }) {
+export function ContaShopify({ onSeguir, onVoltar }: { onSeguir: (dominio: string) => void; onVoltar: () => void }) {
   const [abriu, setAbriu] = useState(false);
+  /**
+   * O ENDEREÇO da loja, perguntado aqui e não no fim.
+   *
+   * Ele não é permissão: é só o nome da loja, e a pessoa acabou de escolhê-lo
+   * na tela ao lado — é o único momento em que ele está fresco na cabeça dela.
+   * Guardar agora evita a pergunta no pior instante possível, que é quando ela
+   * está esperando a loja ficar pronta.
+   *
+   * Fica OPCIONAL de propósito: quem ainda não terminou o cadastro não pode
+   * ficar preso aqui, e o passo da instalação pergunta de novo se faltar.
+   */
+  const [dominio, setDominio] = useState("");
 
   return (
     <main className="entry-gate">
@@ -73,7 +85,22 @@ export function ContaShopify({ onSeguir, onVoltar }: { onSeguir: () => void; onV
 
         {abriu ? (
           <>
-            <button type="button" className="conta-shopify-seguir seguir-pronto" onClick={onSeguir}>
+            <label className="conta-shopify-endereco">
+              <span>Qual é o endereço da sua loja?</span>
+              <div>
+                <input
+                  value={dominio}
+                  onChange={(evento) => setDominio(evento.target.value)}
+                  placeholder="minha-loja"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label="Endereço da loja na Shopify"
+                />
+                <b>.myshopify.com</b>
+              </div>
+              <em>Se ainda não sabe, pode seguir: eu pergunto de novo no fim.</em>
+            </label>
+            <button type="button" className="conta-shopify-seguir seguir-pronto" onClick={() => onSeguir(dominio.trim())}>
               Terminei na Shopify, criar meu site <ArrowRight size={13} />
             </button>
             <span className="conta-shopify-nota">

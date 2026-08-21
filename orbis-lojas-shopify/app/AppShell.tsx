@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { BootstrapData, Project, Theme, Viewer } from "@/lib/types";
-import { normalizeCustomization } from "@/lib/business-rules.mjs";
+import { MAX_UPLOAD_MB, normalizeCustomization } from "@/lib/business-rules.mjs";
 import { enderecoDoPortal } from "@/app/portal";
 import { DesligarOrbis } from "@/app/DesligarOrbis";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySectionSchema, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
@@ -107,6 +107,9 @@ const navItems = [
 
 export function AppShell({ identity }: { identity: Identity }) {
   const [flow, setFlow] = useState<"client" | "client-criar" | "admin" | null>(null);
+  /* o endereço da loja atravessa o fluxo desde o portão: é lá que ele está
+     fresco na cabeça de quem acabou de escolhê-lo */
+  const [dominioShopify, setDominioShopify] = useState("");
   const [tab, setTab] = useState<Tab>("home");
   const [data, setData] = useState<BootstrapData | null>(null);
   const [loading, setLoading] = useState(Boolean(identity));
@@ -187,8 +190,8 @@ export function AppShell({ identity }: { identity: Identity }) {
   /* o cliente passa pela conta da Shopify ANTES de criar: sem ela o arquivo
      que ele recebe no fim não tem onde ser aberto, e descobrir isso depois de
      escolher marca, cores e produtos é descobrir tarde demais */
-  if (flow === "client") return <ContaShopify onSeguir={() => setFlow("client-criar")} onVoltar={() => setFlow(null)} />;
-  if (flow === "client-criar") return <ClientFlow onExit={() => setFlow(null)} />;
+  if (flow === "client") return <ContaShopify onSeguir={(dominio) => { setDominioShopify(dominio); setFlow("client-criar"); }} onVoltar={() => setFlow(null)} />;
+  if (flow === "client-criar") return <ClientFlow onExit={() => setFlow(null)} dominioShopify={dominioShopify} />;
 
   const selectedProject = data?.projects.find((project) => project.id === selectedProjectId) ?? data?.projects[0] ?? null;
 
@@ -246,7 +249,13 @@ export function AppShell({ identity }: { identity: Identity }) {
                 setTab("themes");
                 const loadedTheme = payload.data.themes.find((theme) => theme.id === payload.themeId);
                 if (loadedTheme) setPreviewTheme(loadedTheme);
-                setToast(`${payload.compatibility.architecture} carregado, senhor. A prévia aguarda suas ordens.`);
+                /* dizer quantas fotos voltaram: quem reimporta a própria loja
+                   precisa saber que a arte foi reencontrada, senão vai procurar
+                   os arquivos achando que perdeu */
+                const religadas = payload.imagensReligadas ?? 0;
+                setToast(religadas
+                  ? `${payload.compatibility.architecture} carregado, senhor. Reencontrei ${religadas} ${religadas === 1 ? "imagem sua" : "imagens suas"} e já as reconectei.`
+                  : `${payload.compatibility.architecture} carregado, senhor. A prévia aguarda suas ordens.`);
               }} />}
               {tab === "code" && <ThemeCodeView data={data} initialThemeId={codeThemeId} onMessage={setToast} />}
               {tab === "themes" && <ThemesView data={data} onPreview={setPreviewTheme} onUse={(theme) => void openTheme(theme)} onEditCode={(theme) => { setCodeThemeId(theme.id); setTab("code"); }} onFavorite={async (themeId, favorite) => {
@@ -297,7 +306,7 @@ function SignedOutLanding() {
   );
 }
 
-function ExtractThemeView({ onImported }: { onImported: (payload: { data: BootstrapData; themeId: string; summary: ShopifyThemeImport["summary"]; compatibility: ShopifyThemeImport["compatibility"] }) => void }) {
+function ExtractThemeView({ onImported }: { onImported: (payload: { data: BootstrapData; themeId: string; summary: ShopifyThemeImport["summary"]; compatibility: ShopifyThemeImport["compatibility"]; imagensReligadas?: number }) => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -1609,7 +1618,7 @@ function MediaField({ label = "Imagem principal", value, assetUrls, onUploaded }
       if (!response.ok) throw new Error(payload.error);
       onUploaded(payload.url);
     } catch {
-      setError("Use PNG, JPG ou WebP de até 5 MB.");
+      setError(`Use PNG, JPG ou WebP de até ${MAX_UPLOAD_MB} MB.`);
     } finally {
       setUploading(false);
     }

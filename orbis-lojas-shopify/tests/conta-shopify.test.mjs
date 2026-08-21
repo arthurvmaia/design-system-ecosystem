@@ -36,9 +36,24 @@ test("o cliente passa pela conta Shopify ANTES de criar, e a unica saida passa p
    * que a Shopify foi aberta.
    */
   assert.doesNotMatch(tela, /Já tenho conta/, "o atalho que pulava o link não pode voltar");
-  const liberado = tela.match(/\{abriu \?[\s\S]*?\)\}/);
-  assert.ok(liberado, "o seguir precisa depender de ter aberto a Shopify");
-  assert.match(liberado[0], /onClick=\{onSeguir\}/, "o seguir mora no ramo de depois do clique");
+  /**
+   * O ramo de "depois do clique", recortado por POSIÇÃO e não por expressão.
+   *
+   * A versão anterior pegava de `{abriu ?` até o primeiro `)}` — e isso valia
+   * enquanto não houvesse nenhum outro `)}` no meio. Bastou o ramo ganhar um
+   * campo com `onChange={(e) => algo(e)}` para a janela fechar antes da linha
+   * que o teste queria ver, e o teste passou a reprovar código correto.
+   */
+  const abre = tela.indexOf("{abriu ? (");
+  const fecha = tela.indexOf("{SEM_LINK_DE_INDICACAO");
+  assert.ok(abre > 0 && fecha > abre, "o seguir precisa depender de ter aberto a Shopify");
+  const liberado = [tela.slice(abre, fecha)];
+  /* o seguir leva o ENDEREÇO da loja junto: ele é perguntado aqui, no único
+     momento em que está fresco na cabeça de quem acabou de escolhê-lo */
+  assert.match(liberado[0], /onClick=\{\(\) => onSeguir\(dominio\.trim\(\)\)\}/, "o seguir mora no ramo de depois do clique");
+  assert.match(liberado[0], /conta-shopify-endereco/, "o campo do endereço mora no mesmo ramo");
+  /* e ele é OPCIONAL: quem ainda não terminou o cadastro não pode ficar preso */
+  assert.doesNotMatch(liberado[0], /disabled=\{!dominio/, "o endereço não pode travar a saída");
   assert.match(tela, /onClick=\{\(\) => setAbriu\(true\)\}/, "abrir o link é o que libera");
 
   /* e a tela não presume o que não viu: ela sabe que a aba abriu, não que a
@@ -103,4 +118,40 @@ test("o link de indicação mora num lugar só, e o app avisa enquanto não esti
   const tela = await readFile(join(RAIZ, "app/ContaShopify.tsx"), "utf8");
   assert.match(tela, /SEM_LINK_DE_INDICACAO &&/);
   assert.match(tela, /não gera comissão/);
+});
+
+/**
+ * UM teto de imagem no app inteiro, e ele é o da Shopify.
+ *
+ * Eram três: 5 MB no envio pelo editor, 20 MB no asset de tema, 20 MB ao
+ * salvar o que o gerador devolve. O de 5 MB recusava foto que a Shopify aceita
+ * sem reclamar, e o número não tinha justificativa escrita em lugar nenhum.
+ *
+ * Teto duplicado é como a discordância nasce: alguém sobe um e esquece o
+ * outro, e o app passa a discordar de si mesmo sem nenhum erro na tela.
+ */
+test("o teto de imagem é um só, vale 20 MB, e nenhuma tela cita outro número", async () => {
+  const raiz = fileURLToPath(new URL("..", import.meta.url));
+  const regras = await readFile(join(raiz, "lib/business-rules.mjs"), "utf8");
+  assert.match(regras, /export const MAX_UPLOAD_BYTES = 20 \* 1024 \* 1024;/);
+  assert.match(regras, /size > MAX_UPLOAD_BYTES/, "a validação usa a constante, não um número solto");
+
+  /* ninguém pode ter a própria cópia do teto */
+  const arquivos = [
+    "lib/shopify-theme.ts",
+    "app/api/marca-imagens/route.ts",
+    "app/ClientFlow.tsx",
+    "app/AppShell.tsx",
+    "app/ClientMarcaBancada.tsx",
+  ];
+  for (const caminho of arquivos) {
+    const fonte = await readFile(join(raiz, caminho), "utf8");
+    for (const linha of fonte.split(/\r?\n/)) {
+      const limpa = linha.trim();
+      if (limpa.startsWith("*") || limpa.startsWith("//") || limpa.startsWith("/*")) continue;
+      assert.doesNotMatch(limpa, /\b5 \* 1024 \* 1024\b/, `${caminho} tem o teto antigo de 5 MB`);
+      assert.doesNotMatch(limpa, /até 5 MB/, `${caminho} promete 5 MB na tela`);
+    }
+    assert.match(fonte, /MAX_UPLOAD_(BYTES|MB)/, `${caminho} precisa usar o teto compartilhado`);
+  }
 });

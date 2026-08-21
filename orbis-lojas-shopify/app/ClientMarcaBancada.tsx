@@ -1,8 +1,9 @@
 "use client";
 
-import { Check, ChevronRight, Sparkles, RefreshCw, X } from "lucide-react";
+import { Check, ChevronRight, CircleAlert, Plus, Sparkles, RefreshCw, X } from "lucide-react";
 import { useState } from "react";
 import { NICHOS } from "@/lib/marca-generator.mjs";
+import { MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 
 /**
  * A etapa "Marca" como bancada: uma coluna de instrumentos fechados, e um
@@ -39,11 +40,15 @@ export type MarcaCliente = {
 /** Uma peça de imagem da loja, como a bancada precisa vê-la. */
 export type PecaNaBancada = { chave: string; titulo: string; aspecto: string; previaLocal: string };
 
-type SubId = "marca" | "imagens" | "voz" | "paleta" | "tipografia" | "contato" | "redes";
+type SubId = "marca" | "colecoes" | "imagens" | "voz" | "paleta" | "tipografia" | "contato" | "redes";
 type Estado = "configurado" | "padrao" | "vazio" | "opcional";
 
 const INSTRUMENTOS: ReadonlyArray<{ id: SubId; nome: string; oQueFaz: string }> = [
   { id: "marca", nome: "Marca", oQueFaz: "O nome que vai na loja e a logo" },
+  /* logo abaixo da Marca e ANTES das imagens, porque é ela que decide quantas
+     capas a loja precisa: escolher a arte antes de saber as coleções é escolher
+     no escuro */
+  { id: "colecoes", nome: "Coleções", oQueFaz: "As categorias que a loja vai ter" },
   { id: "imagens", nome: "Imagens da loja", oQueFaz: "Logo, banners e as capas das coleções" },
   { id: "voz", nome: "Voz da marca", oQueFaz: "Como os textos falam com quem lê" },
   { id: "paleta", nome: "Paleta", oQueFaz: "As cores que a loja inteira usa" },
@@ -57,6 +62,11 @@ function situacao(marca: MarcaCliente, gerada: boolean, id: SubId, pecas: PecaNa
   if (id === "marca") {
     if (!marca.name.trim()) return { estado: "vazio", resumo: "Escreva o nome da loja" };
     return { estado: "configurado", resumo: `${marca.name}${marca.logoDataUri ? " · com logo" : " · sem logo"}` };
+  }
+  if (id === "colecoes") {
+    const quantas = marca.collections.filter((nome) => nome.trim()).length;
+    if (!quantas) return { estado: "vazio", resumo: "Nenhuma coleção ainda" };
+    return { estado: "configurado", resumo: `${quantas} ${quantas === 1 ? "coleção definida" : "coleções definidas"}` };
   }
   if (id === "imagens") {
     const enviadas = pecas.filter((peca) => marca.imagens[peca.chave]).length;
@@ -128,7 +138,9 @@ export function ClientMarcaBancada({
         </div>
         {aberto === "imagens"
           ? <PainelImagens marca={marca} pecas={pecas} onEnviarImagem={onEnviarImagem} />
-          : <Painel id={aberto} marca={marca} onChange={onChange} onEnviarImagem={onEnviarImagem} />}
+          : aberto === "colecoes"
+            ? <PainelColecoes marca={marca} onChange={onChange} />
+            : <Painel id={aberto} marca={marca} onChange={onChange} onEnviarImagem={onEnviarImagem} />}
       </div>
     );
   }
@@ -207,7 +219,7 @@ function PainelImagens({
   return (
     <div className="cf-painel">
       <p className="cf-painel-nota">
-        PNG, JPG ou WebP de até 5 MB. O que ficar sem envio entra com a arte da Orbis, na paleta da marca.
+        PNG, JPG ou WebP de até {MAX_UPLOAD_MB} MB. O que ficar sem envio entra com a arte da Orbis, na paleta da marca.
       </p>
       {falha && <p className="cf-painel-erro">{falha}</p>}
       <div className="cf-galeria">
@@ -234,6 +246,113 @@ function PainelImagens({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * AS COLEÇÕES da loja, escritas por quem vende.
+ *
+ * Não é lista fechada de propósito. O nicho sugere um ponto de partida
+ * ("Novidades", "Alfaiataria"), mas quem sabe as categorias da própria loja é o
+ * dono dela: uma loja de roupa pode querer "Moda Fitness" e outra "Verão", e
+ * nenhuma lista nossa acerta as duas.
+ *
+ * O que se digita aqui vai longe: as coleções viram as capas que a arte precisa
+ * cobrir, as categorias do CSV que a Shopify importa e os cartões da vitrine.
+ * Por isso as duas travas — nome vazio e nome repetido — são aqui, na entrada,
+ * e não três telas adiante quando já viraram arquivo.
+ */
+function PainelColecoes({
+  marca,
+  onChange,
+}: {
+  marca: MarcaCliente;
+  onChange: (parcial: Partial<MarcaCliente>) => void;
+}) {
+  const [nova, setNova] = useState("");
+  const [aviso, setAviso] = useState("");
+  const lista = marca.collections;
+
+  const jaExiste = (nome: string, ignorar = -1) =>
+    lista.some((item, indice) => indice !== ignorar && item.trim().toLowerCase() === nome.trim().toLowerCase());
+
+  function adicionar() {
+    const nome = nova.trim();
+    if (!nome) { setAviso("Escreva o nome da coleção."); return; }
+    if (jaExiste(nome)) { setAviso(`"${nome}" já está na lista.`); return; }
+    onChange({ collections: [...lista, nome] });
+    setNova("");
+    setAviso("");
+  }
+
+  function renomear(indice: number, nome: string) {
+    const proxima = lista.map((item, i) => (i === indice ? nome : item));
+    onChange({ collections: proxima });
+  }
+
+  /* a validação de repetido roda ao SAIR do campo, não a cada tecla: avisar
+     enquanto a pessoa digita "Vestidos" letra por letra é ruído, porque
+     "Vest" ainda não é o nome dela */
+  function conferir(indice: number) {
+    const nome = lista[indice]?.trim() ?? "";
+    if (!nome) { onChange({ collections: lista.filter((_, i) => i !== indice) }); return; }
+    if (jaExiste(nome, indice)) {
+      setAviso(`"${nome}" estava repetida e foi removida.`);
+      onChange({ collections: lista.filter((_, i) => i !== indice) });
+    }
+  }
+
+  return (
+    <div className="cf-painel">
+      <div className="cf-colecoes-nova">
+        <label className="cf-field">
+          <span>Nome da coleção</span>
+          <input
+            value={nova}
+            maxLength={40}
+            placeholder="Ex.: Vestidos"
+            onChange={(evento) => { setNova(evento.target.value); if (aviso) setAviso(""); }}
+            onKeyDown={(evento) => { if (evento.key === "Enter") { evento.preventDefault(); adicionar(); } }}
+          />
+        </label>
+        <button className="secondary-button" type="button" onClick={adicionar}><Plus size={13} /> Adicionar coleção</button>
+      </div>
+      {aviso && <p className="cf-colecoes-aviso"><CircleAlert size={13} /> {aviso}</p>}
+
+      {lista.length === 0 ? (
+        <p className="cf-painel-nota">
+          Nenhuma coleção ainda. Escreva as categorias da sua loja: elas viram os cartões da vitrine,
+          as capas que eu desenho e as categorias que a Shopify importa junto com os produtos.
+        </p>
+      ) : (
+        <ul className="cf-colecoes">
+          {lista.map((nome, indice) => (
+            <li key={`colecao-${indice}`} className="cf-colecao">
+              <input
+                value={nome}
+                maxLength={40}
+                aria-label={`Coleção ${indice + 1}`}
+                onChange={(evento) => renomear(indice, evento.target.value)}
+                onBlur={() => conferir(indice)}
+              />
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`Remover a coleção ${nome || indice + 1}`}
+                onClick={() => onChange({ collections: lista.filter((_, i) => i !== indice) })}
+              >
+                <X size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {lista.length > 0 && (
+        <p className="cf-painel-nota">
+          {lista.length} {lista.length === 1 ? "coleção" : "coleções"}. Deixar o campo em branco e sair remove a linha.
+        </p>
+      )}
     </div>
   );
 }

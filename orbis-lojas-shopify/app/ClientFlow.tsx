@@ -1,15 +1,26 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, FolderOpen, PenLine, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, PenLine, RefreshCw, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Orbis } from "@/app/Orbis";
-import { ClientPreviaReal } from "@/app/ClientPreviaReal";
 import { ClientMarcaBancada, type MarcaCliente } from "@/app/ClientMarcaBancada";
+import { ClientPreviaReal, type Dispositivo } from "@/app/ClientPreviaReal";
 import { RealHomeThumbnail } from "@/app/PreviewCard";
-import { SECTION_LABELS, SITE_TEMPLATES } from "@/lib/site-generator.mjs";
-import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente } from "@/lib/marca-generator.mjs";
-import { fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
+import { SITE_TEMPLATES } from "@/lib/site-generator.mjs";
+import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente, textoSobre } from "@/lib/marca-generator.mjs";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
+import { coresDaMarca, fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
 import { converterParaBlob, derivarLogos } from "@/lib/logo-derivar";
+import {
+  alteracoesRestantes, aprovar, arteLida, arteNova, comAlteracao, estadoDaArte,
+  placarDasArtes, podeGerar, podePedirAlteracao, urlsAprovadas, type ArteDaLoja,
+} from "@/lib/artes-da-loja";
+import { comporBanner } from "@/lib/banner-compor";
+import { InstalarNaLoja } from "@/app/InstalarNaLoja";
+import { ARTE_DA_DOBRA_COM_FRASE } from "@/lib/shopify-brand";
+import {
+  PONTO_INICIAL, ROTULO_DO_PROJETO, estadoDoProjeto, passoRestauravel, pontoLido, type EstadoDoProjeto,
+} from "@/lib/estado-do-projeto";
 
 /**
  * O balcão do cliente: quatro passos e uma loja na mão.
@@ -27,11 +38,35 @@ import { converterParaBlob, derivarLogos } from "@/lib/logo-derivar";
  */
 
 type Modo = "gerada" | "manual";
-type Delivery = { zipPath: string; folderPath: string; entryPath: string } | null;
 type Status = "idle" | "working" | "done" | "error";
 type TemaDisponivel = { id: string; name: string; description?: string; sectionCount?: number };
 
 const PASSOS = ["Projeto", "Marca", "Tema", "Revisão"] as const;
+
+/* o relógio mora FORA do componente: ler a hora dentro dele é impuro, e a
+   regra de pureza do compilador do React reprova com razão */
+const agora = () => Date.now();
+
+/**
+ * O motivo da falha, em português.
+ *
+ * O servidor fala em código — `ARQUIVO_GRANDE_23.4MB_TETO_40MB` — porque código
+ * é o que serve para decidir o que fazer. Só que quem lê a tela é o dono da
+ * loja, e para ele isso não é um motivo: é um susto. Traduzir aqui deixa as
+ * duas coisas certas, cada uma no seu lugar.
+ */
+function motivoLegivel(bruto: string): string {
+  const grande = bruto.match(/^ARQUIVO_GRANDE_([\d.]+)MB/);
+  if (grande) return `a imagem veio com ${grande[1]} MB, acima do que eu guardo`;
+  if (/^ARQUIVO_VAZIO/.test(bruto)) return "o provedor devolveu um arquivo vazio";
+  if (/^TIPO_INVALIDO/.test(bruto)) return "o provedor devolveu algo que não é imagem";
+  if (/^URL_INVALIDA/.test(bruto)) return "o endereço da imagem veio inválido";
+  if (/^DOWNLOAD_/.test(bruto)) return "não consegui baixar a imagem do provedor";
+  if (/^MEDIA_STORAGE/.test(bruto)) return "não consegui guardar a imagem aqui";
+  /* frase que já veio pronta (a de tarefa encerrada) passa direto; código
+     desconhecido aparece como veio, porque esconder atrapalha o conserto */
+  return bruto;
+}
 
 const MARCA_VAZIA: MarcaCliente = {
   name: "", slogan: "", description: "",
@@ -54,35 +89,161 @@ function marcaGerada(nicheId: string, semente: string, sobrescritas: Partial<Mar
   };
 }
 
-export function ClientFlow({ onExit }: { onExit: () => void }) {
-  const [passo, setPasso] = useState(0);
+/**
+ * ONDE A PESSOA PAROU, lido do disco.
+ *
+ * Vive fora do componente e é chamado como valor inicial de `useState`, não num
+ * efeito: efeito que chama `setState` na hora provoca render em cascata e o
+ * lint do projeto reprova — e, pior, faria a tela piscar no passo 1 antes de
+ * pular para o 3.
+ *
+ * Ler no primeiro render é seguro AQUI porque este componente só existe depois
+ * de um clique: a página serve o portão de entrada, não o fluxo. Não há
+ * primeiro render no servidor para divergir.
+ */
+const CHAVE_DO_PONTO = "orbis:projeto";
+function lerPonto() {
+  if (typeof window === "undefined") return pontoLido(null);
+  try { return pontoLido(JSON.parse(window.localStorage.getItem(CHAVE_DO_PONTO) ?? "null")); }
+  catch { return pontoLido(null); }
+}
+
+/** As artes guardadas de um nicho, já passadas pela leitura que impõe os limites. */
+function lerArtes(nicho: string): Record<string, ArteDaLoja> {
+  if (typeof window === "undefined" || !nicho) return {};
+  try {
+    const salvo = JSON.parse(window.localStorage.getItem(`orbis:marca:${nicho}`) ?? "null") as
+      { artes?: Record<string, unknown>; imagens?: Record<string, string> } | null;
+    /* `imagens` é o formato antigo, de antes das versões: uma URL por peça.
+       Ler os dois mantém de pé a loja que ficou pela metade ontem. */
+    const bruto = salvo?.artes ?? salvo?.imagens ?? {};
+    const lidas: Record<string, ArteDaLoja> = {};
+    for (const [peca, valor] of Object.entries(bruto)) {
+      const arte = arteLida(valor);
+      if (arte) lidas[peca] = arte;
+    }
+    return lidas;
+  } catch { return {}; }
+}
+
+/** A semente guardada: é ela que devolve a MESMA marca, não uma parecida. */
+function lerSemente(nicho: string): string {
+  if (typeof window === "undefined" || !nicho) return "";
+  try {
+    const salvo = JSON.parse(window.localStorage.getItem(`orbis:marca:${nicho}`) ?? "null") as { semente?: string } | null;
+    return typeof salvo?.semente === "string" ? salvo.semente : "";
+  } catch { return ""; }
+}
+
+/** O que a pessoa digitou por cima da marca gerada — o que não é sorteável. */
+function lerEdicoes(nicho: string): Partial<MarcaCliente> {
+  if (typeof window === "undefined" || !nicho) return {};
+  try {
+    const salvo = JSON.parse(window.localStorage.getItem(`orbis:marca:${nicho}`) ?? "null") as
+      { editadoAMao?: Partial<MarcaCliente> } | null;
+    const edicoes = salvo?.editadoAMao;
+    return edicoes && typeof edicoes === "object" ? edicoes : {};
+  } catch { return {}; }
+}
+
+/**
+ * LOJA ENTREGUE não é ponto de parada: é fim.
+ *
+ * O ponto de parada existe para quem PAROU no meio: fechou a aba escolhendo
+ * cores, voltou no dia seguinte, continua de onde estava. Quem terminou não tem
+ * onde continuar — o pacote já saiu e a loja é dele.
+ *
+ * Sem esta distinção, o app fazia a pior coisa possível para quem monta loja
+ * para os outros: o cliente SEGUINTE abria o fluxo e caía na etapa 04 da loja
+ * do cliente ANTERIOR, com as artes daquele aprovadas, e o passo das artes
+ * dizia "nada a gerar" — porque arte aprovada não se refaz. O ciclo travava
+ * justamente onde ele deveria recomeçar.
+ *
+ * Então: entregou, some. O cofre daquele nicho sai junto, senão escolher o
+ * mesmo nicho devolveria a marca e as artes do cliente passado. Nada se perde
+ * de verdade — as imagens continuam no acervo do app e o projeto, no estúdio.
+ */
+function encerrarLojaEntregue(ponto: { estado: string; nicheId: string }) {
+  if (typeof window === "undefined" || ponto.estado !== "completed") return;
+  try {
+    if (ponto.nicheId) window.localStorage.removeItem(`orbis:marca:${ponto.nicheId}`);
+    window.localStorage.removeItem(CHAVE_DO_PONTO);
+  } catch { /* sem armazenamento local não há o que apagar */ }
+}
+
+export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void; dominioShopify?: string }) {
+  /**
+   * O PONTO DE PARADA, restaurado.
+   *
+   * Antes, recarregar devolvia a pessoa ao passo 1 com tudo em branco. As artes
+   * voltavam ao escolher o nicho de novo, mas o tema escolhido e o que ela
+   * digitou à mão — coleções, principalmente — não voltavam de lugar nenhum:
+   * não são sorteáveis a partir da semente, então eram trabalho jogado fora.
+   */
+  const [pontoNoDisco] = useState(lerPonto);
+  /* a loja entregue não é restaurada: quem terminou começa outra, do zero */
+  const ponto = pontoNoDisco.estado === "completed" ? PONTO_INICIAL : pontoNoDisco;
+  const [artesGuardadas] = useState(() => lerArtes(ponto.nicheId));
+  /**
+   * E o que ficou no disco é apagado, não só ignorado.
+   *
+   * Ignorar resolveria esta abertura e deixaria a bomba armada: bastava a
+   * pessoa escolher de novo o mesmo nicho para a marca e as artes do cliente
+   * anterior voltarem. Apagar é efeito, então mora num efeito — e não chama
+   * `setState`, porque o estado inicial já nasceu limpo.
+   */
+  useEffect(() => { encerrarLojaEntregue(pontoNoDisco); }, [pontoNoDisco]);
+  const [passo, setPasso] = useState(() => passoRestauravel(ponto, Object.keys(artesGuardadas).length > 0));
   /* até onde a pessoa já chegou: o que ficou para trás é clicável, o que vem
      depois não, senão daria para pular um passo que ainda nem foi preenchido */
-  const [passoMaisLonge, setPassoMaisLonge] = useState(0);
-  const [modo, setModo] = useState<Modo | null>(null);
-  const [nicheId, setNicheId] = useState("");
-  const [semente, setSemente] = useState("orbis");
-  const [gerada, setGerada] = useState(false);
-  const [marca, setMarca] = useState<MarcaCliente>(MARCA_VAZIA);
-  const [editadoAMao, setEditadoAMao] = useState<Partial<MarcaCliente>>({});
+  const [passoMaisLonge, setPassoMaisLonge] = useState(() => passoRestauravel(ponto, Object.keys(artesGuardadas).length > 0));
+  const [modo, setModo] = useState<Modo | null>(() => (ponto.modo === "gerada" || ponto.modo === "manual" ? ponto.modo : null));
+  const [nicheId, setNicheId] = useState(() => ponto.nicheId);
+  const [semente, setSemente] = useState(() => lerSemente(ponto.nicheId) || "orbis");
+  const [gerada, setGerada] = useState(() => ponto.modo === "gerada" && Boolean(ponto.nicheId));
+  /* a marca é RECONSTRUÍDA da semente guardada, não gravada: a mesma semente
+     devolve o mesmo nome, as mesmas cores e a mesma voz, e o que foi digitado
+     à mão entra por cima */
+  const [marca, setMarca] = useState<MarcaCliente>(() => (
+    ponto.modo === "gerada" && ponto.nicheId
+      ? marcaGerada(ponto.nicheId, lerSemente(ponto.nicheId) || "orbis", lerEdicoes(ponto.nicheId))
+      : { ...MARCA_VAZIA, ...lerEdicoes(ponto.nicheId) }
+  ));
+  const [editadoAMao, setEditadoAMao] = useState<Partial<MarcaCliente>>(() => lerEdicoes(ponto.nicheId));
   const [temas, setTemas] = useState<TemaDisponivel[]>([]);
   const [temasCarregando, setTemasCarregando] = useState(true);
-  const [themeId, setThemeId] = useState("");
+  const [themeId, setThemeId] = useState(() => ponto.themeId);
   const [templateId, setTemplateId] = useState<string>(SITE_TEMPLATES[0].id);
   /* as artes da Orbis saem do provedor de imagem; sem ele, o tema fica com
      as imagens que já traz. Marca própria não passa por aqui. */
   const [iaDisponivel, setIaDisponivel] = useState(false);
-  const [imagensGeradas, setImagensGeradas] = useState<Record<string, string>>({});
+  /**
+   * Cada peça tem VIDA própria: versão, alterações gastas e aprovação.
+   *
+   * Era um mapa de `chave → url`, que não sabia dizer se aquela imagem já foi
+   * refeita, quantas vezes, nem se o cliente disse sim. Sem isso não há limite
+   * de alteração que se sustente: recarregar a página zerava tudo.
+   */
+  const [artes, setArtes] = useState<Record<string, ArteDaLoja>>(artesGuardadas);
+  /* a peça aberta no visualizador; null = a lista */
+  const [arteAberta, setArteAberta] = useState<string | null>(null);
   const [gerandoImagens, setGerandoImagens] = useState(false);
   const [progressoIa, setProgressoIa] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [erro, setErro] = useState<string | null>(null);
-  const [delivery, setDelivery] = useState<Delivery>(null);
   const [zip, setZip] = useState<{ blob: Blob; name: string } | null>(null);
+  /* o id do projeto entregue: é por ele que a instalação sabe QUAL loja subir,
+     e ele já vinha no cabeçalho da entrega — só não tinha quem o guardasse */
+  const [projetoEntregue, setProjetoEntregue] = useState("");
+  /* o que a instalação direta pôs na loja: é o que faz as instruções da tela
+     falarem do que FALTA, em vez de repetir o caminho manual inteiro */
+  const [instalado, setInstalado] = useState<{ temaInstalado: boolean; loja: string } | null>(null);
   /* o pacote passou do teto da Shopify: aviso, não erro. O ZIP existe e serve. */
   const [avisoDeTamanho, setAvisoDeTamanho] = useState("");
+  /* como a loja é conferida na revisão, e a confirmação de finalizar */
+  const [dispositivo, setDispositivo] = useState<Dispositivo>("desktop");
+  const [confirmando, setConfirmando] = useState(false);
 
-  const template = SITE_TEMPLATES.find((entrada) => entrada.id === templateId) ?? SITE_TEMPLATES[0];
   const temaEscolhido = temas.find((tema) => tema.id === themeId) ?? null;
 
   /* a lista de temas é a MESMA da área Temas do estúdio: o que estiver lá,
@@ -134,19 +295,59 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     if (!chave) return "";
     try {
       const salvo = JSON.parse(window.localStorage.getItem(chave) ?? "null") as
-        { semente?: string; imagens?: Record<string, string> } | null;
-      setImagensGeradas(salvo?.imagens ?? {});
+        { semente?: string; artes?: Record<string, unknown>; imagens?: Record<string, string>; editadoAMao?: Partial<MarcaCliente> } | null;
+      /* `imagens` é o formato antigo, de antes das versões: uma URL por peça.
+         Ler os dois mantém de pé a loja que ficou pela metade ontem. */
+      const bruto = salvo?.artes ?? salvo?.imagens ?? {};
+      const lidas: Record<string, ArteDaLoja> = {};
+      for (const [peca, valor] of Object.entries(bruto)) {
+        const arte = arteLida(valor);
+        if (arte) lidas[peca] = arte;
+      }
+      setArtes(lidas);
+      /* o que foi digitado à mão volta junto: sem isso, escolher o nicho de
+         novo devolvia a arte e apagava as coleções escritas */
+      if (salvo?.editadoAMao && typeof salvo.editadoAMao === "object") setEditadoAMao(salvo.editadoAMao);
       return typeof salvo?.semente === "string" ? salvo.semente : "";
-    } catch { setImagensGeradas({}); return ""; }
+    } catch { setArtes({}); return ""; }
   }, []);
   useEffect(() => {
     if (!cofre || !semente) return;
     try {
-      if (Object.keys(imagensGeradas).length) {
-        window.localStorage.setItem(cofre, JSON.stringify({ semente, imagens: imagensGeradas }));
+      /* grava mesmo sem arte nenhuma: o que a pessoa DIGITOU (coleções, nome,
+         cores) é o trabalho que não se refaz sozinho, e esperar a primeira
+         imagem para começar a guardar perdia justamente esse */
+      if (Object.keys(artes).length || Object.keys(editadoAMao).length) {
+        window.localStorage.setItem(cofre, JSON.stringify({ semente, artes, editadoAMao }));
       }
     } catch { /* sem armazenamento local a sessão continua, só não guarda */ }
-  }, [cofre, semente, imagensGeradas]);
+  }, [cofre, semente, artes, editadoAMao]);
+
+  /**
+   * O ESTADO DO PROJETO, derivado do caminho percorrido.
+   *
+   * Não é um campo que alguém escreve: é uma leitura do que já existe. Guardado
+   * à parte, ele viraria a segunda verdade sobre a mesma coisa, e bastaria uma
+   * gravação falhar no meio para o projeto dizer que está aprovando artes com
+   * as artes todas aprovadas.
+   */
+  const estado: EstadoDoProjeto = estadoDoProjeto({
+    passo, artes, gerando: gerandoImagens, entrega: status,
+  });
+
+  /**
+   * O PONTO DE PARADA vai para o disco a cada mudança.
+   *
+   * O estado vai junto como registro — para o resumo e para o servidor —, mas
+   * quem manda é a derivação acima: ao reabrir, ele é recalculado do zero.
+   */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CHAVE_DO_PONTO, JSON.stringify({
+        passo, modo: modo ?? "", nicheId, themeId, estado,
+      }));
+    } catch { /* sem armazenamento local a sessão continua, só não guarda */ }
+  }, [passo, modo, nicheId, themeId, estado]);
 
   /* o provedor de imagem é opcional: a tela só oferece o que existe */
   useEffect(() => {
@@ -178,6 +379,39 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   /* as que dependem do provedor. O nome por extenso e o favicon são desenhados
      aqui, por tipografia e geometria: entram na entrega sem fila e sem crédito */
   const pecasGeradas = useMemo(() => pecas.filter((peca) => peca.origem === "gerada"), [pecas]);
+  /**
+   * As artes que PRECISAM de aprovação.
+   *
+   * Só as geradas e as derivadas: o nome por extenso e o favicon saem de vetor,
+   * não têm versão e não há o que julgar. Cobrar aprovação delas seria pedir um
+   * clique que não decide nada.
+   */
+  const obrigatorias = useMemo(
+    () => pecas.filter((peca) => peca.origem !== "desenhada").map((peca) => peca.chave),
+    [pecas],
+  );
+  const placar = useMemo(() => placarDasArtes(artes, obrigatorias), [artes, obrigatorias]);
+
+  /**
+   * As peças que a galeria mostra, na ordem em que a loja as usa.
+   *
+   * Entram as que TÊM imagem: as geradas e derivadas que já chegaram, e as
+   * desenhadas, que são desenho local e existem desde sempre. Peça sem imagem
+   * ficaria como um retângulo vazio prometendo algo que não está lá.
+   */
+  const galeria = useMemo(() => pecas
+    .map((peca) => ({
+      peca,
+      arte: artes[peca.chave],
+      /* a desenhada não tem versão nem aprovação: ela é vetor, feito aqui */
+      url: artes[peca.chave]?.url ?? (peca.origem === "desenhada" ? fallbackDataUri(peca) : ""),
+    }))
+    .filter((item) => Boolean(item.url)), [pecas, artes]);
+  const temGaleria = passo === 2 && modo === "gerada" && galeria.length > 0;
+  const quantasPodemGerar = useMemo(
+    () => pecasGeradas.filter((peca) => podeGerar(artes[peca.chave])).length,
+    [pecasGeradas, artes],
+  );
 
   const gerarMarcaAgora = useCallback((sementeNova: string) => {
     if (!nicheId) return;
@@ -185,7 +419,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     setMarca(marcaGerada(nicheId, sementeNova, editadoAMao));
     setGerada(true);
     /* marca nova, cofre limpo: a arte da anterior não serve a esta */
-    setImagensGeradas({});
+    setArtes({});
     try { const c = chaveDoCofre(nicheId); if (c) window.localStorage.removeItem(c); } catch { /* sem armazenamento */ }
   }, [nicheId, editadoAMao]);
 
@@ -224,9 +458,23 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   const podeAvancar = useMemo(() => {
     if (passo === 0) return modo === "manual" || (modo === "gerada" && Boolean(nicheId));
     if (passo === 1) return marca.name.trim().length >= 2;
-    if (passo === 2) return Boolean(themeId);
+    /**
+     * A revisão só abre com as artes resolvidas.
+     *
+     * Ela é a tela do "essa é a minha loja pronta". Deixar entrar com arte
+     * pendente entrega a promessa quebrada: metade da loja é decisão do
+     * cliente e a outra metade é rascunho esperando.
+     *
+     * Sem nenhuma arte gerada o passo continua livre — quem não usa o provedor
+     * de imagem não pode ficar preso numa aprovação que não existe.
+     */
+    if (passo === 2) {
+      if (!themeId) return false;
+      if (modo !== "gerada" || !Object.keys(artes).length) return true;
+      return placar.pendentes.length === 0;
+    }
     return true;
-  }, [passo, modo, nicheId, marca.name, themeId]);
+  }, [passo, modo, nicheId, marca.name, themeId, artes, placar]);
 
   /**
    * Guarda a imagem que a pessoa enviou e devolve o endereço dela.
@@ -236,11 +484,11 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
    * prévia local e o site estático precisam dela embutida.
    */
   async function enviarImagem(chave: string, arquivo: File) {
-    if (arquivo.size > 5 * 1024 * 1024) throw new Error("A imagem precisa ter até 5 MB.");
+    if (arquivo.size > MAX_UPLOAD_BYTES) throw new Error(`A imagem precisa ter até ${MAX_UPLOAD_MB} MB.`);
     const formulario = new FormData();
     formulario.append("file", arquivo);
     const resposta = await fetch("/api/media", { method: "POST", body: formulario });
-    if (!resposta.ok) throw new Error("Não consegui guardar essa imagem. Tente PNG, JPG ou WebP de até 5 MB.");
+    if (!resposta.ok) throw new Error(`Não consegui guardar essa imagem. Tente PNG, JPG ou WebP de até ${MAX_UPLOAD_MB} MB.`);
     const { url } = await resposta.json() as { url: string };
     setMarca((atual) => ({ ...atual, imagens: { ...atual.imagens, [chave]: url } }));
     setEditadoAMao((atual) => ({ ...atual, imagens: { ...(atual.imagens ?? {}), [chave]: url } }));
@@ -263,7 +511,16 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
    * depois. Por isso abrimos todas de uma vez e depois voltamos perguntando
    * quais terminaram, em vez de esperar uma por uma.
    */
-  async function gerarImagens() {
+  /**
+   * Gera as peças que PODEM ser geradas agora.
+   *
+   * `pecas` vazio = o lote inteiro que ainda cabe. Com uma peça, é o pedido de
+   * alteração daquela arte. Nos dois caminhos a permissão sai da MESMA função
+   * (`podeGerar`), que é o que impede "gerar tudo de novo" de virar crédito
+   * infinito — enquanto fossem duas perguntas, o botão de lote era a porta dos
+   * fundos para a terceira versão.
+   */
+  async function gerarImagens(apenas?: string[]) {
     setGerandoImagens(true);
     setErro(null);
     setProgressoIa("abrindo as tarefas…");
@@ -273,11 +530,13 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       /* peça DESENHADA não vai para a fila: ela já existe, sai de vetor aqui
          mesmo. E peça que já veio não é pedida de novo: repetir o que está
          pronto gasta crédito para trocar uma imagem boa por outra. */
-      for (const peca of pecasGeradas.filter((p) => !imagensGeradas[p.chave])) {
+      const alvo = pecasGeradas.filter((p) => (apenas ? apenas.includes(p.chave) : true) && podeGerar(artes[p.chave]));
+      if (!alvo.length) { setProgressoIa("Nada a gerar: as artes estão aprovadas ou no limite de alterações."); return; }
+      for (const peca of alvo) {
         const resposta = await fetch("/api/marca-imagens", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ papel: "imagem", prompt: peca.prompt, aspecto: peca.aspecto, paleta: cores }),
+          body: JSON.stringify({ papel: "imagem", prompt: peca.prompt, aspecto: peca.aspecto, resolucao: peca.resolucao, paleta: cores }),
         });
         if (!resposta.ok) throw new Error("O provedor recusou o pedido de imagem.");
         const dados = await resposta.json() as { taskId?: string; modelo?: string };
@@ -296,17 +555,52 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
        * abandonado em silêncio: peça que falhou por motivo definitivo sai da
        * fila DIZENDO o motivo, e o que sobrar no fim aparece pelo nome.
        */
+      /**
+       * Cada URL nova vira uma ARTE, e é aqui que a alteração é cobrada.
+       *
+       * Peça que não existia nasce V1, sem gastar nada — a geração original não
+       * conta. Peça que já existia sobe de versão e consome uma das duas. Só
+       * chega aqui o que ficou PRONTO: pedido que falhou não passa por esta
+       * linha, e por isso erro do provedor não custa tentativa.
+       */
+      /**
+       * TROCA a URL sem cobrar alteração.
+       *
+       * O corte do banner e o recorte da logo acontecem DEPOIS da geração e
+       * substituem o arquivo da mesma versão: é a mesma foto, cortada. Passar
+       * por `guardar` cobraria uma das duas alterações do cliente por um
+       * trabalho que ele não pediu, e a peça chegaria na V2 recém-nascida.
+       */
+      const substituir = (peca: string, url: string) => {
+        setArtes((atuais) => (atuais[peca]
+          ? { ...atuais, [peca]: { ...atuais[peca], url } }
+          : { ...atuais, [peca]: arteNova(url) }));
+      };
+      const guardar = (prontas: Record<string, string>) => {
+        setArtes((atuais) => {
+          const proximas = { ...atuais };
+          for (const [peca, url] of Object.entries(prontas)) {
+            if (!url || proximas[peca]?.url === url) continue;
+            proximas[peca] = proximas[peca] ? comAlteracao(proximas[peca], url) : arteNova(url);
+          }
+          return proximas;
+        });
+      };
       const TETO_MS = 15 * 60 * 1000;
-      const comeco = Date.now();
+      const comeco = agora();
       /* as que já estavam prontas continuam prontas: a rodada nova só soma */
-      const prontas: Record<string, string> = { ...imagensGeradas };
+      const prontas: Record<string, string> = {};
       const falhas: Record<string, string> = {};
       const pendentes = new Map(tarefas.map((tarefa) => [tarefa.chave, tarefa]));
       const tituloDe = (chave: string) => pecas.find((peca) => peca.chave === chave)?.titulo ?? chave;
 
-      while (pendentes.size && Date.now() - comeco < TETO_MS) {
-        const decorrido = Date.now() - comeco;
-        setProgressoIa(`${Object.keys(prontas).length} de ${pecasGeradas.length} prontas, ${Math.round(decorrido / 1000)}s…`);
+      while (pendentes.size && agora() - comeco < TETO_MS) {
+        const decorrido = agora() - comeco;
+        /* o mesmo conjunto dos dois lados do "de": `prontas` também guarda as
+           versões do símbolo e o par de celular dos banners, que o denominador
+           não conta. Era daí que saía o "7 de 6". */
+        const jaVieram = pecasGeradas.filter((peca) => prontas[peca.chave]).length;
+        setProgressoIa(`${jaVieram} de ${pecasGeradas.length} prontas, ${Math.round(decorrido / 1000)}s…`);
         /* 5 s no primeiro minuto, 10 s depois: perguntar mais não faz a fila
            do provedor andar, e cada pergunta é uma consulta paga em tempo */
         await new Promise((resolve) => window.setTimeout(resolve, decorrido < 60_000 ? 5000 : 10_000));
@@ -317,11 +611,17 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             body: JSON.stringify({ acao: "salvar", papel: "imagem", taskId: tarefa.taskId, modelo: tarefa.modelo, chave }),
           });
           if (!resposta.ok) {
-            /* 4xx é definitivo (arquivo grande demais, tarefa inválida):
-               insistir só gasta o relógio das outras. 5xx pode ser passageiro,
-               então esse continua na fila. */
-            if (resposta.status >= 400 && resposta.status < 500) {
-              const corpo = await resposta.json().catch(() => ({})) as { error?: string };
+            /**
+             * Insistir só faz sentido no que pode mudar.
+             *
+             * O servidor agora DIZ qual é o caso: arquivo grande demais, tipo
+             * errado e resposta vazia voltam como 4xx com `definitivo`, porque
+             * perguntar de novo devolve a mesma imagem. Antes tudo saía como
+             * 502 e o cliente insistia até o teto de 15 minutos, gastando o
+             * relógio das peças que ainda tinham chance.
+             */
+            const corpo = await resposta.json().catch(() => ({})) as { error?: string; definitivo?: boolean };
+            if (corpo.definitivo || (resposta.status >= 400 && resposta.status < 500)) {
               falhas[chave] = corpo.error ?? `erro ${resposta.status}`;
               pendentes.delete(chave);
             }
@@ -331,7 +631,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           if (dados.pronta && dados.url) { prontas[chave] = dados.url; pendentes.delete(chave); }
           else if (dados.erro) { falhas[chave] = dados.erro; pendentes.delete(chave); }
         }
-        setImagensGeradas({ ...prontas });
+        guardar(prontas);
       }
 
       /**
@@ -341,31 +641,76 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
        * outro desenho a cada pedido, que é o que fazia a marca chegar em três
        * modelos diferentes.
        */
+      const subir = async (blob: Blob, nome: string, tipo = "image/png") => {
+        const corpo = new FormData();
+        corpo.append("file", new File([blob], `${nome}.${tipo === "image/jpeg" ? "jpg" : "png"}`, { type: tipo }));
+        const resposta = await fetch("/api/media", { method: "POST", body: corpo });
+        if (!resposta.ok) throw new Error("UPLOAD_FALHOU");
+        return (await resposta.json() as { url: string }).url;
+      };
+
+      /**
+       * O BANNER vira dois arquivos, um por formato, SEM texto.
+       *
+       * Cada arte é cortada em 3000×1000 e 1080×1350 a partir da MESMA foto:
+       * é a mesma cena no computador e no celular, que foi o pedido, e cada
+       * campo recebe o corte que lhe serve em vez de o tema esticar um só.
+       *
+       * Sem frase nenhuma por cima. O dono pediu assim, e a razão é boa: texto
+       * de banner é decisão de quem vende, e ele decide isso no editor da
+       * Shopify, não aqui.
+       */
+      const comBanner = ["banner-1", "banner-2"].filter((chave) => prontas[chave] && !prontas[`${chave}-mobile`]);
+      if (comBanner.length) {
+        setProgressoIa("escrevendo o texto nos banners…");
+        const paleta = coresDaMarca({ ...marca, nicheId });
+        const veu = marca.primaryColor || "#101010";
+        const cores = { veu, texto: textoSobre(veu), destaque: marca.accentColor || paleta[1] || textoSobre(veu) };
+        const fontes = { titulo: marca.headingFont || undefined, corpo: marca.bodyFont || undefined };
+        for (const chave of comBanner) {
+          try {
+            /**
+             * A PRIMEIRA dobra é a foto e mais nada; a SEGUNDA leva a frase.
+             *
+             * É a mesma divisão que o tema já seguia — só que a frase deixa de
+             * ser campo de texto do tema e passa a ser ASSADA na arte, com véu
+             * medido e tipografia de verdade. O dono viu o texto digitado por
+             * cima da foto e pediu assim: "o texto seja na imagem".
+             *
+             * A frase é o SLOGAN, o mesmo que ele aprovou na etapa da marca e
+             * pode trocar por lá — nunca uma frase inventada aqui, e nunca
+             * escrita pelo gerador de imagem, que erra letra e acento.
+             */
+            const levaAFrase = chave === ARTE_DA_DOBRA_COM_FRASE;
+            const texto = { titulo: levaAFrase ? (marca.slogan ?? "").trim() : "" };
+            const largo = await comporBanner(prontas[chave], texto, cores, "desktop", fontes);
+            const alto = await comporBanner(prontas[chave], texto, cores, "mobile", fontes);
+            prontas[chave] = await subir(largo, chave, "image/jpeg");
+            prontas[`${chave}-mobile`] = await subir(alto, `${chave}-mobile`, "image/jpeg");
+            substituir(chave, prontas[chave]);
+            substituir(`${chave}-mobile`, prontas[`${chave}-mobile`]);
+          } catch {
+            /* sem a composição o banner continua sendo a foto limpa, e o tema
+               volta a escrever por cima: pior que o ideal, melhor que vazio */
+            falhas[chave] = "não consegui escrever o texto na arte deste banner";
+          }
+        }
+      }
+
       if (prontas.logo && (!prontas["logo-fundo-branco"] || !prontas["logo-fundo-preto"])) {
         setProgressoIa("recortando o símbolo e montando as versões…");
         try {
           const versoes = await derivarLogos(prontas.logo);
-          const subir = async (blob: Blob, nome: string) => {
-            const corpo = new FormData();
-            corpo.append("file", new File([blob], `${nome}.png`, { type: "image/png" }));
-            const resposta = await fetch("/api/media", { method: "POST", body: corpo });
-            if (!resposta.ok) throw new Error("UPLOAD_FALHOU");
-            return (await resposta.json() as { url: string }).url;
-          };
           /* As versões chegam como data URI, e não como Blob, porque o mesmo
              algoritmo roda aqui e dentro do Playwright do motor — e Blob não
              atravessa a fronteira entre a página e o Node. Converter aqui é o
              preço de haver UMA implementação do recorte para as três frentes. */
           prontas.logo = await subir(converterParaBlob(versoes.transparente), "logotipo");
-          prontas["logo-fundo-branco"] = await subir(
-            converterParaBlob(versoes.fundoBranco),
-            "logotipo-fundo-branco",
-          );
-          prontas["logo-fundo-preto"] = await subir(
-            converterParaBlob(versoes.fundoPreto),
-            "logotipo-fundo-preto",
-          );
-          setImagensGeradas({ ...prontas });
+          prontas["logo-fundo-branco"] = await subir(converterParaBlob(versoes.fundoBranco), "logotipo-fundo-branco");
+          prontas["logo-fundo-preto"] = await subir(converterParaBlob(versoes.fundoPreto), "logotipo-fundo-preto");
+          substituir("logo", prontas.logo);
+          substituir("logo-fundo-branco", prontas["logo-fundo-branco"]);
+          substituir("logo-fundo-preto", prontas["logo-fundo-preto"]);
         } catch {
           /* o recorte falhou (fundo que não era liso, por exemplo): a loja
              continua com o símbolo como ele veio, e as versões ficam de fora.
@@ -379,8 +724,22 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       /* o que não veio aparece PELO NOME: "faltaram 3" manda a pessoa procurar
          quais; dizer quais é a diferença entre um aviso e um enigma */
       const faltando = [...pendentes.keys(), ...Object.keys(falhas)].map(tituloDe);
+      /**
+       * "7 de 6 prontas" — o número que não podia existir, e existia.
+       *
+       * O numerador contava TODAS as chaves de `prontas`, e ali dentro também
+       * moram peças que o denominador não conta: as versões do símbolo, que
+       * saem por cálculo, e o par de celular de cada banner. Com quatro
+       * geradas mais três derivadas, dava sete de seis.
+       *
+       * Contar o mesmo conjunto dos dois lados é a correção inteira.
+       */
+      const quantasGeradas = pecasGeradas.filter((peca) => prontas[peca.chave]).length;
+      /* e o motivo aparece: "sem imagem" sem por quê manda a pessoa adivinhar
+         se foi o provedor, o tamanho do arquivo ou o tempo */
+      const porque = [...new Set(Object.values(falhas).map(motivoLegivel))].join("; ");
       setProgressoIa(faltando.length
-        ? `${Object.keys(prontas).length} de ${pecasGeradas.length} prontas. Sem imagem: ${faltando.join(", ")}. Posso gerar de novo só o que faltou.`
+        ? `${quantasGeradas} de ${pecasGeradas.length} prontas. Sem imagem: ${faltando.join(", ")}${porque ? ` (${porque})` : ""}. Posso gerar de novo só o que faltou.`
         : `${pecasGeradas.length} imagens prontas.`);
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Não consegui gerar as imagens agora.");
@@ -397,7 +756,15 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
     ancora.href = url;
     ancora.download = `loja-${atual.name}.zip`;
     ancora.click();
-    URL.revokeObjectURL(url);
+    /**
+     * O endereço do arquivo é solto DEPOIS, não na linha seguinte.
+     *
+     * Soltar na hora funcionava enquanto o app segurava o pacote em memória de
+     * qualquer jeito. Agora ele é dispensado logo após o download, e as duas
+     * coisas juntas tirariam o chão do arquivo antes de o navegador terminar
+     * de gravá-lo.
+     */
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   async function pedirLoja() {
@@ -421,13 +788,18 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
             primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
             headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
             whatsapp: marca.whatsapp, instagram: marca.instagram, email: marca.email,
+            /* as coleções que a pessoa escreveu vencem as do nicho: o servidor
+               regera a marca, e sem isto ele devolveria as padrão por cima */
+            collections: marca.collections.map((nome) => nome.trim()).filter(Boolean).slice(0, 12),
           },
           /* só vai o que a IA realmente gerou; o resto o servidor desenha */
-          imagens: { ...marca.imagens, ...(modo === "gerada" ? imagensGeradas : {}) },
+          /* SÓ as aprovadas: versão em análise ou no limite sem o sim do
+             cliente não pode ser entregue como decisão tomada */
+          imagens: { ...marca.imagens, ...(modo === "gerada" ? urlsAprovadas(artes) : {}) },
           /* quais dessas a Orbis gerou: o servidor precisa saber para NÃO pôr
              arte gerada no campo de logo do tema (ela vem com fundo quadrado, e
              o cabeçalho fica com um retângulo colado sobre a página) */
-          imagensGeradas: modo === "gerada" ? Object.keys(imagensGeradas) : [],
+          imagensGeradas: modo === "gerada" ? Object.keys(urlsAprovadas(artes)) : [],
         }),
       });
       if (!resposta.ok) {
@@ -438,14 +810,24 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       const nome = resposta.headers.get("x-site-name") ?? "minha-marca";
       const pacote = { blob, name: nome };
       setZip(pacote);
+      setProjetoEntregue(resposta.headers.get("x-project-id") ?? "");
       /* a Shopify recusa tema acima de 50 MB, e ela recusa LÁ, na hora de
          subir. Saber aqui é a diferença entre um aviso e uma tarde perdida */
       const grande = resposta.headers.get("x-theme-too-large");
       setAvisoDeTamanho(grande ? `O pacote saiu com ${grande} MB e a Shopify aceita até 50 MB. Apague algumas imagens da pasta de upload antes de subir o tema.` : "");
 
-      const entrega = await fetch(`/local/deliver-site?name=${encodeURIComponent(nome)}`, { method: "POST", body: blob });
-      if (entrega.ok) setDelivery(await entrega.json());
-      else { setDelivery(null); baixarZip(pacote); }
+      /**
+       * O pacote fica AQUI, em memória, até a pessoa baixar.
+       *
+       * O app gravava uma pasta na Área de Trabalho com o ZIP e a prévia
+       * extraída ao lado. Só que quem usa baixa o arquivo pelo navegador — e aí
+       * a mesma loja existia em dois lugares: uma cópia em Downloads e uma
+       * pasta que ninguém abria, sobrando a cada loja gerada.
+       *
+       * Nada se perde: a prévia local e as imagens para subir em Conteúdo →
+       * Arquivos viajam DENTRO do ZIP, na pasta `previa-local`. O que saiu é a
+       * segunda cópia, não o conteúdo.
+       */
       setStatus("done");
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Não consegui gerar a loja agora.");
@@ -456,11 +838,15 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   function recomecar() {
     setPasso(0); setPassoMaisLonge(0); setModo(null); setNicheId(""); setGerada(false);
     setMarca(MARCA_VAZIA); setEditadoAMao({});
-    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setDelivery(null); setZip(null); setAvisoDeTamanho("");
+    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setZip(null); setProjetoEntregue(""); setInstalado(null); setAvisoDeTamanho(""); setDispositivo("desktop"); setConfirmando(false);
     /* recomeçar é recomeçar: o cofre da marca antiga sai junto, senão a loja
-       seguinte herdaria a logo de uma marca que não existe mais */
-    try { if (cofre) window.localStorage.removeItem(cofre); } catch { /* sem armazenamento, nada a limpar */ }
-    setImagensGeradas({}); setProgressoIa("");
+       seguinte herdaria a logo de uma marca que não existe mais — e o ponto de
+       parada também, senão a próxima abertura voltaria para a loja recomeçada */
+    try {
+      if (cofre) window.localStorage.removeItem(cofre);
+      window.localStorage.removeItem(CHAVE_DO_PONTO);
+    } catch { /* sem armazenamento, nada a limpar */ }
+    setArtes({}); setArteAberta(null); setProgressoIa("");
   }
 
   if (status === "working") {
@@ -486,25 +872,76 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           {/* aviso, não erro: o pacote existe e serve, mas a Shopify vai
               recusá-lo por tamanho, e ela recusa lá na frente sem dizer por quê */}
           {avisoDeTamanho && <p className="cf-aviso-tamanho"><CircleAlert size={14} /> {avisoDeTamanho}</p>}
-          {delivery ? (
+          {/**
+            * O QUE FALTA, e só o que falta.
+            *
+            * Estas linhas ensinavam o caminho manual inteiro, sempre. Depois de
+            * a instalação direta existir, elas passaram a mentir: mandavam
+            * enviar em Conteúdo → Arquivos as mesmas imagens que já tinham
+            * entrado, e subir um tema que, com o túnel de pé, já está lá.
+            *
+            * Instrução que contradiz o que acabou de acontecer é pior que
+            * instrução nenhuma: faz a pessoa desconfiar do que ela viu na tela.
+            */}
+          {instalado ? (
             <>
               <p>
-                Deixei <b>uma pasta</b> na sua Área de Trabalho, com duas coisas dentro. O <b>ZIP é o
-                tema</b>: suba em <b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo
-                ZIP</b> e clique em Publicar. A pasta <b>previa</b> é só para olhar aqui, com dois
-                cliques no index.html. Tem um LEIA-ME lá dentro repetindo isso.
+                A sua loja já está montada em <b>{instalado.loja}</b>: coleções, produtos e imagens
+                entraram por aqui.
               </p>
-              <div className="cf-paths">
-                <div><FolderOpen size={15} /> <span>{delivery.folderPath}</span></div>
-                <div><Download size={15} /> <span>{delivery.zipPath}</span></div>
-                <div><FolderOpen size={15} /> <span>{delivery.entryPath}</span></div>
-              </div>
+              {instalado.temaInstalado ? (
+                <p className="cf-painel-nota">
+                  O tema entrou <b>sem publicar</b>. Confira em Loja online → Temas e publique quando
+                  quiser trocar a loja no ar.
+                </p>
+              ) : (
+                <p className="cf-painel-nota">
+                  Falta só o tema: clique em <b>Baixar o ZIP</b> e suba em{" "}
+                  <b>Loja online → Temas → Adicionar tema</b>.
+                </p>
+              )}
             </>
           ) : (
-            <p>Não consegui gravar direto na Área de Trabalho, então baixei o ZIP pelo navegador. Ele é o tema Shopify completo: suba em <b>Temas → Adicionar tema → Enviar arquivo ZIP</b>.</p>
+            <>
+              <p>
+                O ZIP é o tema Shopify completo. Clique em <b>Baixar o ZIP</b> e ele vai para a sua
+                pasta de downloads. Depois suba em{" "}
+                <b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo ZIP</b> e clique em
+                Publicar.
+              </p>
+              {/* a prévia local e as imagens para subir em Conteúdo → Arquivos vão
+                  DENTRO do ZIP: dizer onde evita a pergunta de sempre */}
+              <p className="cf-painel-nota">
+                Dentro do ZIP, a pasta <b>previa-local</b> tem a loja para olhar aqui e as imagens para
+                subir em Conteúdo → Arquivos.
+              </p>
+            </>
           )}
+          {/**
+            * INSTALAR direto na loja, quando dá.
+            *
+            * Só aparece com um projeto entregue na mão: sem ele não há o que
+            * instalar, e um painel pedindo chave de acesso sem ter o que fazer
+            * com ela é pedir permissão por pedir.
+            *
+            * Fica ACIMA dos botões e não no lugar deles — o ZIP continua sendo
+            * a saída que funciona sempre, e quem preferir subir à mão não tem
+            * de recusar nada para chegar nele.
+            */}
+          {projetoEntregue && <InstalarNaLoja projectId={projetoEntregue} dominioInicial={dominioShopify} onInstalado={setInstalado} />}
           <div className="cf-actions">
-            <button className="secondary-button" onClick={() => baixarZip(zip)}><Download size={15} /> Baixar o ZIP</button>
+            {/**
+              * Baixou, acabou: o fluxo volta ao começo.
+              *
+              * O pacote é o fim da linha, e a tela de "pronto" não tem mais
+              * nada a fazer depois que o arquivo saiu. Ficar nela era o que
+              * deixava a loja anterior acumulada no app, esperando alguém
+              * lembrar de apertar "fazer outra".
+              *
+              * O que foi entregue não se perde: o ZIP vai para a pasta de
+              * downloads e o projeto fica registrado no estúdio.
+              */}
+            <button className="secondary-button" onClick={() => { baixarZip(zip); recomecar(); }}><Download size={15} /> Baixar o ZIP</button>
             <button className="secondary-button" onClick={recomecar}><RefreshCw size={15} /> Fazer outra loja</button>
             <button className="primary-button" onClick={onExit}>Concluir <ArrowRight size={15} /></button>
           </div>
@@ -516,7 +953,98 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   return (
     <main className="client-flow">
       <div className="entry-gate-brilho" aria-hidden="true" />
-      <div className="cf-layout">
+      {/**
+       * A CONFIRMAÇÃO de finalizar.
+       *
+       * Finalizar é o fim do caminho: depois dela o pacote é montado e a pessoa
+       * sai do fluxo. Uma pergunta antes custa um clique e evita o "eu ainda
+       * queria ver uma coisa" logo depois — e ela diz o que está sendo
+       * aprovado, que é a versão apresentada, não uma promessa de perfeição.
+       */}
+      {confirmando && (
+        <div className="cf-arte-modal" role="dialog" aria-modal="true" aria-label="Finalizar este projeto?">
+          <div className="cf-arte-caixa cf-confirmar">
+            <header>
+              <div>
+                <strong>Finalizar este projeto?</strong>
+                <span>Você está aprovando a versão apresentada da sua loja.</span>
+              </div>
+              <button className="icon-button" aria-label="Fechar" onClick={() => setConfirmando(false)}><X size={16} /></button>
+            </header>
+            <footer>
+              <button className="secondary-button" onClick={() => setConfirmando(false)}>Voltar e ajustar</button>
+              <button className="primary-button" onClick={() => { setConfirmando(false); void pedirLoja(); }}>
+                <Check size={14} /> Aprovar e finalizar
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+      {/**
+       * O VISUALIZADOR de uma arte.
+       *
+       * A lista diz o estado; aqui a pessoa VÊ a imagem no tamanho que dá para
+       * julgar e decide. As duas decisões ficam juntas, e o que resta de
+       * alteração é dito por extenso — número de crédito escondido é
+       * reclamação garantida na terceira tentativa.
+       */}
+      {arteAberta && (() => {
+        const peca = pecas.find((item) => item.chave === arteAberta);
+        const arte = artes[arteAberta];
+        if (!peca || !arte) return null;
+        const restantes = alteracoesRestantes(arte);
+        const podeAlterar = podePedirAlteracao(arte) && iaDisponivel && !gerandoImagens;
+        return (
+          <div className="cf-arte-modal" role="dialog" aria-modal="true" aria-label={`Arte: ${peca.titulo}`}>
+            <div className="cf-arte-caixa">
+              <header>
+                <div>
+                  <strong>{peca.titulo}</strong>
+                  <span>Versão {arte.versao} · {restantes === 0 ? "sem alterações restantes" : `${restantes} ${restantes === 1 ? "alteração restante" : "alterações restantes"}`}</span>
+                </div>
+                <button className="icon-button" aria-label="Fechar" onClick={() => setArteAberta(null)}><X size={16} /></button>
+              </header>
+              {/* eslint-disable-next-line @next/next/no-img-element -- mídia do próprio usuário. */}
+              <img src={arte.url} alt={peca.titulo} />
+              {arte.aprovada ? (
+                <p className="cf-arte-estado cf-arte-ok"><Check size={14} /> Arte aprovada. É ela que vai para a loja.</p>
+              ) : restantes === 0 ? (
+                <p className="cf-arte-estado cf-arte-limite"><CircleAlert size={14} /> Limite de alterações atingido. Esta é a versão final desta arte.</p>
+              ) : null}
+              <footer>
+                <button
+                  className="secondary-button"
+                  disabled={!podeAlterar}
+                  title={arte.aprovada ? "Arte já aprovada" : restantes === 0 ? "Limite de alterações atingido" : undefined}
+                  onClick={() => { setArteAberta(null); void gerarImagens([peca.chave]); }}
+                >
+                  <RefreshCw size={14} /> Pedir alteração
+                </button>
+                <button
+                  className="primary-button"
+                  disabled={arte.aprovada}
+                  onClick={() => { setArtes((atuais) => ({ ...atuais, [peca.chave]: aprovar(atuais[peca.chave]) })); setArteAberta(null); }}
+                >
+                  <Check size={14} /> {arte.aprovada ? "Aprovada" : "Aprovar arte"}
+                </button>
+              </footer>
+            </div>
+          </div>
+        );
+      })()}
+      {/**
+       * A COLUNA DA DIREITA volta, com outro conteúdo.
+       *
+       * Ela existiu para a prévia ao vivo da loja e saiu por não ajudar
+       * decisão nenhuma numa miniatura de 340px. Aqui a pergunta é outra e cabe
+       * exatamente nesse tamanho: "gostei desta arte?". A lista de NOMES não
+       * respondia isso — obrigava a abrir peça por peça só para descobrir o que
+       * era cada uma, e era isso que ficava estranho e desorganizado.
+       *
+       * Só no passo das artes, e só quando existe arte. Nos outros a coluna
+       * ficaria reservada e vazia, tirando largura de onde o trabalho acontece.
+       */}
+      <div className={`cf-layout ${temGaleria ? "" : "cf-layout-cheio"}`}>
         <div className="cf-panel">
           <header className="cf-head">
             <Orbis tamanho={40} alt="" />
@@ -658,10 +1186,29 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                     <span className="cf-modo-icone"><Sparkles size={20} strokeWidth={1.6} /></span>
                     <div>
                       <strong>Artes da Orbis</strong>
+                      {/**
+                       * O QUE ESTA CAIXA DIZ ao cliente.
+                       *
+                       * Ela contava o processo: quantos logos, quantos banners,
+                       * por que cada peça é gerada uma vez só. Era a explicação
+                       * de uma decisão INTERNA, escrita para quem construiu o
+                       * app, na tela de quem contratou uma loja. Quem chega
+                       * aqui não está comprando um método de geração, está
+                       * comprando a identidade da marca dele.
+                       *
+                       * A contagem das peças, aliás, já está logo abaixo: cada
+                       * arte tem o próprio nome e o próprio estado na lista.
+                       * Dizer o número em prosa era repetir o que a tela mostra.
+                       *
+                       * O aviso do provedor FICA. Ele não é detalhe de processo:
+                       * é a diferença entre a loja sair com a marca do cliente
+                       * ou com as imagens que o tema já trazia, e quem não for
+                       * avisado fica esperando arte que não vem.
+                       */}
                       <p>
-                        Quatro logos e um favicon, duas artes de banner que servem o computador e o celular,
-                        {" "}e três cenas da marca. Cada arte é gerada UMA vez: pedir a mesma coisa duas vezes
-                        {" "}devolve duas coisas diferentes, e é isso que fazia o celular abrir outra campanha.
+                        Sua identidade visual, criada para valorizar a sua marca.
+                        {" "}A Orbis prepara artes consistentes com o estilo, o posicionamento e a
+                        {" "}personalidade do seu negócio.
                         {!iaDisponivel && " Provedor de imagem não configurado: a loja sai com a imagem que o tema já traz."}
                       </p>
                     </div>
@@ -671,52 +1218,96 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                           outra e ainda gastaria crédito para isso */}
                       {gerandoImagens
                         ? "Gerando…"
-                        : Object.keys(imagensGeradas).length >= pecasGeradas.length
-                          ? "Gerar tudo de novo"
-                          : Object.keys(imagensGeradas).length
-                            ? `Gerar as ${pecasGeradas.length - Object.keys(imagensGeradas).length} que faltam`
+                        : quantasPodemGerar === 0
+                          ? "Nada a gerar"
+                          : quantasPodemGerar < pecasGeradas.length
+                            ? `Gerar as ${quantasPodemGerar} que faltam`
                             : `Gerar as ${pecasGeradas.length} imagens`}
                     </button>
                   </div>
-                  <div className="cf-pecas">
-                    {pecas.map((peca) => (
-                      <span key={peca.chave} className="cf-peca">
-                        <b>{peca.titulo}</b>
-                        <code>{peca.aspecto.replace(/^[a-z_]*?_(\d+)_(\d+)$/, "$1:$2")}</code>
-                        {/* peça desenhada já nasce pronta: dizer "desenhada" em
-                            vez de deixá-la sem selo evita a leitura de que ela
-                            falhou ou de que ainda está na fila */}
-                        {peca.origem === "desenhada"
-                          ? <i className="cf-peca-ok"><Check size={11} /> desenhada</i>
-                          : imagensGeradas[peca.chave]
-                            ? <i className="cf-peca-ok"><Check size={11} /> {peca.origem === "derivada" ? "derivada" : "pronta"}</i>
-                            : peca.origem === "derivada" ? <i className="cf-peca-nota">sai do símbolo</i> : null}
-                      </span>
-                    ))}
-                  </div>
+                  {/**
+                   * A lista de NOMES só aparece enquanto não há o que ver.
+                   *
+                   * Depois que as artes existem, quem mostra é a galeria da
+                   * direita: nome sem imagem obriga a abrir peça por peça só
+                   * para descobrir o que é cada uma.
+                   */}
+                  {!temGaleria && (
+                    <div className="cf-pecas">
+                      {pecas.map((peca) => (
+                        <span key={peca.chave} className={`cf-peca cf-peca-${peca.origem === "desenhada" ? "desenhada" : "ausente"}`}>
+                          <b>{peca.titulo}</b>
+                          {peca.origem === "desenhada" && <i className="cf-peca-ok"><Check size={11} /> desenhada</i>}
+                          {peca.origem === "derivada" && <i className="cf-peca-nota">sai do símbolo</i>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {(() => {
+                    const placar = placarDasArtes(artes, obrigatorias);
+                    if (!placar.total || !Object.keys(artes).length) return null;
+                    return placar.pendentes.length
+                      ? <p className="cf-painel-nota">{placar.aprovadas} de {placar.total} artes aprovadas. Abra cada uma para aprovar ou pedir alteração.</p>
+                      : <p className="cf-painel-nota cf-tudo-aprovado"><Check size={13} /> As {placar.total} artes estão aprovadas.</p>;
+                  })()}
                   {progressoIa && <p className="cf-painel-nota">{progressoIa}</p>}
                 </>
               )}
 
-              <span className="cf-secao-titulo">Composição das páginas</span>
-              <div className="cf-templates">
-                {SITE_TEMPLATES.map((entrada) => (
-                  <button key={entrada.id} className={`cf-template ${templateId === entrada.id ? "selected" : ""}`} onClick={() => setTemplateId(entrada.id)}>
-                    <span className="cf-template-thumb" aria-hidden="true">
-                      {entrada.sections.filter((secao: string) => secao !== "announcement").slice(0, 6).map((secao: string) => <i key={secao} data-kind={secao} />)}
-                    </span>
-                    <strong>{entrada.name}</strong>
-                    <p>{entrada.tagline}</p>
-                    <span className="cf-template-sections">{entrada.sections.map((secao: string) => SECTION_LABELS[secao as keyof typeof SECTION_LABELS]).join(" · ")}</span>
-                    {templateId === entrada.id && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
           {passo === 3 && (
             <div className="cf-body">
+              {/**
+               * A REVISÃO é onde a loja aparece inteira, e é a ÚNICA etapa que
+               * tem prévia.
+               *
+               * Nas etapas anteriores ela era uma coluna de 340px ao lado de
+               * decisões de conteúdo, e não ajudava nenhuma delas. Aqui a
+               * pergunta é outra e é exatamente essa: "é essa a minha loja?".
+               * Por isso a prévia ocupa a largura, é o tema DE VERDADE com a
+               * marca aplicada, e tem o par computador/celular.
+               */}
+              <div className="cf-revisao-topo">
+                <div>
+                  <h3>Sua loja está pronta para revisão</h3>
+                  <p>Confira antes de finalizar. É o tema escolhido com a sua marca, as artes aprovadas e as suas coleções.</p>
+                </div>
+                <div className="cf-dispositivos" role="group" aria-label="Tamanho da tela">
+                  {(["desktop", "mobile"] as const).map((qual) => (
+                    <button
+                      key={qual}
+                      type="button"
+                      className={dispositivo === qual ? "ativo" : ""}
+                      aria-pressed={dispositivo === qual}
+                      onClick={() => setDispositivo(qual)}
+                    >
+                      {qual === "desktop" ? "Computador" : "Celular"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <ClientPreviaReal
+                themeId={themeId}
+                nicheId={nicheId}
+                dispositivo={dispositivo}
+                semTema={temasCarregando ? "Procurando o tema…" : "Escolha um tema no passo anterior para ver a loja."}
+                marca={{
+                  name: marca.name || "Minha Marca", slogan: marca.slogan, description: marca.description,
+                  /* a MESMA semente do pedido, porque ela decide também a ORDEM
+                     da home: sem ela aqui, a prévia mostraria uma loja e o ZIP
+                     sairia com outra. Marca preenchida à mão não tem semente —
+                     ali o nome faz esse papel, dos dois lados. */
+                  semente: modo === "gerada" ? semente : undefined,
+                  primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
+                  headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
+                  collections: marca.collections,
+                  /* SÓ o que foi aprovado: mostrar versão em análise faria a
+                     revisão prometer uma loja que não é a que vai ser entregue */
+                  imagens: { ...marca.imagens, ...urlsAprovadas(artes) },
+                }}
+              />
               <dl className="cf-review">
                 <div><dt>Como foi criada</dt><dd>{modo === "gerada" ? `Gerada pela Orbis a partir de ${NICHOS.find((n: { id: string; nome: string }) => n.id === nicheId)?.nome ?? "um nicho"}` : "Preenchida por você"}</dd></div>
                 {/* o catálogo é decisão à parte da marca, então aparece à parte
@@ -730,10 +1321,11 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
                 <div><dt>Cores</dt><dd><i className="cf-swatch" style={{ background: marca.primaryColor }} /> {marca.primaryColor} · <i className="cf-swatch" style={{ background: marca.backgroundColor }} /> {marca.backgroundColor}</dd></div>
                 {marca.headingFont && <div><dt>Tipografia</dt><dd>{marca.headingFont} + {marca.bodyFont}</dd></div>}
                 <div><dt>Tema</dt><dd>{temaEscolhido?.name ?? "Nenhum escolhido"}</dd></div>
-                <div><dt>Modelo</dt><dd>{template.name}: {template.tagline}</dd></div>
                 {marca.collections.length > 0 && <div><dt>Coleções</dt><dd>{marca.collections.join(" · ")}</dd></div>}
                 {(marca.whatsapp || marca.instagram || marca.email) && <div><dt>Contato</dt><dd>{[marca.whatsapp, marca.instagram && `@${marca.instagram}`, marca.email].filter(Boolean).join(" · ")}</dd></div>}
-                <div><dt>Entrega</dt><dd>ZIP e pasta na sua Área de Trabalho, e o projeto no estúdio com a marca aplicada ao tema.</dd></div>
+                {obrigatorias.length > 0 && <div><dt>Artes</dt><dd>{placar.aprovadas}/{placar.total} aprovadas</dd></div>}
+                <div><dt>Estado</dt><dd>{ROTULO_DO_PROJETO[estado]}</dd></div>
+                <div><dt>Entrega</dt><dd>ZIP para baixar, com o tema e a pasta <b>previa-local</b> dentro, e o projeto no estúdio com a marca aplicada ao tema.</dd></div>
               </dl>
             </div>
           )}
@@ -741,38 +1333,81 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           <footer className="cf-foot">
             {passo > 0 ? <button className="secondary-button" onClick={() => irPara(passo - 1)}><ArrowLeft size={15} /> Voltar</button> : <span />}
             {passo === 1 && <span className="cf-foot-dica">Escreva o nome da marca. Ele aparece na loja inteira.</span>}
+            {/* o motivo de não dar para avançar fica DITO, no lugar onde a
+                pessoa clica: botão apagado sem explicação vira "travou" */}
+            {passo === 2 && placar.pendentes.length > 0 && Object.keys(artes).length > 0 && (
+              <span className="cf-foot-dica cf-foot-pendente">
+                Finalize a aprovação das suas artes antes de revisar sua loja: {placar.pendentes.length}
+                {placar.pendentes.length === 1 ? " arte ainda precisa" : " artes ainda precisam"} de aprovação.
+              </span>
+            )}
             {passo < PASSOS.length - 1 ? (
               <button className="primary-button" disabled={!podeAvancar} onClick={() => irPara(passo + 1)}>Próximo <ArrowRight size={15} /></button>
             ) : (
-              <button className="primary-button" onClick={() => void pedirLoja()}>Criar minha loja <ArrowRight size={15} /></button>
+              <button className="primary-button" onClick={() => setConfirmando(true)}>Aprovar e finalizar <ArrowRight size={15} /></button>
             )}
           </footer>
         </div>
 
-        <aside className="cf-preview" aria-label="Prévia da loja">
-          <span className="cf-preview-title">Prévia ao vivo</span>
-          {/* a home REAL do tema com a marca aplicada, não um desenho de caixas */}
-          {/* o motivo vai junto: sem tema a prévia não pode ficar prometendo
-              uma loja que nunca vem, e "escolha um tema" seria mentira quando
-              não há nenhum importado */}
-          <ClientPreviaReal themeId={themeId} nicheId={nicheId} semTema={
-            temasCarregando ? "Procurando os temas do estúdio…"
-              : temas.length === 0 ? "Nenhum tema importado ainda. Importe um em Importar temas e a prévia aparece aqui."
-                : "Escolha um tema para ver a prévia."
-          } marca={{
-            name: marca.name || "Minha Marca", slogan: marca.slogan, description: marca.description,
-            primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
-            headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
-            collections: marca.collections, imagens: { ...marca.imagens, ...imagensGeradas },
-          }} />
-          {marca.logoDataUri && (
-            <div className="cf-preview-logo">
-              {/* eslint-disable-next-line @next/next/no-img-element -- data URI gerado localmente. */}
-              <img src={marca.logoDataUri} alt="Logo gerada" />
-              <span>Logo gerada pela Orbis</span>
+        {/**
+         * A GALERIA DAS ARTES, na coluna da direita.
+         *
+         * Clicar num nome não diz se a arte ficou boa. A miniatura diz, e a
+         * decisão que esta etapa cobra — aprovar ou pedir outra — é uma
+         * decisão de olho, não de leitura. Por isso cada peça aparece com a
+         * cara dela, o número da versão e o estado, e o clique abre grande.
+         *
+         * Cabe em 340px porque é o que a pergunta pede: para escolher entre
+         * "essa serve" e "essa não", miniatura basta; para decidir de verdade,
+         * abre-se a peça.
+         */}
+        {temGaleria && (
+          <aside className="cf-galeria">
+            <header>
+              <strong>Prévia das artes</strong>
+              <span>Abra cada uma para ver de perto, aprovar ou pedir alteração.</span>
+            </header>
+            <div className="cf-galeria-grade">
+              {galeria.map(({ peca, arte, url }) => {
+                const estado = peca.origem === "desenhada" ? "desenhada" : estadoDaArte(arte);
+                const abre = peca.origem !== "desenhada" && Boolean(arte);
+                return (
+                  <button
+                    key={peca.chave}
+                    type="button"
+                    className={`cf-arte-card cf-peca-${estado}`}
+                    disabled={!abre}
+                    title={abre ? `Abrir ${peca.titulo}` : peca.titulo}
+                    onClick={() => abre && setArteAberta(peca.chave)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- mídia do próprio usuário ou desenho local. */}
+                    <img src={url} alt={peca.titulo} loading="lazy" />
+                    <b>{peca.titulo}</b>
+                    <small>
+                      {arte && <code>V{arte.versao}</code>}
+                      {estado === "desenhada" && <i className="cf-peca-ok"><Check size={10} /> desenhada</i>}
+                      {estado === "aprovada" && <i className="cf-peca-ok"><Check size={10} /> aprovada</i>}
+                      {estado === "aguardando" && <i className="cf-peca-nota">aguardando</i>}
+                      {estado === "limite" && <i className="cf-peca-limite">no limite</i>}
+                    </small>
+                  </button>
+                );
+              })}
             </div>
-          )}
-        </aside>
+          </aside>
+        )}
+        {/**
+         * A prévia ao vivo SÓ existe na revisão.
+         *
+         * Ela ocupava uma coluna de 340px em TODO passo, e nenhum deles se
+         * decide olhando uma miniatura desse tamanho: escolher nicho, escrever
+         * a marca e escolher tema são decisões de conteúdo. A coluna ficava
+         * lá, tirando largura de onde o trabalho acontece, para responder uma
+         * pergunta que ninguém tinha feito ainda.
+         *
+         * Na etapa 04 a pergunta é exatamente essa — "é essa a minha loja?" —
+         * e a prévia responde em largura cheia, com o par computador/celular.
+         */}
       </div>
     </main>
   );
