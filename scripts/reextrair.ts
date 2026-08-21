@@ -456,6 +456,25 @@ const principal = async (): Promise<void> => {
   const verificarVisual =
     (pendentes.length === 1 || process.argv.includes('--verificar')) &&
     process.env.DS_SEM_VERIFICACAO !== '1';
+  /**
+   * O padrão do lote é dito em VOZ ALTA, e não deduzido do silêncio.
+   *
+   * Foi este padrão que deixou o acervo inteiro sem conferência de pixel: 57
+   * capturas de 57 com `visualComparisons: []`. Quem rodou o comando não
+   * escolheu desligar — a condição acima desligou —, e depois nada na tela nem
+   * no manifesto dizia isso. A conta chegou na curadoria, onde a reprova por
+   * divergência nunca disparou em peça alguma.
+   */
+  if (!verificarVisual && pendentes.length > 0) {
+    console.log(
+      '  A comparação de pixel NÃO vai rodar nesta rodada: em lote ela é desligada por padrão.',
+    );
+    console.log(
+      '  Sem ela, "nenhuma divergência" quer dizer "ninguém olhou": a curadoria não reprova o que não foi medido.',
+    );
+    console.log('  Para conferir o acervo inteiro, rode de novo com --verificar.');
+    console.log('');
+  }
 
   const relatos: Relato[] = [];
   for (const [i, id] of pendentes.entries()) {

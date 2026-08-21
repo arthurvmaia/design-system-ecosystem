@@ -1585,7 +1585,10 @@ const capturarTentativa = async (url: string, opts: OpcoesCaptura): Promise<Resu
         fasesQueInvalidam: [FASE_V2.compilar, FASE_V2.comparar],
       });
       if (!decisao.rodar) {
-        if (decisao.motivo !== '') limitacoes.push(decisao.motivo);
+        // Sem guarda: TODO motivo é dito. O caso silencioso era a verificação
+        // desligada, e foi ele que deixou 57 capturas do acervo com
+        // `visualComparisons: []` sem uma linha explicando.
+        limitacoes.push(decisao.motivo);
       } else {
         if (decisao.ressalva !== undefined) limitacoes.push(decisao.ressalva);
         await tel.faseCooperativa(

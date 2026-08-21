@@ -23,6 +23,8 @@
  * compilado se parece com o print da dobra, que é a única pergunta que a
  * comparação de pixel responde. Então:
  *
+ * - desligada: pular, e DIZER que estava desligada — a ausência tem de ser
+ *   distinguível de "conferiu e não achou nada";
  * - cortou em `compilar` ou na própria `comparar`: pular, porque o que seria
  *   conferido não existe inteiro;
  * - qualquer outra fase: conferir, e declarar o alcance junto do resultado;
@@ -54,8 +56,26 @@ export const decidirComparacao = (opts: {
 }): DecisaoDeComparacao => {
   const { querVerificar, parcial, faseCortada, tetoMs, restanteMs, fasesQueInvalidam } = opts;
 
-  // Quem desligou sabe que desligou: silêncio é a resposta certa.
-  if (!querVerificar) return { rodar: false, motivo: '' };
+  /**
+   * Desligada TAMBÉM deixa rastro.
+   *
+   * Aqui havia silêncio, com o argumento "quem desligou sabe que desligou".
+   * Ele confunde quem RODA o comando com quem LÊ o manifesto depois, e o
+   * acervo mostrou o preço: 57 capturas de 57 com `visualComparisons: []` e
+   * nenhuma linha explicando, porque `pnpm reextrair --todos` desliga a
+   * verificação por PADRÃO em lote. Ninguém desligou nada — o padrão desligou
+   * — e a ausência ficou indistinguível de "conferiu e não achou nada".
+   *
+   * A consequência não era estética: em `curadoria-escolha.ts`,
+   * `comparacaoVisualOk === false` é condição de REPROVA, e sem comparação
+   * nenhuma ela nunca disparou em peça alguma do acervo.
+   */
+  if (!querVerificar)
+    return {
+      rodar: false,
+      motivo:
+        'A comparação de pixel não rodou porque a verificação visual estava desligada nesta captura. Ela é o que confere se cada bundle se parece com o print da dobra; sem ela, "sem divergência" significa "ninguém olhou".',
+    };
 
   if (parcial && faseCortada !== undefined && fasesQueInvalidam.includes(faseCortada)) {
     return {

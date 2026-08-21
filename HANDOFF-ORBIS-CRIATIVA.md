@@ -17,28 +17,46 @@ cliente no Desktop tem logo (com o vetor), favicons, quatro banners e o PDF.
 
 ## 1. A PRÓXIMA COISA A FAZER
 
-**A comparação de pixel não chega até a curadoria, e isso promove peça ruim em
-silêncio.**
+**Decidir se `pnpm reextrair --todos` passa a conferir o pixel por padrão — e,
+se sim, reextrair o acervo.**
 
-Em `curadoria-escolha.ts`, `comparacaoVisualOk === false` é condição de REPROVA
-— *"o bundle não bate com o que a captura viu"*. Mas `curar-biblioteca` lia esse
-campo de `insight.comparacaoVisual`, que o `SegmentInsight` não declara e o
-manifesto não grava: ele era `null` desde sempre, e **a reprovação nunca
-disparou**. Peça cujo bundle diverge da captura entra na Biblioteca sem que nada
-acuse.
+A §1 anterior dizia que a comparação de pixel "não chegava até a curadoria" e
+que o conserto era extrair `associarConferencias` para um pacote compartilhado.
+A extração foi feita (mora em `@ds/shared`, e a curadoria agora a lê), e ela
+**não mudou um número**: 1396 peças, 151 reprovadas, antes e depois.
 
-Hoje o `null` é EXPLÍCITO, com o buraco escrito no lugar — "não medido" é
-verdadeiro, e o de antes não era. O que falta é o caminho:
+Número parado é sinal. Medindo o acervo em disco:
 
-- o dado existe em disco (`lerComparacoesV2(id)`);
-- quem associa comparação a segmento é `associarConferencias`, uma função
-  **privada** da rota de design systems, e a associação é heurística (casa por
-  print da dobra e por posição);
-- trazê-la para a curadoria quer dizer extraí-la para um pacote compartilhado,
-  com teste.
+```
+57 de 57 manifestos com `visualComparisons: []`
+57 de 57 sem a fase `v2-comparar` na telemetria
+57 de 57 sem UMA linha dizendo por quê
+```
 
-É a mesma forma de todos os achados desta frente: a régua tinha a pergunta certa
-e não tinha a resposta, e ninguém via porque `null` não reclama.
+A comparação nunca rodou. Não é a associação que faltava — é o dado.
+
+**A causa** está em `scripts/reextrair.ts`: em lote, a verificação visual nasce
+DESLIGADA (`pendentes.length === 1 || --verificar`). O acervo foi reextraído em
+lote, e o único caminho que o motor decidira ser silencioso era exatamente esse
+— "quem desligou sabe que desligou". Só que ninguém desligou: o padrão desligou,
+e o manifesto não guardou rastro. A conta chegou na curadoria, onde
+`comparacaoVisualOk === false` é condição de REPROVA e nunca disparou em peça
+alguma.
+
+**O motor funciona.** Rodado contra a fixture com `verificarVisual: true`:
+`v2-comparar` na telemetria, 10 comparações gravadas, **2 de 10 reprovando com
+45% de diferença**, e a limitação declarada. O que faltava era ligar.
+
+**Já consertado:** a decisão agora DIZ que estava desligada (o silêncio era a
+premissa errada); o `reextrair` avisa na tela, em lote, que não vai conferir e
+como ligar; e existe um teste ponta a ponta do fio
+(`comparacao-fim-a-fim.browser.test.ts`) — ele não existia, e é por isso que
+ninguém via: as duas pontas eram testadas e a ligação não.
+
+**O que sobra é a decisão do dono**, porque custa tempo dele: a conferência é 6%
+do orçamento por captura, e reextrair 57 sites com `--verificar` é uma rodada
+longa. Feito isso, a reprova por divergência passa a valer sobre o acervo — e
+pelo que a fixture mostrou (2 em 10), ela não vai ficar quieta.
 
 ### Depois dela
 
