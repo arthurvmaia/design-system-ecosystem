@@ -579,3 +579,35 @@ test("o nome da coleção e a semente do sorteio voltam com a loja reimportada",
     assert.equal(cru.orbisSorteio, undefined);
   } finally { await server.close(); }
 });
+
+test("a chave do mapa de assets e a mesma que o Editor procura", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const importacao = await readFile(new URL("../app/api/theme-import/route.ts", import.meta.url), "utf8");
+  const tela = await readFile(new URL("../app/AppShell.tsx", import.meta.url), "utf8");
+
+  /**
+   * O DEFEITO: a previa mostrava a imagem e o Editor mostrava o quadro vazio.
+   *
+   * O mapa era indexado com a caixa do arquivo, e o campo de imagem do Editor
+   * busca em caixa baixa. Um tema que traga `Logo.png` batia na previa — o
+   * renderizador normaliza os DOIS lados (`assetPathByName`) — e nunca batia no
+   * Editor. A assimetria e o defeito; qual caixa se escolhe e indiferente,
+   * desde que seja uma so.
+   */
+  const ABRE = String.fromCharCode(91);
+  const FECHA = String.fromCharCode(93);
+  const acessos = [];
+  /* as duas formas de chegar no mapa: `urls[...]` e `assetUrls?.[...]` */
+  for (const prefixo of ["urls" + ABRE, "Urls?." + ABRE]) {
+    for (const pedaco of importacao.split(prefixo).slice(1)) acessos.push(pedaco.split(FECHA)[0].trim());
+  }
+  assert.ok(acessos.length >= 4, `esperava as duas gravacoes e as duas leituras do mapa, achei ${acessos.length}`);
+  for (const chave of acessos) {
+    assert.ok(chave.includes("chaveDeAsset("), `mapa de assets acessado sem normalizar a caixa: ${chave}`);
+  }
+
+  /* do lado da tela, a busca continua em caixa baixa */
+  const previa = tela.slice(tela.indexOf("function mediaPreviewSource"));
+  const corpo = previa.slice(0, previa.indexOf(String.fromCharCode(10) + "}"));
+  assert.ok(corpo.includes("toLowerCase()"), "o Editor deixou de normalizar; o mapa e ele divergem de novo");
+});

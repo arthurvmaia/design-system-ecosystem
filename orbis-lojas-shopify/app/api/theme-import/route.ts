@@ -79,7 +79,7 @@ async function religarImagensDaOrbis(viewerId: string, tema: ShopifyThemeImport)
   /* as artes que vieram DENTRO do pacote, já instaladas e servíveis */
   const artesDoPacote = new Map<string, string>();
   for (const nome of tema.orbisArtes ?? []) {
-    const url = tema.assetUrls?.[nome];
+    const url = tema.assetUrls?.[chaveDeAsset(nome)];
     if (url) artesDoPacote.set(nome.toLowerCase(), url);
   }
 
@@ -108,6 +108,20 @@ async function religarImagensDaOrbis(viewerId: string, tema: ShopifyThemeImport)
  * imagem partida sem explicação vira caça ao fantasma. Quem sabe o motivo é
  * aqui.
  */
+/**
+ * A CHAVE do mapa de assets — e ela precisa ser a mesma dos dois lados.
+ *
+ * O mapa era indexado com a caixa do arquivo e o campo de imagem do Editor
+ * busca em caixa baixa (`mediaPreviewSource`, em `AppShell.tsx`). Resultado: um
+ * tema que traga `Logo.png` ou `Hero-BG.jpg` mostrava a imagem na PRÉVIA e o
+ * quadro vazio no EDITOR — porque o renderizador normaliza os dois lados
+ * (`theme-render.ts`, `assetPathByName`) e este mapa não normalizava nenhum.
+ *
+ * A assimetria é o defeito; qual caixa se escolhe é indiferente, desde que seja
+ * uma só. Nome de arquivo é do lojista e não segue regra nenhuma.
+ */
+const chaveDeAsset = (nome: string) => String(nome ?? "").toLowerCase();
+
 async function installThemeImages(ownerId: string, fingerprint: string, assets: ShopifyThemeImageAsset[]) {
   const urls: Record<string, string> = {};
   const fora: Array<{ path: string; bytes: number; motivo: string }> = [];
@@ -119,7 +133,7 @@ async function installThemeImages(ownerId: string, fingerprint: string, assets: 
           customMetadata: { ownerId },
         });
         if (asset.contentType.startsWith("image/")) {
-          urls[asset.name] = `/api/theme-assets?fp=${fingerprint}&path=${encodeURIComponent(asset.path)}`;
+          urls[chaveDeAsset(asset.name)] = `/api/theme-assets?fp=${fingerprint}&path=${encodeURIComponent(asset.path)}`;
         }
       } catch (error) {
         const causa = error instanceof Error ? error.message : "falha desconhecida";
@@ -142,7 +156,7 @@ async function installThemeImages(ownerId: string, fingerprint: string, assets: 
       continue;
     }
     total += asset.data.byteLength;
-    urls[asset.name] = `data:${asset.contentType};base64,${base64FromBytes(asset.data)}`;
+    urls[chaveDeAsset(asset.name)] = `data:${asset.contentType};base64,${base64FromBytes(asset.data)}`;
   }
   return { urls, fora };
 }
@@ -151,7 +165,7 @@ async function installThemeImages(ownerId: string, fingerprint: string, assets: 
 function pickThemePreview(images: ShopifyThemeImageAsset[], urls: Record<string, string>) {
   let best: { score: number; url: string } | null = null;
   for (const image of images) {
-    const url = urls[image.name];
+    const url = urls[chaveDeAsset(image.name)];
     if (!url || !image.contentType.startsWith("image/") || image.contentType === "image/svg+xml" || image.contentType === "image/x-icon") continue;
     let score = Math.min(image.data.byteLength, 3_000_000);
     if (PREVIEW_NAME_BOOST.test(image.name)) score += 1_500_000;
