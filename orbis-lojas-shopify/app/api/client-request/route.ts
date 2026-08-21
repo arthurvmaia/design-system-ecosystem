@@ -4,7 +4,7 @@ import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1, saveProject, unlockTheme } from "@/lib/data";
 import { brandCustomization, generateClientSite, sanitizeBrand } from "@/lib/site-generator.mjs";
 import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
-import { aplicarMarcaNoTema, handleDeColecao } from "@/lib/shopify-brand";
+import { aplicarMarcaNoTema, colecoesDaLoja, handleDeColecao } from "@/lib/shopify-brand";
 import { ARQUIVO_DA_LOJA, marcadorDaLoja, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { pecasDaMarca } from "@/lib/marca-imagens";
 import { csvDeProdutos } from "@/lib/catalogo-csv";
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
     const criarMarca = parsed.data.criarMarca ?? Boolean(parsed.data.nicheId);
     const marca = criarMarca && parsed.data.nicheId
       ? gerarMarca({ nicheId: parsed.data.nicheId, semente: parsed.data.seed ?? "orbis", sobrescritas: parsed.data.brand })
-      : { ...parsed.data.brand, collections: parsed.data.brand.collections ?? [], announcement: "" };
+      : { ...parsed.data.brand, collections: colecoesDaLoja(parsed.data), announcement: "" };
     /* toda loja sai com logo, inclusive a preenchida à mão: sem isto o
        cabeçalho do site entregue ficava com o espaço da marca vazio */
     if (!marca.logoDataUri) marca.logoDataUri = logoDaMarca(marca).dataUri;

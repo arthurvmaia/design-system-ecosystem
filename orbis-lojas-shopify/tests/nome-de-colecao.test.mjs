@@ -123,3 +123,45 @@ test("aplicarMarcaNoTema guarda o nome antes de convertê-lo em handle", async (
     assert.deepEqual(resultado.theme.orbisColecoes, ["Cozinha", "Organização", "Cama e banho"]);
   });
 });
+
+test("marca própria com nicho escolhido recebe as coleções DO NICHO", async () => {
+  await comServidor(async (server) => {
+    const { colecoesDaLoja } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+
+    /**
+     * Medido numa entrega real: o cliente com marca própria escolheu "roupas" só
+     * para ter catálogo, e a lista chegava VAZIA à aplicação da marca. Lista
+     * vazia era lida como "não mexer", então o tema saía apontando para as
+     * coleções de DEMONSTRAÇÃO do tema de origem — "pet-shop", "eletronicos",
+     * "moda-feminina" —, enquanto a instalação criava na Shopify "Novidades",
+     * "Básicos" e as outras do nicho. Duas metades da mesma entrega, cada uma
+     * com uma lista diferente, e a vitrine do cliente apontando para coleções
+     * que não existiam na loja dele.
+     */
+    assert.deepEqual(
+      colecoesDaLoja({ nicheId: "roupas", brand: { name: "Sasa" } }),
+      ["Novidades", "Básicos", "Coleção de estação", "Alfaiataria", "Promoções", "Últimas peças"],
+    );
+
+    /* o que a pessoa digitou continua vencendo o nicho: era o motivo de o campo
+       existir, e o padrão não pode reintroduzir o descarte que ele consertou */
+    assert.deepEqual(
+      colecoesDaLoja({ nicheId: "roupas", brand: { name: "Sasa", collections: ["Moda Fitness", "Verão"] } }),
+      ["Moda Fitness", "Verão"],
+    );
+
+    /* espaço em branco não é coleção: apagar tudo devolve as do nicho, em vez
+       de entregar uma loja sem categoria nenhuma */
+    assert.deepEqual(
+      colecoesDaLoja({ nicheId: "roupas", brand: { name: "Sasa", collections: ["  ", ""] } }).length,
+      6,
+    );
+
+    /**
+     * SEM nicho, nada. `nichoPorId` devolve o PRIMEIRO nicho para id
+     * desconhecido, então chamá-lo sem nicho daria "roupas" a uma loja que não
+     * escolheu catálogo nenhum — inventar categoria é pior que não ter.
+     */
+    assert.deepEqual(colecoesDaLoja({ brand: { name: "Sasa" } }), []);
+  });
+});

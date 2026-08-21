@@ -23,7 +23,7 @@
  *
  * O tema de origem não é tocado: a função devolve uma cópia. Puro e testável.
  */
-import { misturar, textoSobre } from "./marca-generator.mjs";
+import { misturar, nichoPorId, textoSobre } from "./marca-generator.mjs";
 import type { ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "./shopify-theme";
 import { sortearVitrine } from "./sorteio-de-vitrine";
 
@@ -847,6 +847,32 @@ export function violacoesDoTema(theme: ShopifyThemeImport): string[] {
 }
 
 /** "Óculos de sol" → "oculos-de-sol": o handle que o tema usa em menus e listas. */
+/**
+ * As coleções desta loja quando a marca é do CLIENTE.
+ *
+ * Marca própria não quer dizer vitrine sem categoria. Quem já tem marca e
+ * escolhe um nicho está escolhendo o CATÁLOGO — e, sem digitar coleção
+ * nenhuma, esperava as do nicho, que é o que a instalação e o render já usavam
+ * (`orbisColecoes ?? nichoPorId(...).colecoes`). Só a aplicação da marca no
+ * tema lia a lista vazia como "não mexer", e o tema saía apontando para as
+ * coleções de DEMONSTRAÇÃO do tema de origem.
+ *
+ * O estrago era invisível no app e aparecia na loja: medido numa entrega real,
+ * a Shopify recebia "Novidades, Básicos, Coleção de estação, Alfaiataria,
+ * Promoções, Últimas peças" e a home do tema apontava para "pet-shop",
+ * "eletronicos" e "moda-feminina" — coleções que não existiam naquela loja.
+ * Duas metades da mesma entrega, cada uma com uma lista diferente.
+ *
+ * SEM nicho não há padrão de onde tirar, e a lista continua vazia: inventar
+ * categoria para quem não escolheu catálogo seria pior que não ter nenhuma.
+ */
+export function colecoesDaLoja(dados: { nicheId?: string; brand: { collections?: string[] } }): string[] {
+  const escritas = (dados.brand.collections ?? []).map((nome) => String(nome ?? "").trim()).filter(Boolean);
+  if (escritas.length) return escritas;
+  if (!dados.nicheId) return [];
+  return (nichoPorId(dados.nicheId).colecoes ?? []).slice(0, 6);
+}
+
 export function handleDeColecao(nome: string): string {
   return String(nome ?? "")
     .normalize("NFD")
