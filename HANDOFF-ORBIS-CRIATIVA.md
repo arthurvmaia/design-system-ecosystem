@@ -17,50 +17,24 @@ cliente no Desktop tem logo (com o vetor), favicons, quatro banners e o PDF.
 
 ## 1. A PRÓXIMA COISA A FAZER
 
-**Decidir se `pnpm reextrair --todos` passa a conferir o pixel por padrão — e,
-se sim, reextrair o acervo.**
+**Esta frente é CRIATIVOS e MARCA.** Extração de site, Galeria, Biblioteca e
+curadoria são a outra frente, e ela está pausada desde 14/08/2026. Achado que
+aparecer de lá vai para a §7 e espera; não vira "a próxima coisa".
 
-A §1 anterior dizia que a comparação de pixel "não chegava até a curadoria" e
-que o conserto era extrair `associarConferencias` para um pacote compartilhado.
-A extração foi feita (mora em `@ds/shared`, e a curadoria agora a lê), e ela
-**não mudou um número**: 1396 peças, 151 reprovadas, antes e depois.
+O que está aberto AQUI, em ordem:
 
-Número parado é sinal. Medindo o acervo em disco:
+1. **`problemasDaEntregaDeMarca` não confere a marca CONTRA a régua.** Ele exige
+   que a folha esteja completa e sem reprovação, mas quem escreve a folha é o
+   próprio comando que produziu a marca. Um `resultado.json` forjado à mão
+   passaria pelo portão. É o furo mais sério que sobrou nesta frente: o portão
+   confere o que o produtor disse, não o que o produto é.
+2. **As quatro decisões do dono**, na §5 — vídeo, exposição, teto de rodada,
+   Lojas no workspace.
+3. **57 commits no `orbis-criativa` e nada na `main`.** Toda esta frente vive num
+   branch só.
 
-```
-57 de 57 manifestos com `visualComparisons: []`
-57 de 57 sem a fase `v2-comparar` na telemetria
-57 de 57 sem UMA linha dizendo por quê
-```
+### Um detalhe de máquina que morde
 
-A comparação nunca rodou. Não é a associação que faltava — é o dado.
-
-**A causa** está em `scripts/reextrair.ts`: em lote, a verificação visual nasce
-DESLIGADA (`pendentes.length === 1 || --verificar`). O acervo foi reextraído em
-lote, e o único caminho que o motor decidira ser silencioso era exatamente esse
-— "quem desligou sabe que desligou". Só que ninguém desligou: o padrão desligou,
-e o manifesto não guardou rastro. A conta chegou na curadoria, onde
-`comparacaoVisualOk === false` é condição de REPROVA e nunca disparou em peça
-alguma.
-
-**O motor funciona.** Rodado contra a fixture com `verificarVisual: true`:
-`v2-comparar` na telemetria, 10 comparações gravadas, **2 de 10 reprovando com
-45% de diferença**, e a limitação declarada. O que faltava era ligar.
-
-**Já consertado:** a decisão agora DIZ que estava desligada (o silêncio era a
-premissa errada); o `reextrair` avisa na tela, em lote, que não vai conferir e
-como ligar; e existe um teste ponta a ponta do fio
-(`comparacao-fim-a-fim.browser.test.ts`) — ele não existia, e é por isso que
-ninguém via: as duas pontas eram testadas e a ligação não.
-
-**O que sobra é a decisão do dono**, porque custa tempo dele: a conferência é 6%
-do orçamento por captura, e reextrair 57 sites com `--verificar` é uma rodada
-longa. Feito isso, a reprova por divergência passa a valer sobre o acervo — e
-pelo que a fixture mostrou (2 em 10), ela não vai ficar quieta.
-
-### Depois dela
-
-- **As quatro decisões do dono** que continuam abertas, na §5.
 - **O turbo descarta variável de ambiente VAZIA.** `globalPassThroughEnv` agora
   lista as 23 do app e `ORBIS_LOCAL=1 pnpm dev` funciona, mas passar
   `ORBIS_SENHA=` (vazia) é inconstante: às vezes o `.env` vence e o portão sobe
@@ -314,13 +288,15 @@ M12 é a régua que passou a cobrar isso.
 
 A lista inteira que estava aqui foi feita. O que ficou:
 
-1. **A comparação de pixel até a curadoria** — a §1.
-2. **`problemasDaEntregaDeMarca` não confere a marca CONTRA a régua.** Ele exige
+1. **`problemasDaEntregaDeMarca` não confere a marca CONTRA a régua.** Ele exige
    que a folha esteja completa e sem reprovação, mas quem a escreve é o próprio
    comando que produziu a marca. Um resultado forjado à mão passaria.
-3. **A frente de Lojas continua com o espelho do recorte** (`pnpm marca:espelhar`),
+2. **A frente de Lojas continua com o espelho do recorte** (`pnpm marca:espelhar`),
    e a decisão de trazê-la para o workspace segue aberta — é a quarta da lista
    abaixo.
+
+A comparação de pixel que estava nesta lista era da frente PAUSADA. Mudou para a
+§7, com o que foi medido e o que sobrou para decidir.
 
 ### O prompt que manda RETRATAR a categoria, provado com 75 créditos
 
@@ -375,3 +351,54 @@ pnpm marca:espelhar --seco
 - Não criar segunda implementação de nada visual. O motor é um.
 - Não escrever regra com número escolhido: **meça as duas classes primeiro** e
   confirme que o limiar separa. Se não separar, a regra está errada.
+
+---
+
+## 7. Um achado da frente PAUSADA (não é desta frente)
+
+> A frente de extrair site e curar componentes está **pausada desde 14/08/2026**:
+> o dono parou porque sites e componentes não saíam bons e a arquitetura vai ser
+> repensada. O que segue foi medido e consertado por engano, seguindo um ponteiro
+> que este handoff tinha no lugar errado. Fica registrado para quando aquela
+> frente voltar; **não puxe daqui enquanto ela estiver parada**.
+
+**Decidir se `pnpm reextrair --todos` passa a conferir o pixel por padrão — e,
+se sim, reextrair o acervo.**
+
+A §1 anterior dizia que a comparação de pixel "não chegava até a curadoria" e
+que o conserto era extrair `associarConferencias` para um pacote compartilhado.
+A extração foi feita (mora em `@ds/shared`, e a curadoria agora a lê), e ela
+**não mudou um número**: 1396 peças, 151 reprovadas, antes e depois.
+
+Número parado é sinal. Medindo o acervo em disco:
+
+```
+57 de 57 manifestos com `visualComparisons: []`
+57 de 57 sem a fase `v2-comparar` na telemetria
+57 de 57 sem UMA linha dizendo por quê
+```
+
+A comparação nunca rodou. Não é a associação que faltava — é o dado.
+
+**A causa** está em `scripts/reextrair.ts`: em lote, a verificação visual nasce
+DESLIGADA (`pendentes.length === 1 || --verificar`). O acervo foi reextraído em
+lote, e o único caminho que o motor decidira ser silencioso era exatamente esse
+— "quem desligou sabe que desligou". Só que ninguém desligou: o padrão desligou,
+e o manifesto não guardou rastro. A conta chegou na curadoria, onde
+`comparacaoVisualOk === false` é condição de REPROVA e nunca disparou em peça
+alguma.
+
+**O motor funciona.** Rodado contra a fixture com `verificarVisual: true`:
+`v2-comparar` na telemetria, 10 comparações gravadas, **2 de 10 reprovando com
+45% de diferença**, e a limitação declarada. O que faltava era ligar.
+
+**Já consertado:** a decisão agora DIZ que estava desligada (o silêncio era a
+premissa errada); o `reextrair` avisa na tela, em lote, que não vai conferir e
+como ligar; e existe um teste ponta a ponta do fio
+(`comparacao-fim-a-fim.browser.test.ts`) — ele não existia, e é por isso que
+ninguém via: as duas pontas eram testadas e a ligação não.
+
+**O que sobra é a decisão do dono**, porque custa tempo dele: a conferência é 6%
+do orçamento por captura, e reextrair 57 sites com `--verificar` é uma rodada
+longa. Feito isso, a reprova por divergência passa a valer sobre o acervo — e
+pelo que a fixture mostrou (2 em 10), ela não vai ficar quieta.
