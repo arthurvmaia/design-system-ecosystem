@@ -11,10 +11,18 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ArquivoDoRazao, lerRazao } from '@ds/creative';
+import {
+  ArquivoDoRazao,
+  divergenciasDaFolha,
+  lerRazao,
+  medirMarca,
+  paraARegua,
+} from '@ds/creative';
 import {
   CODIGOS_DA_REGUA_DE_MARCA,
   PedidoDeMarca,
+  ResultadoDeMarca,
+  conferirMarca,
   criativoPedidoPath,
   criativosDir,
   dimensaoDePng,
@@ -31,6 +39,12 @@ import {
   vaultExtractedDir,
 } from '@ds/shared';
 import { avisoSpa, segmentarEIndexar } from './segmentar.js';
+
+/**
+ * A marca a ser REMEDIDA no navegador antes de fechar. `null` = não é job de
+ * marca, ou o resultado não deu para ler.
+ */
+let marcaParaRemedir: { dir: string; resultado: unknown } | null = null;
 
 const [, , jobId, ...rest] = process.argv;
 
@@ -387,6 +401,7 @@ if (job.type === 'marca') {
       }
     }
 
+    if (bruto !== undefined) marcaParaRemedir = { dir, resultado: bruto };
     if (bruto !== undefined) {
       problemas.push(
         ...problemasDaEntregaDeMarca({
@@ -436,6 +451,95 @@ if (paraSegmentar !== null) {
 }
 
 /**
+ * Refaz a régua da marca sobre os ARQUIVOS, e confronta com a folha.
+ *
+ * `problemasDaEntregaDeMarca` já refaz o que dá para refazer sem navegador — a
+ * medida de cada peça e a existência das capas. O resto da régua (alfa,
+ * silhueta, contraste) precisa decodificar pixel, e é justamente onde a folha
+ * continuava sendo a única fonte: um `passou` escrito por um comando com
+ * defeito passava, porque quem escreve a folha é quem produziu a marca.
+ *
+ * Aqui a medição é REFEITA, por quem não produziu nada. Só a divergência
+ * importa: quando esta conferência REPROVA e a folha diz `passou`, a folha está
+ * errada e o job não fecha. Onde esta conferência fica `pendente` — as regras
+ * da apresentação, que dependem de dados que não existem no fechamento — ela
+ * cala, porque "não consegui medir" não é acusação.
+ *
+ * Sem navegador, devolve lista vazia e DIZ isso. Degradar em silêncio aqui
+ * seria substituir uma conferência que não rodou por um verde.
+ */
+export const remedirAMarca = async (alvo: { dir: string; resultado: unknown }): Promise<
+  string[]
+> => {
+  const lido = ResultadoDeMarca.safeParse(alvo.resultado);
+  if (!lido.success || lido.data.conferencia === null) return [];
+
+  /**
+   * Só o que o medidor sabe LER: ele decodifica pixel, e o `logotipo.svg` não
+   * é pixel. Passá-lo derrubava a remedição inteira com IMAGEM_NAO_CARREGOU —
+   * uma peça que o medidor não entende não pode custar a conferência das
+   * outras. As três versões da logo, que é o que M1..M5 julgam, são PNG.
+   */
+  const arquivos: Record<string, string> = {};
+  for (const peca of lido.data.pecas) {
+    if (!peca.caminho.toLowerCase().endsWith('.png')) continue;
+    const caminho = join(alvo.dir, peca.caminho);
+    if (existsSync(caminho)) arquivos[peca.peca] = caminho;
+  }
+  if (Object.keys(arquivos).length === 0) return [];
+
+  let navegador: Awaited<ReturnType<typeof import('playwright').chromium.launch>> | null = null;
+  try {
+    const { chromium } = await import('playwright');
+    navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  } catch (err) {
+    console.log(
+      `  remedição pulada (sem navegador): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    console.log('    A folha da marca fica valendo pelo que o produtor escreveu.');
+    return [];
+  }
+
+  try {
+    const medidas = await medirMarca(navegador, arquivos);
+    const refeita = conferirMarca({
+      ...paraARegua(medidas),
+      cor: lido.data.cor.hex,
+      promptDoSimbolo: lido.data.promptDoSimbolo,
+      procedencia: lido.data.procedencia,
+      decisaoDaCor: { por: lido.data.cor.decidida, motivo: lido.data.cor.motivo },
+      // O que o fechamento não tem como saber: são as regras da apresentação, e
+      // elas ficam `pendente` aqui de propósito.
+      apresentacao: null,
+      briefingsDasArtes: null,
+      propostasDosConceitos: null,
+      conceitosSemMobile: null,
+      colecoesSemCapa: null,
+    });
+
+    // O julgamento do confronto mora em `@ds/creative`, com teste: é a regra, e
+    // regra não vive num script que executa ao ser importado.
+    return divergenciasDaFolha(refeita.vereditos, lido.data.conferencia);
+  } catch (err) {
+    /**
+     * Falhar a remedição NÃO reprova a marca.
+     *
+     * Um arquivo que o medidor não entende, um navegador que morreu no meio —
+     * nada disso é defeito da marca, e transformar "não consegui medir" em
+     * "está errado" faria o fechamento recusar entrega boa. Mas também não sai
+     * calado: quem lê precisa saber que esta conferência não aconteceu.
+     */
+    console.log(
+      `  remedição falhou: ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`,
+    );
+    console.log('    A folha da marca fica valendo pelo que o produtor escreveu.');
+    return [];
+  } finally {
+    await navegador.close();
+  }
+};
+
+/**
  * Validação automática do replay (navegador) + fechamento. Num `main` async
  * (não top-level await: o tsx transpila os scripts para CJS). A validação é
  * passo do processamento, logo após os segmentos indexados — sem comando extra
@@ -444,6 +548,25 @@ if (paraSegmentar !== null) {
  * pode rodar depois; nunca vira `unsupported` por indisponibilidade.
  */
 const finalizar = async (): Promise<void> => {
+  if (marcaParaRemedir !== null) {
+    console.log('');
+    console.log('Refazendo a régua da marca sobre os arquivos…');
+    const divergencias = await remedirAMarca(marcaParaRemedir);
+    if (divergencias.length > 0) {
+      console.error('');
+      console.error('Não dá para concluir este job:');
+      console.error('');
+      for (const d of divergencias) console.error(`  - ${d}`);
+      console.error('');
+      console.error(
+        'A folha afirma o que a medição nega. Conserte a marca, ou o comando que escreveu a folha.',
+      );
+      console.error('');
+      process.exit(1);
+    }
+    console.log('  A folha bate com o que eu medi.');
+  }
+
   if (paraSegmentar !== null) {
     try {
       const { validarPreviews } = await import('@ds/server/validate');

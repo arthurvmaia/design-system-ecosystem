@@ -101,6 +101,36 @@ export const medirMarca = async (
   }
 };
 
+/**
+ * Onde a FOLHA afirma o que a medição NEGA.
+ *
+ * Quem escreve a folha é o comando que produziu a marca, então ela sozinha não
+ * prova nada: um `passou` gravado por um comando com defeito passa igual a um
+ * verdadeiro. Refazer a régua sobre os arquivos, por quem não produziu nada, é
+ * o que distingue os dois — e esta função é o julgamento desse confronto.
+ *
+ * Só uma combinação vira problema: a conferência refeita REPROVA e a folha diz
+ * `passou`. As outras não acusam ninguém:
+ *
+ * - refeita `pendente` = não consegui medir aquilo aqui (as regras da
+ *   apresentação, no fechamento, são todas assim). Silêncio é o correto;
+ * - folha `reprovou` = a folha já acusa, e o portão já recusa por ela;
+ * - refeita `passou` e folha `pendente` = a folha é conservadora, e ser
+ *   conservador não é defeito.
+ */
+export const divergenciasDaFolha = (
+  refeita: readonly { readonly codigo: string; readonly estado: string; readonly motivo: string }[],
+  folha: readonly { readonly codigo: string; readonly estado: string }[],
+): string[] => {
+  const naFolha = new Map(folha.map((r) => [r.codigo, r.estado]));
+  return refeita
+    .filter((v) => v.estado === 'reprovou' && naFolha.get(v.codigo) === 'passou')
+    .map(
+      (v) =>
+        `${v.codigo} passou na folha e REPROVA quando eu refaço a medição nos arquivos: ${v.motivo}`,
+    );
+};
+
 /** As medidas no formato que a régua espera. */
 export const paraARegua = (
   medidas: MedidasDaMarca,
