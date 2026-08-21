@@ -318,16 +318,41 @@ M12 é a régua que passou a cobrar isso.
 
 A lista inteira que estava aqui foi feita. O que ficou:
 
-1. **Medir o preço no transporte REST, e ligar o razão na frente de Lojas.**
-   É a metade que falta do orçamento: a loja hoje DECLARA o gasto (preset,
-   transporte, motivo) e não o CONTA. Faltam duas coisas, e as duas são do dono:
-   medir o REST **gasta crédito** e precisa de teto declarado; e o razão
-   persistido precisa de uma tabela em D1, ou seja, mexe no schema de um app
-   publicado. O razão já está espelhado em `lib/motor/razao.ts`, então ligar é
-   ligar — não é construir.
+1. **EMITIR UMA CHAVE REST DA MAGNIFIC** — e só depois medir o preço e ligar o
+   razão. A ordem inverteu em 21/08/2026, quando a pergunta "quanto custa o
+   REST" esbarrou em "não dá para perguntar".
 
-   O teste `motor-criativo.test.mjs` TRAVA a ausência: no dia em que a tabela
-   ganhar a linha REST, ele reprova. É o lembrete no lugar certo.
+   Medido: nenhum `.dev.vars`, nenhum `.env`, nenhuma variável de ambiente,
+   nada no `wrangler`, e o `.env.example` da frente de Lojas não trazia o campo
+   nem em branco — enquanto trazia os dois da Shopify. O MCP entra como
+   `{"type":"http","url":"https://mcp.magnific.com"}`, ou seja, **OAuth**. O
+   REST pede chave, e esta conta não tem uma.
+
+   Isso muda a natureza da pendência: não é "alguém precisa gastar 75 para
+   medir", é "alguém precisa emitir uma chave". Enquanto ela não existe, gastar
+   não resolve — não há chamada a fazer. (Vale para este computador e para o
+   repositório: segredo de Worker é posto por `wrangler secret put` e não
+   aparece aqui, então a produção de outra pessoa pode ter a chave.)
+
+   E é **UMA** linha, não quatro. `imagem-marca`, `imagem-rascunho` e
+   `video-curto` têm identificador REST `null`: não existe endpoint para
+   chamá-los, e medi-los é impossível, não caro. O `pnpm criativo:precos`
+   somava as quatro sob "Pendente de medição (4)" e agora separa as duas
+   classes — três quartos daquela "fila" era limitação de transporte.
+
+   Com a chave: medir `imagem-padrao / REST` (saldo antes, uma geração 2k,
+   saldo depois), gravar a linha datada em `precos/tabela.ts`, rodar
+   `pnpm motor:espelhar`. O teste `motor-criativo.test.mjs` TRAVA a ausência e
+   vai reprovar quando a linha existir — é o lembrete no lugar certo.
+
+   Só então o razão: ele já está espelhado em `lib/motor/razao.ts`, e persistir
+   pede uma tabela em D1 — schema de um app publicado, decisão do dono.
+
+   **Se a chave não puder ser emitida**, a demanda vira outra e é estrutural: ou
+   a loja deixa de falar REST e passa pelo caminho MCP das outras duas frentes
+   (o workerd não fala MCP, então precisaria de rota no servidor do workspace —
+   parente da decisão nº 4 do §5), ou o cliente REST sai e a loja assume o
+   gerador local, que é o que ela já faz hoje.
 
 2. **A frente de Lojas continua com o espelho, agora do NÚCLEO inteiro**
    (`pnpm motor:espelhar`): recorte da logo, catálogo de presets, tabela de
@@ -368,7 +393,7 @@ pulada dizendo que foi pulada.
 ```
 pnpm lint          limpo
 pnpm typecheck     limpo
-pnpm test          2013 passam, 1 falha
+pnpm test          2015 passam, 1 falha
 pnpm medir-fidelidade --falhar-se-piorar   passa (849 bundles, 57 sites)
 pnpm audit         nenhuma vulnerabilidade conhecida (eram 11, sendo 3 altas)
 pnpm motor:espelhar --seco                 os 4 espelhos em dia

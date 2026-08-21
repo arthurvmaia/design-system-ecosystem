@@ -1,4 +1,4 @@
-import type { Transporte } from '../catalogo/presets.js';
+import { PRESETS, type Transporte, identificadorDe } from '../catalogo/presets.js';
 
 /**
  * A tabela de preço, MEDIDA e DATADA.
@@ -23,6 +23,24 @@ import type { Transporte } from '../catalogo/presets.js';
  * Tudo abaixo saiu de `simulate_cost` com `certainty: "exact"` em 16/08/2026.
  * O REST está `null` de propósito: não dá para medi-lo sem gastar, e um número
  * copiado do MCP seria adivinhação com cara de medição.
+ *
+ * ## Por que o REST continua sem medida, medido em 21/08/2026
+ *
+ * Não é preguiça nem custo: é credencial. O REST pede `MAGNIFIC_API_KEY`, e
+ * nesta conta a Magnific entra por **OAuth** — o servidor MCP está configurado
+ * como `{"type":"http","url":"https://mcp.magnific.com"}`, sem chave nenhuma.
+ * Procurado em 21/08/2026: nenhum `.dev.vars`, nenhum `.env`, nenhuma variável
+ * de ambiente, nada no `wrangler`. E o `.env.example` da frente de Lojas não
+ * trazia o campo sequer em branco, enquanto trazia os dois da Shopify — quem
+ * escreveu o template não deixou a lacuna, não escreveu a linha.
+ *
+ * (Isso vale para ESTE computador e para o repositório. Segredo de Worker é
+ * posto por `wrangler secret put` e não aparece aqui, então a produção de outra
+ * pessoa pode ter a chave. O que está provado é que daqui não dá para medir.)
+ *
+ * Então a pendência do REST não é "alguém precisa gastar 75 para medir". É
+ * "alguém precisa emitir uma chave" — e enquanto ela não existe, gastar não
+ * resolve, porque não há como fazer a chamada.
  */
 
 /** Como o preço se comporta. A forma foi medida, não suposta. */
@@ -157,4 +175,46 @@ export const estimar = (p: PedidoDeEstimativa): Estimativa => {
   }
   const base = regra.creditosPorSegundo * segundos;
   return { ok: true, creditos: p.comAudio === true ? base + regra.adicionalAudio : base };
+};
+
+/**
+ * A classe de uma linha que falta na tabela. As duas NÃO são a mesma coisa.
+ *
+ * O comando dizia "Pendente de medição (4)" e listava as quatro linhas REST
+ * juntas, como se as quatro esperassem alguém gastar. Três delas não esperam
+ * nada: `imagem-marca`, `imagem-rascunho` e `video-curto` têm identificador
+ * REST `null`, ou seja, **não existe endpoint para chamá-las** — medi-las não é
+ * caro, é impossível. Só `imagem-padrao` é de fato mensurável.
+ *
+ * Misturar as duas classes faz a lista parecer uma fila de trabalho quando ela
+ * é, em três quartos, uma limitação do transporte. E lista de trabalho que
+ * ninguém consegue fazer é como uma pendência envelhece até virar paisagem.
+ */
+export type ClasseDePendencia = 'mensuravel' | 'sem-endpoint';
+
+export type PendenciaDePreco = {
+  readonly presetId: string;
+  readonly transporte: Transporte;
+  readonly classe: ClasseDePendencia;
+  readonly motivo: string;
+};
+
+/** O que falta na tabela, separado por CLASSE em vez de somado num número só. */
+export const pendenciasDePreco = (): readonly PendenciaDePreco[] => {
+  const fora: PendenciaDePreco[] = [];
+  for (const preset of PRESETS) {
+    for (const transporte of ['mcp', 'rest'] as const) {
+      if ((TABELA[preset.id]?.[transporte] ?? null) !== null) continue;
+      const temEndpoint = identificadorDe(preset, transporte) !== null;
+      fora.push({
+        presetId: preset.id,
+        transporte,
+        classe: temEndpoint ? 'mensuravel' : 'sem-endpoint',
+        motivo: temEndpoint
+          ? 'o endpoint existe e o preço nunca foi medido: medir exige uma chamada paga'
+          : 'não há identificador neste transporte, então não existe chamada a fazer: medir é impossível, não caro',
+      });
+    }
+  }
+  return fora;
 };

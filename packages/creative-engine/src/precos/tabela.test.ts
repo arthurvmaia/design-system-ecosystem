@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AVULSOS, MEDIDO_EM, VALIDA_ATE, estimar } from './tabela.js';
+import { PRESETS, identificadorDe } from '../catalogo/presets.js';
+import { AVULSOS, MEDIDO_EM, VALIDA_ATE, estimar, pendenciasDePreco } from './tabela.js';
 
 /**
  * A tabela existe para o transporte que NÃO sabe o preço.
@@ -99,4 +100,51 @@ test('a operacao paga mais barata do provedor e a de remover fundo', () => {
   const valores = Object.values(AVULSOS);
   assert.equal(AVULSOS.removerFundo, 3);
   assert.equal(Math.min(...valores), 3);
+});
+
+/**
+ * "NÃO MEDIDO" e "NÃO DÁ PARA MEDIR" são coisas diferentes, e confundi-las
+ * transforma limitação em fila de trabalho.
+ *
+ * O `pnpm criativo:precos` dizia "Pendente de medição (4)" e listava as quatro
+ * linhas REST juntas. Três delas não esperam ninguém gastar: `imagem-marca`,
+ * `imagem-rascunho` e `video-curto` têm identificador REST `null`, ou seja, não
+ * existe endpoint para chamá-las — medi-las não é caro, é impossível.
+ *
+ * O número importa para quem lê: "4 pendências" sugere uma tarde de trabalho e
+ * ~300 créditos. A verdade é UMA linha mensurável, e ela está bloqueada numa
+ * credencial, não em dinheiro.
+ */
+test('a pendencia de preco separa o que da para medir do que nao existe', () => {
+  const pendencias = pendenciasDePreco();
+  const mensuraveis = pendencias.filter((p) => p.classe === 'mensuravel');
+  const semEndpoint = pendencias.filter((p) => p.classe === 'sem-endpoint');
+
+  /* toda pendência tem de cair numa das duas classes, e nenhuma nas duas */
+  assert.equal(mensuraveis.length + semEndpoint.length, pendencias.length);
+
+  /* mensurável é exatamente quem TEM endpoint naquele transporte */
+  for (const p of mensuraveis) {
+    const preset = PRESETS.find((x) => x.id === p.presetId);
+    assert.ok(preset, p.presetId);
+    assert.notEqual(identificadorDe(preset, p.transporte), null, `${p.presetId}/${p.transporte}`);
+  }
+  for (const p of semEndpoint) {
+    const preset = PRESETS.find((x) => x.id === p.presetId);
+    assert.ok(preset, p.presetId);
+    assert.equal(identificadorDe(preset, p.transporte), null, `${p.presetId}/${p.transporte}`);
+  }
+
+  /* e cada uma diz por quê, com motivo que distingue as duas */
+  for (const p of mensuraveis) assert.match(p.motivo, /paga/);
+  for (const p of semEndpoint) assert.match(p.motivo, /impossível/);
+});
+
+/**
+ * O MCP está inteiro. Se um dia aparecer pendência de MCP, ela é regressão:
+ * lá existe `simulate_cost`, que é read-only e não cobra — não há desculpa.
+ */
+test('nenhuma pendencia de preco no MCP: la medir e de graca', () => {
+  const noMcp = pendenciasDePreco().filter((p) => p.transporte === 'mcp');
+  assert.deepEqual(noMcp, []);
 });

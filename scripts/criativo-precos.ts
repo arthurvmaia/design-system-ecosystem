@@ -18,6 +18,7 @@ import {
   type Transporte,
   VALIDA_ATE,
   estimar,
+  pendenciasDePreco,
 } from '@ds/creative';
 import { executadoDireto } from './executado-direto.js';
 
@@ -61,13 +62,16 @@ const principal = (): void => {
   }
   console.log('');
 
-  const naoMedidos: string[] = [];
   for (const p of PRESETS) {
     for (const t of TRANSPORTES) {
       const r = TABELA[p.id]?.[t] ?? null;
       if (r === null) {
-        naoMedidos.push(`${p.id} / ${t.toUpperCase()}`);
-        console.log(`  ${p.id.padEnd(18)} ${t.toUpperCase().padEnd(5)} NÃO MEDIDO`);
+        /* e o rótulo diz QUAL das duas ausências é: "não medido" e "não dá para
+           medir" pedem coisas diferentes de quem lê */
+        const semEndpoint = p.identificador[t] === null;
+        console.log(
+          `  ${p.id.padEnd(18)} ${t.toUpperCase().padEnd(5)} ${semEndpoint ? 'SEM ENDPOINT' : 'NÃO MEDIDO'}`,
+        );
         continue;
       }
       if (r.tipo === 'por-imagem') {
@@ -133,15 +137,42 @@ const principal = (): void => {
   }
 
   console.log('');
-  if (naoMedidos.length === 0) {
+  /**
+   * As duas ausências, SEPARADAS.
+   *
+   * Antes eram uma lista só, com "Pendente de medição (4)" na frente. Três
+   * daquelas quatro linhas não esperam ninguém gastar: elas não têm
+   * identificador REST, então não existe chamada a fazer. Somar as duas classes
+   * faz a lista parecer uma fila de trabalho quando ela é, em três quartos, uma
+   * limitação do transporte — e fila que ninguém consegue fazer envelhece até
+   * virar paisagem.
+   */
+  const pendencias = pendenciasDePreco();
+  const mensuraveis = pendencias.filter((p) => p.classe === 'mensuravel');
+  const semEndpoint = pendencias.filter((p) => p.classe === 'sem-endpoint');
+
+  if (pendencias.length === 0) {
     console.log('Nada pendente de medição.');
-  } else {
-    console.log(`Pendente de medição (${naoMedidos.length}):`);
-    for (const n of naoMedidos) console.log(`  ${n}`);
-    console.log('');
-    console.log('  O REST não tem endpoint de simulação de custo: medi-lo exige gastar.');
-    console.log('  Até lá, o motor recusa produzir por ele em vez de copiar o número do MCP.');
   }
+  if (mensuraveis.length > 0) {
+    console.log(`Dá para medir, e ninguém mediu (${mensuraveis.length}):`);
+    for (const p of mensuraveis) console.log(`  ${p.presetId} / ${p.transporte.toUpperCase()}`);
+    console.log('');
+    console.log('  O REST não tem endpoint de simulação: medir exige uma chamada PAGA.');
+    console.log('  E exige uma chave (MAGNIFIC_API_KEY). Em 21/08/2026 não havia');
+    console.log('  nenhuma neste computador nem no repositório: esta conta entra por OAuth.');
+  }
+  if (semEndpoint.length > 0) {
+    console.log('');
+    console.log(`NÃO dá para medir daqui (${semEndpoint.length}):`);
+    for (const p of semEndpoint) console.log(`  ${p.presetId} / ${p.transporte.toUpperCase()}`);
+    console.log('');
+    console.log('  Estes não têm identificador no transporte, então não existe chamada');
+    console.log('  a fazer. Medir não é caro: é impossível. Não são fila de trabalho.');
+  }
+  console.log('');
+  console.log('  Em qualquer um dos casos o motor RECUSA produzir por ali, em vez de');
+  console.log('  copiar o número do outro transporte.');
   console.log('');
 };
 
