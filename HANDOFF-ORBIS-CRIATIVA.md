@@ -25,8 +25,35 @@ O que está aberto AQUI, em ordem:
 
 1. **As quatro decisões do dono**, na §5 — vídeo, exposição, teto de rodada,
    Lojas no workspace.
-2. **58 commits no `orbis-criativa` e nada na `main`.** Toda esta frente vive num
-   branch só.
+2. **Medir o preço no transporte REST** e, com ele, ligar o razão na frente de
+   Lojas. É a metade que falta do orçamento; ver §5.
+
+O branch deixou de ser um problema: em 21/08/2026 a `orbis-criativa` foi para a
+`main`, junto com os 31 commits da frente de Lojas que faltavam aqui.
+
+### O motor criativo passou a valer nas TRÊS frentes (21/08/2026)
+
+A regra do `CLAUDE.md` sempre disse que o motor é UM. Na prática só o recorte da
+logo atravessava, e as outras duas frentes tinham cada uma o seu jeito. O que
+isso custava, medido:
+
+| Onde | O que estava errado | O certo, medido |
+|---|---|---|
+| Lojas | toda imagem saía por `mystic`, primeiro item de uma lista de segurança | `imagem-padrao` do catálogo (`text-to-image/nano-banana-pro-flash`) |
+| Design System | a trava dizia "~1.600 por vídeo de 8s", com teste travando o número | **520** (40/s + 200 de áudio), pela tabela medida |
+| Lojas | gerava sem declarar nem contar crédito | declara preset, transporte e o motivo de o número não existir |
+
+O ESPELHO deixou de ser um arquivo e virou o NÚCLEO: recorte da logo, catálogo
+de presets, tabela de preço e razão, em `orbis-lojas-shopify/lib/motor/`,
+regravados por `pnpm motor:espelhar`. O núcleo só aceita código portável — nada
+de `node:`, Playwright ou `@ds/*` —, e o teste recusa os três: espelhar um
+arquivo que os use entrega um espelho que compila aqui e explode lá, em
+produção, porque aquela frente está fora do CI.
+
+**A lição que vale além disto:** um teste que trava número escrito à mão não
+protege o número, protege o erro. O teste da trava cobrava `/1\.600/` e ficava
+verde enquanto a pessoa lia um preço 3× maior antes de decidir gastar. Hoje ele
+compara a frase com a MESMA conta que o motor faz.
 
 O portão da entrega **foi consertado**: ele parou de acreditar na folha nas
 perguntas que consegue medir sozinho (a medida de cada peça, contra o cabeçalho
@@ -60,7 +87,7 @@ pnpm marca:montar <job> --prompt | --simbolo <a>  # o prompt do símbolo, e a ma
 pnpm marca:apresentar <job>                       # a apresentação em PDF, medida
 pnpm marca:entregar <job> --para "<pasta>"        # a pasta DO CLIENTE
 pnpm marca:derivar <símbolo>                      # as 3 versões, por cálculo
-pnpm marca:espelhar [--seco]                      # sincroniza o recorte na frente de Lojas
+pnpm motor:espelhar [--seco]                      # sincroniza o NÚCLEO do motor na frente de Lojas
 pnpm typecheck:scripts                            # existe, NÃO bloqueia (ver §5)
 ```
 
@@ -291,9 +318,21 @@ M12 é a régua que passou a cobrar isso.
 
 A lista inteira que estava aqui foi feita. O que ficou:
 
-1. **A frente de Lojas continua com o espelho do recorte** (`pnpm marca:espelhar`),
-   e a decisão de trazê-la para o workspace segue aberta — é a quarta da lista
-   abaixo. O espelho está **em dia** (conferido em 21/08/2026).
+1. **Medir o preço no transporte REST, e ligar o razão na frente de Lojas.**
+   É a metade que falta do orçamento: a loja hoje DECLARA o gasto (preset,
+   transporte, motivo) e não o CONTA. Faltam duas coisas, e as duas são do dono:
+   medir o REST **gasta crédito** e precisa de teto declarado; e o razão
+   persistido precisa de uma tabela em D1, ou seja, mexe no schema de um app
+   publicado. O razão já está espelhado em `lib/motor/razao.ts`, então ligar é
+   ligar — não é construir.
+
+   O teste `motor-criativo.test.mjs` TRAVA a ausência: no dia em que a tabela
+   ganhar a linha REST, ele reprova. É o lembrete no lugar certo.
+
+2. **A frente de Lojas continua com o espelho, agora do NÚCLEO inteiro**
+   (`pnpm motor:espelhar`): recorte da logo, catálogo de presets, tabela de
+   preço e razão. A decisão de trazê-la para o workspace segue aberta — é a
+   quarta da lista abaixo. Os quatro espelhos estão **em dia** (21/08/2026).
 
 A comparação de pixel que estava nesta lista era da frente PAUSADA. Mudou para a
 §7, com o que foi medido e o que sobrou para decidir.
@@ -329,10 +368,10 @@ pulada dizendo que foi pulada.
 ```
 pnpm lint          limpo
 pnpm typecheck     limpo
-pnpm test          2000 passam, 1 falha
+pnpm test          2013 passam, 1 falha
 pnpm medir-fidelidade --falhar-se-piorar   passa (849 bundles, 57 sites)
 pnpm audit         nenhuma vulnerabilidade conhecida (eram 11, sendo 3 altas)
-pnpm marca:espelhar --seco                 em dia
+pnpm motor:espelhar --seco                 os 4 espelhos em dia
 ```
 
 A falha única é `acervo-regressao`: 7,1% de bytes duplicados entre segmentos de
@@ -359,7 +398,7 @@ anterior a este trabalho.
 pnpm verificar          # lint + typecheck + suíte + portão de fidelidade
 pnpm test:navegador     # os testes que medem PIXEL (precisa do playwright)
 pnpm criativo:precos    # a tabela de preço vence em 14/11
-pnpm marca:espelhar --seco
+pnpm motor:espelhar --seco
 ```
 
 ### O que NÃO fazer
@@ -368,8 +407,12 @@ pnpm marca:espelhar --seco
   contra, com medição.
 - Não derivar slug de modelo do rótulo. O catálogo é a fonte.
 - Não gastar crédito sem teto declarado pelo dono.
-- Não editar `orbis-lojas-shopify/lib/logo-derivar.ts`: é espelho. O original
-  está em `packages/creative-engine/src/marca/derivar-navegador.ts`.
+- Não editar nada em `orbis-lojas-shopify/lib/motor/` nem
+  `lib/logo-derivar.ts`: são ESPELHOS, e cada um nomeia o original no próprio
+  cabeçalho. Edite o original e rode `pnpm motor:espelhar`.
+- Não pôr no núcleo espelhado código que puxe `node:`, Playwright ou `@ds/*`:
+  nada disso existe no workerd da Cloudflare, e o espelho compilaria aqui para
+  explodir lá — em produção, porque aquela frente está fora do CI.
 - Não criar segunda implementação de nada visual. O motor é um.
 - Não escrever regra com número escolhido: **meça as duas classes primeiro** e
   confirme que o limiar separa. Se não separar, a regra está errada.

@@ -1,9 +1,72 @@
 # HANDOFF — Orbis · Criação de lojas Shopify
 
-> Documento de passagem de trabalho. Última atualização: **2026-08-16 (a loja
-> entregue sai pelo download, e só)**. Mora em `orbis-lojas-shopify/`, dentro do
+> Documento de passagem de trabalho. Última atualização: **2026-08-21 (o motor
+> criativo atravessou a fronteira)**. Mora em `orbis-lojas-shopify/`, dentro do
 > repositório `design-system-ecosystem`. Sessões conduzidas com Claude no Claude
 > Code.
+
+---
+
+## 🔄 RETOMADA — 2026-08-21: o motor criativo atravessou a fronteira
+
+**O que mudou:** esta frente deixou de ter o próprio jeito de escolher modelo e
+passou a usar o do produto.
+
+`modeloPadrao("imagem")` devolvia `"mystic"` — o primeiro item da lista de
+segurança, escolhido pela ordem em que a lista foi escrita. A tela nunca manda
+`modelo`, então TODA imagem de TODA loja saía dele: um modelo que o produto
+nunca declarou, cujo preço ninguém mediu, e que não aparece em catálogo nenhum.
+Enquanto isso a frente Criativos gerava por `imagem-padrao`. Duas frentes do
+mesmo app, dois modelos, nenhum aviso.
+
+Hoje o padrão sai do CATÁLOGO do motor (`text-to-image/nano-banana-pro-flash`).
+A lista de segurança continua fechada e continua existindo — ela é a fronteira
+de para onde a chave é enviada, e isso não é papel do catálogo.
+
+### O espelho virou o NÚCLEO
+
+Era um arquivo (`lib/logo-derivar.ts`); agora são quatro, e o conjunto é
+declarado do outro lado, em `scripts/motor-espelhar.ts`:
+
+| espelho | o que é |
+| --- | --- |
+| `lib/logo-derivar.ts` | o recorte das versões da logo |
+| `lib/motor/presets.ts` | qual modelo é qual, em cada transporte |
+| `lib/motor/precos.ts` | quanto custa, medido e datado |
+| `lib/motor/razao.ts` | empenhar antes de gastar, e parar quando não couber |
+
+`pnpm motor:espelhar` (no outro repositório) regrava os quatro. **Não edite
+nenhum deles aqui** — cada um nomeia o original no próprio cabeçalho, e a suíte
+de lá reprova a divergência.
+
+O núcleo só aceita código portável: `node:`, Playwright e `@ds/*` não existem no
+workerd, e espelhar um arquivo que os use entrega um espelho que compila lá e
+explode aqui — em produção, porque esta frente está fora do CI.
+
+### O gasto passou a ser DECLARADO. Contado, ainda não
+
+A rota de geração devolve `custo: { presetId, creditos, motivo }`. Hoje
+`creditos` é `null`, e o motivo diz por quê: a tabela do motor não tem linha
+REST medida, porque a API REST não tem endpoint de simulação e não dá para
+medi-la sem gastar. Copiar o número do MCP faria a resposta parecer uma conta
+sendo um palpite.
+
+**Para fechar faltam duas coisas, e as duas são do dono:** medir o REST (gasta
+crédito, precisa de teto declarado) e uma tabela em D1 para o razão persistir —
+o que mexe no schema deste app publicado. O razão já está espelhado; ligar é
+ligar, não é construir. O teste `tests/motor-criativo.test.mjs` trava a
+ausência: no dia em que a tabela ganhar a linha REST, ele reprova.
+
+### Duas armadilhas desta rodada
+
+- **A voz do app cobrava travessão no código espelhado.** A regra varria `app/`
+  e `lib/`, e o texto do motor entrou junto. A saída é por CABEÇALHO de espelho,
+  não por pasta — pasta vira esconderijo —, e um teste novo prova que só os
+  quatro do núcleo escapam.
+- **Um teste que trava número escrito à mão não protege o número, protege o
+  erro.** Do outro lado da casa, a trava de imagem cobrava `1.600` por vídeo e a
+  tabela medida diz 520. O teste ficava verde e a pessoa decidia com o número
+  errado.
 
 ---
 
