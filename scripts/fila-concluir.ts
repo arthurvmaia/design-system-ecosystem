@@ -278,6 +278,23 @@ if (job.type === 'criativo') {
           pedido: pedidoDeReferencia,
           razao,
           existe: (relativo: string) => existsSync(join(dir, relativo)),
+          /**
+           * O medidor: é ele que faz o portão conferir o ARQUIVO em vez de
+           * acreditar no número que o resultado declara ao lado.
+           *
+           * Só PNG. O SVG do logotipo devolve `null` — medi-lo exigiria
+           * interpretar `viewBox`, e "não consegui medir" é resposta melhor do
+           * que um palpite que vira acusação.
+           */
+          medirImagem: (relativo: string) => {
+            const caminho = join(dir, relativo);
+            if (!relativo.toLowerCase().endsWith('.png') || !existsSync(caminho)) return null;
+            try {
+              return dimensaoDePng(readFileSync(caminho));
+            } catch {
+              return null;
+            }
+          },
           // O portão mede o ARQUIVO, em vez de acreditar na folha que veio
           // junto: ela é escrita por quem produziu, e uma entrega que confia na
           // própria declaração não é conferida por ninguém.

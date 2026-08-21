@@ -44,17 +44,14 @@ const morrer: (msg: string) => never = (msg) => {
 /** Onde as capas moram, dentro da pasta do job. */
 export const pastaDasColecoes = (dir: string): string => join(dir, 'colecoes');
 
-/** O nome vira arquivo sem acento, espaço nem barra: ele é caminho de disco. */
-export const arquivoDaColecao = (nome: string): string =>
-  `${nome
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')}.png`;
-
-/** O nome sem extensão: a parte que identifica a coleção em qualquer arquivo. */
-export const slugDaColecao = (nome: string): string => arquivoDaColecao(nome).replace(/\.png$/, '');
+/**
+ * O nome do arquivo vem do CONTRATO, e não daqui.
+ *
+ * Ele nasceu neste script e ganhou quatro donos: o recorte, a apresentação, a
+ * pasta do cliente e o portão da entrega. Reexportado para os chamadores de
+ * sempre não terem de saber que ele mudou de casa.
+ */
+export { arquivoDaColecao, slugDaColecao } from '@ds/shared';
 
 /**
  * O ORIGINAL baixado, seja qual for a extensão que o provedor mandou.

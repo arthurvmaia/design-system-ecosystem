@@ -390,6 +390,29 @@ export const PecaDaMarca = z.enum([
 ]);
 export type PecaDaMarca = z.infer<typeof PecaDaMarca>;
 
+/**
+ * O nome do arquivo de uma capa de coleção, dentro de `colecoes/`.
+ *
+ * Mora no contrato porque tem QUATRO donos: quem recorta (`marca:colecoes`),
+ * quem apresenta, quem monta a pasta do cliente e — desde que o portão parou de
+ * acreditar na folha — quem confere a entrega. Quatro cópias da mesma regra de
+ * slug divergiriam no primeiro nome com acento, e a divergência apareceria como
+ * "a capa sumiu".
+ *
+ * A saída é sempre `.png` porque a máscara redonda precisa de alfa. A extensão
+ * do arquivo ORIGINAL baixado do provedor é outra coisa, e não é nossa.
+ */
+export const arquivoDaColecao = (nome: string): string =>
+  `${nome
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')}.png`;
+
+/** O mesmo nome sem a extensão: o que identifica a coleção em qualquer arquivo. */
+export const slugDaColecao = (nome: string): string => arquivoDaColecao(nome).replace(/\.png$/, '');
+
 export const ResultadoDeMarca = z.object({
   /** Os arquivos, relativos à pasta do job. */
   pecas: z.array(
@@ -462,10 +485,25 @@ export type ResultadoDeMarca = z.infer<typeof ResultadoDeMarca>;
  * As perguntas, na ordem em que doem:
  *
  * 1. Há resultado, e ele passa no contrato?
- * 2. Os arquivos que ele cita existem em disco?
+ * 2. Os arquivos que ele cita existem em disco, e com a MEDIDA que ele declara?
  * 3. A folha cobre a régua INTEIRA, e nenhuma regra reprovou?
- * 4. A apresentação existe? Marca sem apresentação não é marca pronta.
- * 5. O gasto bate com o razão, e não passou do teto do pedido?
+ * 4. O DISCO confirma o que a folha afirma, nas perguntas que dão para refazer?
+ * 5. A apresentação existe? Marca sem apresentação não é marca pronta.
+ * 6. O gasto bate com o razão, e não passou do teto do pedido?
+ *
+ * ## Por que a pergunta 4 existe
+ *
+ * A 3 lê `conferencia`, e quem ESCREVE `conferencia` é o mesmo comando que
+ * produziu a marca. O portão conferia o que o produtor DISSE, não o que o
+ * produto É: um `resultado.json` com doze `passou` digitados à mão passava
+ * inteiro, e — o caso realista — um comando com defeito que gravasse `passou`
+ * numa regra que ele não chegou a avaliar passava do mesmo jeito.
+ *
+ * Nem toda regra dá para refazer aqui: alfa, contraste e silhueta precisam
+ * decodificar pixel, e este pacote não abre navegador. Mas duas dão, e são
+ * baratas: a MEDIDA de cada peça (cabeçalho do arquivo) e a EXISTÊNCIA da capa
+ * de cada coleção decidida. Onde o disco responde, a folha deixa de ser fonte —
+ * e quando os dois discordam, o disco vence e a contradição é dita por extenso.
  */
 export const problemasDaEntregaDeMarca = (entrada: {
   /** O conteúdo lido de `resultado.json`, ainda não validado. */
@@ -474,6 +512,19 @@ export const problemasDaEntregaDeMarca = (entrada: {
   readonly pedido: unknown;
   /** O caminho relativo à pasta do job existe em disco? */
   readonly existe: (caminhoRelativo: string) => boolean;
+  /**
+   * A medida REAL de um arquivo de imagem, lida do cabeçalho dele.
+   *
+   * Opcional porque este pacote não decide como ler byte de disco — quem chama
+   * fornece. Ausente = a medida declarada não é conferida, e isso é uma
+   * degradação HONESTA (o portão continua fazendo o resto), não um passe livre:
+   * `fila:concluir` passa o medidor.
+   *
+   * `null` de retorno significa "não consegui medir este arquivo" e não vira
+   * problema: dizer que uma peça está errada porque o leitor não entendeu o
+   * formato seria acusar sem ter olhado.
+   */
+  readonly medirImagem?: (caminhoRelativo: string) => { largura: number; altura: number } | null;
   /** A apresentação em PDF existe? */
   readonly temApresentacao: boolean;
   /** O que o RAZÃO diz que foi gasto e o que ainda está em voo. */
@@ -512,6 +563,21 @@ export const problemasDaEntregaDeMarca = (entrada: {
       problemas.push(
         `o resultado cita ${peca.caminho} e ele não existe em disco: a entrega apontaria para o vazio.`,
       );
+      continue;
+    }
+    /**
+     * A medida DECLARADA contra a medida REAL.
+     *
+     * O resultado diz "largura 1024" e M1 ("as três versões saíram, na medida")
+     * julga por esse número. Sem conferir o arquivo, os dois campos são a mesma
+     * afirmação escrita duas vezes — e um logotipo de 200 px com 1024 digitado
+     * ao lado passa por logotipo em tamanho de fachada.
+     */
+    const real = entrada.medirImagem?.(peca.caminho);
+    if (real != null && (real.largura !== peca.largura || real.altura !== peca.altura)) {
+      problemas.push(
+        `${peca.caminho} mede ${real.largura}x${real.altura} em disco e o resultado declara ${peca.largura}x${peca.altura}: a folha julgou a medida declarada, não o arquivo.`,
+      );
     }
   }
 
@@ -531,6 +597,37 @@ export const problemasDaEntregaDeMarca = (entrada: {
     if (reprovadas.length > 0) {
       problemas.push(
         `${reprovadas.length} regra(s) REPROVADA(S) na folha (${reprovadas.map((r) => r.codigo).join(', ')}): o veredito contradiz a medição.`,
+      );
+    }
+  }
+
+  /**
+   * As capas, conferidas no DISCO e não na folha.
+   *
+   * É a M12 refeita aqui, e ela cabe porque a resposta é existência de arquivo.
+   * A capa não está em `pecas` — coleção não é peça da marca —, então o laço
+   * acima não a alcança: sem esta conferência, a entrega podia citar quatro
+   * categorias na apresentação e levar zero imagem, que foi exatamente o que
+   * aconteceu quando a decisão evaporou do `resultado.json`.
+   */
+  const semCapa = (lido.data.colecoes?.nomes ?? []).filter(
+    (nome) => !entrada.existe(`colecoes/${arquivoDaColecao(nome)}`),
+  );
+  if (semCapa.length > 0) {
+    problemas.push(
+      `coleção decidida e sem capa em disco: ${semCapa.join(', ')}. A categoria aparece na apresentação e o arquivo não existe.`,
+    );
+    /**
+     * A CONTRADIÇÃO é dita à parte.
+     *
+     * "Falta a capa" é um fato; "a folha disse que não faltava" é outro, e o
+     * segundo é o que revela que a folha não pode ser tomada como medição.
+     * Quem lê precisa saber qual dos dois consertar.
+     */
+    const m12 = lido.data.conferencia?.find((r) => r.codigo === 'M12');
+    if (m12?.estado === 'passou') {
+      problemas.push(
+        'a folha diz que M12 PASSOU e o disco diz outra coisa: o veredito foi escrito sem medir, e o resto da folha merece a mesma desconfiança.',
       );
     }
   }

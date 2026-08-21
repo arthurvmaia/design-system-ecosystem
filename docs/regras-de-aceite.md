@@ -721,10 +721,24 @@ ninguém ter olhado não é.
 ## O portão da entrega da marca
 
 `problemasDaEntregaDeMarca` recusa fechar o job quando: não há resultado, ou ele
-está fora do contrato; ele aponta para arquivo que não existe; a folha não cobre
-a régua inteira, ou alguma regra reprovou; **não há apresentação em PDF**; há
-crédito empenhado sem desfecho; o custo declarado não bate com o razão; ou o
-gasto passou do teto.
+está fora do contrato; ele aponta para arquivo que não existe; **o arquivo em
+disco não tem a medida que o resultado declara**; a folha não cobre a régua
+inteira, ou alguma regra reprovou; **uma coleção decidida não tem capa em
+disco**; **não há apresentação em PDF**; há crédito empenhado sem desfecho; o
+custo declarado não bate com o razão; ou o gasto passou do teto.
+
+**O portão não acredita na folha onde ele mesmo consegue medir.** Quem escreve
+`conferencia` é o mesmo comando que produziu a marca, então até aqui o portão
+conferia o que o produtor DISSE, não o que o produto É: doze `passou` digitados
+à mão passavam inteiros, e — o caso realista — um comando com defeito que
+gravasse `passou` numa regra que não chegou a avaliar passava igual.
+
+Nem toda regra dá para refazer ali: alfa, contraste e silhueta precisam
+decodificar pixel, e o pacote de contratos não abre navegador. Duas dão, e são
+baratas: a MEDIDA de cada peça (cabeçalho do PNG) e a EXISTÊNCIA da capa de cada
+coleção. Onde o disco responde, ele vence a folha — e quando os dois discordam,
+a contradição é dita por extenso, porque uma folha que jurou o que o disco nega
+desqualifica o resto dela.
 
 O teto é o do RETRATO do pedido, gravado antes da fila — mais o que o dono
 liberou depois, que vive no razão com data e motivo (`pnpm criativo:razao teto`).
