@@ -525,3 +525,57 @@ test("as artes da entrega viram asset da loja, sem deixar a prévia entrar no te
     await server.close();
   }
 });
+
+test("o nome da coleção e a semente do sorteio voltam com a loja reimportada", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const { exportThemeZip: exportar } = await server.ssrLoadModule("/lib/theme-export.ts");
+
+    /**
+     * O DEFEITO QUE ISTO FECHA, e que o dono viu no editor.
+     *
+     * Handle é slug: "organizacao" não reconstrói "Organização", e "cama-e-banho"
+     * não reconstrói "Cama e Banho". O nome escrito pelo cliente vivia só em
+     * memória — o marcador da loja entregue nunca o gravou —, então reimportar a
+     * PRÓPRIA loja perdia os nomes e caía no padrão do nicho.
+     *
+     * A semente do sorteio anda junto pelo mesmo motivo: sem ela, o tema
+     * reimportado é embaralhado de novo e a loja muda de ordem sozinha.
+     */
+    const bytes = archive({
+      "config/settings_schema.json": settingsSchema,
+      "config/settings_data.json": JSON.stringify({ current: {} }),
+      "layout/theme.liquid": "<html><body>{{ content_for_layout }}</body></html>",
+      "sections/lista.liquid": section("Lista", []),
+      "templates/index.json": JSON.stringify({ sections: { a: { type: "lista", settings: {} } }, order: ["a"] }),
+    });
+    const original = extractShopifyThemeBytes(bytes, "tema.zip");
+
+    const nomes = ["Organização", "Cama e Banho", "Últimas Peças"];
+    const entregue = {
+      ...original,
+      orbisNicheId: "casa",
+      orbisColecoes: nomes,
+      orbisSorteio: "cliente-a",
+      orbisCapas: { organizacao: "/api/media/1111111111111111aaaa" },
+      orbisLoja: { nome: "Casa Viva", slug: "casa-viva" },
+    };
+
+    const saida = exportar(entregue, themeFilesFromZip(bytes));
+    const devolta = extractShopifyThemeBytes(saida.zip, "entregue.zip");
+
+    assert.deepEqual(devolta.orbisColecoes, nomes, "os nomes das coleções não voltaram");
+    assert.equal(devolta.orbisSorteio, "cliente-a", "a semente do sorteio não voltou");
+    /* e o que já voltava continua voltando */
+    assert.equal(devolta.orbisNicheId, "casa");
+    assert.deepEqual(devolta.orbisCapas, entregue.orbisCapas);
+    assert.deepEqual(devolta.orbisLoja, entregue.orbisLoja);
+
+    /* tema que nunca foi loja da Orbis não ganha campo nenhum: marcador com
+       campo vazio faz quem lê achar que a loja declarou "sem coleção" */
+    const cru = extractShopifyThemeBytes(bytes, "tema.zip");
+    assert.equal(cru.orbisColecoes, undefined);
+    assert.equal(cru.orbisSorteio, undefined);
+  } finally { await server.close(); }
+});

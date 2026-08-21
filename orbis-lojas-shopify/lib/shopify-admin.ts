@@ -169,10 +169,12 @@ export type CredenciaisDoApp = { clientId: string; clientSecret: string };
  * As credenciais como o worker precisa delas: SEM o que veio de brinde do arquivo.
  *
  * Isto não é zelo defensivo, é um bug pago. O `.dev.vars` num Windows nasce
- * CRLF, e cada valor chegava aqui com um `` colado no fim — 39 bytes onde o
+ * CRLF, e cada valor chegava aqui com um `
+` colado no fim — 39 bytes onde o
  * Client Secret tem 38.
  *
- * O sintoma foi cruel porque o `` não atrapalha em quase lugar nenhum: a
+ * O sintoma foi cruel porque o `
+` não atrapalha em quase lugar nenhum: a
  * Shopify o tolera no endpoint de token (o `client_credentials` devolvia 200 e
  * a loja era instalada inteira), e o parser de URL descarta controle no fim
  * sozinho (o redirecionamento funcionava). Só a assinatura HMAC usa a chave
@@ -431,14 +433,47 @@ export async function enviarArquivos(
   loja: LojaShopify,
   arquivos: readonly ArquivoParaLoja[],
   ambiente: Ambiente = {},
-): Promise<{ enviados: number; falhas: string[] }> {
-  if (!arquivos.length) return { enviados: 0, falhas: [] };
+): Promise<{ enviados: number; falhas: string[]; jaExistiam: number }> {
+  if (!arquivos.length) return { enviados: 0, falhas: [], jaExistiam: 0 };
   const buscar = ambiente.buscar ?? fetch;
   const falhas: string[] = [];
   let enviados = 0;
+  let jaExistiam = 0;
 
   for (const arquivo of arquivos) {
     try {
+      /**
+       * O QUE JÁ ESTÁ NA LOJA não sobe de novo — mesma regra de produto e
+       * coleção, que já deduplicam.
+       *
+       * Aqui a identidade é o NOME, e não por falta de coisa melhor: o nome é
+       * `orbis-<8 do id da mídia>-<arquivo>`, e esse id é estável por arte
+       * guardada. Reinstalar a mesma loja casa; uma arte nova não casa, e sobe,
+       * que é o certo. Sem isto, cada reinstalação — o gesto mais comum de quem
+       * está testando — deixava mais oito arquivos repetidos em Content › Files
+       * para o cliente apagar um a um.
+       *
+       * O nome volta a ser conferido depois da busca: `filename:` é uma BUSCA,
+       * e busca pode aproximar. Pular o envio por um quase-igual deixaria o
+       * quadro em branco no tema, que é pior do que o repetido.
+       */
+      const existente = (await chamar(loja, "/graphql.json", {
+        method: "POST",
+        body: JSON.stringify({
+          query: `query existe($busca: String!) {
+            files(first: 5, query: $busca) {
+              nodes { ... on MediaImage { id image { url } } ... on GenericFile { id url } }
+            }
+          }`,
+          variables: { busca: `filename:'${arquivo.nome.replace(/'/g, "")}'` },
+        }),
+        passo: `procurar ${arquivo.nome}`,
+      }, ambiente)) as { data?: { files?: { nodes?: Array<{ image?: { url?: string }; url?: string }> } } };
+
+      const nomeDe = (endereco: string) => (endereco.split("/").at(-1) ?? "").split("?")[0];
+      const achou = (existente.data?.files?.nodes ?? []).some((no) => nomeDe(no.image?.url ?? no.url ?? "") === arquivo.nome);
+      if (achou) { jaExistiam += 1; continue; }
+
       const alvo = (await chamar(loja, "/graphql.json", {
         method: "POST",
         body: JSON.stringify({
@@ -490,7 +525,7 @@ export async function enviarArquivos(
       falhas.push(`${arquivo.nome}: ${(erro as Error).message}`);
     }
   }
-  return { enviados, falhas };
+  return { enviados, falhas, jaExistiam };
 }
 
 /* ------------------------------------------------------------------- tema */

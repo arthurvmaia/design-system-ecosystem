@@ -428,6 +428,8 @@ export async function POST(request: Request) {
       nome: brand.name,
       slug: brand.slug,
       customizacao: modeloNativo,
+      colecoes: temaComMarca.orbisColecoes,
+      sorteio: temaComMarca.orbisSorteio,
     }));
 
     const zip = zipSync(arquivos, { level: 6 });

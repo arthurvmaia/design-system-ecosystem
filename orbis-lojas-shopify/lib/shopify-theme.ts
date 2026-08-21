@@ -428,6 +428,10 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   if (nicho) theme.orbisNicheId = nicho;
   const capas = lerCapasDoTema(byRelativePath);
   if (Object.keys(capas).length) theme.orbisCapas = capas;
+  const colecoes = lerColecoesDoTema(byRelativePath);
+  if (colecoes.length) theme.orbisColecoes = colecoes;
+  const sorteio = lerSorteioDoTema(byRelativePath);
+  if (sorteio) theme.orbisSorteio = sorteio;
   const loja = lerLojaDoTema(byRelativePath);
   if (loja) theme.orbisLoja = loja;
   const customizacao = lerCustomizacaoDoTema(byRelativePath);
@@ -455,9 +459,31 @@ export const ARTES_DA_ENTREGA = "previa-local/imagens-para-a-shopify/";
 export function marcadorDaLoja(
   nicheId: string,
   capas: Record<string, string> = {},
-  loja: { nome?: string; slug?: string; customizacao?: Record<string, unknown> } = {},
+  /**
+   * O RESTO do que a loja precisa levar — identidade e conteúdo.
+   *
+   * `colecoes` está aqui porque o handle não reconstrói o nome: "organizacao"
+   * não volta como "Organização". Sem isto no marcador, reimportar uma loja
+   * ENTREGUE perdia os nomes que o cliente escreveu e caía no padrão do nicho —
+   * era exatamente o "não pega as coleções" que o dono viu no editor.
+   *
+   * `sorteio` é a semente com que a home daquela loja foi embaralhada. Sem ela,
+   * o tema reimportado é sorteado de novo e a loja muda de ordem sozinha.
+   */
+  loja: {
+    nome?: string;
+    slug?: string;
+    customizacao?: Record<string, unknown>;
+    colecoes?: string[];
+    sorteio?: string;
+  } = {},
 ) {
   const corpo: Record<string, unknown> = { orbisNicheId: nicheId };
+  /* mesma regra das capas: campo vazio faz quem lê achar que a loja declarou
+     "sem coleção", e o certo é ele nem perguntar */
+  const colecoes = (loja.colecoes ?? []).map((nome) => String(nome ?? "").trim()).filter(Boolean).slice(0, 40);
+  if (colecoes.length) corpo.orbisColecoes = colecoes.map((nome) => nome.slice(0, 60));
+  if (loja.sorteio?.trim()) corpo.orbisSorteio = loja.sorteio.trim().slice(0, 80);
   /* as capas só aparecem quando existem: marcador com campo vazio faz quem lê
      achar que a loja declarou "sem capa", e o certo é ele nem perguntar */
   if (Object.keys(capas).length) corpo.orbisCapas = capas;
@@ -556,6 +582,30 @@ function lerCapasDoTema(byRelativePath: Map<string, Uint8Array>): Record<string,
     if (handle && typeof url === "string" && url) capas[handle.slice(0, 80)] = url.slice(0, 300);
   }
   return capas;
+}
+
+/**
+ * Os NOMES das coleções, como o cliente os escreveu.
+ *
+ * O par de `lerCapasDoTema`: a capa volta pelo handle, e o nome volta por aqui.
+ * Faltando, quem renderiza cai no padrão do nicho — que é o comportamento certo
+ * para um tema que nunca foi uma loja da Orbis, e era o comportamento ERRADO
+ * para uma loja entregue, porque o nome existia e tinha sido jogado fora.
+ */
+function lerColecoesDoTema(byRelativePath: Map<string, Uint8Array>): string[] {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return [];
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisColecoes;
+  if (!Array.isArray(cru)) return [];
+  return cru.map((nome) => (typeof nome === "string" ? nome.trim().slice(0, 60) : "")).filter(Boolean).slice(0, 40);
+}
+
+/** A semente do sorteio da home, para a loja reimportada não trocar de ordem. */
+function lerSorteioDoTema(byRelativePath: Map<string, Uint8Array>): string {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return "";
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisSorteio;
+  return typeof cru === "string" ? cru.trim().slice(0, 80) : "";
 }
 
 function lerNichoDoTema(byRelativePath: Map<string, Uint8Array>, pages: ShopifyPage[]): string {

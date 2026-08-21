@@ -176,6 +176,8 @@ test("vínculo que falha não derruba a instalação inteira", async () => {
 test("a arte sobe em três etapas, e o nome do arquivo é preservado", async () => {
   await comModulo(async ({ enviarArquivos }) => {
     const { chamadas, buscar } = buscaDeMentira([
+      /* a primeira chamada agora e a busca: o que ja esta na loja nao sobe de novo */
+      { status: 200, json: { data: { files: { nodes: [] } } } },
       { status: 200, json: { data: { stagedUploadsCreate: { stagedTargets: [{ url: "https://staging.shopify/x", resourceUrl: "https://recibo/1", parameters: [{ name: "key", value: "abc" }] }], userErrors: [] } } } },
       { status: 200, json: {} },
       { status: 200, json: { data: { fileCreate: { files: [{ id: "gid://F/1" }], userErrors: [] } } } },
@@ -185,14 +187,14 @@ test("a arte sobe em três etapas, e o nome do arquivo é preservado", async () 
 
     assert.equal(resultado.enviados, 1);
     assert.deepEqual(resultado.falhas, []);
-    assert.equal(chamadas.length, 3, "preparar, mandar os bytes, registrar");
+    assert.equal(chamadas.length, 4, "procurar, preparar, mandar os bytes, registrar");
     /* o meio do caminho é um endereço DA SHOPIFY: é isso que faz o envio
        funcionar de uma máquina sem endereço público */
-    assert.equal(chamadas[1].url, "https://staging.shopify/x");
+    assert.equal(chamadas[2].url, "https://staging.shopify/x");
     /* e o NOME vai igual: o tema procura a imagem por ele, e renomear quebra
        a ligação que faz a foto aparecer */
-    assert.match(chamadas[0].corpo, /orbis-banner-1\.jpg/);
-    assert.match(chamadas[2].corpo, /orbis-banner-1\.jpg/);
+    assert.match(chamadas[1].corpo, /orbis-banner-1\.jpg/);
+    assert.match(chamadas[3].corpo, /orbis-banner-1\.jpg/);
   });
 });
 
@@ -200,7 +202,10 @@ test("erro de GraphQL vem dentro de uma resposta 200, e não passa por sucesso",
   await comModulo(async ({ enviarArquivos }) => {
     /* a Shopify responde 200 com o erro no corpo. Sem olhar dentro, falha
        virava sucesso e o relatório mentia para quem instalou. */
-    const { buscar } = buscaDeMentira([{ status: 200, json: { errors: [{ message: "Access denied for stagedUploadsCreate" }] } }]);
+    const { buscar } = buscaDeMentira([
+      { status: 200, json: { data: { files: { nodes: [] } } } },
+      { status: 200, json: { errors: [{ message: "Access denied for stagedUploadsCreate" }] } },
+    ]);
     const { relogio } = relogioDeMentira();
     const resultado = await enviarArquivos(LOJA, [{ nome: "a.jpg", tipo: "image/jpeg", dados: new Uint8Array([1]) }], { buscar, relogio });
 
@@ -368,4 +373,51 @@ test("as credenciais chegam limpas do arquivo, e nenhuma rota as lê crua", asyn
       assert.ok(linha.includes("credenciaisDoApp("), `${rota} lê o segredo sem limpar: ${linha.trim()}`);
     }
   }
+});
+
+test("a arte que ja esta na loja nao sobe de novo", async () => {
+  await comModulo(async ({ enviarArquivos }) => {
+    /**
+     * Reinstalar e o gesto mais comum de quem esta testando, e sem esta
+     * conferencia cada rodada deixava mais oito arquivos repetidos em
+     * Content > Files para o cliente apagar um a um. Produto e colecao ja
+     * deduplicavam; arquivo nao, e a diferenca nao tinha motivo.
+     *
+     * A identidade e o NOME, e nao por falta de coisa melhor: ele e
+     * `orbis-<8 do id da midia>-<arquivo>`, e esse id e estavel por arte
+     * guardada.
+     */
+    const naLoja = { data: { files: { nodes: [{ image: { url: "https://cdn.shopify.com/s/files/1/orbis-e5820044-logotipo.png?v=17" } }] } } };
+    const { chamadas, buscar } = buscaDeMentira([{ status: 200, json: naLoja }]);
+    const { relogio } = relogioDeMentira();
+    const r = await enviarArquivos(LOJA, [{ nome: "orbis-e5820044-logotipo.png", tipo: "image/png", dados: new Uint8Array([1]) }], { buscar, relogio });
+
+    assert.equal(r.jaExistiam, 1);
+    assert.equal(r.enviados, 0);
+    assert.deepEqual(r.falhas, []);
+    assert.equal(chamadas.length, 1, "achou na busca e parou ali: nao preparou envio nenhum");
+  });
+});
+
+test("quase-igual nao conta como igual: a busca aproxima, o nome nao", async () => {
+  await comModulo(async ({ enviarArquivos }) => {
+    /**
+     * `filename:` e uma BUSCA, e busca pode aproximar. Pular o envio por um
+     * quase-igual deixaria o quadro EM BRANCO no tema — pior que o repetido,
+     * porque o repetido se apaga e o branco parece defeito da loja.
+     */
+    const outro = { data: { files: { nodes: [{ image: { url: "https://cdn.shopify.com/s/files/1/orbis-e5820044-logotipo-2.png?v=17" } }] } } };
+    const { chamadas, buscar } = buscaDeMentira([
+      { status: 200, json: outro },
+      { status: 200, json: { data: { stagedUploadsCreate: { stagedTargets: [{ url: "https://staging/x", resourceUrl: "https://recibo/1", parameters: [] }], userErrors: [] } } } },
+      { status: 200, json: {} },
+      { status: 200, json: { data: { fileCreate: { files: [{ id: "gid://F/1" }], userErrors: [] } } } },
+    ]);
+    const { relogio } = relogioDeMentira();
+    const r = await enviarArquivos(LOJA, [{ nome: "orbis-e5820044-logotipo.png", tipo: "image/png", dados: new Uint8Array([1]) }], { buscar, relogio });
+
+    assert.equal(r.jaExistiam, 0, "tratou um nome parecido como o mesmo arquivo");
+    assert.equal(r.enviados, 1);
+    assert.equal(chamadas.length, 4);
+  });
 });

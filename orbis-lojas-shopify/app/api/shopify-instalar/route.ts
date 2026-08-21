@@ -65,7 +65,7 @@ type Relatorio = {
   loja: { nome: string; dominio: string; plano: string };
   colecoes: { criadas: number; nomes: string[] };
   produtos: { criados: number; semColecao: number; jaExistiam: number };
-  arquivos: { enviados: number; falhas: string[] };
+  arquivos: { enviados: number; falhas: string[]; jaExistiam: number };
   tema: { instalado: boolean; nome?: string; id?: number; motivo?: string };
   avisos: string[];
 };
@@ -247,7 +247,7 @@ export async function POST(request: Request) {
       loja: { nome: dados.nome, dominio: dados.dominio, plano: dados.plano },
       colecoes: { criadas: 0, nomes: [] },
       produtos: { criados: 0, semColecao: 0, jaExistiam: 0 },
-      arquivos: { enviados: 0, falhas: [] },
+      arquivos: { enviados: 0, falhas: [], jaExistiam: 0 },
       tema: { instalado: false },
       avisos: [],
     };
@@ -290,7 +290,11 @@ export async function POST(request: Request) {
      * app quando hospedado), este passo fecha sozinho.
      */
     if (arquivosDoTema) {
-      const marcador = marcadorDaLoja(tema.orbisNicheId ?? "", tema.orbisCapas ?? {}, tema.orbisLoja ?? {});
+      const marcador = marcadorDaLoja(tema.orbisNicheId ?? "", tema.orbisCapas ?? {}, {
+        ...(tema.orbisLoja ?? {}),
+        colecoes: tema.orbisColecoes,
+        sorteio: tema.orbisSorteio,
+      });
       const publicado = await publicarPacote(arquivosDoTema, env.ORBIS_PUBLIC_URL, marcador);
       if (publicado.endereco) {
         try {
