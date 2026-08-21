@@ -173,9 +173,52 @@ export const escolherSecoes = (
     escolhidas.push({ node: n, hash: n.fingerprint.hash, pageBox: n.pageBox });
   }
 
-  // Remove aninhamento restante: se A contém B e ambos passaram, mantém os dois
-  // só quando A tem conteúdo próprio relevante (já garantido por `ehEmbrulho`).
-  // O que resta a fazer é ordenar pela posição na página — é a ordem da Galeria.
+  /**
+   * Remove o aninhamento restante — e ele existia, apesar de esta linha já
+   * dizer que não.
+   *
+   * `ehEmbrulho` descasca a caixa VAZIA de fora para dentro, e faz isso bem. O
+   * que ele não resolve é uma CADEIA em que cada elo tem conteúdo próprio:
+   * medido no acervo, `<div class="site-chrome">` (uma faixa de topo com texto
+   * seu) contém o `<header>` (que tem a marca) que contém o `<nav>`. Nenhum dos
+   * três é embrulho, e os três saíam como irmãos de topo — o mesmo bloco três
+   * vezes na Galeria. Deu 7,1% dos bytes duplicados num site, contra a meta de
+   * 5% que o portão do acervo cobra.
+   *
+   * De uma cadeia, um só pode ficar, e o que fica é o MAIS EXTERNO: ele mostra
+   * tudo o que os de dentro mostram, mais o que é dele. Guardar o de dentro
+   * apagaria a faixa de topo da Galeria, que não é seção de ninguém e não
+   * apareceria em lugar nenhum.
+   *
+   * A ordem das duas regras importa e é o que as faz completas: `ehEmbrulho`
+   * tira de fora as caixas sem conteúdo, e isto elege o que sobrou por cima.
+   * Uma sem a outra devolve a caixa vazia ou a peça repetida.
+   */
+  const escolhidasPorHash = new Set(escolhidas.map((e) => e.hash));
+  const dentroDeOutraEscolhida = (n: StructuralNode): StructuralNode | null => {
+    let pai = n.parent;
+    for (let passo = 0; pai !== null && passo <= 24; passo += 1) {
+      if (escolhidasPorHash.has(pai)) return porHash.get(pai) ?? null;
+      const acima = porHash.get(pai);
+      if (acima === undefined) break;
+      pai = acima.parent;
+    }
+    return null;
+  };
+  const semAninhamento = escolhidas.filter((e) => {
+    const fora = dentroDeOutraEscolhida(e.node);
+    if (fora === null) return true;
+    /* nunca calado: some da Galeria, aparece na Revisão dizendo onde foi parar */
+    descartes?.push({
+      node: e.node,
+      motivo: `Esta peça está inteira dentro de <${fora.fingerprint.tag.toLowerCase()}>, que já entrou na Galeria: mostrar as duas seria a mesma coisa duas vezes. Se você queria ESTA e não aquela, é aqui que ela se recupera.`,
+    });
+    return false;
+  });
+  escolhidas.length = 0;
+  escolhidas.push(...semAninhamento);
+
+  // A ordem da Galeria é a ordem da página.
   escolhidas.sort((a, b) => a.pageBox.y - b.pageBox.y || a.pageBox.x - b.pageBox.x);
   // Dedup por hash (um nó pode aparecer duas vezes se o mapa tiver repetição).
   const vistos = new Set<string>();

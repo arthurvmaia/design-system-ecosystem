@@ -146,6 +146,61 @@ test('embrulho sem conteúdo próprio é descartado; as seções de dentro ficam
   );
 });
 
+test('de uma cadeia aninhada, só o mais externo entra — e o resto vai à Revisão', () => {
+  /**
+   * Medido no acervo: `<div class="site-chrome">` (uma faixa de topo com texto
+   * seu) contém o `<header>` (que tem a marca) que contém o `<nav>`. Nenhum dos
+   * três é embrulho — cada um tem conteúdo próprio —, então `ehEmbrulho` deixa
+   * passar os três e a Galeria mostrava o mesmo bloco três vezes. Deu 7,1% dos
+   * bytes duplicados, contra a meta de 5% do portão do acervo.
+   *
+   * Fica o MAIS EXTERNO: ele mostra tudo o que os de dentro mostram, mais a
+   * faixa de topo, que não é seção de ninguém e sumiria da Galeria se o de
+   * dentro vencesse.
+   */
+  const chrome = fp({ tag: 'div', id: 'site-chrome' });
+  const header = fp({ tag: 'header' });
+  const nav = fp({ tag: 'nav' });
+  const descartes: NonNullable<Parameters<typeof escolherSecoes>[1]> = [];
+  const secoes = escolherSecoes(
+    [
+      node({
+        fingerprint: chrome,
+        role: 'section',
+        areaShare: 0.14,
+        subtreeTextLength: 588,
+        pageBox: { x: 0, y: 0, w: 1440, h: 140 },
+      }),
+      node({
+        fingerprint: header,
+        role: 'header',
+        parent: chrome.hash,
+        areaShare: 0.1,
+        subtreeTextLength: 263,
+        pageBox: { x: 0, y: 40, w: 1440, h: 100 },
+      }),
+      node({
+        fingerprint: nav,
+        role: 'nav',
+        parent: header.hash,
+        areaShare: 0.006,
+        subtreeTextLength: 228,
+        pageBox: { x: 200, y: 40, w: 800, h: 60 },
+      }),
+    ],
+    descartes,
+  );
+
+  assert.deepEqual(
+    secoes.map((s) => s.hash),
+    [chrome.hash],
+  );
+  /* o avô conta tanto quanto o pai: o `nav` está dentro do chrome por dois
+     níveis, e parar no primeiro deixaria a duplicata de pé */
+  assert.equal(descartes.length, 2, 'header e nav precisam ir à Revisão');
+  for (const d of descartes) assert.match(d.motivo, /já entrou na Galeria/);
+});
+
 test('faixa de tela sem tag semântica conta como seção (o caso do site moderno)', () => {
   const divSecao = fp({ tag: 'div', classes: ['py-24'] });
   const secoes = escolherSecoes([
