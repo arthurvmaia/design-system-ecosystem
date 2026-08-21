@@ -49,9 +49,26 @@ import { PRESETS, type Transporte, identificadorDe } from './presets';
  * Vale registrar: aqueles 21,1 mil são a maior parte do gasto da conta, então
  * o caminho REST não é código morto — ele é o que mais rodou.
  *
- * Então medir depende de duas coisas, e nenhuma é técnica: a chave no
- * `.dev.vars` da frente de Lojas, e um teto declarado pelo dono — porque medir
- * o REST é uma chamada PAGA, já que ele não tem endpoint de simulação.
+ * Em 21/08/2026 a chave foi posta no `.dev.vars` e CONFERIDA, com controle:
+ * uma chave inventada devolve `401 "The provided API key is invalid"`, e a do
+ * arquivo devolve `403 "User does not belong to any team"`. Classes diferentes
+ * de resposta — a segunda autenticou. (O sufixo mostrado no painel não bate com
+ * o da chave que funciona; quem decide é a resposta do servidor, não a máscara,
+ * e trocar a chave por causa disso quebraria uma que funciona.)
+ *
+ * Então falta só o teto declarado pelo dono, porque medir o REST é uma chamada
+ * PAGA: ele não tem endpoint de simulação.
+ *
+ * ## E o REST não sabe dizer quanto gastou, nesta conta
+ *
+ * O único endpoint de consumo que a documentação cita é
+ * `POST /v1/analytics/team-credit-usage`, e ele responde **403, "User does not
+ * belong to any team"** — é de TIME, e esta conta não está em nenhum. Então a
+ * medição do antes-e-depois não pode sair do próprio REST: ela sai do
+ * `account_balance` do MCP, que é o mesmo saldo e é read-only.
+ *
+ * Isso vale registrar porque desfaz uma saída que parecia óbvia: "então liga o
+ * razão lendo o consumo pelo REST" não funciona aqui.
  *
  * Uma armadilha do painel: a API key e o WEBHOOK SECRET aparecem lado a lado,
  * ambos mascarados pelos quatro últimos caracteres. O secret no lugar da chave
