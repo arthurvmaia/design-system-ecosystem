@@ -322,17 +322,27 @@ A lista inteira que estava aqui foi feita. O que ficou:
    razão. A ordem inverteu em 21/08/2026, quando a pergunta "quanto custa o
    REST" esbarrou em "não dá para perguntar".
 
-   Medido: nenhum `.dev.vars`, nenhum `.env`, nenhuma variável de ambiente,
-   nada no `wrangler`, e o `.env.example` da frente de Lojas não trazia o campo
-   nem em branco — enquanto trazia os dois da Shopify. O MCP entra como
-   `{"type":"http","url":"https://mcp.magnific.com"}`, ou seja, **OAuth**. O
-   REST pede chave, e esta conta não tem uma.
+   **A chave EXISTE na conta; ela é que não está nesta máquina.** Corrigido em
+   21/08/2026 contra o painel da Magnific: há uma chave chamada `orbis`, criada
+   em 08/08/2026, com **21,1 mil créditos já gastos por ela**. O caminho REST
+   desta frente não é código morto — ele rodou, e é a maior parte do gasto da
+   conta (21,1 mil dos 40,8 mil). Isso confirma, por medição, que remover o
+   cliente REST teria sido destrutivo.
 
-   Isso muda a natureza da pendência: não é "alguém precisa gastar 75 para
-   medir", é "alguém precisa emitir uma chave". Enquanto ela não existe, gastar
-   não resolve — não há chamada a fazer. (Vale para este computador e para o
-   repositório: segredo de Worker é posto por `wrangler secret put` e não
-   aparece aqui, então a produção de outra pessoa pode ter a chave.)
+   O que foi medido aqui e continua valendo: nenhum `.dev.vars`, nenhum `.env`,
+   nenhuma variável de ambiente, nada no `wrangler`, e o `.env.example` não
+   trazia o campo nem em branco — enquanto trazia os dois da Shopify. O MCP
+   entra por OAuth (`{"type":"http","url":"https://mcp.magnific.com"}`), e é daí
+   que veio a leitura errada de que a conta inteira era OAuth: o MCP é, o REST
+   não.
+
+   Então a pendência é a mais simples das três: **pôr a chave em
+   `orbis-lojas-shopify/.dev.vars`** (que está no `.gitignore`) e medir.
+
+   Uma armadilha, vivida: o painel mostra API key e **webhook secret** lado a
+   lado, mascarados pelos quatro últimos caracteres. Confira o sufixo antes de
+   usar — o webhook secret no lugar da chave devolve 401, e o 401 parece
+   problema de outra coisa.
 
    E é **UMA** linha, não quatro. `imagem-marca`, `imagem-rascunho` e
    `video-curto` têm identificador REST `null`: não existe endpoint para

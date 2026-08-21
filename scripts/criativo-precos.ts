@@ -159,8 +159,9 @@ const principal = (): void => {
     for (const p of mensuraveis) console.log(`  ${p.presetId} / ${p.transporte.toUpperCase()}`);
     console.log('');
     console.log('  O REST não tem endpoint de simulação: medir exige uma chamada PAGA.');
-    console.log('  E exige uma chave (MAGNIFIC_API_KEY). Em 21/08/2026 não havia');
-    console.log('  nenhuma neste computador nem no repositório: esta conta entra por OAuth.');
+    console.log('  E exige a chave REST (MAGNIFIC_API_KEY) no `.dev.vars` da frente de');
+    console.log('  Lojas. A conta TEM uma; em 21/08/2026 ela não estava nesta máquina.');
+    console.log('  Cuidado: o painel mostra a chave e o webhook secret lado a lado.');
   }
   if (semEndpoint.length > 0) {
     console.log('');

@@ -36,21 +36,26 @@ import { PRESETS, type Transporte, identificadorDe } from './presets';
  *
  * ## Por que o REST continua sem medida, medido em 21/08/2026
  *
- * Não é preguiça nem custo: é credencial. O REST pede `MAGNIFIC_API_KEY`, e
- * nesta conta a Magnific entra por **OAuth** — o servidor MCP está configurado
- * como `{"type":"http","url":"https://mcp.magnific.com"}`, sem chave nenhuma.
- * Procurado em 21/08/2026: nenhum `.dev.vars`, nenhum `.env`, nenhuma variável
- * de ambiente, nada no `wrangler`. E o `.env.example` da frente de Lojas não
- * trazia o campo sequer em branco, enquanto trazia os dois da Shopify — quem
- * escreveu o template não deixou a lacuna, não escreveu a linha.
+ * Não é preguiça nem custo: a chave não estava NESTA máquina. Procurado em
+ * 21/08/2026: nenhum `.dev.vars`, nenhum `.env`, nenhuma variável de ambiente,
+ * nada no `wrangler`. E o `.env.example` da frente de Lojas não trazia o campo
+ * sequer em branco, enquanto trazia os dois da Shopify — quem escreveu o
+ * template não deixou a lacuna, não escreveu a linha.
  *
- * (Isso vale para ESTE computador e para o repositório. Segredo de Worker é
- * posto por `wrangler secret put` e não aparece aqui, então a produção de outra
- * pessoa pode ter a chave. O que está provado é que daqui não dá para medir.)
+ * A conta TEM chave REST: uma, chamada `orbis`, criada em 08/08/2026, com 21,1
+ * mil créditos já gastos por ela. O que induziu ao erro foi o MCP entrar por
+ * OAuth (`{"type":"http","url":"https://mcp.magnific.com"}`) — o MCP é OAuth, o
+ * REST não é, e os dois transportes desta tabela têm CREDENCIAIS DIFERENTES.
+ * Vale registrar: aqueles 21,1 mil são a maior parte do gasto da conta, então
+ * o caminho REST não é código morto — ele é o que mais rodou.
  *
- * Então a pendência do REST não é "alguém precisa gastar 75 para medir". É
- * "alguém precisa emitir uma chave" — e enquanto ela não existe, gastar não
- * resolve, porque não há como fazer a chamada.
+ * Então medir depende de duas coisas, e nenhuma é técnica: a chave no
+ * `.dev.vars` da frente de Lojas, e um teto declarado pelo dono — porque medir
+ * o REST é uma chamada PAGA, já que ele não tem endpoint de simulação.
+ *
+ * Uma armadilha do painel: a API key e o WEBHOOK SECRET aparecem lado a lado,
+ * ambos mascarados pelos quatro últimos caracteres. O secret no lugar da chave
+ * devolve 401, e 401 parece problema de outra coisa.
  */
 
 /** Como o preço se comporta. A forma foi medida, não suposta. */
