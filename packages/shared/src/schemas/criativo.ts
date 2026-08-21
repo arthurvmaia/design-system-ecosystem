@@ -95,6 +95,19 @@ export const OrigemDaImagem = z
       .max(LIMITES_DO_PEDIDO.descricaoParaGerar)
       .nullable()
       .default(null),
+    /**
+     * `true` = o Orbis descreve a cena a partir do estilo visual da marca.
+     *
+     * O mesmo raciocínio do texto: descrever uma cena é trabalho, e é
+     * exatamente o trabalho que o cliente contratou. O campo de digitar
+     * continua ali e continua vencendo.
+     *
+     * A cena sai de `direcao.estiloVisual` — como as imagens daquela marca
+     * parecem, em luz, cenário e acabamento. E vale só com `origem: 'gerar'`:
+     * material do cliente não se reinterpreta, então em `upload` isto não faz
+     * sentido nenhum e o schema recusa.
+     */
+    cenaPelaMarca: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
     if (v.origem === 'upload' && v.caminhoDoUpload === null) {
@@ -130,13 +143,35 @@ export const OrigemDaImagem = z
             'Há um arquivo fornecido: gerar seria trocar material real por material inventado. O upload vence a geração.',
         });
       }
-      if (v.descricaoParaGerar === null) {
+      if (v.descricaoParaGerar === null && !v.cenaPelaMarca) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['descricaoParaGerar'],
-          message: 'Origem "gerar" exige a descrição do que criar.',
+          message:
+            'Origem "gerar" exige a descrição do que criar, ou "o Orbis descreve pela marca".',
         });
       }
+      if (v.descricaoParaGerar !== null && v.cenaPelaMarca) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['cenaPelaMarca'],
+          message:
+            '"O Orbis descreve" com a cena digitada é ambíguo: o que o cliente digitou vence, então desligue um dos dois.',
+        });
+      }
+    }
+    /**
+     * Pela mesma razão que `descricaoParaGerar` não vale em `upload`: material
+     * do cliente não se reinterpreta. Aceitar a chave ligada ali deixaria ao
+     * handler uma interpretação que este schema existe para eliminar.
+     */
+    if (v.origem === 'upload' && v.cenaPelaMarca) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['cenaPelaMarca'],
+        message:
+          'Há um arquivo enviado: descrever a cena não vale aqui — o upload nunca passa por geração.',
+      });
     }
   });
 export type OrigemDaImagem = z.infer<typeof OrigemDaImagem>;
@@ -149,13 +184,37 @@ export type OrigemDaImagem = z.infer<typeof OrigemDaImagem>;
  *
  * É fato, não direção — trava se faltar. Modelo inventa copy com facilidade, e
  * o que está queimado no pixel de uma peça publicada fala em nome da marca do
- * cliente. Ou ele digita o texto, ou declara `semTexto`; o meio-termo (deixar
- * vazio e ver o que sai) é exatamente o que este schema recusa.
+ * cliente.
+ *
+ * ## Três decisões, e nenhuma delas é "deixar vazio"
+ *
+ * O cliente digita o texto, declara `semTexto`, ou pede `textoPelaMarca` — que
+ * é o Orbis escrever A PARTIR da direção que a marca já declarou. O que
+ * continua recusado é o meio-termo: deixar vazio e ver o que sai.
+ *
+ * A diferença entre `textoPelaMarca` e "vazio" não é de forma, é de origem.
+ * Vazio deixa quem for produzir adivinhar se faltou preencher ou se era para
+ * não ter texto; `textoPelaMarca` é uma DECISÃO registrada, e ela vem com o
+ * material de onde a frase sai (`direcao.tom`) conferido no pedido.
  */
 export const TextoDaPeca = z
   .object({
     /** `true` = a peça sai sem texto nenhum, por decisão — não por esquecimento. */
     semTexto: z.boolean().default(false),
+    /**
+     * `true` = o Orbis escreve a headline e o CTA a partir da direção da marca.
+     *
+     * Existe porque exigir que o cliente digite a frase é cobrar dele o
+     * trabalho que ele contratou. O campo de digitar continua ali e continua
+     * vencendo: quem tem a frase pronta escreve, e quem não tem pede.
+     *
+     * O que ele NÃO é: licença para inventar. A frase sai de `direcao.tom` (a
+     * direção que a própria marca declarou) e não pode afirmar nada que não
+     * esteja em `autorizacoesDeClaim` — preço, desconto, prazo, frete,
+     * depoimento e certificação seguem exigindo que o cliente tenha digitado.
+     * Escrever no tom da marca é derivar; afirmar um desconto é inventar.
+     */
+    textoPelaMarca: z.boolean().default(false),
     /** A frase principal, literal, como vai aparecer. */
     headline: z.string().min(1).max(LIMITES_DO_PEDIDO.headline).nullable().default(null),
     /** A chamada de ação, literal. Opcional mesmo com headline: nem toda peça tem botão. */
@@ -193,11 +252,39 @@ export const TextoDaPeca = z
         message: '"Sem texto" com copy por variação é ambíguo: qual dos dois vale?',
       });
     }
-    if (!v.semTexto && v.headline === null) {
+    if (!v.semTexto && !v.textoPelaMarca && v.headline === null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['headline'],
-        message: 'Ou o texto literal da peça, ou "sem texto". Vazio não é escolha.',
+        message:
+          'Ou o texto literal da peça, ou "sem texto", ou "o Orbis escreve". Vazio não é escolha.',
+      });
+    }
+    /**
+     * As três decisões são EXCLUSIVAS entre si, e pelo mesmo motivo de sempre:
+     * duas ligadas não são mais informação, são a pergunta "qual das duas
+     * vale?" chegando ao motor em vez de à tela.
+     */
+    if (v.semTexto && v.textoPelaMarca) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['textoPelaMarca'],
+        message: '"Sem texto" com "o Orbis escreve" é ambíguo: a peça tem texto ou não tem?',
+      });
+    }
+    if (v.textoPelaMarca && (v.headline !== null || v.cta !== null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['textoPelaMarca'],
+        message:
+          '"O Orbis escreve" com headline ou CTA digitado é ambíguo: o que o cliente digitou vence, então desligue um dos dois.',
+      });
+    }
+    if (v.textoPelaMarca && v.porVariacao.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['porVariacao'],
+        message: '"O Orbis escreve" com copy por variação é ambíguo: qual dos dois vale?',
       });
     }
     if (v.semTexto && (v.headline !== null || v.cta !== null)) {
@@ -452,6 +539,38 @@ export const PedidoCriativo = CamposDoPedido.superRefine((v, ctx) => {
       code: z.ZodIssueCode.custom,
       path: ['texto', 'porVariacao'],
       message: `Há ${v.texto.porVariacao.length} copy(s) para ${v.variacoes} variação(ões). Ou uma para cada, ou nenhuma e todas usam a de cima.`,
+    });
+  }
+
+  /**
+   * "PELA MARCA" exige que a marca tenha dito alguma coisa.
+   *
+   * Esta é a conferência que separa DERIVAR de INVENTAR, e ela só pode morar
+   * aqui: `TextoDaPeca` e `OrigemDaImagem` não conhecem a `direcao`.
+   *
+   * Sem `tom`, "escrever no tom da marca" não tem tom nenhum de onde sair — o
+   * que sobraria é o nome do cliente e a imaginação de quem escreve, que é
+   * exatamente o material que este contrato inteiro existe para recusar. O
+   * mesmo vale para a cena e `estiloVisual`.
+   *
+   * E é por isso que a recusa aponta para o campo que FALTA (`direcao.tom`), e
+   * não para a caixa que o cliente marcou: o conserto é preencher a direção,
+   * não desmarcar a opção.
+   */
+  if (v.texto.textoPelaMarca && v.direcao.tom.trim() === '') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['direcao', 'tom'],
+      message:
+        'Para o Orbis escrever, a marca precisa ter um tom declarado: sem ele, a frase seria inventada, não derivada.',
+    });
+  }
+  if (v.imagem.cenaPelaMarca && v.direcao.estiloVisual.trim() === '') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['direcao', 'estiloVisual'],
+      message:
+        'Para o Orbis descrever a cena, a marca precisa ter um estilo visual declarado: sem ele, a cena seria inventada, não derivada.',
     });
   }
 });

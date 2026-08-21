@@ -153,6 +153,20 @@ export function CriativosPage() {
    */
   const [arquivoNome, setArquivoNome] = useState<string | null>(null);
   const [descricao, setDescricao] = useState('');
+  /**
+   * As duas decisões de "o Orbis escreve por mim".
+   *
+   * O dono pediu por extenso: *"cadê a opção que a Orbis pode gerar para ele
+   * essas informações com base na marca? tem que ter, o campo de digitar é
+   * opcional para o cliente"*.
+   *
+   * Elas não afrouxam o contrato — ele continua recusando campo vazio. O que
+   * muda é que agora existe uma TERCEIRA decisão explícita ao lado de "digitei"
+   * e "sem texto", com o material de onde a frase sai conferido no pedido
+   * (`direcao.tom` para o texto, `direcao.estiloVisual` para a cena).
+   */
+  const [textoPelaMarca, setTextoPelaMarca] = useState(false);
+  const [cenaPelaMarca, setCenaPelaMarca] = useState(false);
   const [semTexto, setSemTexto] = useState(false);
   const [headline, setHeadline] = useState('');
   const [cta, setCta] = useState('');
@@ -283,14 +297,19 @@ export function CriativosPage() {
     imagem: {
       origem,
       caminhoDoUpload: origem === 'upload' ? arquivoNome : null,
+      /* o digitado VENCE: quem escreveu a cena não delegou, mesmo com a chave
+         ligada — e mandar os dois faria o contrato recusar como ambíguo */
       descricaoParaGerar: origem === 'gerar' && descricao.trim() !== '' ? descricao.trim() : null,
+      cenaPelaMarca: origem === 'gerar' && descricao.trim() === '' && cenaPelaMarca,
     },
     texto: {
       semTexto,
       // A chave "sem texto" decide: ligada, o que estiver digitado fica de
       // fora do pedido (o contrato recusaria os dois juntos como ambíguo).
-      headline: semTexto || headline.trim() === '' ? null : headline.trim(),
-      cta: semTexto || cta.trim() === '' ? null : cta.trim(),
+      headline: semTexto || textoPelaMarca || headline.trim() === '' ? null : headline.trim(),
+      cta: semTexto || textoPelaMarca || cta.trim() === '' ? null : cta.trim(),
+      /* mesma precedência do lado da imagem: digitou, não delegou */
+      textoPelaMarca: !semTexto && headline.trim() === '' && textoPelaMarca,
     },
     restricoes: restricoes.trim(),
     variacoes: VARIACOES_PADRAO,
@@ -1080,36 +1099,81 @@ export function CriativosPage() {
           )}
 
           {origem === 'gerar' && (
-            <textarea
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              rows={3}
-              placeholder='ex.: "a garrafa do suco sobre uma mesa de madeira, luz de manhã, fundo desfocado"'
-              className="mt-2 w-full rounded-none border px-3 py-2 text-[13px] outline-none focus:border-[var(--color-signal)]"
-              style={{
-                borderColor: 'var(--color-border)',
-                color: 'var(--color-fg)',
-                background: 'transparent',
-              }}
-            />
+            <>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCenaPelaMarca(!cenaPelaMarca)}
+                  aria-pressed={cenaPelaMarca}
+                  className="rounded-none border px-3 py-1.5 text-[12.5px] transition-colors hover:border-[var(--color-signal)]"
+                  style={{ borderColor: bordaDeChip(cenaPelaMarca), color: 'var(--color-fg)' }}
+                >
+                  o Orbis descreve
+                </button>
+                <span className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
+                  {cenaPelaMarca
+                    ? 'A cena sai do estilo visual da marca. Se você escrever abaixo, o que você escreveu vence.'
+                    : 'Descreva a cena, ou peça para o Orbis descrever pelo estilo visual da marca.'}
+                </span>
+              </div>
+              <textarea
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                rows={3}
+                placeholder={
+                  cenaPelaMarca
+                    ? 'opcional: o Orbis descreve pelo estilo visual da marca'
+                    : 'ex.: "a garrafa do suco sobre uma mesa de madeira, luz de manhã, fundo desfocado"'
+                }
+                className="mt-2 w-full rounded-none border px-3 py-2 text-[13px] outline-none focus:border-[var(--color-signal)]"
+                style={{
+                  borderColor: 'var(--color-border)',
+                  color: 'var(--color-fg)',
+                  background: 'transparent',
+                }}
+              />
+            </>
           )}
 
           <span className="ds-label mt-6 block">o texto na peça</span>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setSemTexto(!semTexto)}
+              onClick={() => {
+                setSemTexto(!semTexto);
+                if (!semTexto) setTextoPelaMarca(false);
+              }}
               aria-pressed={semTexto}
               className="rounded-none border px-3 py-1.5 text-[12.5px] transition-colors hover:border-[var(--color-signal)]"
               style={{ borderColor: bordaDeChip(semTexto), color: 'var(--color-fg)' }}
             >
               sem texto
             </button>
+            {/*
+              As duas chaves se desligam ao ligar a outra, e isso não é
+              cortesia: o contrato recusa as duas juntas como ambíguas ("a peça
+              tem texto ou não tem?"). Deixar a tela montar um pedido que ela
+              sabe que vai ser recusado é fazer o cliente descobrir no envio.
+            */}
+            <button
+              type="button"
+              onClick={() => {
+                setTextoPelaMarca(!textoPelaMarca);
+                if (!textoPelaMarca) setSemTexto(false);
+              }}
+              aria-pressed={textoPelaMarca}
+              className="rounded-none border px-3 py-1.5 text-[12.5px] transition-colors hover:border-[var(--color-signal)]"
+              style={{ borderColor: bordaDeChip(textoPelaMarca), color: 'var(--color-fg)' }}
+            >
+              o Orbis escreve
+            </button>
             <span className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              Ou o texto literal, ou "sem texto": vazio o contrato recusa.
+              {textoPelaMarca
+                ? 'A frase sai do tom da marca. Nada de preço, desconto ou prazo: isso só aparece se você digitar.'
+                : 'Digite o texto, peça para o Orbis escrever, ou marque "sem texto". Vazio o contrato recusa.'}
             </span>
           </div>
-          {!semTexto && (
+          {!semTexto && !textoPelaMarca && (
             <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <span className="ds-label">headline, literal</span>

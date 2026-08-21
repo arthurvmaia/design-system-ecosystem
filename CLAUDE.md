@@ -235,10 +235,29 @@ nenhuma peça visual nasce fora do motor.
 4. **Nada inventado.** Preço, desconto, prazo, frete, depoimento e
    certificação só aparecem se estiverem em `autorizacoesDeClaim` — ou seja,
    se o cliente digitou.
-5. **O pixel do provedor pousa DENTRO de `criativosDir(jobId)`.** A URL que o
+5. **`textoPelaMarca` e `cenaPelaMarca`: quando VOCÊ escreve.** O cliente pode
+   não digitar a headline nem a cena e pedir que o Orbis escreva. Isso é uma
+   decisão registrada no pedido, não um campo vazio — e ela vem com o material
+   de onde a frase sai já conferido pelo contrato: `textoPelaMarca` exige
+   `direcao.tom` preenchido, `cenaPelaMarca` exige `direcao.estiloVisual`.
+
+   Escreva DERIVANDO daquilo, e de mais nada. O tom diz como a marca fala; o
+   estilo visual diz como as imagens dela parecem. **Delegar a escrita não
+   autoriza afirmação:** preço, desconto, prazo, frete, depoimento e
+   certificação continuam saindo só de `autorizacoesDeClaim`. Escrever no tom
+   da marca é derivar; afirmar um desconto é inventar, e a chave não muda isso.
+
+   **Grave o que você escreveu** em `resultado.json`, junto da peça. O que está
+   queimado no pixel fala em nome da marca do cliente — ele tem de conseguir ler
+   depois a frase que saiu no nome dele, sem abrir a imagem.
+
+   O que o cliente digitou VENCE. A tela já impede mandar os dois, e o contrato
+   recusa o par como ambíguo: se chegar pedido com a chave ligada E o campo
+   preenchido, é defeito de quem montou o payload — pare e diga.
+6. **O pixel do provedor pousa DENTRO de `criativosDir(jobId)`.** A URL que o
    provedor devolve traz token que expira, então ela não é entrega: baixe o
    arquivo para a pasta do job antes de qualquer outra coisa.
-6. **Componha. O pixel gerado NÃO é a peça.** Medido na primeira geração paga:
+7. **Componha. O pixel gerado NÃO é a peça.** Medido na primeira geração paga:
    um pedido de 1080×1080 voltou 736×414 — o provedor devolve a proporção que
    ele quer. Quem entrega a dimensão exata, o texto literal, o logotipo, a cor
    do botão e a tipografia da marca é a composição, e ela é um comando:
@@ -257,10 +276,10 @@ nenhuma peça visual nasce fora do motor.
    cor de apoio se lê no botão" e "não consegui obter a fonte" são coisas que
    se conserta ANTES de entregar, e recompor não gasta crédito nenhum: o pixel
    já está em disco.
-7. **Saída em disco**: `criativosDir(jobId)` com as variações e um
+8. **Saída em disco**: `criativosDir(jobId)` com as variações e um
    `resultado.json` no formato `ResultadoCriativo` — o `criativo:compor` grava.
    Reporte `pnpm fila:progresso` por variação.
-8. **Verificação antes do download** (estágio 5 do motor): a folha C1..C11 é
+9. **Verificação antes do download** (estágio 5 do motor): a folha C1..C11 é
    ela. Dimensão exata, texto DENTRO do quadro, marca visível e não deformada,
    contraste real, tipografia da marca aplicada, produto do cliente preservado.
    Peça reprovada não vira download: o resultado diz o que falhou. Peça com
