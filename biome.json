@@ -15,7 +15,8 @@
       "migrations",
       "*.d.ts",
       "*.tsbuildinfo",
-      "orbis-lojas-shopify"
+      "orbis-lojas-shopify",
+      ".claude"
     ]
   },
   "formatter": {
