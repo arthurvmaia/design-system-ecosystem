@@ -54,10 +54,13 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { getDb, tables } from '@ds/indexer';
 import {
+  type ConferenciaDePixel,
   type PecaParaAceite,
   SegmentsManifest,
   type SegmentsManifest as SegmentsManifestType,
   alvosPerdidosDoBundle,
+  associarConferencias,
+  lerComparacoesDaCaptura,
   libraryComponentDir,
   rastreamentoDoBundle,
   vaultSegmentsManifest,
@@ -94,6 +97,66 @@ const manifestoDe = (() => {
  * aqui, importar este arquivo num teste rodaria a curadoria do acervo real da
  * máquina, porque a última linha chamava `principal()`.
  */
+/**
+ * De quem é cada comparação de pixel, para TODO o acervo de uma vez.
+ *
+ * A associação em si mora em `@ds/shared` porque a Galeria também a usa — duas
+ * implementações divergiriam exatamente onde dói: uma tela acusando e a
+ * curadoria promovendo a mesma peça.
+ *
+ * Isto é feito em UMA passada e não dentro de `avaliar` porque a associação é
+ * por design system inteiro: ela precisa de todos os segmentos daquele site em
+ * ordem de posição, e não de um segmento solto.
+ */
+const conferenciasPorSegmento = (
+  segs: readonly { id: string; designSystemId: string; position: number }[],
+): Map<string, ConferenciaDePixel> => {
+  const out = new Map<string, ConferenciaDePixel>();
+  const porDs = new Map<string, { id: string; position: number }[]>();
+  for (const s of segs) {
+    const lista = porDs.get(s.designSystemId);
+    if (lista === undefined) porDs.set(s.designSystemId, [{ id: s.id, position: s.position }]);
+    else lista.push({ id: s.id, position: s.position });
+  }
+
+  for (const [dsId, doDs] of porDs) {
+    const comparacoes = lerComparacoesDaCaptura(dsId);
+    if (comparacoes.length === 0) continue;
+    const ordenados = [...doDs].sort((a, b) => a.position - b.position);
+    const manifesto = manifestoDe(dsId);
+    const comFrameNoManifesto = new Set(
+      (manifesto?.insights ?? []).filter((i) => i.framePath !== undefined).map((i) => i.segmentId),
+    );
+    /**
+     * A cápsula só é levantada quando a heurística vai ser usada.
+     *
+     * Descobrir quem é cápsula custa um `lerBundleInfo` por segmento, e o
+     * caminho por IDENTIDADE (comparação que carrega o próprio `position`) não
+     * olha para isso. Captura nova sempre grava o dono, então em quase todo o
+     * acervo esta lista é trabalho jogado fora.
+     */
+    const porIdentidade = comparacoes.some((c) => c.position !== undefined);
+    const capsulas = porIdentidade
+      ? []
+      : ordenados
+          .filter(
+            (s) =>
+              lerBundleInfo(dsId as `ds_${string}`, { position: s.position })?.representation ===
+              'capsula-runtime',
+          )
+          .map((s) => s.id);
+
+    for (const [id, conferencia] of associarConferencias({
+      comparacoes,
+      comFrame: ordenados.filter((s) => comFrameNoManifesto.has(s.id)).map((s) => s.id),
+      capsulas,
+      porPosicao: new Map(ordenados.map((s) => [s.position, s.id])),
+    }))
+      out.set(id, conferencia);
+  }
+  return out;
+};
+
 const avaliar = (seg: {
   id: string;
   designSystemId: string;
@@ -103,6 +166,8 @@ const avaliar = (seg: {
   htmlSnippet: string | null;
   position: number;
   inLibrary: boolean;
+  /** A conferência de pixel daquele segmento, ou `null` se nada a mediu. */
+  conferencia: ConferenciaDePixel | null;
 }): Nota => {
   const manifesto = manifestoDe(seg.designSystemId);
   const insight = (manifesto?.insights ?? []).find((i) => i.segmentId === seg.id) ?? null;
@@ -132,27 +197,22 @@ const avaliar = (seg: {
     movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
     suporte: insight?.support ?? null,
     /**
-     * A comparação de pixel NÃO chega até aqui, e isso é um buraco declarado.
+     * A comparação de pixel entre o bundle e o que a captura VIU.
      *
-     * Estas duas linhas liam `insight.comparacaoVisual`, que o `SegmentInsight`
-     * também não declara. A consequência não era teórica: em
+     * Ela demorou a chegar aqui, e a ausência não era teórica: em
      * `curadoria-escolha.ts`, `comparacaoVisualOk === false` é uma condição de
-     * REPROVA — "o bundle não bate com o que a captura viu" —, e com o campo
-     * eternamente `null` ela nunca disparou. Peça cujo bundle diverge da
-     * captura era promovida em silêncio.
+     * REPROVA — "o bundle não bate com o que a captura viu" —, e o campo era
+     * lido de `insight.comparacaoVisual`, que o `SegmentInsight` não declara. Ele
+     * era `null` desde sempre e a reprovação NUNCA disparou: peça cujo bundle
+     * diverge da captura entrava na Biblioteca em silêncio, incluindo uma que
+     * divergiu 100% do print.
      *
-     * O dado existe: `lerComparacoesV2(id)` o lê do disco. O que não existe é o
-     * caminho até aqui — quem associa comparação a segmento é
-     * `associarConferencias`, uma função PRIVADA da rota de design systems, e a
-     * associação é heurística (casa por print da dobra e por posição). Trazê-la
-     * para cá quer dizer extraí-la para um pacote compartilhado, com teste, e
-     * isso é maior que o conserto de tipo que abriu este buraco.
-     *
-     * Fica `null` EXPLÍCITO em vez de uma leitura que fingia medir: o veredito
-     * "não medido" é verdadeiro, e o de antes não era.
+     * `null` continua sendo uma resposta legítima e frequente: captura antiga
+     * sem comparação gravada não foi medida, e dizer isso é diferente de
+     * aprovar. Quem reprova é só o `false`.
      */
-    comparacaoVisualOk: null,
-    comparacaoVisualDelta: null,
+    comparacaoVisualOk: seg.conferencia?.passou ?? null,
+    comparacaoVisualDelta: seg.conferencia?.delta ?? null,
     // O bundle está em disco AGORA: G8 é a única regra do aceite que a curadoria
     // consegue conferir por inteiro, e é a que evita levar para o kit uma peça
     // cujo script mistura o analytics da origem com o comportamento dela.
@@ -199,6 +259,7 @@ const principal = (): void => {
    * novo, e não é — é a mesma peça de novo.
    */
   const orfas = linhasDaBiblioteca.filter((r) => r.segmentId === null).length;
+  const conferencias = conferenciasPorSegmento(segs);
   const notas = segs.map((s) =>
     avaliar({
       id: s.id,
@@ -209,6 +270,7 @@ const principal = (): void => {
       htmlSnippet: s.htmlSnippet,
       position: s.position,
       inLibrary: naBiblioteca.has(s.id),
+      conferencia: conferencias.get(s.id) ?? null,
     }),
   );
 

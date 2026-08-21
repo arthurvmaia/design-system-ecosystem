@@ -5,6 +5,7 @@ export * from './regras-de-aceite-criativo.js';
 export * from './regras-de-aceite-marca.js';
 export * from './imagem.js';
 export * from './asset-rewrite.js';
+export * from './comparacao-de-pixel.js';
 export * from './contract.js';
 export * from './engine.js';
 export * from './fonts.js';
