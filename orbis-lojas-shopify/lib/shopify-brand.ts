@@ -25,9 +25,19 @@
  */
 import { misturar, textoSobre } from "./marca-generator.mjs";
 import type { ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "./shopify-theme";
+import { sortearVitrine } from "./sorteio-de-vitrine";
 
 export type MarcaAplicavel = {
   name: string;
+  /**
+   * A semente desta marca — a mesma que desenhou a logo e sorteou a paleta.
+   *
+   * Aqui ela decide também a ORDEM da home: duas lojas do mesmo tema deixam de
+   * ser a mesma loja. Ver `sorteio-de-vitrine.ts`. Faltando, o nome da marca
+   * serve de semente: toda loja tem nome, e ele já distingue um cliente do
+   * outro.
+   */
+  semente?: string;
   slogan?: string;
   description?: string;
   primaryColor: string;
@@ -297,7 +307,20 @@ function ehRecord(valor: unknown): valor is Record<string, ShopifyValue> {
  * real: o nome vira handle, e é isso que o tema usa nos menus e nas listas.
  */
 export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaAplicavel): ResultadoDaMarca {
-  const theme = JSON.parse(JSON.stringify(original)) as ShopifyThemeImport;
+  /**
+   * A ORDEM da home sai da semente, e sai ANTES de qualquer coisa ser escrita.
+   *
+   * Antes porque as regras de dobra abaixo são POSICIONAIS e pertencem ao dono:
+   * a primeira dobra fica calada e a segunda leva a frase, foi pedido por
+   * escrito. Sortear depois moveria a dobra que escreve para o topo e passaria
+   * por cima disso em silêncio.
+   *
+   * Sorteando antes, o que varia é QUAL seção ocupa cada vaga — com a altura, o
+   * esquema de cor e o véu que ela trouxe do tema — e o contrato de dobra
+   * continua valendo, porque ele é aplicado depois, sobre a ordem já sorteada.
+   */
+  const sorteado = sortearVitrine(JSON.parse(JSON.stringify(original)) as ShopifyThemeImport, marca.semente?.trim() || marca.name);
+  const theme = sorteado.theme;
   const alterados: string[] = [];
   const marcou = (id: string) => { if (!alterados.includes(id)) alterados.push(id); };
 

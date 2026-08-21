@@ -1291,6 +1291,11 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
                 semTema={temasCarregando ? "Procurando o tema…" : "Escolha um tema no passo anterior para ver a loja."}
                 marca={{
                   name: marca.name || "Minha Marca", slogan: marca.slogan, description: marca.description,
+                  /* a MESMA semente do pedido, porque ela decide também a ORDEM
+                     da home: sem ela aqui, a prévia mostraria uma loja e o ZIP
+                     sairia com outra. Marca preenchida à mão não tem semente —
+                     ali o nome faz esse papel, dos dois lados. */
+                  semente: modo === "gerada" ? semente : undefined,
                   primaryColor: marca.primaryColor, backgroundColor: marca.backgroundColor, accentColor: marca.accentColor,
                   headingFont: marca.headingFont || undefined, bodyFont: marca.bodyFont || undefined,
                   collections: marca.collections,

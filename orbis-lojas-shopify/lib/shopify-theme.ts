@@ -133,6 +133,14 @@ export type ShopifyThemeImport = {
    */
   orbisColecoes?: string[];
   /**
+   * A semente com que a home DESTA loja foi sorteada.
+   *
+   * Serve de trava, não de dado: aplicar a permutação duas vezes não é o mesmo
+   * que aplicá-la uma, então quem já foi sorteado com esta semente volta como
+   * está. Ver `sorteio-de-vitrine.ts`.
+   */
+  orbisSorteio?: string;
+  /**
    * QUEM é esta loja — e não de que TEMA ela nasceu.
    *
    * Uma loja entregue continua carregando o `theme_info` do tema de origem: uma

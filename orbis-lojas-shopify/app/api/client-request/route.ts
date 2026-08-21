@@ -230,6 +230,9 @@ export async function POST(request: Request) {
     }
     const resultado = aplicarMarcaNoTema(shopify, {
       ...marca,
+      /* explícita, e não herdada do formato do gerador: é ela que sorteia a
+         ordem da home, e o mesmo valor foi enviado na prévia */
+      semente: parsed.data.seed?.trim() || undefined,
       imagens,
       imagensGeradas: parsed.data.imagensGeradas ?? [],
     });
