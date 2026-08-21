@@ -125,7 +125,7 @@ test("o núcleo espelhado carrega, e ele é o mesmo do motor", async () => {
     assert.match(vencida.motivo, /venceu/);
 
     /* e o transporte que ninguém mediu recusa, em vez de copiar o outro */
-    const semMedida = precos.estimar({ presetId: "imagem-padrao", transporte: "rest", hoje: precos.MEDIDO_EM });
+    const semMedida = precos.estimar({ presetId: "video-curto", transporte: "rest", segundos: 8, hoje: precos.MEDIDO_EM });
     assert.equal(semMedida.ok, false);
     assert.match(semMedida.motivo, /não foi medido/);
   });
@@ -174,28 +174,41 @@ test("a rota de geração declara o custo pela tabela do motor, não por número
 });
 
 /**
- * E o que ele declara HOJE é uma ausência, com o motivo escrito.
+ * E o que ele declara agora é uma CONTA, com a data em que ela foi medida.
  *
- * A tabela do motor não tem linha REST medida: a API REST não tem endpoint de
- * simulação, então não dá para medi-la sem gastar. Copiar o número do MCP faria
- * a resposta parecer uma conta sendo um palpite — o erro que o catálogo inteiro
- * existe para impedir.
+ * Este teste travava a ausência de propósito: "quando alguém medir o REST e a
+ * tabela ganhar a linha, ele reprova". Foi o que aconteceu em 21/08/2026 —
+ * medido gastando de verdade, com teto de 250 declarado pelo dono: 75 no 2k e
+ * 150 no 4k, lidos no saldo antes e depois de cada geração.
  *
- * Este teste trava a ausência DECLARADA. Quando alguém medir o REST e a tabela
- * ganhar a linha, ele reprova — e é isso que se quer: o dia em que o número
- * existir é o dia de ligar o razão, que já está espelhado ao lado.
+ * Agora ele trava o contrário: a loja pede 2k para cena e símbolo e 4k para
+ * banner, e as duas resoluções que ela usa têm de responder. O `1k` continua
+ * recusando, porque ninguém gerou 1k por REST — o 75 do MCP ali seria um número
+ * copiado, que é o erro de sempre com outra roupa.
  */
-test("o custo em créditos ainda é uma ausência declarada, e não um palpite", async () => {
+test("o custo em créditos é a conta MEDIDA, nas resoluções que a loja usa", async () => {
   await comVite(async (server) => {
-    const { estimar } = await server.ssrLoadModule("/lib/motor/precos.ts");
+    const { estimar, MEDIDO_EM_REST } = await server.ssrLoadModule("/lib/motor/precos.ts");
     const hoje = new Date().toISOString().slice(0, 10);
-    for (const presetId of ["imagem-padrao", "video-curto"]) {
-      const conta = estimar({ presetId, transporte: "rest", quantidade: 1, segundos: 8, comAudio: true, hoje });
-      assert.equal(conta.ok, false, presetId);
-      assert.match(conta.motivo, /não foi medido/, presetId);
-      /* o motivo tem de nomear o transporte: "não medido" sem dizer onde manda
-         adivinhar se o problema é o preset, a resolução ou o caminho */
-      assert.match(conta.motivo, /rest/, presetId);
+
+    const doisK = estimar({ presetId: "imagem-padrao", transporte: "rest", resolucao: "2k", hoje });
+    assert.equal(doisK.ok, true);
+    assert.equal(doisK.creditos, 75, "cena e símbolo saem em 2k");
+
+    const quatroK = estimar({ presetId: "imagem-padrao", transporte: "rest", resolucao: "4k", hoje });
+    assert.equal(quatroK.ok, true);
+    assert.equal(quatroK.creditos, 150, "banner sai em 4k, e custa o dobro");
+
+    /* a data da medição do REST é PRÓPRIA: ela não é a do MCP */
+    assert.equal(MEDIDO_EM_REST, "2026-08-21");
+
+    /* o que ninguém mediu continua recusando, e o motivo nomeia o transporte */
+    const umK = estimar({ presetId: "imagem-padrao", transporte: "rest", resolucao: "1k", hoje });
+    assert.equal(umK.ok, false, "ninguém gerou 1k por REST");
+    for (const presetId of ["imagem-marca", "video-curto"]) {
+      const r = estimar({ presetId, transporte: "rest", segundos: 8, hoje });
+      assert.equal(r.ok, false, presetId);
+      assert.match(r.motivo, /rest/, presetId);
     }
   });
 });

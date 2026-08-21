@@ -30,9 +30,19 @@ import { PRESETS, type Transporte, identificadorDe } from './presets';
  *
  * ## O que está medido, e o que não está
  *
- * Tudo abaixo saiu de `simulate_cost` com `certainty: "exact"` em 16/08/2026.
- * O REST está `null` de propósito: não dá para medi-lo sem gastar, e um número
- * copiado do MCP seria adivinhação com cara de medição.
+ * A coluna MCP saiu de `simulate_cost` com `certainty: "exact"` em 16/08/2026.
+ *
+ * A coluna REST de `imagem-padrao` foi medida em 21/08/2026 gastando de
+ * verdade, com teto de 250 créditos declarado pelo dono: 75 no 2k e 150 no 4k,
+ * lidos no saldo antes e depois. Deu o MESMO que o MCP — e isso é um
+ * RESULTADO, não uma confirmação do óbvio: enquanto ninguém tinha medido,
+ * escrever 75 ali teria sido adivinhação que por acaso acertou, e a diferença
+ * entre as duas coisas é que uma continua certa quando o provedor mudar o preço
+ * e a outra não.
+ *
+ * Os outros três presets seguem `null` no REST, e não por falta de dinheiro:
+ * eles não têm identificador REST, ou seja, não existe chamada a fazer. Ver
+ * `pendenciasDePreco()`, que separa as duas coisas.
  *
  * ## Por que o REST continua sem medida, medido em 21/08/2026
  *
@@ -97,7 +107,18 @@ export type PrecoPorTransporte = {
   readonly rest: RegraDePreco | null;
 };
 
+/**
+ * Quando o MCP foi medido. E a data de cabecalho da tabela.
+ *
+ * O REST tem data PROPRIA (`MEDIDO_EM_REST`), e ela e diferente porque a
+ * medicao dele dependeu de uma chave que so apareceu depois. Uma data so para
+ * as duas colunas diria que alguem conferiu as duas no mesmo dia, e nao
+ * conferiu.
+ */
 export const MEDIDO_EM = '2026-08-16';
+
+/** Quando a coluna REST foi medida. Ver a linha de `imagem-padrao`. */
+export const MEDIDO_EM_REST = '2026-08-21';
 
 /**
  * Noventa dias. Não é um número sagrado: é o prazo em que alguém volta aqui e
@@ -108,7 +129,17 @@ export const VALIDA_ATE = '2026-11-14';
 export const TABELA: Readonly<Record<string, PrecoPorTransporte>> = {
   'imagem-padrao': {
     mcp: { tipo: 'por-imagem', creditos: 75, porResolucao: { '1k': 75, '2k': 75, '4k': 150 } },
-    rest: null,
+    /**
+     * MEDIDO em 21/08/2026, pelo caminho REAL da loja (`pedirGeracao` de
+     * `lib/magnific.ts`), com o saldo lido no `account_balance` antes e depois:
+     *
+     *   4210 -> 4135 numa geracao 2k  =  75
+     *   4135 -> 3985 numa geracao 4k  = 150
+     *
+     * O `1k` NAO esta aqui: ninguem o mediu neste transporte, e o MCP dizer 75
+     * nao e medicao do REST. Pedir 1k por aqui recusa, como deve.
+     */
+    rest: { tipo: 'por-imagem', creditos: 75, porResolucao: { '2k': 75, '4k': 150 } },
   },
   'imagem-marca': {
     mcp: { tipo: 'por-imagem', creditos: 75, porResolucao: { '1k': 75, '2k': 75, '4k': 150 } },

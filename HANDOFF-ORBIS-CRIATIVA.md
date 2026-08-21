@@ -318,51 +318,54 @@ M12 é a régua que passou a cobrar isso.
 
 A lista inteira que estava aqui foi feita. O que ficou:
 
-1. **EMITIR UMA CHAVE REST DA MAGNIFIC** — e só depois medir o preço e ligar o
-   razão. A ordem inverteu em 21/08/2026, quando a pergunta "quanto custa o
-   REST" esbarrou em "não dá para perguntar".
+1. **LIGAR O RAZÃO na frente de Lojas.** O preço do REST foi MEDIDO em
+   21/08/2026 e a linha está na tabela; o que falta é contar o gasto.
 
-   **A chave EXISTE na conta; ela é que não está nesta máquina.** Corrigido em
-   21/08/2026 contra o painel da Magnific: há uma chave chamada `orbis`, criada
-   em 08/08/2026, com **21,1 mil créditos já gastos por ela**. O caminho REST
-   desta frente não é código morto — ele rodou, e é a maior parte do gasto da
-   conta (21,1 mil dos 40,8 mil). Isso confirma, por medição, que remover o
-   cliente REST teria sido destrutivo.
+   ### O que a medição custou e o que ela devolveu
 
-   O que foi medido aqui e continua valendo: nenhum `.dev.vars`, nenhum `.env`,
-   nenhuma variável de ambiente, nada no `wrangler`, e o `.env.example` não
-   trazia o campo nem em branco — enquanto trazia os dois da Shopify. O MCP
-   entra por OAuth (`{"type":"http","url":"https://mcp.magnific.com"}`), e é daí
-   que veio a leitura errada de que a conta inteira era OAuth: o MCP é, o REST
-   não.
+   Teto declarado pelo dono: **250 créditos**. Gasto: **225**. Saldo 4.210 →
+   3.985, lido no `account_balance` antes e depois de cada geração, pelo
+   caminho REAL da loja (`pedirGeracao` de `lib/magnific.ts`) e não por uma
+   reimplementação.
 
-   Então a pendência é a mais simples das três: **pôr a chave em
-   `orbis-lojas-shopify/.dev.vars`** (que está no `.gitignore`) e medir.
+   | Resolução | Saldo | Custo |
+   |---|---|---|
+   | 2k | 4210 → 4135 | **75** |
+   | 4k | 4135 → 3985 | **150** |
 
-   Uma armadilha, vivida: o painel mostra API key e **webhook secret** lado a
-   lado, mascarados pelos quatro últimos caracteres. Confira o sufixo antes de
-   usar — o webhook secret no lugar da chave devolve 401, e o 401 parece
-   problema de outra coisa.
+   Deu o MESMO que o MCP. Isso é um resultado, não a confirmação do óbvio:
+   enquanto ninguém tinha medido, escrever 75 ali teria sido adivinhação que por
+   acaso acertou — e a diferença aparece no dia em que o provedor mudar o preço
+   de um transporte e não do outro. O `1k` continua recusando no REST, porque
+   ninguém gerou 1k por lá.
 
-   E é **UMA** linha, não quatro. `imagem-marca`, `imagem-rascunho` e
-   `video-curto` têm identificador REST `null`: não existe endpoint para
-   chamá-los, e medi-los é impossível, não caro. O `pnpm criativo:precos`
-   somava as quatro sob "Pendente de medição (4)" e agora separa as duas
-   classes — três quartos daquela "fila" era limitação de transporte.
+   ### Três achados que mudam o caminho de quem continuar
 
-   Com a chave: medir `imagem-padrao / REST` (saldo antes, uma geração 2k,
-   saldo depois), gravar a linha datada em `precos/tabela.ts`, rodar
-   `pnpm motor:espelhar`. O teste `motor-criativo.test.mjs` TRAVA a ausência e
-   vai reprovar quando a linha existir — é o lembrete no lugar certo.
+   **A chave EXISTE e está configurada.** Ela mora em
+   `orbis-lojas-shopify/.dev.vars` (que está no `.gitignore`), e foi conferida
+   com controle: chave inventada devolve `401 "The provided API key is
+   invalid"`, a do arquivo devolve `403 "User does not belong to any team"` —
+   classes diferentes, a segunda autenticou. O sufixo mostrado no painel da
+   Magnific **não bate** com o da chave que funciona; quem decide é a resposta
+   do servidor, não a máscara.
 
-   Só então o razão: ele já está espelhado em `lib/motor/razao.ts`, e persistir
-   pede uma tabela em D1 — schema de um app publicado, decisão do dono.
+   **O REST não sabe dizer quanto gastou, nesta conta.** O único endpoint de
+   consumo é `POST /v1/analytics/team-credit-usage`, e ele responde 403 porque é
+   de TIME e esta conta não está em nenhum. Isso desfaz a saída que parecia
+   óbvia: "liga o razão lendo o consumo pelo REST" não funciona aqui. O
+   antes-e-depois sai do `account_balance` do MCP.
 
-   **Se a chave não puder ser emitida**, a demanda vira outra e é estrutural: ou
-   a loja deixa de falar REST e passa pelo caminho MCP das outras duas frentes
-   (o workerd não fala MCP, então precisaria de rota no servidor do workspace —
-   parente da decisão nº 4 do §5), ou o cliente REST sai e a loja assume o
-   gerador local, que é o que ela já faz hoje.
+   **Quatro pendências eram uma.** `imagem-marca`, `imagem-rascunho` e
+   `video-curto` não têm identificador REST — não existe chamada a fazer, então
+   medi-los é impossível, não caro. `pendenciasDePreco()` separa as duas
+   classes, e o `pnpm criativo:precos` imprime as duas listas.
+
+   ### O que sobra, e é decisão sua
+
+   Persistir o razão na frente de Lojas pede uma tabela em D1 — schema de um app
+   publicado com deploy próprio. O razão já está espelhado em
+   `lib/motor/razao.ts`, então é ligar, não construir. Hoje a rota DECLARA o
+   custo (agora com número real) e não o conta.
 
 2. **A frente de Lojas continua com o espelho, agora do NÚCLEO inteiro**
    (`pnpm motor:espelhar`): recorte da logo, catálogo de presets, tabela de

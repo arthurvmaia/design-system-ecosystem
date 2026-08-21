@@ -63,10 +63,57 @@ test('video: linear no segundo, e o audio e adicional declarado', () => {
   );
 });
 
-test('o REST recusa em vez de copiar o numero do MCP', () => {
-  const r = estimar({ presetId: 'imagem-padrao', transporte: 'rest', hoje: HOJE });
+/**
+ * O REST de `imagem-padrao` FOI medido em 21/08/2026, gastando de verdade:
+ * 4210 -> 4135 numa geração 2k (75) e 4135 -> 3985 numa 4k (150), com teto de
+ * 250 declarado pelo dono.
+ *
+ * Deu o mesmo que o MCP, e isso é um RESULTADO — não a confirmação do óbvio.
+ * Enquanto ninguém tinha medido, escrever 75 ali teria sido adivinhação que por
+ * acaso acertou; a diferença entre as duas coisas aparece no dia em que o
+ * provedor mudar o preço de um transporte e não do outro.
+ */
+test('o REST de imagem-padrao responde com o numero MEDIDO', () => {
+  const doisK = estimar({
+    presetId: 'imagem-padrao',
+    transporte: 'rest',
+    resolucao: '2k',
+    hoje: HOJE,
+  });
+  assert.equal(doisK.ok && doisK.creditos, 75);
+  const quatroK = estimar({
+    presetId: 'imagem-padrao',
+    transporte: 'rest',
+    resolucao: '4k',
+    hoje: HOJE,
+  });
+  assert.equal(quatroK.ok && quatroK.creditos, 150);
+});
+
+/**
+ * E o `1k` continua recusando NO REST, embora o MCP o tenha medido.
+ *
+ * É a regra inteira num caso só: ninguém gerou 1k por REST, então o 75 do MCP
+ * ali seria um número copiado. Recusar é o comportamento certo mesmo quando a
+ * resposta "provável" é a mesma dos vizinhos.
+ */
+test('resolucao nao medida NAQUELE transporte recusa, mesmo medida no outro', () => {
+  const r = estimar({ presetId: 'imagem-padrao', transporte: 'rest', resolucao: '1k', hoje: HOJE });
   assert.equal(r.ok, false);
-  assert.match(r.ok === false ? r.motivo : '', /não foi medido/);
+  assert.match(r.ok === false ? r.motivo : '', /não foi medida/);
+  /* e no MCP o mesmo 1k responde, porque lá alguém mediu */
+  assert.equal(
+    estimar({ presetId: 'imagem-padrao', transporte: 'mcp', resolucao: '1k', hoje: HOJE }).ok,
+    true,
+  );
+});
+
+test('os presets SEM endpoint REST continuam recusando', () => {
+  for (const presetId of ['imagem-marca', 'imagem-rascunho', 'video-curto']) {
+    const r = estimar({ presetId, transporte: 'rest', segundos: 8, hoje: HOJE });
+    assert.equal(r.ok, false, presetId);
+    assert.match(r.ok === false ? r.motivo : '', /não foi medido/, presetId);
+  }
 });
 
 test('PROVA: tabela vencida faz o motor RECUSAR, nao estimar', () => {
