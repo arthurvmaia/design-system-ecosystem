@@ -11,7 +11,7 @@
     "@ds/explorer": "workspace:*",
     "@ds/shared": "workspace:*",
     "node-html-parser": "^6.1.13",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.23",
     "postcss-selector-parser": "^7.0.0"
   },
   "devDependencies": { "@types/node": "^22.10.2", "typescript": "^5.7.2" }

@@ -9,7 +9,7 @@
   "scripts": { "typecheck": "tsc --noEmit", "clean": "node ../../scripts/limpar.mjs" },
   "dependencies": {
     "@ds/shared": "workspace:*",
-    "postcss": "^8.4.49",
+    "postcss": "^8.5.23",
     "postcss-selector-parser": "^7.0.0"
   },
   "devDependencies": { "@types/node": "^22.10.2", "typescript": "^5.7.2" }

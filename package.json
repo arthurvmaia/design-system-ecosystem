@@ -64,7 +64,7 @@
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.2",
     "dotenv": "^17.4.2",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "node-html-parser": "^6.1.13",
     "playwright": "^1.61.1",
     "tsx": "^4.19.2",
@@ -86,5 +86,12 @@
     "@ds/segmenter": "workspace:^",
     "@ds/server": "workspace:^",
     "@ds/shared": "workspace:^"
+  },
+  "pnpm": {
+    "overrides": {
+      "nanoid": "^3.3.18",
+      "postcss": "^8.5.23",
+      "esbuild": "^0.25.0"
+    }
   }
 }
