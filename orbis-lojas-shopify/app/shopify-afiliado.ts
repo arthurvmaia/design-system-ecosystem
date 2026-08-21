@@ -23,3 +23,21 @@ export const LINK_DE_AFILIADO = "https://accounts.shopify.com/signup?rid=7c38fff
 
 /** Verdadeiro enquanto ninguém trocou o link de fábrica pelo de indicação. */
 export const SEM_LINK_DE_INDICACAO = LINK_DE_AFILIADO === LINK_PADRAO;
+
+/**
+ * O caminho até a chave de acesso, DENTRO do admin da loja do cliente.
+ *
+ * Mora aqui pelo mesmo motivo do link de indicação: endereço da Shopify existe
+ * num arquivo só, senão alguém acrescenta outro amanhã e o do dinheiro deixa de
+ * ser o único. Este não leva a cadastro nenhum e não disputa comissão com nada
+ * — é a loja DELE, e é onde a chave nasce.
+ *
+ * Precisa estar aqui porque dizer o menu não bastou: quem tem conta de parceiro
+ * cai no painel de parceiros, que é outro lugar e onde esse menu não existe.
+ * Lá se criam apps públicos, que dão client ID e secret; a chave `shpat_` só
+ * sai do admin da loja.
+ */
+export function caminhoDaChaveDeAcesso(loja: string): string {
+  const nome = String(loja ?? "").trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/\.myshopify\.com$/, "");
+  return nome ? `https://admin.shopify.com/store/${nome}/settings/apps/development` : "";
+}

@@ -16,6 +16,8 @@ import {
   placarDasArtes, podeGerar, podePedirAlteracao, urlsAprovadas, type ArteDaLoja,
 } from "@/lib/artes-da-loja";
 import { comporBanner } from "@/lib/banner-compor";
+import { InstalarNaLoja } from "@/app/InstalarNaLoja";
+import { ARTE_DA_DOBRA_COM_FRASE } from "@/lib/shopify-brand";
 import {
   PONTO_INICIAL, ROTULO_DO_PROJETO, estadoDoProjeto, passoRestauravel, pontoLido, type EstadoDoProjeto,
 } from "@/lib/estado-do-projeto";
@@ -169,7 +171,7 @@ function encerrarLojaEntregue(ponto: { estado: string; nicheId: string }) {
   } catch { /* sem armazenamento local não há o que apagar */ }
 }
 
-export function ClientFlow({ onExit }: { onExit: () => void }) {
+export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void; dominioShopify?: string }) {
   /**
    * O PONTO DE PARADA, restaurado.
    *
@@ -230,6 +232,12 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   const [status, setStatus] = useState<Status>("idle");
   const [erro, setErro] = useState<string | null>(null);
   const [zip, setZip] = useState<{ blob: Blob; name: string } | null>(null);
+  /* o id do projeto entregue: é por ele que a instalação sabe QUAL loja subir,
+     e ele já vinha no cabeçalho da entrega — só não tinha quem o guardasse */
+  const [projetoEntregue, setProjetoEntregue] = useState("");
+  /* o que a instalação direta pôs na loja: é o que faz as instruções da tela
+     falarem do que FALTA, em vez de repetir o caminho manual inteiro */
+  const [instalado, setInstalado] = useState<{ temaInstalado: boolean; loja: string } | null>(null);
   /* o pacote passou do teto da Shopify: aviso, não erro. O ZIP existe e serve. */
   const [avisoDeTamanho, setAvisoDeTamanho] = useState("");
   /* como a loja é conferida na revisão, e a confirmação de finalizar */
@@ -661,10 +669,20 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
         const fontes = { titulo: marca.headingFont || undefined, corpo: marca.bodyFont || undefined };
         for (const chave of comBanner) {
           try {
-            /* SEM texto: o dono pediu banner sem frase nenhuma. O que a
-               composição faz aqui é o corte exato de cada formato a partir da
-               MESMA foto, que é o que o tema não sabe fazer sozinho. */
-            const texto = { titulo: "" };
+            /**
+             * A PRIMEIRA dobra é a foto e mais nada; a SEGUNDA leva a frase.
+             *
+             * É a mesma divisão que o tema já seguia — só que a frase deixa de
+             * ser campo de texto do tema e passa a ser ASSADA na arte, com véu
+             * medido e tipografia de verdade. O dono viu o texto digitado por
+             * cima da foto e pediu assim: "o texto seja na imagem".
+             *
+             * A frase é o SLOGAN, o mesmo que ele aprovou na etapa da marca e
+             * pode trocar por lá — nunca uma frase inventada aqui, e nunca
+             * escrita pelo gerador de imagem, que erra letra e acento.
+             */
+            const levaAFrase = chave === ARTE_DA_DOBRA_COM_FRASE;
+            const texto = { titulo: levaAFrase ? (marca.slogan ?? "").trim() : "" };
             const largo = await comporBanner(prontas[chave], texto, cores, "desktop", fontes);
             const alto = await comporBanner(prontas[chave], texto, cores, "mobile", fontes);
             prontas[chave] = await subir(largo, chave, "image/jpeg");
@@ -788,6 +806,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
       const nome = resposta.headers.get("x-site-name") ?? "minha-marca";
       const pacote = { blob, name: nome };
       setZip(pacote);
+      setProjetoEntregue(resposta.headers.get("x-project-id") ?? "");
       /* a Shopify recusa tema acima de 50 MB, e ela recusa LÁ, na hora de
          subir. Saber aqui é a diferença entre um aviso e uma tarde perdida */
       const grande = resposta.headers.get("x-theme-too-large");
@@ -815,7 +834,7 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
   function recomecar() {
     setPasso(0); setPassoMaisLonge(0); setModo(null); setNicheId(""); setGerada(false);
     setMarca(MARCA_VAZIA); setEditadoAMao({});
-    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setZip(null); setAvisoDeTamanho(""); setDispositivo("desktop"); setConfirmando(false);
+    setTemplateId(SITE_TEMPLATES[0].id); setStatus("idle"); setErro(null); setZip(null); setProjetoEntregue(""); setInstalado(null); setAvisoDeTamanho(""); setDispositivo("desktop"); setConfirmando(false);
     /* recomeçar é recomeçar: o cofre da marca antiga sai junto, senão a loja
        seguinte herdaria a logo de uma marca que não existe mais — e o ponto de
        parada também, senão a próxima abertura voltaria para a loja recomeçada */
@@ -849,18 +868,63 @@ export function ClientFlow({ onExit }: { onExit: () => void }) {
           {/* aviso, não erro: o pacote existe e serve, mas a Shopify vai
               recusá-lo por tamanho, e ela recusa lá na frente sem dizer por quê */}
           {avisoDeTamanho && <p className="cf-aviso-tamanho"><CircleAlert size={14} /> {avisoDeTamanho}</p>}
-          <p>
-            O ZIP é o tema Shopify completo. Clique em <b>Baixar o ZIP</b> e ele vai para a sua
-            pasta de downloads. Depois suba em{" "}
-            <b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo ZIP</b> e clique em
-            Publicar.
-          </p>
-          {/* a prévia local e as imagens para subir em Conteúdo → Arquivos vão
-              DENTRO do ZIP: dizer onde evita a pergunta de sempre */}
-          <p className="cf-painel-nota">
-            Dentro do ZIP, a pasta <b>previa-local</b> tem a loja para olhar aqui e as imagens para
-            subir em Conteúdo → Arquivos.
-          </p>
+          {/**
+            * O QUE FALTA, e só o que falta.
+            *
+            * Estas linhas ensinavam o caminho manual inteiro, sempre. Depois de
+            * a instalação direta existir, elas passaram a mentir: mandavam
+            * enviar em Conteúdo → Arquivos as mesmas imagens que já tinham
+            * entrado, e subir um tema que, com o túnel de pé, já está lá.
+            *
+            * Instrução que contradiz o que acabou de acontecer é pior que
+            * instrução nenhuma: faz a pessoa desconfiar do que ela viu na tela.
+            */}
+          {instalado ? (
+            <>
+              <p>
+                A sua loja já está montada em <b>{instalado.loja}</b>: coleções, produtos e imagens
+                entraram por aqui.
+              </p>
+              {instalado.temaInstalado ? (
+                <p className="cf-painel-nota">
+                  O tema entrou <b>sem publicar</b>. Confira em Loja online → Temas e publique quando
+                  quiser trocar a loja no ar.
+                </p>
+              ) : (
+                <p className="cf-painel-nota">
+                  Falta só o tema: clique em <b>Baixar o ZIP</b> e suba em{" "}
+                  <b>Loja online → Temas → Adicionar tema</b>.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p>
+                O ZIP é o tema Shopify completo. Clique em <b>Baixar o ZIP</b> e ele vai para a sua
+                pasta de downloads. Depois suba em{" "}
+                <b>Shopify → Loja online → Temas → Adicionar tema → Enviar arquivo ZIP</b> e clique em
+                Publicar.
+              </p>
+              {/* a prévia local e as imagens para subir em Conteúdo → Arquivos vão
+                  DENTRO do ZIP: dizer onde evita a pergunta de sempre */}
+              <p className="cf-painel-nota">
+                Dentro do ZIP, a pasta <b>previa-local</b> tem a loja para olhar aqui e as imagens para
+                subir em Conteúdo → Arquivos.
+              </p>
+            </>
+          )}
+          {/**
+            * INSTALAR direto na loja, quando dá.
+            *
+            * Só aparece com um projeto entregue na mão: sem ele não há o que
+            * instalar, e um painel pedindo chave de acesso sem ter o que fazer
+            * com ela é pedir permissão por pedir.
+            *
+            * Fica ACIMA dos botões e não no lugar deles — o ZIP continua sendo
+            * a saída que funciona sempre, e quem preferir subir à mão não tem
+            * de recusar nada para chegar nele.
+            */}
+          {projetoEntregue && <InstalarNaLoja projectId={projetoEntregue} dominioInicial={dominioShopify} onInstalado={setInstalado} />}
           <div className="cf-actions">
             {/**
               * Baixou, acabou: o fluxo volta ao começo.

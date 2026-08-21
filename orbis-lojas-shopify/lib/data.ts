@@ -145,6 +145,29 @@ const schemaStatements = [
     idempotency_key TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
+  /**
+   * A CONEXÃO com a loja do cliente, viva só entre a ida e a volta do OAuth.
+   *
+   * O `estado` é a chave, e é ele que atravessa o passeio: sorteado na ida,
+   * conferido na volta, usado uma vez para instalar e apagado em seguida. Nada
+   * aqui é histórico; é uma linha de recado entre duas requisições.
+   *
+   * O token fica gravado por SEGUNDOS, o tempo entre o cliente aprovar e a
+   * instalação terminar. Guardar token de escrita da loja de alguém por mais
+   * tempo é assumir a responsabilidade de protegê-lo — e aí entram cifra,
+   * rotação e o webhook de desinstalação. Enquanto ele não sobrevive à
+   * instalação, nada disso é preciso.
+   */
+  `CREATE TABLE IF NOT EXISTS shopify_conexoes (
+    estado TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    loja TEXT NOT NULL,
+    token TEXT,
+    escopos TEXT,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
   `CREATE TRIGGER IF NOT EXISTS validate_payment_before_insert
     BEFORE INSERT ON payments
     WHEN NEW.tokens != (SELECT tokens FROM token_packages WHERE id = NEW.package_id)

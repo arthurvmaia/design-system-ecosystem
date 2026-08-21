@@ -1,16 +1,15 @@
-import { env } from "cloudflare:workers";
-import { strToU8, zipSync, unzipSync } from "fflate";
+import { strToU8, zipSync } from "fflate";
 import { z } from "zod";
 import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1, saveProject, unlockTheme } from "@/lib/data";
 import { brandCustomization, generateClientSite, sanitizeBrand } from "@/lib/site-generator.mjs";
 import { gerarMarca, logoDaMarca } from "@/lib/marca-generator.mjs";
 import { aplicarMarcaNoTema, handleDeColecao } from "@/lib/shopify-brand";
-import { ARQUIVO_DA_LOJA, marcadorDaLoja, themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
-import { collectEditorMediaIds, exportThemeZip, type EditorMediaFile } from "@/lib/theme-export";
+import { ARQUIVO_DA_LOJA, marcadorDaLoja, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { pecasDaMarca } from "@/lib/marca-imagens";
 import { csvDeProdutos } from "@/lib/catalogo-csv";
 import { kitDeLogo } from "@/lib/kit-de-logo";
+import { montarTemaShopify } from "@/lib/pacote-da-loja";
 
 /**
  * Solicitação de loja do Fluxo Cliente.
@@ -94,45 +93,6 @@ const requestSchema = z.object({
   imagensGeradas: z.array(z.string().max(40)).max(40).optional(),
 });
 
-/**
- * O tema Shopify completo, com a marca já gravada nos settings.
- *
- * Reaproveita o ZIP original preservado no R2 e o mesmo exportador da área do
- * estúdio, então o pacote sai com layout, templates, seções, snippets, assets e
- * locales — tudo que a Shopify exige para aceitar o upload. Sem o ZIP de origem
- * (tema antigo, importado antes da preservação) devolve nulo, e a entrega segue
- * só com a prévia local em vez de quebrar.
- */
-async function montarTemaShopify(viewerId: string, tema: ShopifyThemeImport): Promise<Record<string, Uint8Array> | null> {
-  if (!env.MEDIA || !/^[0-9a-f]{16}$/.test(tema.sourceFingerprint)) return null;
-  const objeto = await env.MEDIA.get(`themes/${viewerId}/${tema.sourceFingerprint}.zip`);
-  if (!objeto) return null;
-  const originais = themeFilesFromZip(new Uint8Array(await objeto.arrayBuffer()));
-  /* as imagens enviadas pelo cliente e as geradas viram `/api/media/<id>` nos
-     settings; sem carregá-las aqui, o ZIP sairia apontando para um endereço
-     que não existe fora deste computador, e a loja subiria sem banner */
-  const midias = await carregarMidias(viewerId, tema);
-  const { zip } = exportThemeZip(tema, originais, midias);
-  return unzipSync(zip) as Record<string, Uint8Array>;
-}
-
-/** Busca no D1 + R2 as imagens que o tema referencia, para virarem assets. */
-async function carregarMidias(viewerId: string, tema: ShopifyThemeImport) {
-  const midias = new Map<string, EditorMediaFile>();
-  const ids = collectEditorMediaIds(tema).slice(0, 60);
-  if (!ids.length || !env.MEDIA) return midias;
-  const marcadores = ids.map(() => "?").join(", ");
-  const linhas = await getD1()
-    .prepare(`SELECT id, storage_key AS storageKey, filename FROM media_files WHERE user_id = ? AND id IN (${marcadores})`)
-    .bind(viewerId, ...ids)
-    .all<{ id: string; storageKey: string; filename: string }>();
-  for (const linha of linhas.results ?? []) {
-    const arquivo = await env.MEDIA.get(linha.storageKey);
-    if (!arquivo) continue;
-    midias.set(linha.id, { filename: `orbis-${linha.id.slice(0, 8)}-${linha.filename}`, data: new Uint8Array(await arquivo.arrayBuffer()) });
-  }
-  return midias;
-}
 
 /** O tema escolhido só entra se estiver publicado — a lista da tela é a mesma. */
 async function temaPublicado(themeId: string) {

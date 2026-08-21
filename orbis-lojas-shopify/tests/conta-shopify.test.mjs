@@ -36,9 +36,24 @@ test("o cliente passa pela conta Shopify ANTES de criar, e a unica saida passa p
    * que a Shopify foi aberta.
    */
   assert.doesNotMatch(tela, /Já tenho conta/, "o atalho que pulava o link não pode voltar");
-  const liberado = tela.match(/\{abriu \?[\s\S]*?\)\}/);
-  assert.ok(liberado, "o seguir precisa depender de ter aberto a Shopify");
-  assert.match(liberado[0], /onClick=\{onSeguir\}/, "o seguir mora no ramo de depois do clique");
+  /**
+   * O ramo de "depois do clique", recortado por POSIÇÃO e não por expressão.
+   *
+   * A versão anterior pegava de `{abriu ?` até o primeiro `)}` — e isso valia
+   * enquanto não houvesse nenhum outro `)}` no meio. Bastou o ramo ganhar um
+   * campo com `onChange={(e) => algo(e)}` para a janela fechar antes da linha
+   * que o teste queria ver, e o teste passou a reprovar código correto.
+   */
+  const abre = tela.indexOf("{abriu ? (");
+  const fecha = tela.indexOf("{SEM_LINK_DE_INDICACAO");
+  assert.ok(abre > 0 && fecha > abre, "o seguir precisa depender de ter aberto a Shopify");
+  const liberado = [tela.slice(abre, fecha)];
+  /* o seguir leva o ENDEREÇO da loja junto: ele é perguntado aqui, no único
+     momento em que está fresco na cabeça de quem acabou de escolhê-lo */
+  assert.match(liberado[0], /onClick=\{\(\) => onSeguir\(dominio\.trim\(\)\)\}/, "o seguir mora no ramo de depois do clique");
+  assert.match(liberado[0], /conta-shopify-endereco/, "o campo do endereço mora no mesmo ramo");
+  /* e ele é OPCIONAL: quem ainda não terminou o cadastro não pode ficar preso */
+  assert.doesNotMatch(liberado[0], /disabled=\{!dominio/, "o endereço não pode travar a saída");
   assert.match(tela, /onClick=\{\(\) => setAbriu\(true\)\}/, "abrir o link é o que libera");
 
   /* e a tela não presume o que não viu: ela sabe que a aba abriu, não que a

@@ -107,6 +107,9 @@ const navItems = [
 
 export function AppShell({ identity }: { identity: Identity }) {
   const [flow, setFlow] = useState<"client" | "client-criar" | "admin" | null>(null);
+  /* o endereço da loja atravessa o fluxo desde o portão: é lá que ele está
+     fresco na cabeça de quem acabou de escolhê-lo */
+  const [dominioShopify, setDominioShopify] = useState("");
   const [tab, setTab] = useState<Tab>("home");
   const [data, setData] = useState<BootstrapData | null>(null);
   const [loading, setLoading] = useState(Boolean(identity));
@@ -187,8 +190,8 @@ export function AppShell({ identity }: { identity: Identity }) {
   /* o cliente passa pela conta da Shopify ANTES de criar: sem ela o arquivo
      que ele recebe no fim não tem onde ser aberto, e descobrir isso depois de
      escolher marca, cores e produtos é descobrir tarde demais */
-  if (flow === "client") return <ContaShopify onSeguir={() => setFlow("client-criar")} onVoltar={() => setFlow(null)} />;
-  if (flow === "client-criar") return <ClientFlow onExit={() => setFlow(null)} />;
+  if (flow === "client") return <ContaShopify onSeguir={(dominio) => { setDominioShopify(dominio); setFlow("client-criar"); }} onVoltar={() => setFlow(null)} />;
+  if (flow === "client-criar") return <ClientFlow onExit={() => setFlow(null)} dominioShopify={dominioShopify} />;
 
   const selectedProject = data?.projects.find((project) => project.id === selectedProjectId) ?? data?.projects[0] ?? null;
 
