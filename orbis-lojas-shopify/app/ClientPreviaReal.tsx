@@ -31,6 +31,38 @@ export type Dispositivo = keyof typeof LARGURAS;
 const ALTURA_INICIAL = 900;
 const ALTURA_MAXIMA = 24000;
 
+/**
+ * A altura da LOJA, e não a da moldura que mostra a loja.
+ *
+ * Ler `documentElement.scrollHeight` era uma catraca: o elemento raiz cobre a
+ * janela do quadro, então a medida nunca desce abaixo da altura que o quadro
+ * JÁ tem. Ela sobe e não volta. Trocar o tema por um mais curto — medido aqui,
+ * de 4000 para 1200px — deixava o quadro nos 4000 para sempre, e os 2800px de
+ * diferença viravam branco vagando no fim da prévia.
+ *
+ * Duas correções, e as duas são necessárias:
+ *
+ * 1. Encolher o quadro ANTES de ler. A leitura e a devolução acontecem na
+ *    mesma tarefa do JavaScript, e o navegador não pinta estado intermediário:
+ *    não pisca, e nem o tema percebe (observador de tamanho só é notificado no
+ *    fim do quadro, quando a altura já voltou).
+ * 2. Ler o CORPO e não a raiz: `body` tem altura de conteúdo, `documentElement`
+ *    tem altura de janela.
+ *
+ * E o piso de 900 volta a ser o que o nome dele promete — o valor de ENQUANTO
+ * não se mede. Aplicado sobre uma medida real, era ele próprio que fabricava
+ * branco em toda loja mais curta que isso.
+ */
+function medirLoja(quadro: HTMLIFrameElement | null): number {
+  const corpo = quadro?.contentDocument?.body;
+  if (!quadro || !corpo) return ALTURA_INICIAL;
+  const antes = quadro.style.height;
+  quadro.style.height = `${ALTURA_INICIAL}px`;
+  const medida = Math.max(corpo.scrollHeight, corpo.offsetHeight);
+  quadro.style.height = antes;
+  return medida ? Math.min(ALTURA_MAXIMA, medida) : ALTURA_INICIAL;
+}
+
 export function ClientPreviaReal({
   themeId,
   marca,
@@ -106,12 +138,10 @@ export function ClientPreviaReal({
        * quadro é inerte de propósito. Quem ia revisar a loja via o cabeçalho e
        * o banner, e aprovava o resto no escuro.
        *
-       * Medindo o documento e crescendo o quadro até ele, a rolagem volta a ser
-       * a da página, que funciona.
+       * Medindo a loja e crescendo o quadro até ela (`medirLoja`), a rolagem
+       * volta a ser a da página, que funciona.
        */
-      const dentro = moldura.current?.contentDocument?.documentElement;
-      const medida = Math.max(dentro?.scrollHeight ?? 0, dentro?.offsetHeight ?? 0);
-      const alta = medida ? Math.min(ALTURA_MAXIMA, Math.max(ALTURA_INICIAL, medida)) : ALTURA_INICIAL;
+      const alta = medirLoja(moldura.current);
       setAlturaBase(alta);
       setQuadro({ escala, altura: Math.round(alta * escala) });
     };

@@ -197,7 +197,16 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .section-list { display: grid; padding: 0 7px; }.section-list button { height: 36px; display: grid; grid-template-columns: 22px 16px 1fr 16px; align-items: center; gap: 5px; padding: 0 7px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; text-align: left; font-size: 10px; }.section-list button span { color: var(--muted-2); font: 500 8px var(--font-geist-mono); }.section-list button b { font-weight: 500; }.section-list button.selected { background: rgba(0, 126, 168,.1); color: var(--green-bright); }
 .add-section { width: calc(100% - 24px); height: 34px; display: flex; align-items: center; justify-content: center; gap: 7px; margin: 12px; border: 1px dashed #294043; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
 .preview-stage { min-width: 0; min-height: 0; display: grid; place-items: start center; overflow: auto; padding: 24px; background: radial-gradient(circle at center, rgba(0, 126, 168,.05), transparent 40%), #0a1010; scrollbar-width: thin; scrollbar-color: #243535 transparent; }
-.preview-frame { min-height: 100%; overflow: hidden; border: 1px solid #223131; border-radius: 5px; background: white; box-shadow: 0 25px 80px rgba(0,0,0,.35); transition: width .25s; }.preview-desktop { width: min(100%, 1040px); }.preview-tablet { width: min(100%, 720px); }.preview-mobile { width: min(100%, 390px); }
+.preview-frame { min-height: 100%; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #223131; border-radius: 5px; background: white; box-shadow: 0 25px 80px rgba(0,0,0,.35); transition: width .25s; }.preview-desktop { width: min(100%, 1040px); }.preview-tablet { width: min(100%, 720px); }.preview-mobile { width: min(100%, 390px); }
+/* A moldura ESTICA até o palco (`min-height: 100%`); quem mora dentro dela
+   precisa esticar junto. Sem isso o quadro parava na altura mínima dele
+   (640px) e o resto da moldura ficava BRANCO — uma faixa morta no fim, que
+   não mostra nada e não dá para usar, com a loja cortada no meio logo acima.
+   `height: 100%` não resolvia: porcentagem de altura contra pai de altura
+   auto vira auto, e o pai aqui só tem min-height. Flex resolve.
+   `1 0 auto` e não `1`: a vitrine simulada é mais alta que a moldura e, com
+   base zero, ela seria espremida e cortada pelo overflow. */
+.preview-frame > .live-render-wrap, .preview-frame > .storefront { flex: 1 0 auto; }
 .property-group { border-bottom: 1px solid var(--line); }.property-group summary { height: 43px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; color: #b8c5c5; cursor: pointer; list-style: none; font-size: 10px; }.property-group summary::-webkit-details-marker { display: none; }.property-group summary > span { display: flex; align-items: center; gap: 8px; }.property-group summary > svg { transition: transform .2s; }.property-group[open] summary > svg { transform: rotate(90deg); }
 .property-content { display: grid; gap: 13px; padding: 0 14px 16px; }
 .toggle-field { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #a8b7b7; font-size: 9px; cursor: pointer; }.toggle-field input { position: absolute; opacity: 0; pointer-events: none; }.toggle-field i { position: relative; width: 32px; height: 18px; flex: 0 0 auto; border: 1px solid #2a4141; border-radius: 999px; background: #070f10; transition: background .2s, border-color .2s; }.toggle-field i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%; background: #667777; transition: transform .2s, background .2s; }.toggle-field input:checked + i { border-color: var(--green); background: rgba(0, 126, 168,.18); }.toggle-field input:checked + i::after { transform: translateX(14px); background: var(--green-bright); }.repeater-card { display: grid; gap: 10px; padding: 12px; border: 1px solid #1f3030; border-radius: 8px; background: #061010; }.repeater-card > b { color: var(--green-bright); font: 600 8px var(--font-geist-mono); letter-spacing: .12em; text-transform: uppercase; }
@@ -697,7 +706,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
    o X da gaveta do carrinho e atrapalhava mexer no tema. */
 .live-render-wrap { padding-top: 18px; }
 .live-render-badge { position: absolute; top: 0; left: 0; right: 0; z-index: 3; height: 18px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-bottom: 1px solid rgba(34,211,238,.25); background: #041014; color: var(--green-bright); font: 700 7px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .18em; pointer-events: none; }
-.live-render-loading { min-height: 640px; display: grid; place-content: center; background: #050c10; color: var(--green-bright); font: 700 9px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .25em; animation: pulse 1.4s infinite; }
+.live-render-loading { flex: 1 0 auto; min-height: 640px; display: grid; place-content: center; background: #050c10; color: var(--green-bright); font: 700 9px var(--font-orbitron), var(--font-geist-mono); letter-spacing: .25em; animation: pulse 1.4s infinite; }
 .modal-preview .live-render-wrap, .modal-preview .live-render-frame { min-height: min(58vh, 640px); }
 
 
@@ -943,6 +952,55 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .cf-painel { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line-soft); background: var(--panel-2); }
 .cf-painel.cf-row { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .cf-painel-nota { color: var(--muted); font-size: 12px; line-height: 1.55; }
+
+/* --- instalar direto na Shopify do cliente --- */
+/* O painel vive ao LADO do download, nunca no lugar dele: o ZIP é a saída que
+   funciona sempre, e quem preferir subir à mão não tem de recusar nada. */
+.instalar-loja { display: grid; gap: 12px; width: min(560px, 100%); margin: 22px 0 6px; padding: 18px; border: 1px solid var(--line); background: #050c0c; text-align: left; }
+.instalar-loja h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; }
+.instalar-nota { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.instalar-nota b { color: #cbd7d7; }
+/* o caminho até a chave, numerado: dizer o menu não bastou, porque quem tem
+   conta de parceiro cai no painel de parceiros, que é outro lugar */
+.instalar-passos { display: grid; gap: 6px; margin: 0; padding-left: 18px; list-style: decimal; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.instalar-passos li::marker { color: var(--green-bright); font-weight: 700; }
+.instalar-passos b { color: #cbd7d7; }
+.instalar-passos a { display: inline-flex; align-items: center; gap: 4px; color: var(--green-bright); }
+.instalar-passos code { padding: 1px 5px; border: 1px solid var(--line); background: var(--panel); color: #cbd7d7; font: 600 10px var(--font-geist-mono); }
+.instalar-atencao { display: flex; align-items: flex-start; gap: 7px; color: #ebcd91; }
+.instalar-atencao svg { flex: none; margin-top: 2px; }
+.instalar-campo { display: grid; gap: 5px; }
+.instalar-campo > span { color: var(--muted); font: 650 9px var(--font-geist-mono); letter-spacing: .12em; text-transform: uppercase; }
+.instalar-campo > div { display: flex; align-items: center; border: 1px solid var(--line); background: var(--panel); }
+.instalar-campo > div input { flex: 1; min-width: 0; border: 0; background: transparent; }
+.instalar-campo > div b { padding: 0 10px; color: var(--muted); font: 600 11px var(--font-geist-mono); }
+.instalar-campo input { height: 38px; padding: 0 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 12px; }
+.instalar-campo > div input { border: 0; }
+.instalar-campo em { color: #637676; font-size: 10px; font-style: normal; }
+.instalar-confere { display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(34,174,212,.28); background: rgba(0,126,168,.07); }
+.instalar-confere p { margin: 0; font-size: 12px; line-height: 1.6; }
+.instalar-erro, .instalar-aviso { display: flex; align-items: flex-start; gap: 7px; margin: 0; font-size: 11px; line-height: 1.5; }
+.instalar-erro { color: #ffc0ba; }
+.instalar-aviso { color: #ebcd91; }
+.instalar-erro svg, .instalar-aviso svg { flex: none; margin-top: 2px; }
+/* o placar conta o que entrou E o que não entrou: relatório que só mostra
+   acerto é propaganda, e quem instalou precisa saber o que ficou faltando */
+.instalar-placar { display: flex; flex-wrap: wrap; gap: 18px; margin: 0; padding: 0; list-style: none; }
+.instalar-placar li { display: flex; align-items: baseline; gap: 6px; color: var(--muted); font-size: 11px; }
+.instalar-placar b { color: var(--green-bright); font: 700 18px var(--font-geist-mono); }
+.instalar-placar .instalar-pendente b { color: #ebcd91; }
+.instalar-link { display: inline-flex; align-items: center; gap: 6px; color: var(--green-bright); font-size: 12px; text-decoration: none; }
+.instalar-feito { border-color: rgba(34,174,212,.35); }
+.girando { animation: spin 1s linear infinite; }
+
+/* o endereço da loja, perguntado no portão: campo com o sufixo colado, para
+   ninguém digitar ".myshopify.com" de novo nem esquecer dele */
+.conta-shopify-endereco { display: grid; gap: 5px; width: min(320px, 100%); margin: 4px auto 0; text-align: left; }
+.conta-shopify-endereco > span { color: var(--muted); font-size: 11px; }
+.conta-shopify-endereco > div { display: flex; align-items: center; border: 1px solid #1b3a3a; background: rgba(2,10,10,.6); }
+.conta-shopify-endereco input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 0; background: transparent; color: var(--ink); font-size: 12px; }
+.conta-shopify-endereco b { padding: 0 10px; color: #637676; font: 600 11px var(--font-geist-mono); }
+.conta-shopify-endereco em { color: #637676; font-size: 10px; font-style: normal; }
 .cf-painel-logo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .cf-painel-logo img { width: 60px; height: 60px; object-fit: contain; border: 1px solid var(--line); background: #fff; }
 .cf-painel-logo > span:not(.secondary-button) { color: var(--muted); font-size: 12px; line-height: 1.5; flex: 1; min-width: 180px; }
