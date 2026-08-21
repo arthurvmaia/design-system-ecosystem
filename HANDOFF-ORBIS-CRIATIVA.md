@@ -291,13 +291,7 @@ M12 é a régua que passou a cobrar isso.
 
 A lista inteira que estava aqui foi feita. O que ficou:
 
-1. **Metade da régua da marca ainda vale pela palavra do produtor.** O portão
-   passou a refazer a medida das peças (cabeçalho do arquivo) e a existência das
-   capas de coleção, e onde o disco responde ele vence a folha. Mas M2, M3 e M5 —
-   transparência, silhueta e contraste — continuam saindo do que a folha diz:
-   refazê-las exige decodificar pixel, e `@ds/shared` não abre navegador. Está
-   declarado em `docs/regras-de-aceite.md`; não está resolvido.
-2. **A frente de Lojas continua com o espelho do recorte** (`pnpm marca:espelhar`),
+1. **A frente de Lojas continua com o espelho do recorte** (`pnpm marca:espelhar`),
    e a decisão de trazê-la para o workspace segue aberta — é a quarta da lista
    abaixo. O espelho está **em dia** (conferido em 21/08/2026).
 
@@ -323,6 +317,13 @@ créditos, saldo conferido antes e depois (6585 → 6510).
 still de objeto. A luz, o azul e o consultório são os mesmos, então elas leem
 como conjunto — mas é a única sem pessoa, e trocar isso custa 75.
 
+A régua da marca **deixou de valer pela palavra do produtor**. O portão refaz o
+que dá sem navegador (medida do arquivo, existência das capas) e o
+`fila:concluir` abre o navegador e refaz o resto (M1..M6): alfa, silhueta e
+contraste passaram a ser medidos por quem não produziu a marca. Só a divergência
+acusa — refeita reprova e folha diz `passou` —, e sem navegador a conferência é
+pulada dizendo que foi pulada.
+
 ### O estado da verificação, medido em 21/08/2026
 
 ```
@@ -330,7 +331,7 @@ pnpm lint          limpo
 pnpm typecheck     limpo
 pnpm test          2000 passam, 1 falha
 pnpm medir-fidelidade --falhar-se-piorar   passa (849 bundles, 57 sites)
-pnpm audit         nenhuma vulnerabilidade conhecida
+pnpm audit         nenhuma vulnerabilidade conhecida (eram 11, sendo 3 altas)
 pnpm marca:espelhar --seco                 em dia
 ```
 

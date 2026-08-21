@@ -733,12 +733,18 @@ conferia o que o produtor DISSE, não o que o produto É: doze `passou` digitado
 à mão passavam inteiros, e — o caso realista — um comando com defeito que
 gravasse `passou` numa regra que não chegou a avaliar passava igual.
 
-Nem toda regra dá para refazer ali: alfa, contraste e silhueta precisam
-decodificar pixel, e o pacote de contratos não abre navegador. Duas dão, e são
-baratas: a MEDIDA de cada peça (cabeçalho do PNG) e a EXISTÊNCIA da capa de cada
-coleção. Onde o disco responde, ele vence a folha — e quando os dois discordam,
-a contradição é dita por extenso, porque uma folha que jurou o que o disco nega
-desqualifica o resto dela.
+Duas perguntas o próprio portão refaz, porque são baratas: a MEDIDA de cada peça
+(cabeçalho do PNG) e a EXISTÊNCIA da capa de cada coleção. Onde o disco responde,
+ele vence a folha — e quando os dois discordam, a contradição é dita por extenso,
+porque uma folha que jurou o que o disco nega desqualifica o resto dela.
+
+O resto — alfa, silhueta, contraste — precisa decodificar pixel, e o pacote de
+contratos não abre navegador. Quem refaz essas é o `pnpm fila:concluir`, logo
+antes de fechar: ele abre o navegador, MEDE os arquivos de novo e roda M1..M6 por
+quem não produziu a marca. Só a divergência acusa (refeita REPROVA e a folha diz
+`passou`); refeita `pendente` cala, porque não medir não é acusar. Sem navegador
+a conferência é pulada, e ela DIZ que foi pulada — trocar "não consegui medir"
+por um verde seria o defeito que tudo isto existe para evitar.
 
 O teto é o do RETRATO do pedido, gravado antes da fila — mais o que o dono
 liberou depois, que vive no razão com data e motivo (`pnpm criativo:razao teto`).
