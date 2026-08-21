@@ -23,15 +23,18 @@ aparecer de lá vai para a §7 e espera; não vira "a próxima coisa".
 
 O que está aberto AQUI, em ordem:
 
-1. **`problemasDaEntregaDeMarca` não confere a marca CONTRA a régua.** Ele exige
-   que a folha esteja completa e sem reprovação, mas quem escreve a folha é o
-   próprio comando que produziu a marca. Um `resultado.json` forjado à mão
-   passaria pelo portão. É o furo mais sério que sobrou nesta frente: o portão
-   confere o que o produtor disse, não o que o produto é.
-2. **As quatro decisões do dono**, na §5 — vídeo, exposição, teto de rodada,
+1. **As quatro decisões do dono**, na §5 — vídeo, exposição, teto de rodada,
    Lojas no workspace.
-3. **57 commits no `orbis-criativa` e nada na `main`.** Toda esta frente vive num
+2. **58 commits no `orbis-criativa` e nada na `main`.** Toda esta frente vive num
    branch só.
+
+O portão da entrega **foi consertado**: ele parou de acreditar na folha nas
+perguntas que consegue medir sozinho (a medida de cada peça, contra o cabeçalho
+do arquivo; e a existência da capa de cada coleção). Onde o disco responde, ele
+vence a folha. O que continua fora do alcance dele — alfa, contraste, silhueta —
+precisa decodificar pixel, e o pacote de contratos não abre navegador: essas
+regras seguem valendo pelo que a folha diz, e a limitação está escrita em
+`docs/regras-de-aceite.md` em vez de implícita.
 
 ### Um detalhe de máquina que morde
 
