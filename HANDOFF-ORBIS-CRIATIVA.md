@@ -304,26 +304,24 @@ A lista inteira que estava aqui foi feita. O que ficou:
    e a decisão de trazê-la para o workspace segue aberta — é a quarta da lista
    abaixo.
 
-### Uma decisão de 75 créditos, esperando
+### O prompt que manda RETRATAR a categoria, provado com 75 créditos
 
-A capa de **Estética** do Sorriso Vivo não retrata a categoria: voltou uma
-pessoa sentada a uma mesa, sem nenhuma pista de odontologia. As outras três
-acertaram. A causa está corrigida — o prompt agora manda RETRATAR a categoria em
-vez de só citá-la —, mas refazer aquela capa é geração nova: **75 créditos**, e
-o teto do job está em `resta 0`.
+A capa de **Estética** do Sorriso Vivo voltou uma pessoa sentada a uma mesa, sem
+nenhuma pista de odontologia. As outras três acertaram — e acertaram pela
+palavra, não pelo prompt: "Odontopediatria" já sugere a criança na cadeira,
+"Estética" sozinha sugere uma pessoa bonita.
 
-Não gastei. `pnpm criativo:razao teto job_01MARCAPROVA0000000000001 75 "<motivo>"`
-libera, e aí:
+O prompt dizia `for the "X" category cover`, que é metadado. Em lugar nenhum o
+modelo era mandado RETRATAR a categoria. A frase nova exige que a atividade, a
+ferramenta ou o resultado esteja no quadro, e recusa retrato genérico.
 
-```powershell
-pnpm marca:colecoes job_01MARCAPROVA0000000000001 --prompts   # o prompt novo
-# gerar, baixar para colecoes/originais/estetica.<ext>, debitar
-pnpm marca:colecoes job_01MARCAPROVA0000000000001 --montar
-pnpm marca:apresentar job_01MARCAPROVA0000000000001
-pnpm marca:entregar   job_01MARCAPROVA0000000000001 --para "$env:USERPROFILE\Desktop"
-```
+Refeita com o prompt corrigido, a mesma categoria voltou moldeira de clareamento
+e seringa de gel sobre a bandeja, com a cadeira azul ao fundo. Uma geração, 75
+créditos, saldo conferido antes e depois (6585 → 6510).
 
-Recortar, reapresentar e reentregar não gastam nada — o crédito é só da geração.
+**O que ficou para o olho do dono:** as outras três capas têm gente e esta é um
+still de objeto. A luz, o azul e o consultório são os mesmos, então elas leem
+como conjunto — mas é a única sem pessoa, e trocar isso custa 75.
 
 ### Decisões do dono
 
