@@ -53,6 +53,27 @@ export const arquivoDaColecao = (nome: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')}.png`;
 
+/** O nome sem extensão: a parte que identifica a coleção em qualquer arquivo. */
+export const slugDaColecao = (nome: string): string => arquivoDaColecao(nome).replace(/\.png$/, '');
+
+/**
+ * O ORIGINAL baixado, seja qual for a extensão que o provedor mandou.
+ *
+ * A saída é sempre `.png` porque a máscara redonda precisa de alfa; a ENTRADA
+ * não é nossa. Medido no primeiro lote: pedi 2k e o provedor devolveu um JPEG
+ * de 1024. Procurar só por `.png` fazia o comando dizer "faltam as imagens
+ * geradas" com as quatro imagens em disco, ao lado — e a saída seria gerar de
+ * novo o que já estava pago.
+ */
+export const acharOriginalDaColecao = (dir: string, nome: string): string | null => {
+  const slug = slugDaColecao(nome);
+  for (const ext of ['png', 'jpg', 'jpeg', 'webp', 'avif']) {
+    const caminho = join(dir, `${slug}.${ext}`);
+    if (existsSync(caminho)) return caminho;
+  }
+  return null;
+};
+
 /**
  * O PROMPT de uma capa, montado por regra a partir do briefing.
  *
@@ -74,17 +95,47 @@ export const promptDaCapa = (opts: {
   readonly oQueFaz: string;
   readonly tom: string;
   readonly cor: string;
-}): string =>
-  [
+  readonly formato: FormatoDaColecao;
+}): string => {
+  /**
+   * O aviso da borda descreve a MÁSCARA que vai ser aplicada, e não um círculo
+   * sempre.
+   *
+   * Ele dizia "masked into a circle" em todo prompt, inclusive nos quadrados —
+   * e o prompt é o que fica gravado no resultado e torna a capa reproduzível.
+   * Um prompt que descreve uma máscara que não vai acontecer pede ao modelo um
+   * enquadramento mais apertado do que o necessário, e mente para quem o ler
+   * depois.
+   */
+  const daBorda =
+    opts.formato === 'redonda'
+      ? 'the cover is masked into a circle, so anything touching the edge is cut off'
+      : opts.formato === 'arredondada'
+        ? 'the cover is masked into a rounded square, so the corners are trimmed'
+        : 'the cover is cropped square from the centre, so the sides may be trimmed';
+  return [
     `Square photograph for the "${opts.nome}" category cover of a Brazilian business.`,
     `The business: ${opts.oQueFaz}.`,
+    /**
+     * O ASSUNTO, dito por extenso.
+     *
+     * Sem esta frase o prompt só dizia que a foto era "para a capa da categoria
+     * X" — metadado, não assunto: em lugar nenhum o modelo era mandado
+     * RETRATAR a categoria. Medido no primeiro lote do Sorriso Vivo: três das
+     * quatro acertaram porque a palavra sozinha já sugere a cena
+     * ("Odontopediatria" traz a criança na cadeira), e "Estética" voltou uma
+     * pessoa sentada a uma mesa, sem nenhuma pista do que a clínica faz. O
+     * acerto era da palavra, não do prompt.
+     */
+    `The subject of the photograph IS the category: show a scene that a customer would immediately recognise as "${opts.nome}" at this kind of business. A generic portrait of a person does not qualify — the activity, the tool or the result has to be visible in the frame.`,
     opts.tom.trim() === '' ? null : `Tone: ${opts.tom}.`,
-    'A single clear subject centred in the frame, with generous empty space around it — the cover is masked into a circle, and anything touching the edge is cut off.',
+    `A single clear subject centred in the frame, with generous empty space around it — ${daBorda}.`,
     `Natural light, shallow depth of field, warm and inviting, consistent with a palette built around ${opts.cor}.`,
     'Absolutely no text, no letters, no numbers, no signage, no logos, no watermark.',
   ]
     .filter((l): l is string => l !== null)
     .join(' ');
+};
 
 /**
  * As coleções que o Orbis escolhe quando o cliente não escolheu.
@@ -114,7 +165,16 @@ const principal = async (): Promise<void> => {
 
   // ── os prompts ────────────────────────────────────────────────────────────
   if (process.argv.includes('--prompts')) {
-    const nomes = pedido.colecoes;
+    /**
+     * A DECISÃO vence o pedido.
+     *
+     * O pedido diz o que o cliente escreveu; o resultado diz o que ficou
+     * decidido — inclusive quando fui eu que escolhi. Ler só o pedido fazia o
+     * comando pedir para decidir de novo uma coisa que já estava decidida e
+     * gravada, e a próxima decisão poderia sair diferente da que a apresentação
+     * já mostra.
+     */
+    const nomes = resultado.colecoes?.nomes ?? pedido.colecoes;
     if (nomes.length === 0) {
       console.log('');
       console.log('  Este pedido NÃO declarou coleções: o cliente pediu que o Orbis escolha.');
@@ -140,9 +200,13 @@ const principal = async (): Promise<void> => {
           oQueFaz: pedido.oQueFaz,
           tom: pedido.tom,
           cor: resultado.cor.hex,
+          // O formato decidido, e não um padrão: é ele que a máscara vai aplicar.
+          formato: resultado.colecoes?.formato ?? pedido.formatoDasColecoes ?? 'redonda',
         }),
       );
-      console.log(`  → baixe para: colecoes/originais/${arquivoDaColecao(nome)}`);
+      console.log(
+        `  → baixe para: colecoes/originais/${slugDaColecao(nome)}.<a extensão que vier>`,
+      );
     }
     console.log('');
     return;
@@ -151,7 +215,20 @@ const principal = async (): Promise<void> => {
   // ── a decisão do Orbis, gravada ───────────────────────────────────────────
   const iDefinir = process.argv.indexOf('--definir');
   if (iDefinir >= 0) {
-    const nomes = process.argv.slice(iDefinir + 1).filter((a) => !a.startsWith('--'));
+    /**
+     * Os nomes param na primeira bandeira, e não filtram as que vierem depois.
+     *
+     * Filtrar só o que começa com `--` deixava passar o VALOR da bandeira
+     * seguinte: `--definir A B --formato quadrada` virava cinco coleções, sendo
+     * a quinta chamada "quadrada". O erro só apareceu porque o comando imprime
+     * o que gravou — se ele fechasse calado, a marca teria uma capa a mais com
+     * o nome de um argumento.
+     */
+    const apos = process.argv.slice(iDefinir + 1);
+    const ateABandeira = apos.findIndex((a) => a.startsWith('--'));
+    const nomes = (ateABandeira === -1 ? apos : apos.slice(0, ateABandeira)).filter(
+      (a) => a.trim() !== '',
+    );
     if (nomes.length === 0) morrer('Passe os nomes: --definir "Nome 1" "Nome 2" ...');
     const iFormato = process.argv.indexOf('--formato');
     const formato = (iFormato >= 0 ? process.argv[iFormato + 1] : undefined) ?? 'redonda';
@@ -166,7 +243,7 @@ const principal = async (): Promise<void> => {
     };
     writeFileSync(arquivo, JSON.stringify(atual, null, 2), 'utf8');
     console.log(`\n  ${nomes.length} coleção(ões) gravadas, formato "${formato}":`);
-    for (const n of nomes) console.log(`    ${n}  →  colecoes/originais/${arquivoDaColecao(n)}`);
+    for (const n of nomes) console.log(`    ${n}  →  colecoes/originais/${slugDaColecao(n)}.<ext>`);
     console.log('');
     return;
   }
@@ -190,9 +267,9 @@ const principal = async (): Promise<void> => {
   const arquivos: Record<string, string> = {};
   const faltando: string[] = [];
   for (const nome of decisao.nomes) {
-    const caminho = join(originais, arquivoDaColecao(nome));
-    if (existsSync(caminho)) arquivos[nome] = caminho;
-    else faltando.push(`${nome} (${arquivoDaColecao(nome)})`);
+    const caminho = acharOriginalDaColecao(originais, nome);
+    if (caminho !== null) arquivos[nome] = caminho;
+    else faltando.push(`${nome} (${slugDaColecao(nome)}.*)`);
   }
   if (faltando.length > 0) {
     morrer(
