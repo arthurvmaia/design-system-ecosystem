@@ -49,6 +49,7 @@ import {
 } from '@ds/shared';
 import { chromium } from 'playwright';
 import { executadoDireto } from './executado-direto.js';
+import { arquivoDaColecao } from './marca-colecoes.js';
 
 const morrer: (msg: string) => never = (msg) => {
   console.error(`\n  ${msg}\n`);
@@ -407,6 +408,40 @@ const principal = async (): Promise<void> => {
       );
     }
 
+    /**
+     * As COLEÇÕES, lidas do disco.
+     *
+     * O resultado guarda a decisão (nomes, formato, quem decidiu) e a pasta
+     * guarda os pixels. Uma capa citada e ausente entra como falta declarada,
+     * não como página vazia: a apresentação não promete o que não tem.
+     */
+    const decisaoDasColecoes = (
+      JSON.parse(readFileSync(join(dir, 'resultado.json'), 'utf8')) as {
+        colecoes?: { nomes: string[]; formato: string; decididoPor: 'cliente' | 'orbis' };
+      }
+    ).colecoes;
+    const capasFaltando: string[] = [];
+    const colecoesDaApresentacao =
+      decisaoDasColecoes === undefined || decisaoDasColecoes.nomes.length === 0
+        ? null
+        : {
+            formato: decisaoDasColecoes.formato,
+            decididoPor: decisaoDasColecoes.decididoPor,
+            itens: decisaoDasColecoes.nomes.flatMap((nome) => {
+              const caminho = join(dir, 'colecoes', arquivoDaColecao(nome));
+              if (!existsSync(caminho)) {
+                capasFaltando.push(nome);
+                return [];
+              }
+              return [{ nome, imagem: comoDataUri(caminho) }];
+            }),
+          };
+
+    for (const item of colecoesDaApresentacao?.itens ?? []) {
+      const arquivo = arquivoDaColecao(item.nome);
+      paraOPacote.push({ nome: arquivo, bytes: readFileSync(join(dir, 'colecoes', arquivo)) });
+    }
+
     const paleta = [
       {
         nome: 'Azul da marca',
@@ -476,6 +511,11 @@ const principal = async (): Promise<void> => {
         'O símbolo em vetor (SVG) ainda não foi produzido. Para aplicação em tamanho muito grande (fachada, veículo), ele é necessário.',
       );
     }
+    if (capasFaltando.length > 0) {
+      pendencias.push(
+        `Falta a capa de: ${capasFaltando.join(', ')}. A coleção está declarada e a imagem não foi gerada — rode "pnpm marca:colecoes ${jobId} --prompts".`,
+      );
+    }
     if (conceitosSemMobile.length > 0) {
       pendencias.push(
         `Falta a versão de telefone de: ${conceitosSemMobile.join(', ')}. O banner de site precisa das duas, e a do telefone não é um recorte da larga — o texto foi diagramado para a largura que o recorte destruiria.`,
@@ -517,6 +557,7 @@ const principal = async (): Promise<void> => {
         imagem: comoDataUri(join(artesDir, a)),
       })),
       banners: compostos,
+      colecoes: colecoesDaApresentacao,
       pendencias,
       versao: 'v1',
       data: new Date().toLocaleDateString('pt-BR', {

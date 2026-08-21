@@ -69,6 +69,37 @@ export const ROTULO_DA_FAMILIA: Record<FamiliaDoSimbolo, string> = {
  */
 export const LIMITE_DE_CORES_DE_APOIO = 3;
 
+/**
+ * O FORMATO da capa de coleção, e por que ele não custa geração.
+ *
+ * A imagem nasce QUADRADA, uma vez, e o formato sai dela por máscara — que é
+ * geometria, e geometria não gasta crédito. É a mesma regra do símbolo ("do
+ * símbolo saem as versões, por cálculo"), aplicada onde ela economiza de novo:
+ * trocar de redonda para quadrada depois de pronto é reprocessar um pixel que
+ * já está em disco.
+ *
+ * Pedir ao gerador "uma imagem redonda" faria o contrário: cada troca de
+ * formato seria um pedido novo, e a borda ficaria por conta do modelo, que é
+ * onde ele mais erra.
+ */
+export const FormatoDaColecao = z.enum(['redonda', 'quadrada', 'arredondada']);
+export type FormatoDaColecao = z.infer<typeof FormatoDaColecao>;
+
+/**
+ * Quantas coleções o Orbis cria quando o cliente não diz.
+ *
+ * Quatro, fixo, por decisão do dono: preço previsível vale mais que ajustar ao
+ * nicho. Uma loja com muitas categorias sai representada por quatro, e isso é
+ * escolha declarada — não um limite que alguém esqueceu de mexer.
+ */
+export const COLECOES_QUANDO_O_ORBIS_DECIDE = 4;
+
+/** O teto de coleções que o cliente pode pedir. Cada uma é uma geração paga. */
+export const LIMITE_DE_COLECOES = 8;
+
+/** Nome de coleção maior que isto não cabe legível sobre a capa. */
+export const LIMITE_DO_NOME_DA_COLECAO = 28;
+
 export const PedidoDeMarca = z.object({
   /**
    * O nome, com a GRAFIA EXATA. Trava porque é ele que vai desenhado no
@@ -112,6 +143,29 @@ export const PedidoDeMarca = z.object({
    * que não tem onde pousar é campo que cobra e descarta.
    */
   coresDeApoio: z.array(HEX).max(LIMITE_DE_CORES_DE_APOIO).default([]),
+  /**
+   * As COLEÇÕES da marca: as categorias que a loja mostra na vitrine.
+   *
+   * Cada uma ganha uma capa própria, e elas entram na entrega e na apresentação
+   * — uma marca de loja sem as capas de categoria obriga quem recebe a inventar
+   * a vitrine sozinho, que é o trabalho que contratar a marca vinha evitar.
+   *
+   * **Lista vazia = o Orbis decide**, e essa é a mesma convenção de
+   * `corPreferida`: escolher pelo cliente é legítimo quando ele não escolheu; o
+   * que não pode é escolher em SILÊNCIO. Os nomes que o Orbis inventar entram no
+   * resultado com a decisão escrita ao lado, como a cor.
+   */
+  colecoes: z
+    .array(z.string().min(1).max(LIMITE_DO_NOME_DA_COLECAO))
+    .max(LIMITE_DE_COLECOES)
+    .default([]),
+  /**
+   * O formato das capas. `null` = o Orbis decide, e escreve o porquê.
+   *
+   * Ele vale para TODAS: uma vitrine com capas redondas e quadradas misturadas
+   * não parece variedade, parece descuido.
+   */
+  formatoDasColecoes: FormatoDaColecao.nullable().default(null),
   /**
    * Teto de gasto, em créditos. OBRIGATÓRIO e sem default, pela mesma razão do
    * pedido criativo: parar ao zerar exige saber onde fica o zero.
@@ -205,6 +259,19 @@ export const ESTAGIOS_DA_MARCA = [
      */
     geracoes: 4,
     creditos: 300,
+  },
+  {
+    id: 'colecao',
+    rotulo: 'As capas de coleção',
+    /**
+     * Uma geração por coleção, e o formato sai por máscara.
+     *
+     * O número é o do `COLECOES_QUANDO_O_ORBIS_DECIDE`: é o que a estimativa
+     * promete quando ninguém disse quantas. Cliente que pedir mais paga mais, e
+     * a tela mostra a conta antes de ele confirmar.
+     */
+    geracoes: COLECOES_QUANDO_O_ORBIS_DECIDE,
+    creditos: 75 * COLECOES_QUANDO_O_ORBIS_DECIDE,
   },
   {
     id: 'vetor',

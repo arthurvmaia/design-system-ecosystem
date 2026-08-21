@@ -6,10 +6,14 @@ import { TRATAMENTO } from '@/lib/orbis';
 import { useExigeCredencialDeAcao } from '@/lib/sessao';
 import { toast } from '@/lib/toast';
 import {
+  COLECOES_QUANDO_O_ORBIS_DECIDE,
   CorDaPaleta,
   FamiliaDoSimbolo,
+  FormatoDaColecao,
   LIMITES_DA_MARCA,
+  LIMITE_DE_COLECOES,
   LIMITE_DE_CORES_DE_APOIO,
+  LIMITE_DO_NOME_DA_COLECAO,
   PedidoDeMarca,
   ROTULO_DA_FAMILIA,
 } from '@ds/shared/schemas';
@@ -54,6 +58,16 @@ export function CriativosMarcaPage() {
    * porque `coresDerivadas` é uma função só.
    */
   const [coresDeApoio, setCoresDeApoio] = useState<string[]>([]);
+  /**
+   * As COLEÇÕES: as categorias que a vitrine da marca mostra.
+   *
+   * Lista vazia = "o Orbis escolhe", a mesma convenção da cor. Não há um botão
+   * separado de "faça por mim" porque ele seria um segundo jeito de dizer a
+   * mesma coisa, e dois jeitos divergem: alguém marcaria o botão E digitaria
+   * nomes, e nada diria qual vence.
+   */
+  const [colecoes, setColecoes] = useState<string[]>([]);
+  const [formatoDasColecoes, setFormatoDasColecoes] = useState<FormatoDaColecao | null>(null);
   const [mostrarPendencias, setMostrarPendencias] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [erroDaSenha, setErroDaSenha] = useState<string | null>(null);
@@ -80,6 +94,10 @@ export function CriativosMarcaPage() {
     // Só as que passam no contrato: um hex pela metade viraria erro de parse
     // depois de a pessoa ter clicado em criar.
     coresDeApoio: coresDeApoio.filter((c) => CorDaPaleta.shape.hex.safeParse(c).success),
+    // Nome em branco não vira coleção: ele viraria uma capa sem título e uma
+    // geração paga sem assunto.
+    colecoes: colecoes.map((c) => c.trim()).filter((c) => c !== ''),
+    formatoDasColecoes,
     tetoDeCreditos: custos.data?.teto ?? 0,
     estimativa: custos.data?.teto ?? null,
     preset: 'imagem-marca',
@@ -337,6 +355,92 @@ export function CriativosMarcaPage() {
                 que se separar da principal e aceitar texto legível vira o botão das peças.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/*
+          As COLEÇÕES da marca.
+
+          Elas são as categorias que a vitrine mostra, e cada uma ganha uma capa
+          própria que entra na entrega e na apresentação. Uma marca de loja sem
+          as capas obriga quem recebe a inventar a vitrine sozinho.
+
+          O campo é opcional e o vazio TEM significado: sem nome nenhum, o Orbis
+          escolhe as categorias a partir do que a marca faz, e escreve a decisão
+          no resultado. É a mesma convenção da cor.
+        */}
+        <div>
+          <span className="ds-label">as coleções da sua vitrine (opcional)</span>
+          <div className="mt-2 flex flex-col gap-2">
+            {colecoes.map((nome, i) => (
+              // A posição É a identidade: duas coleções com o mesmo nome (ou
+              // duas vazias, recém-criadas) são entradas legítimas, e o valor
+              // como chave faria o React fundir as duas.
+              // biome-ignore lint/suspicious/noArrayIndexKey: ver acima
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={nome}
+                  maxLength={LIMITE_DO_NOME_DA_COLECAO}
+                  onChange={(e) =>
+                    setColecoes((atual) => atual.map((c, j) => (j === i ? e.target.value : c)))
+                  }
+                  placeholder={`coleção ${i + 1}`}
+                  className="w-full rounded-none border px-3 py-2 text-[13px] outline-none focus:border-[var(--color-signal)]"
+                  style={campo}
+                />
+                <button
+                  type="button"
+                  onClick={() => setColecoes((atual) => atual.filter((_, j) => j !== i))}
+                  aria-label={`Tirar a coleção ${i + 1}`}
+                  className="shrink-0 border px-2.5 py-2 text-[13px] leading-none"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-subtle)' }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {colecoes.length < LIMITE_DE_COLECOES && (
+              <button
+                type="button"
+                onClick={() => setColecoes((atual) => [...atual, ''])}
+                className="self-start border border-dashed px-3 py-1.5 text-[12px] transition-colors hover:border-[var(--color-signal)]"
+                style={{ borderColor: 'var(--color-border)', color: 'var(--color-fg-muted)' }}
+              >
+                + coleção
+              </button>
+            )}
+          </div>
+          <p className="mt-1.5 text-[11.5px]" style={{ color: 'var(--color-fg-subtle)' }}>
+            {colecoes.length === 0
+              ? `Vazio, eu escolho ${COLECOES_QUANDO_O_ORBIS_DECIDE} categorias a partir do que a marca faz, e escrevo quais na apresentação.`
+              : `${colecoes.length} capa${colecoes.length === 1 ? '' : 's'}, uma geração cada. Cada nome vira a capa daquela categoria.`}
+          </p>
+
+          <div className="mt-3">
+            <span className="ds-label">o formato das capas</span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {([null, ...FormatoDaColecao.options] as const).map((f) => (
+                <button
+                  key={f ?? 'orbis'}
+                  type="button"
+                  onClick={() => setFormatoDasColecoes(f)}
+                  aria-pressed={formatoDasColecoes === f}
+                  className="rounded-none border px-3 py-1.5 text-[12.5px] transition-colors hover:border-[var(--color-signal)]"
+                  style={{
+                    borderColor:
+                      formatoDasColecoes === f ? 'rgb(var(--acento))' : 'var(--color-border)',
+                    color: 'var(--color-fg)',
+                  }}
+                >
+                  {f === null ? 'decida por mim' : f}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11.5px]" style={{ color: 'var(--color-fg-subtle)' }}>
+              O formato sai por recorte da mesma imagem, então trocar depois não custa crédito
+              nenhum. Ele vale para todas: capas misturadas não parecem variedade, parecem descuido.
+            </p>
           </div>
         </div>
 

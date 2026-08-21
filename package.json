@@ -57,7 +57,8 @@
     "typecheck:scripts": "tsc --noEmit -p scripts/tsconfig.json",
     "marca:montar": "tsx scripts/marca-montar.ts",
     "marca:apresentar": "tsx scripts/marca-apresentar.ts",
-    "marca:entregar": "tsx scripts/marca-entregar.ts"
+    "marca:entregar": "tsx scripts/marca-entregar.ts",
+    "marca:colecoes": "tsx scripts/marca-colecoes.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

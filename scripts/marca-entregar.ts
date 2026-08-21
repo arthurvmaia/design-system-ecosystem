@@ -30,6 +30,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { join, resolve } from 'node:path';
 import { PedidoDeMarca, ehJobId, marcaDir, marcaPedidoPath } from '@ds/shared';
 import { executadoDireto } from './executado-direto.js';
+import { arquivoDaColecao } from './marca-colecoes.js';
 
 const morrer: (msg: string) => never = (msg) => {
   console.error(`\n  ${msg}\n`);
@@ -166,6 +167,27 @@ const ENTREGA: readonly {
   },
 ];
 
+/**
+ * As capas de coleção não entram na lista fixa: elas dependem do que o cliente
+ * (ou o Orbis) nomeou, e o nome do arquivo sai daí. A pasta é montada na hora,
+ * a partir do que existe em disco.
+ */
+export const capasDeColecaoParaEntregar = (
+  dir: string,
+): { de: string; pasta: string; para: string }[] => {
+  const decisao = (
+    JSON.parse(readFileSync(join(dir, 'resultado.json'), 'utf8')) as {
+      colecoes?: { nomes: string[] };
+    }
+  ).colecoes;
+  if (decisao === undefined) return [];
+  return decisao.nomes.flatMap((nome) => {
+    const arquivo = arquivoDaColecao(nome);
+    if (!existsSync(join(dir, 'colecoes', arquivo))) return [];
+    return [{ de: `colecoes/${arquivo}`, pasta: 'Colecoes', para: `${nome}.png` }];
+  });
+};
+
 const leiaMe = (nome: string, cor: string, temArtes: boolean): string =>
   [
     `${nome.toUpperCase()} — SUA MARCA`,
@@ -256,7 +278,19 @@ const principal = (): void => {
   let copiados = 0;
   let temArtes = false;
   const faltando: string[] = [];
-  for (const item of ENTREGA) {
+  /**
+   * As capas de coleção entram JUNTO da lista fixa, e não depois dela.
+   *
+   * Elas dependem do que o cliente (ou o Orbis) nomeou, então não cabem numa
+   * constante — mas o resto do laço serve igual: mesma criação de pasta, mesma
+   * contagem, mesmo tratamento de ausência. Copiá-las num segundo laço seria
+   * duas implementações do mesmo copiar.
+   */
+  const tudo = [
+    ...ENTREGA,
+    ...capasDeColecaoParaEntregar(dir).map((c) => ({ ...c, obrigatorio: false })),
+  ];
+  for (const item of tudo) {
     const origem = join(dir, item.de);
     if (!existsSync(origem)) {
       if (item.obrigatorio) faltando.push(item.de);

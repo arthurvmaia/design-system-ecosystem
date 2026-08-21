@@ -81,6 +81,25 @@ export type DadosDaApresentacao = {
   readonly direcaoDeImagem: readonly ArteDaApresentacao[];
   /** Os conceitos de banner. Vazio = seção omitida. */
   readonly banners: readonly ArteDaApresentacao[];
+  /**
+   * As COLEÇÕES: as categorias que a vitrine mostra, cada uma com a sua capa.
+   *
+   * Elas entram na apresentação e não só na pasta pela mesma razão que o mobile
+   * dos banners entrou: a página de aplicação existe para o cliente VER o que
+   * vai receber, e uma capa que só existe em disco ele descobre depois.
+   *
+   * `decididoPor` viaja porque a decisão tem dono. Quando foi o Orbis que
+   * escolheu as categorias, a página diz isso — a mesma regra da cor, que pode
+   * ser escolhida por nós e nunca em silêncio.
+   *
+   * Vazio = seção omitida: marca que não é loja não tem vitrine, e uma página
+   * vazia diria que faltou alguma coisa.
+   */
+  readonly colecoes: {
+    readonly formato: string;
+    readonly decididoPor: 'cliente' | 'orbis';
+    readonly itens: readonly { readonly nome: string; readonly imagem: string }[];
+  } | null;
   /** O que ainda depende do cliente. Vazio = a seção diz que não há nada. */
   readonly pendencias: readonly string[];
   readonly versao: string;
@@ -269,6 +288,32 @@ export const htmlDaApresentacao = (d: DadosDaApresentacao): string => {
     );
   }
 
+  // As coleções da vitrine, todas numa página: elas são um CONJUNTO, e vê-las
+  // juntas é o que mostra se elas parecem da mesma marca.
+  if (d.colecoes !== null && d.colecoes.itens.length > 0) {
+    const raio =
+      d.colecoes.formato === 'redonda' ? '50%' : d.colecoes.formato === 'arredondada' ? '12%' : '0';
+    paginas.push(
+      pagina(
+        'Aplicação',
+        `<h2>As coleções da vitrine</h2>
+        <p class="chamada">${
+          d.colecoes.decididoPor === 'orbis'
+            ? 'As categorias abaixo fui eu que escolhi, a partir do que a marca faz. Trocar um nome é barato: a capa é a mesma imagem, recortada de novo.'
+            : 'As categorias que o senhor pediu, cada uma com a sua capa.'
+        } O formato é ${esc(d.colecoes.formato)}, e ele sai por recorte — mudar de ideia não custa geração nova.</p>
+        <div class="colecoes">
+          ${d.colecoes.itens
+            .map(
+              (c) =>
+                `<figure><img src="${c.imagem}" alt="${esc(c.nome)}" style="border-radius:${raio}"><figcaption>${esc(c.nome)}</figcaption></figure>`,
+            )
+            .join('')}
+        </div>`,
+      ),
+    );
+  }
+
   // Regras de uso
   paginas.push(
     pagina(
@@ -371,6 +416,15 @@ export const htmlDaApresentacao = (d: DadosDaApresentacao): string => {
   .aplicacao img.cheia{width:auto;max-width:100%;height:auto;max-height:400px;object-fit:contain}
   /* Favicons no tamanho real */
   .favicons{display:flex;gap:38px;align-items:flex-end;margin:12px 0 8px}
+  /* As capas em GRADE, e não em fila: elas são um conjunto, e ver uma ao lado
+     da outra é o que mostra se elas parecem da mesma marca. O auto-fit deixa
+     quatro caberem numa linha e oito em duas, sem número cravado.
+     (Sem crase neste comentário: ela FECHA o template literal que segura este
+     CSS inteiro, e o erro sai como "; expected" quinze linhas abaixo.) */
+  .colecoes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:30px;margin:22px 0}
+  .colecoes figure{margin:0;text-align:center}
+  .colecoes img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+  .colecoes figcaption{margin-top:10px;font-size:12px;letter-spacing:.04em}
   .favicons figure{align-items:center;gap:10px}
   .moldura{display:flex;align-items:center;justify-content:center;min-width:64px;min-height:64px;
            background:#f6f5f2;border:1px solid var(--linha)}
