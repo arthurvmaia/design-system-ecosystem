@@ -136,3 +136,35 @@ test("o placar cobra só o que é obrigatório, e a loja recebe só o aprovado",
     assert.equal(estadoDaArte(comAlteracao(comAlteracao(arteNova("/a"), "/b"), "/c")), "limite");
   } finally { await fechar(); }
 });
+
+/**
+ * A APROVAÇÃO LEVA O CORTE IRMÃO.
+ *
+ * A dobra de banner vira dois arquivos da mesma foto, `banner-2` e
+ * `banner-2-mobile`. Só o primeiro é peça da bancada — o irmão nasce da mesma
+ * composição e não aparece em tela nenhuma, então nunca recebia o "aprovar" e
+ * ficava reprovado para sempre.
+ *
+ * Medido na loja gerada, duas consequências: o campo do celular caía no corte
+ * largo, e o tema voltava a escrever a frase por cima da foto que JÁ a tinha
+ * assada — a mesma frase duas vezes na mesma dobra.
+ */
+test("aprovar a dobra leva junto o corte de celular dela", async () => {
+  const { modulo, fechar } = await carregar();
+  try {
+    const { arteNova, aprovar, urlsAprovadas } = modulo;
+    const artes = {
+      "banner-2": aprovar(arteNova("/api/media/b2")),
+      "banner-2-mobile": arteNova("/api/media/b2m"),
+      "banner-1": arteNova("/api/media/b1"),
+      "banner-1-mobile": arteNova("/api/media/b1m"),
+    };
+    const saida = urlsAprovadas(artes);
+    assert.equal(saida["banner-2"], "/api/media/b2");
+    assert.equal(saida["banner-2-mobile"], "/api/media/b2m", "o corte de celular vai junto da dobra aprovada");
+    /* e a dobra NÃO aprovada continua fora, com irmão e tudo: o irmão pega
+       carona na decisão, não a substitui */
+    assert.equal(saida["banner-1"], undefined);
+    assert.equal(saida["banner-1-mobile"], undefined);
+  } finally { await fechar(); }
+});

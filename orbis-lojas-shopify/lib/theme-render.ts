@@ -7,6 +7,9 @@ import { Liquid, type TagToken, type TopLevelToken, type Context, type Emitter }
 import { strFromU8 } from "fflate";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
 import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
+import { nichoPorId } from "./marca-generator.mjs";
+import { handleDeColecao } from "./shopify-brand";
+import { descricaoDoProduto, nomeDeVitrine } from "./nome-de-produto";
 
 /** Item do carrinho simulado: o preview guarda só o essencial. */
 export type PreviewCartItem = { variantId: number; quantity: number };
@@ -267,21 +270,20 @@ export function lojaDoNicho(nicheId: string | undefined): Loja {
 
 /** Converte um produto do nicho (AliExpress) para o formato que os temas leem. */
 function produtoDoNicho(fonte: ProdutoDoNicho): ProdutoDaLoja {
-  const descricao = [
-    `<p>${fonte.title}</p>`,
-    fonte.rating ? `<p>Nota ${fonte.rating} na origem${fonte.sold ? `, ${fonte.sold}` : ""}.</p>` : "",
-  ].filter(Boolean).join("");
+  /* o anúncio do fornecedor vira nome de vitrine aqui, num lugar só: o cartão,
+     a página do produto, o carrinho e o alt da foto leem todos deste campo */
+  const nome = nomeDeVitrine(fonte);
   return produtoDoCatalogo({
     id: fonte.id,
     handle: fonte.handle,
-    title: fonte.title,
+    title: nome,
     vendor: "Curadoria da loja",
     type: "",
     tags: [],
     publishedAt: new Date().toISOString(),
-    descriptionHtml: descricao,
+    descriptionHtml: descricaoDoProduto(fonte),
     options: [{ name: "Título", position: 1, values: ["Padrão"] }],
-    images: fonte.images.map((src) => ({ src, width: 350, height: 350, alt: fonte.title, variantIds: [] })),
+    images: fonte.images.map((src) => ({ src, width: 350, height: 350, alt: nome, variantIds: [] })),
     variants: [{
       id: fonte.id, title: "Padrão", option1: "Padrão", option2: null, option3: null, sku: "",
       price: fonte.price, compareAtPrice: fonte.compareAtPrice, available: true, imageSrc: fonte.images[0] ?? null,
@@ -433,8 +435,43 @@ function fotoDaColecao(loja: Loja, handle: string, vaga?: number) {
   return produto?.featured_image ?? produto?.images?.[0] ?? null;
 }
 
-function demoCollection(loja: Loja, handle: string, capas: Record<string, string> = {}, vaga?: number) {
-  const title = handle ? handle.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Coleção em destaque";
+/**
+ * Ligação fica em minúscula no meio de um título.
+ *
+ * "Cama e banho" virava "Cama E Banho" porque a reconstrução punha maiúscula
+ * em toda palavra. É o mesmo defeito de sempre: o slug não carrega essa
+ * informação, e quem a inventa erra.
+ */
+const LIGACAO_NO_TITULO = new Set(["de", "do", "da", "dos", "das", "e", "ou", "a", "o", "as", "os", "em", "no", "na", "para", "com", "por"]);
+
+/**
+ * O TÍTULO de uma coleção: o nome que a pessoa escreveu, quando ele existe.
+ *
+ * O tema guarda handle, e handle é slug: "organizacao", "cama-e-banho". Sem os
+ * nomes de verdade, a vitrine mostrava "Organizacao", "Decoracao" e "Cama E
+ * Banho" na cara do cliente. O acento não sumiu por descuido de digitação: ele
+ * foi descartado na conversão para handle, e a reconstrução não tinha como
+ * adivinhá-lo de volta.
+ *
+ * Agora o nome viaja no tema (`orbisColecoes`) e o handle serve só para casar
+ * um com o outro. Sem esse mapa — tema antigo, coleção que não é da loja — o
+ * slug ainda é a última reserva, mas ao menos sem maiúscula em ligação.
+ */
+function tituloDaColecao(handle: string, nomes: Record<string, string> = {}): string {
+  if (!handle) return "Coleção em destaque";
+  const nome = nomes[handle];
+  if (nome) return nome;
+  return handle
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .map((palavra, indice) => (indice > 0 && LIGACAO_NO_TITULO.has(palavra) ? palavra : palavra.charAt(0).toUpperCase() + palavra.slice(1)))
+    .join(" ");
+}
+
+function demoCollection(loja: Loja, handle: string, capas: Record<string, string> = {}, vaga?: number, nomes: Record<string, string> = {}) {
+  const title = tituloDaColecao(handle, nomes);
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
     products: loja.produtos, products_count: loja.produtos.length, all_products_count: loja.produtos.length,
@@ -497,7 +534,7 @@ function resolveSettingValues(
   definitions: ShopifySettingDefinition[],
   /* `vaga` é a posição do BLOCO na seção: no Dawn cada cartão da vitrine é um
      bloco com o handle dentro, e é ela que impede a foto de reserva de repetir */
-  helpers: { loja: Loja; capas?: Record<string, string>; vaga?: number; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
+  helpers: { loja: Loja; capas?: Record<string, string>; nomes?: Record<string, string>; vaga?: number; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
   /* O tipo da seção (ou do bloco) chega até aqui só por causa do placeholder:
      é o par seção+campo que diz qual FORMATO o vazio deve ter. */
   secao?: string,
@@ -522,7 +559,7 @@ function resolveSettingValues(
     /* AQUI é por onde o cartão de coleção passa de verdade: o `settings` do
        bloco guarda o handle, e era este caminho que ficava sem as capas — o
        proxy de `collections[...]` só atende busca por handle escrita no Liquid */
-    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}, helpers.vaga); continue; }
+    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}, helpers.vaga, helpers.nomes ?? {}); continue; }
     if (type === "product") { resolved[id] = demoProduct(helpers.loja, typeof value === "string" ? value : "", 2); continue; }
     if (type === "collection_list") {
       /* as coleções DA LOJA quando elas existem: a lista fixa de "colecao-1..4"
@@ -530,7 +567,7 @@ function resolveSettingValues(
          escreveu */
       const daLoja = Object.keys(helpers.capas ?? {});
       const lista = daLoja.length ? daLoja : ["colecao-1", "colecao-2", "colecao-3", "colecao-4"];
-      resolved[id] = lista.map((handle, vaga) => demoCollection(helpers.loja, handle, helpers.capas ?? {}, vaga));
+      resolved[id] = lista.map((handle, vaga) => demoCollection(helpers.loja, handle, helpers.capas ?? {}, vaga, helpers.nomes ?? {}));
       continue;
     }
     if (type === "product_list") { resolved[id] = helpers.loja.produtos; continue; }
@@ -756,7 +793,20 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   const allGlobalDefinitions = theme.globalGroups.flatMap((group) => group.settings);
   /* as capas geradas, uma por coleção, na mão de quem resolve os settings */
   const capas = capasDeColecao ?? {};
-  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, capas, imageFor, schemeFor, registerFont });
+  /**
+   * O NOME de cada coleção, por handle.
+   *
+   * Primeiro o que o tema guardou — a pessoa escreveu, `aplicarMarcaNoTema`
+   * salvou. Depois o catálogo do nicho, que atende toda loja gerada por nicho,
+   * inclusive as feitas antes de o tema passar a guardar nome. Só então o
+   * slug, que é reserva e não fonte.
+   */
+  const nomes: Record<string, string> = {};
+  for (const nome of theme.orbisColecoes ?? nichoPorId(nicheId).colecoes ?? []) {
+    const chave = handleDeColecao(String(nome ?? ""));
+    if (chave && !nomes[chave]) nomes[chave] = String(nome).trim();
+  }
+  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, capas, nomes, imageFor, schemeFor, registerFont });
   if (schemeList.length) settings.color_schemes = schemeCollection;
 
   const localeFile =
@@ -787,14 +837,14 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   }
   const resolveSection = (section: ShopifySectionInstance) => {
     const schema = schemaByType.get(section.type);
-    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, capas, imageFor, schemeFor, registerFont }, section.type);
+    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, capas, nomes, imageFor, schemeFor, registerFont }, section.type);
     const blocks = section.blocks.map((block, index) => {
       const blockSchema = schema?.blocks.find((item) => item.type === block.type);
       return {
         id: block.id, type: block.type,
         /* o formato do placeholder é da SEÇÃO: no Dawn a imagem do banner mora
            num bloco `slide`, cujo nome não diz que aquilo é um banner */
-        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, capas, vaga: index, imageFor, schemeFor, registerFont }, section.type),
+        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, capas, nomes, vaga: index, imageFor, schemeFor, registerFont }, section.type),
         shopify_attributes: `data-block-id="${block.id}"`,
         index: index + 1, index0: index,
       };
@@ -802,7 +852,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     return { id: section.id, settings: resolvedSettings, blocks, index: 1, index0: 0, location: "template", type: section.type, disabled: section.disabled === true };
   };
 
-  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle, capas));
+  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle, capas, undefined, nomes));
   const productsProxy = proxyWithFallback<unknown>({}, (handle) => demoProduct(loja, handle, 2));
   const linklistsProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: "Menu", handle, links: DEMO_LINKS, levels: 1 }));
   const pagesProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: handle, handle, content: "", url: `/pages/${handle}` }));
@@ -866,7 +916,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     /* o handle da rota escolhe o produto/coleção: é o que faz cada cartão
        clicado abrir o SEU produto, e o quick-add mostrar o certo */
     product: comVarianteSelecionada(demoProduct(loja, pageId.startsWith("product") ? handle ?? "" : ""), variantId),
-    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo", capas),
+    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo", capas, undefined, nomes),
     article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "/blogs/news/artigo-demo", tags: [], comments: [], comments_count: 0, comments_enabled: false },
     blog: { title: "Blog", url: "/blogs/news", articles: [], articles_count: 0, all_tags: [] },
     page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "/pages/pagina" },

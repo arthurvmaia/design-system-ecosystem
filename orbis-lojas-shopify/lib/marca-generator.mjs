@@ -76,6 +76,22 @@ export const NICHOS = Object.freeze([
      * assunto de uma capa é a coleção; o nicho entra curto e só como contexto.
      */
     produto: "roupas",
+    /**
+     * O ASSUNTO CONCRETO de cada cena de campanha.
+     *
+     * `produto` é a palavra curta que nomeia o ramo — "artigos de treino",
+     * "objetos de decoração para casa" —, e ela serve para dizer de que loja se
+     * trata. Como ASSUNTO de uma foto, porém, ela não é nada: não existe objeto
+     * chamado "artigos de treino" para pôr na frente da câmera. Medido numa
+     * loja de fitness: o pedido do segundo banner voltou um retângulo verde
+     * liso, sem produto nenhum no quadro, porque o modelo não tinha o que
+     * fotografar e obedeceu ao resto do pedido ("fundo liso", "margem larga").
+     *
+     * Aqui o assunto é uma coisa que existe: um par de halteres, um pote de
+     * creme, um colar. Não é invenção sobre o estoque de ninguém — é o que o
+     * catálogo daquele nicho vende, dito de um jeito que uma câmera alcança.
+     */
+    cenas: { pessoa: "uma pessoa vestindo uma camisa de linho, em pé", produto: "uma camisa dobrada e uma calça de alfaiataria sobre a bancada" },
     raizes: ["Alma", "Trama", "Linho", "Volare", "Aurora", "Cais", "Verso", "Norte"],
     sufixos: ["Atelier", "Studio", "Wear", "Co.", "Moda"],
     paletas: [
@@ -103,6 +119,7 @@ export const NICHOS = Object.freeze([
     nome: "Óculos e eyewear",
     resumo: "Óculos de sol e armações de grau.",
     produto: "óculos",
+    cenas: { pessoa: "uma pessoa usando óculos de sol", produto: "um par de óculos de sol" },
     raizes: ["Vista", "Lente", "Solar", "Íris", "Miró", "Claro", "Zenite"],
     sufixos: ["Eyewear", "Optics", "Studio", "Co."],
     paletas: [
@@ -130,6 +147,7 @@ export const NICHOS = Object.freeze([
     nome: "Relógios",
     resumo: "Relógios analógicos, digitais e smartwatches.",
     produto: "relógios",
+    cenas: { pessoa: "um relógio no pulso de uma pessoa", produto: "um relógio de pulso com pulseira de couro" },
     raizes: ["Hora", "Cronos", "Meridiano", "Vento", "Órbita", "Aço"],
     sufixos: ["Watches", "Relojoaria", "Time", "Co."],
     paletas: [
@@ -157,6 +175,7 @@ export const NICHOS = Object.freeze([
     nome: "Beleza e skincare",
     resumo: "Cuidados com a pele, cabelo e maquiagem.",
     produto: "cosméticos",
+    cenas: { pessoa: "uma pessoa aplicando creme no rosto", produto: "um pote de creme e um frasco de sérum" },
     raizes: ["Pele", "Aura", "Sereno", "Flor", "Rotina", "Lume"],
     sufixos: ["Beauty", "Skin", "Cosméticos", "Care"],
     paletas: [
@@ -184,6 +203,7 @@ export const NICHOS = Object.freeze([
     nome: "Casa e decoração",
     resumo: "Utilidades, organização e decoração para o lar.",
     produto: "objetos de decoração para casa",
+    cenas: { pessoa: "uma pessoa arrumando potes numa prateleira da cozinha", produto: "um jogo de potes de vidro sobre a bancada" },
     raizes: ["Casa", "Ninho", "Terra", "Abrigo", "Varanda", "Lar"],
     sufixos: ["Home", "Casa", "Decor", "Studio"],
     paletas: [
@@ -211,6 +231,7 @@ export const NICHOS = Object.freeze([
     nome: "Pet",
     resumo: "Acessórios, brinquedos e cuidados para cães e gatos.",
     produto: "produtos para cães e gatos",
+    cenas: { pessoa: "uma pessoa brincando com um cachorro no chão da sala", produto: "um brinquedo de pelúcia e uma bola de borracha" },
     raizes: ["Patas", "Focinho", "Late", "Bicho", "Amigo", "Ronrom"],
     sufixos: ["Pet", "Petshop", "Store", "Co."],
     paletas: [
@@ -238,6 +259,7 @@ export const NICHOS = Object.freeze([
     nome: "Fitness e esportes",
     resumo: "Equipamentos, acessórios e roupa de treino.",
     produto: "artigos de treino",
+    cenas: { pessoa: "uma pessoa treinando com uma faixa elástica", produto: "um par de halteres ao lado de um tapete de yoga enrolado" },
     raizes: ["Força", "Pulso", "Ritmo", "Fibra", "Movi", "Ápice"],
     sufixos: ["Fit", "Sports", "Training", "Co."],
     paletas: [
@@ -265,6 +287,7 @@ export const NICHOS = Object.freeze([
     nome: "Eletrônicos e gadgets",
     resumo: "Acessórios de tecnologia, áudio e casa conectada.",
     produto: "eletrônicos",
+    cenas: { pessoa: "uma pessoa usando fones de ouvido sem fio", produto: "um fone de ouvido sem fio ao lado do estojo de carga" },
     raizes: ["Pulso", "Circuito", "Nova", "Volt", "Sinal", "Núcleo"],
     sufixos: ["Tech", "Labs", "Gadgets", "Store"],
     paletas: [
@@ -292,6 +315,7 @@ export const NICHOS = Object.freeze([
     nome: "Infantil e bebê",
     resumo: "Enxoval, brinquedos e acessórios para crianças.",
     produto: "artigos infantis",
+    cenas: { pessoa: "uma criança brincando com um quebra-cabeça de madeira", produto: "um quebra-cabeça de madeira e blocos coloridos empilhados" },
     raizes: ["Nino", "Balão", "Pequeno", "Céu", "Colo", "Bem-me-quer"],
     sufixos: ["Kids", "Baby", "Infantil", "Store"],
     paletas: [
@@ -319,6 +343,7 @@ export const NICHOS = Object.freeze([
     nome: "Joias e acessórios",
     resumo: "Semijoias, bijuterias e acessórios de uso diário.",
     produto: "joias",
+    cenas: { pessoa: "um colar delicado no pescoço de uma pessoa", produto: "um colar fino e um par de brincos sobre veludo" },
     raizes: ["Brilho", "Prata", "Elo", "Luz", "Camélia", "Ouro"],
     sufixos: ["Joias", "Acessórios", "Studio", "Co."],
     paletas: [

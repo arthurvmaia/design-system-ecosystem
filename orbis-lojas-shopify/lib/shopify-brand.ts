@@ -167,6 +167,16 @@ const SECAO_DE_BANNER = /(slideshow|image.?banner|hero|banner)/i;
 const DOBRA_COM_FRASE = 1;
 
 /**
+ * A ARTE daquela dobra, pelo mesmo índice.
+ *
+ * Quem compõe a arte (o fluxo do cliente) e quem cala o tema (aqui) precisam
+ * concordar sobre QUAL dobra leva a frase. Duas constantes separadas
+ * concordam até alguém mexer numa delas, e aí o texto sai assado numa foto e
+ * digitado sobre outra.
+ */
+export const ARTE_DA_DOBRA_COM_FRASE = `banner-${DOBRA_COM_FRASE + 1}`;
+
+/**
  * As famílias que o `font_picker` da Shopify aceita.
  *
  * A lista existe porque o campo NÃO é uma caixa de texto: ele só conhece a
@@ -412,6 +422,10 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
   /* 4. conteúdo das seções: marca sempre, texto do tema só se estiver no padrão */
   const schemaPorTipo = new Map(theme.sectionSchemas.map((schema) => [schema.type, schema]));
   const colecoes = (marca.collections ?? []).map(handleDeColecao).filter(Boolean);
+  /* e o NOME fica guardado junto: é aqui que o acento se perde, e é o único
+     ponto do caminho em que ele ainda existe para ser salvo */
+  const nomesDeColecao = (marca.collections ?? []).map((nome) => String(nome ?? "").trim()).filter(Boolean);
+  if (nomesDeColecao.length) theme.orbisColecoes = nomesDeColecao;
 
   /* qual dobra de banner é esta: decide QUAL foto ela recebe */
   let indiceDaDobra = 0;
@@ -604,7 +618,34 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
            */
           if (dobraDeBanner && (PAPEL_TITULO.test(pista) || CAMPO_DE_SUBTITULO.test(pista) || CAMPO_DE_BOTAO.test(pista))) {
             const ehTituloDaDobra = !CAMPO_DE_SUBTITULO.test(pista) && !CAMPO_DE_BOTAO.test(pista) && PAPEL_TITULO.test(pista);
-            const frase = ehTituloDaDobra && indiceDaDobra === DOBRA_COM_FRASE ? (marca.slogan ?? "").trim() : "";
+            /**
+             * E o tema fica CALADO quando a frase já está na arte.
+             *
+             * O dono viu a frase saindo como texto do tema por cima da foto e
+             * pediu o contrário: "o texto seja na imagem, não digitado". A
+             * composição assa a frase na arte (`comporBanner`), com véu medido
+             * e tipografia de verdade — o tema escrever de novo poria a mesma
+             * frase duas vezes na mesma foto, uma delas escorregando em tela
+             * estreita, que é o defeito que a composição existe para acabar.
+             *
+             * O sinal é o ARQUIVO DO CELULAR daquela dobra: ele só existe
+             * quando a composição rodou, porque é ela que corta os dois
+             * formatos. Sem composição — ela falhou, o cliente trouxe o
+             * próprio banner, ou a arte ainda não foi aprovada — o tema volta
+             * a escrever, senão a dobra fica muda.
+             *
+             * Fica UM caso torto, e ele é transitório: arte composta pelo
+             * código anterior a esta mudança tem o arquivo do celular mas não
+             * tem a frase assada, então aquela dobra sai sem frase nenhuma. Não
+             * há como distinguir isso pela chave — a diferença está nos pixels
+             * — e gerar as artes de novo resolve, que é o gesto que a pessoa já
+             * faz quando troca qualquer peça. Um campo persistido só para essa
+             * janela custaria mais que ela.
+             */
+            const arteLevaAFrase = Boolean(imagens[`${ARTE_DA_DOBRA_COM_FRASE}-mobile`]);
+            const frase = ehTituloDaDobra && indiceDaDobra === DOBRA_COM_FRASE && !arteLevaAFrase
+              ? (marca.slogan ?? "").trim()
+              : "";
             /* vazio EXPLÍCITO, não ausente: campo ausente faz o Liquid cair no
                padrão do schema, e o padrão do Dawn é "Image slide" e "Button
                label" — a loja abriria com placeholder em inglês sobre a foto */

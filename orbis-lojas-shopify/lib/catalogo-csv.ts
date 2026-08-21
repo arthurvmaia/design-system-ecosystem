@@ -1,4 +1,5 @@
 import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
+import { descricaoDoProduto, nomeDeVitrine } from "./nome-de-produto";
 
 /**
  * O catálogo do nicho no formato que a Shopify importa.
@@ -68,16 +69,14 @@ function preco(centavos: number | null | undefined): string {
  * a importação criar variante a mais.
  */
 function linhasDoProduto(p: ProdutoDoNicho, colecao: string): string[][] {
-  const descricao = [
-    `<p>${p.title}</p>`,
-    p.rating ? `<p>Nota ${p.rating} na origem${p.sold ? `, ${p.sold}` : ""}.</p>` : "",
-  ]
-    .filter(Boolean)
-    .join("");
+  /* o MESMO nome da vitrine: o CSV é a loja que o cliente sobe na Shopify, e
+     ela não pode chegar lá com o título cru que a prévia já não mostra */
+  const nome = nomeDeVitrine(p);
+  const descricao = descricaoDoProduto(p);
   const fotos = p.images.length ? p.images : [""];
   const primeira: string[] = [
     colecao,
-    p.title,
+    nome,
     p.handle,
     descricao,
     "Curadoria da loja",
@@ -96,7 +95,7 @@ function linhasDoProduto(p: ProdutoDoNicho, colecao: string): string[][] {
     "TRUE",
     fotos[0],
     "1",
-    p.title,
+    nome,
   ];
   /* pela COLUNA, não por índice: uma coluna nova no começo deslocava tudo em
      silêncio, e CSV desalinhado não dá erro — importa errado */
@@ -106,7 +105,7 @@ function linhasDoProduto(p: ProdutoDoNicho, colecao: string): string[][] {
     linha[emQue("URL handle")] = p.handle;
     linha[emQue("Product image URL")] = src;
     linha[emQue("Image position")] = String(i + 2);
-    linha[emQue("Image alt text")] = p.title;
+    linha[emQue("Image alt text")] = nome;
     return linha;
   });
   return [primeira, ...demais];

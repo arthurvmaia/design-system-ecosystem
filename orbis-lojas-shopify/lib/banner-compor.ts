@@ -44,6 +44,18 @@ export type CoresDoBanner = {
   destaque: string;
 };
 
+/**
+ * O CORTE MAIS ESTREITO que a arte precisa aguentar.
+ *
+ * O arquivo é 3:1, mas o tema mostra a dobra na altura DELE e o navegador come
+ * as laterais para preencher. Quanto da largura sobra é uma conta: a proporção
+ * da dobra dividida por 3. Numa dobra de 2,3:1 sobram 77%; numa de 16:9, 59%.
+ * Defender até 16:9 cobre o que os temas usam, e a folga de 5% é para o corte
+ * não passar rente à letra.
+ */
+const CORTE_MAIS_ESTREITO = 16 / 9;
+const FAIXA_SEGURA = (CORTE_MAIS_ESTREITO / 3) * 0.95;
+
 function carregar(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -146,8 +158,22 @@ export async function comporBanner(
    * cobre o que falta para a letra ficar legível — em foto já escura ele quase
    * some, e a cena continua aparecendo.
    */
+  const faixa = deLado ? Math.round(largura * FAIXA_SEGURA) : largura - Math.round(largura * 0.09) * 2;
+  const meio = Math.round(largura / 2);
+  /**
+   * O véu é MEDIDO, e é lido ONDE a letra vai.
+   *
+   * Uma barra escura sempre igual estraga foto que já era escura e não salva
+   * foto clara demais. Aqui a região da escrita é lida de verdade e o véu só
+   * cobre o que falta para a letra ficar legível — em foto já escura ele quase
+   * some, e a cena continua aparecendo.
+   *
+   * A leitura mudou para a faixa CENTRAL junto com a escrita: medir a lateral
+   * esquerda enquanto a frase é desenhada no meio é medir um pedaço da foto
+   * que a letra não encosta.
+   */
   const area = deLado
-    ? ctx.getImageData(0, 0, Math.round(largura * 0.45), altura)
+    ? ctx.getImageData(meio - Math.round(faixa / 2), 0, faixa, altura)
     : ctx.getImageData(0, 0, largura, Math.round(altura * 0.4));
   let soma = 0;
   const passo = 4 * 97; /* amostra esparsa: ler pixel a pixel num 3000×1000 é caro e não muda a média */
@@ -160,32 +186,70 @@ export async function comporBanner(
   const forca = Math.max(0.28, Math.min(0.82, claro ? brilho * 0.95 : (1 - brilho) * 0.95));
   const alfa = (fracao: number) => Math.round(255 * forca * fracao).toString(16).padStart(2, "0");
 
+  /**
+   * E o véu acompanha a POSIÇÃO da escrita.
+   *
+   * No formato largo a frase é centralizada, então o escuro é um halo no meio
+   * que se apaga para as bordas. O degradê que saía da esquerda deixava a
+   * letra do meio sem apoio e escurecia um canto onde não há nada escrito. No
+   * formato alto a frase continua em cima, e o degradê continua vindo de cima.
+   */
   const gradiente = deLado
-    ? ctx.createLinearGradient(0, 0, largura * 0.72, 0)
+    ? ctx.createRadialGradient(meio, altura / 2, 0, meio, altura / 2, largura * 0.42)
     : ctx.createLinearGradient(0, 0, 0, altura * 0.68);
   gradiente.addColorStop(0, `${cores.veu}${alfa(1)}`);
-  gradiente.addColorStop(0.55, `${cores.veu}${alfa(0.62)}`);
+  gradiente.addColorStop(0.55, `${cores.veu}${alfa(deLado ? 0.5 : 0.62)}`);
   gradiente.addColorStop(1, `${cores.veu}00`);
   ctx.fillStyle = gradiente;
   ctx.fillRect(0, 0, largura, altura);
 
-  const margem = Math.round(largura * (deLado ? 0.06 : 0.09));
-  const faixa = deLado ? Math.round(largura * 0.42) : largura - margem * 2;
-  const x = margem;
+  /**
+   * A ESCRITA É CENTRALIZADA, numa faixa que sobrevive ao corte.
+   *
+   * O tema não mostra o arquivo inteiro: a dobra tem a altura DELA e o
+   * navegador corta as laterais do 3:1 para preencher. Medido na loja: uma
+   * dobra de 2,3:1 mostra 77% da largura, e a frase encostada na margem de 6%
+   * saía pela metade — foi o "Tudo para quem late" virando "do para quem".
+   * Centralizada em `FAIXA_SEGURA`, ela continua inteira até num corte 16:9.
+   */
+  const x = meio;
+  ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillStyle = cores.texto;
 
-  /* o corpo da letra sai da ALTURA do quadro, não da largura: é a altura que
-     limita quantas linhas cabem, e é o que muda entre os dois formatos */
-  const corpoTitulo = Math.round(altura * (deLado ? 0.13 : 0.088));
+  /**
+   * E o CORPO da letra ENCOLHE até a frase caber em duas linhas.
+   *
+   * Tamanho fixo serve a um slogan e trai o seguinte: "O tempo no seu pulso"
+   * assenta numa linha, "Tudo para quem late e ronrona" não — e o mesmo corpo
+   * que serve ao primeiro empurra o segundo para três linhas altas demais para
+   * o quadro. Encolher é o que faz frases de tamanhos diferentes saírem no
+   * mesmo lugar, com o mesmo respiro.
+   */
+  const corpoMaximo = Math.round(altura * (deLado ? 0.115 : 0.085));
+  const corpoMinimo = Math.round(altura * (deLado ? 0.055 : 0.05));
+  const quebrarCom = (corpo: number) => {
+    ctx.font = `700 ${corpo}px ${pilha(fontes.titulo, true)}`;
+    return quebrar(ctx, texto.titulo, faixa, 8);
+  };
+  let corpoTitulo = corpoMaximo;
+  let linhasTitulo = quebrarCom(corpoTitulo);
+  while (linhasTitulo.length > 2 && corpoTitulo > corpoMinimo) {
+    corpoTitulo = Math.round(corpoTitulo * 0.94);
+    linhasTitulo = quebrarCom(corpoTitulo);
+  }
+  /* no piso, o que ainda não couber ganha reticências em vez de estourar o
+     quadro: frase cortada avisa que foi cortada */
+  if (linhasTitulo.length > 2) {
+    ctx.font = `700 ${corpoTitulo}px ${pilha(fontes.titulo, true)}`;
+    linhasTitulo = quebrar(ctx, texto.titulo, faixa, 2);
+  }
+
   /* no alto a letra de apoio precisa ser proporcionalmente MAIOR: a tela é
      estreita e a pessoa lê o celular mais perto, mas com menos largura por
      linha — subtítulo miúdo ali vira ruído cinza em vez de frase */
   const corpoSub = Math.round(corpoTitulo * (deLado ? 0.34 : 0.42));
   const corpoCta = Math.round(corpoTitulo * (deLado ? 0.28 : 0.34));
-
-  ctx.font = `700 ${corpoTitulo}px ${pilha(fontes.titulo, true)}`;
-  const linhasTitulo = quebrar(ctx, texto.titulo, faixa, 3);
   ctx.font = `400 ${corpoSub}px ${pilha(fontes.corpo, false)}`;
   const linhasSub = texto.subtitulo ? quebrar(ctx, texto.subtitulo, faixa, 3) : [];
 
@@ -220,9 +284,9 @@ export async function comporBanner(
        vira um adesivo e briga com a cena */
     ctx.strokeStyle = cores.destaque;
     ctx.lineWidth = Math.max(2, Math.round(corpoCta * 0.08));
-    ctx.strokeRect(x, y, larguraBotao, alturaBotao);
+    ctx.strokeRect(x - larguraBotao / 2, y, larguraBotao, alturaBotao);
     ctx.fillStyle = cores.texto;
-    ctx.fillText(texto.cta, x + paddingX, y + paddingY);
+    ctx.fillText(texto.cta, x, y + paddingY);
   }
 
   return paraBlob(canvas);

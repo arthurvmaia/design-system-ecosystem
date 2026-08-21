@@ -66,6 +66,17 @@ export type MarcaDeImagem = {
  * alta demais, que o tema corta no meio do assunto.
  */
 /**
+ * A PALETA veste o cenário, nunca o produto.
+ *
+ * Pedir a paleta como a cor QUE DOMINA a imagem fazia o modelo pintar tudo:
+ * medido numa loja de fitness, voltou uma bancada com halteres verdes, garrafa
+ * verde e caixa verde — produto que não existe, numa foto que parece filtro.
+ * A cor da marca é do fundo, do apoio e da luz; o produto mantém a cor real
+ * dele, senão a loja mostra uma mercadoria que ninguém vai receber.
+ */
+const PALETA_NO_CENARIO = "As cores da marca ficam no fundo, nos apoios e na luz; cada produto mantém as cores reais dele.";
+
+/**
  * O que separa uma foto de catálogo de uma foto de banco de imagem ruim.
  *
  * Vai em toda peça fotográfica: sem isso o modelo devolve imagem correta e sem
@@ -154,6 +165,70 @@ const JEITO_DO_SIMBOLO = [
 
 /** Coleções que servem a qualquer loja, para quem trouxe a própria marca. */
 const COLECOES_NEUTRAS = ["Novidades", "Mais vendidos", "Ofertas", "Todos os produtos"];
+
+/**
+ * NOMES DE PRATELEIRA: dizem quando o produto chegou ou por quanto ele sai —
+ * nunca o que ele é.
+ *
+ * O pedido da capa usa o nome da coleção como ASSUNTO da foto, e isso funciona
+ * enquanto o nome for uma coisa fotografável: "Smartwatches", "Colares",
+ * "Cozinha". Para "Lançamentos" e "Ofertas" não existe objeto, então o modelo
+ * fotografa o que a palavra sugere — a LOJA. Medido numa loja de relógios:
+ * "Lançamentos" voltou como uma vitrine iluminada e "Ofertas" como uma fachada
+ * com uma placa escrita "Offetas", letreiro inventado apesar do "sem letras"
+ * no pedido. As outras quatro coleções, todas com nome de produto, vieram
+ * certas — o defeito é do nome, não do gerador.
+ *
+ * E não é caso isolado: TODOS os dez nichos do catálogo terminam em nomes
+ * assim, e as coleções neutras são quatro deles. Sem isto, toda loja criada
+ * pelo app ganha uma ou duas capas de fachada no meio das capas de produto.
+ */
+const NOMES_DE_PRATELEIRA = new Set([
+  "novidades", "novidade", "lancamentos", "lancamento", "ofertas", "oferta",
+  "promocoes", "promocao", "mais vendidos", "queridinhos", "destaques", "destaque",
+  "ultimas pecas", "ultimas unidades", "todos os produtos", "outlet",
+  "liquidacao", "black friday", "saldao", "super ofertas", "achados",
+]);
+
+/** O critério, exportado: quem verifica pergunta à mesma fonte que decide. */
+export function nomeDePrateleira(nome: string): boolean {
+  return NOMES_DE_PRATELEIRA.has(semAcento(nome));
+}
+
+function semAcento(texto: string) {
+  return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+/**
+ * O ASSUNTO da capa: o nome quando ele é produto, o produto quando ele é
+ * prateleira.
+ *
+ * A prateleira não desaparece do resultado — ela continua mandando no
+ * ENQUADRAMENTO, que é escolhido pelo índice. O que muda é o objeto: a capa de
+ * "Ofertas" de uma relojoaria passa a mostrar relógios, como as vizinhas.
+ *
+ * Sem nicho escolhido (marca própria) o app não sabe o que a loja vende, e aí
+ * o assunto é emprestado de uma coleção IRMÃ que tenha nome de produto. Não
+ * havendo nenhuma, o nome fica — inventar um produto que a loja talvez não
+ * venda é pior que uma foto genérica, e para esse caso resta a linha que
+ * proíbe fachada e letreiro.
+ */
+function assuntoDaCapa(nome: string, colecoes: readonly string[], produto: string, temNicho: boolean): string {
+  if (!nomeDePrateleira(nome)) return nome;
+  if (temNicho) return produto;
+  const irma = colecoes.find((outra) => outra.trim() && !nomeDePrateleira(outra));
+  return irma?.trim() ?? nome;
+}
+
+/**
+ * A capa é do PRODUTO, não do ponto de venda.
+ *
+ * Vale para todas, e não só para as de prateleira: qualquer enquadramento de
+ * plano aberto pode escorregar para uma fachada. Proíbe a vitrine e o
+ * letreiro, e não a pessoa comprando — essa cena é legítima e é a que o
+ * enquadramento de "situação cotidiana" pede.
+ */
+const SEM_PONTO_DE_VENDA = "A imagem é do produto, não do ponto de venda: sem fachada de loja, sem vitrine e sem letreiro.";
 
 function paleta(marca: MarcaDeImagem) {
   const destaque = marca.accentColor || marca.primaryColor;
@@ -248,6 +323,11 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
   /* o assunto ESTREITO, para os pedidos em que a peça tem um produto certo
      para mostrar: capa de coleção e a dobra de close. Ver `produtoDoNicho`. */
   const produto = produtoDoNicho(marca.nicheId);
+  /* o assunto CONCRETO das duas cenas de campanha: "artigos de treino" não é
+     objeto, e pedir foto dele devolveu um retângulo verde. Ver `cenas` em
+     `marca-generator.mjs`. */
+  const cenaComPessoa = nicho.cenas?.pessoa || `uma pessoa usando ${produto}`;
+  const cenaDeProduto = nicho.cenas?.produto || produto;
   /* sem nicho escolhido (marca própria), as coleções são as de qualquer loja:
      herdar as de "roupas" faria uma loja de ferramentas pedir "Alfaiataria" */
   const colecoes = (marca.collections?.length
@@ -355,10 +435,15 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
       resolucao: resolucaoDaPeca("banner-desktop"),
       origem: "gerada",
       prompt: [
-        `Fotografia editorial de campanha de uma loja de ${tema}: uma pessoa real usando o produto, em atitude natural.`,
+        `${cenaComPessoa}, em atitude natural.`,
+        /* o nicho entra CURTO, como contexto: a descrição larga ("equipamentos,
+           acessórios e roupa de treino") disputa com o assunto e já roubou uma
+           capa uma vez — ver `produtoDoNicho` */
+        `Fotografia editorial de campanha de uma loja de ${produto}.`,
         `Fundo de papel texturizado em tom quente, na paleta ${cores}, com bastante ar em volta.`,
         "Pessoa CENTRALIZADA no quadro, com margem larga dos dois lados e em cima: a mesma foto vai ser cortada larga no computador e alta no celular.",
         QUALIDADE,
+        PALETA_NO_CENARIO,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
       fallbackSvg: bannerSvg(marca, false),
@@ -379,11 +464,12 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
        * menções a textura contra uma ao produto, e o modelo somou os votos.
        */
       prompt: [
-        `${produto} em close, ocupando o centro do quadro.`,
+        `${cenaDeProduto}, em close.`,
         `Segunda cena da campanha de uma loja de ${produto}: só o produto, sem pessoas.`,
-        "Produto CENTRALIZADO no quadro, com margem larga em volta: a mesma foto vai ser cortada larga no computador e alta no celular.",
-        `Fundo liso e discreto na paleta ${cores}, sem textura que dispute com o produto.`,
+        "O produto OCUPA a maior parte do quadro, centralizado, com uma margem que sobre para o corte: a mesma foto vai ser cortada larga no computador e alta no celular.",
+        `Fundo liso na paleta ${cores}, discreto atrás do produto.`,
         QUALIDADE,
+        PALETA_NO_CENARIO,
         "Sem letras, sem logotipos, sem marca d'água.",
       ].join(" "),
       fallbackSvg: bannerSvg(marca, false),
@@ -411,18 +497,38 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
    * assim por diante. Duas capas vizinhas nunca caem no mesmo tratamento, e o
    * resultado é estável — a mesma loja gerada de novo dá as mesmas escolhas.
    */
+  /**
+   * ## E a capa não repete o banner
+   *
+   * O dono abriu a loja e disse: as capas de coleção estão saindo iguais ao
+   * banner. Estavam mesmo, e o motivo estava escrito aqui — três dos seis
+   * enquadramentos eram os do banner: "close no detalhe" é o banner 2, "uma
+   * pessoa real usando a peça" é o banner 1, e "peça única em fundo de cor
+   * sólida" é o banner 2 de novo. Mesma linguagem, mesma cara, e a página
+   * inteira parecendo uma campanha repetida seis vezes.
+   *
+   * Agora as duas famílias falam línguas diferentes de propósito:
+   *
+   * - **banner é CENA**: gente, ar em volta, clima, plano aberto.
+   * - **capa é CATÁLOGO**: bancada, vista de cima, sem gente, produto inteiro.
+   *
+   * O que as mantém da mesma casa é a luz e a paleta, não a composição — é
+   * assim que uma loja de verdade combina a campanha com a grade de coleções
+   * sem repetir a foto.
+   */
   const ENQUADRAMENTOS = [
-    "plano de conjunto sobre superfície lisa, peças organizadas com respiro entre elas, luz difusa de estúdio",
-    "close no detalhe e no acabamento, profundidade de campo curta, textura evidente",
-    "uma pessoa real usando a peça em situação cotidiana, luz natural, fundo com pouca informação",
-    "composição vista de cima, poucas peças bem espaçadas, sombra suave",
-    "a peça no ambiente onde ela é usada, plano aberto, clima de fim de tarde",
-    "peça única centralizada em fundo de cor sólida da marca, iluminação lateral marcada",
+    "vista de cima sobre bancada lisa, peças alinhadas com respiro entre elas, sombra curta",
+    "peça única sobre um pedestal baixo, luz lateral suave, fundo liso",
+    "três peças escalonadas em profundidade, a da frente nítida e as de trás desfocadas",
+    "peças arrumadas numa prateleira de madeira clara, plano frontal e reto",
+    "peça apoiada sobre tecido dobrado, câmera um pouco acima, luz de janela",
+    "conjunto visto de cima em fundo de cor sólida da marca, peças em leque",
   ];
 
   colecoes.forEach((colecao, indice) => {
     const nome = colecao.trim();
     if (!nome) return;
+    const assunto = assuntoDaCapa(nome, colecoes, produto, Boolean(marca.nicheId));
     pecas.push({
       chave: `colecao-${indice + 1}`,
       papel: "colecao",
@@ -443,13 +549,20 @@ export function pecasDaMarca(marca: MarcaDeImagem): PecaDeImagem[] {
        * do assunto. Duas menções ao nome contra uma ao nicho.
        */
       prompt: [
-        `${nome}.`,
-        `Fotografia de campanha mostrando ${nome} de uma loja de ${produto}.`,
-        `O que aparece na imagem é ${nome}, e nenhum outro tipo de produto.`,
+        `${assunto}.`,
+        /* "catálogo" e não "campanha": é a palavra que separa esta família da
+           do banner, e ela vale mais que qualquer lista de proibições */
+        `Fotografia de catálogo mostrando ${assunto} de uma loja de ${produto}.`,
+        `O que aparece na imagem é ${assunto}, e nenhum outro tipo de produto.`,
         `Enquadramento: ${ENQUADRAMENTOS[indice % ENQUADRAMENTOS.length]}.`,
-        `Paleta dominante: ${cores}.`,
+        "Sem pessoas no quadro.",
+        /* "do cenário" e não "dominante": dominante é a palavra que mandava o
+           modelo pintar o produto inteiro na cor da marca */
+        `Paleta do cenário: ${cores}.`,
         QUALIDADE,
+        PALETA_NO_CENARIO,
         "Sem letras, sem logotipos e sem marca d'água.",
+        SEM_PONTO_DE_VENDA,
       ].join(" "),
       fallbackSvg: colecaoSvg(marca, nome, indice),
     });

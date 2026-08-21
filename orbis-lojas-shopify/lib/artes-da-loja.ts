@@ -143,11 +143,32 @@ export function placarDasArtes(
   return { total: obrigatorias.length, aprovadas: obrigatorias.length - pendentes.length, pendentes };
 }
 
-/** Só as artes APROVADAS vão para a loja. Versão velha e arte em análise ficam fora. */
+/**
+ * Só as artes APROVADAS vão para a loja — e cada uma leva o CORTE IRMÃO dela.
+ *
+ * Versão velha e arte em análise continuam fora: aprovar é a decisão do
+ * cliente, e entregar o que ele não aprovou é decidir no lugar dele.
+ *
+ * O irmão é outra coisa. A dobra de banner vira DOIS arquivos da mesma foto —
+ * `banner-2` e `banner-2-mobile` —, cortados para o computador e para o
+ * celular pela mesma composição, no mesmo instante. Só o primeiro é peça da
+ * bancada: é ele que a pessoa vê e é nele que ela clica em aprovar. O irmão
+ * não aparece em lugar nenhum, então nunca era aprovado — ficava reprovado
+ * para sempre, por não ter como ser visto.
+ *
+ * Duas consequências, as duas medidas na loja gerada: o campo do celular caía
+ * no corte largo (jogando fora exatamente a composição que existe para o texto
+ * caber na tela estreita), e o tema voltava a escrever a frase por cima da
+ * foto — porque o sinal de "esta arte já leva a frase assada" é a presença
+ * desse arquivo. Era a frase aparecendo duas vezes na mesma dobra.
+ */
 export function urlsAprovadas(artes: Record<string, ArteDaLoja>): Record<string, string> {
   const saida: Record<string, string> = {};
   for (const [chave, arte] of Object.entries(artes)) {
-    if (arte?.aprovada && arte.url) saida[chave] = arte.url;
+    if (!arte?.aprovada || !arte.url) continue;
+    saida[chave] = arte.url;
+    const irmao = artes[`${chave}-mobile`];
+    if (irmao?.url) saida[`${chave}-mobile`] = irmao.url;
   }
   return saida;
 }

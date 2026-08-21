@@ -123,6 +123,16 @@ export type ShopifyThemeImport = {
    */
   orbisCapas?: Record<string, string>;
   /**
+   * O NOME de cada coleção, como a pessoa escreveu.
+   *
+   * O tema guarda handle: "organizacao", "cama-e-banho". Handle é slug — sem
+   * acento e sem maiúscula —, e quem monta a vitrine reconstruía o título a
+   * partir dele, devolvendo "Organizacao" e "Cama E Banho" na cara do cliente.
+   * O acento não some por descuido de digitação: some porque foi jogado fora
+   * na conversão e não havia por onde recuperá-lo. Agora há.
+   */
+  orbisColecoes?: string[];
+  /**
    * QUEM é esta loja — e não de que TEMA ela nasceu.
    *
    * Uma loja entregue continua carregando o `theme_info` do tema de origem: uma

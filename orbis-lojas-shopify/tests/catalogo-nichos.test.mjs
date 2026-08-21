@@ -76,6 +76,9 @@ test("tema importado abre COMO VEIO: sem mercadoria emprestada", async () => {
     const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
     const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
     const { PRODUTOS_POR_NICHO } = await server.ssrLoadModule("/lib/catalogo-nichos.ts");
+    /* a vitrine mostra o NOME, e o nome é derivado do título do fornecedor por
+       este módulo — perguntar a ele é perguntar à mesma fonte que decide */
+    const { nomeDeVitrine } = await server.ssrLoadModule("/lib/nome-de-produto.ts");
     const theme = await extractShopifyThemeBytes(zip, "cru.zip");
     const files = themeFilesFromZip(zip);
     const base = { theme, files, pageId: "index", assetBase: (path) => `/assets/${path}` };
@@ -106,9 +109,9 @@ test("tema importado abre COMO VEIO: sem mercadoria emprestada", async () => {
      */
     const comNicho = await renderThemePage({ ...base, nicheId: "oculos" });
     assert.match(comNicho, /<p class="quantos">10<\/p>/, "a loja gerada por nicho mostra os 10 produtos");
-    assert.ok(comNicho.includes(PRODUTOS_POR_NICHO.oculos[0].title));
+    assert.ok(comNicho.includes(nomeDeVitrine(PRODUTOS_POR_NICHO.oculos[0])));
     for (const produto of PRODUTOS_POR_NICHO.roupas.slice(0, 2)) {
-      assert.ok(!comNicho.includes(produto.title), `nicho errado vazou para a loja gerada: ${produto.title}`);
+      assert.ok(!comNicho.includes(nomeDeVitrine(produto)), `nicho errado vazou para a loja gerada: ${produto.title}`);
     }
   });
 });
@@ -132,6 +135,9 @@ test("a rota escolhe o produto e a variante: handle e ?variant chegam ao render"
     const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
     const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
     const { PRODUTOS_POR_NICHO } = await server.ssrLoadModule("/lib/catalogo-nichos.ts");
+    /* a vitrine mostra o NOME, e o nome é derivado do título do fornecedor por
+       este módulo — perguntar a ele é perguntar à mesma fonte que decide */
+    const { nomeDeVitrine } = await server.ssrLoadModule("/lib/nome-de-produto.ts");
     const VITRINE = PRODUTOS_POR_NICHO.oculos;
     const theme = await extractShopifyThemeBytes(zip, "rota.zip");
     const files = themeFilesFromZip(zip);
@@ -146,7 +152,7 @@ test("a rota escolhe o produto e a variante: handle e ?variant chegam ao render"
     const comHandle = await renderThemePage({ ...base, handle: alvo.handle });
     const comVariante = await renderThemePage({ ...base, handle: alvo.handle, variantId: segunda.id });
 
-    assert.ok(comHandle.includes(alvo.title), "o handle da rota não escolheu o produto");
+    assert.ok(comHandle.includes(nomeDeVitrine(alvo)), "o handle da rota não escolheu o produto");
     assert.ok(comHandle.length > 0 && semHandle.length > 0);
     assert.ok(comVariante.includes((segunda.price / 100).toFixed(2).replace(".", ",")), "o preço da variante escolhida não apareceu");
   });
@@ -204,6 +210,9 @@ test("o tema renderizado mostra produto real e o carrinho recebe a variante clic
     const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
     const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
     const { PRODUTOS_POR_NICHO } = await server.ssrLoadModule("/lib/catalogo-nichos.ts");
+    /* a vitrine mostra o NOME, e o nome é derivado do título do fornecedor por
+       este módulo — perguntar a ele é perguntar à mesma fonte que decide */
+    const { nomeDeVitrine } = await server.ssrLoadModule("/lib/nome-de-produto.ts");
     const VITRINE = PRODUTOS_POR_NICHO.oculos;
 
     const theme = await extractShopifyThemeBytes(zip, "catalogo.zip");
@@ -218,13 +227,21 @@ test("o tema renderizado mostra produto real e o carrinho recebe a variante clic
       cartItems: [{ variantId: variante.id, quantity: 2 }],
     });
 
-    /* a vitrine mostra os 10 produtos reais, com imagem da própria loja */
-    for (const produto of VITRINE) assert.ok(html.includes(produto.title), `faltou ${produto.title} na vitrine`);
+    /**
+     * A vitrine mostra os 10 produtos reais, com imagem da própria loja — e
+     * cada um pelo NOME, não pelo título do fornecedor.
+     *
+     * O título vem da AliExpress como lista de palavras-chave e, medido no
+     * arquivo, 88 dos 100 chegam cortados em 120 caracteres, no meio da
+     * palavra: "…animal de estimação bon". Quem procura o produto na página
+     * procura o nome dele.
+     */
+    for (const produto of VITRINE) assert.ok(html.includes(nomeDeVitrine(produto)), `faltou ${produto.title} na vitrine`);
     assert.ok(html.includes("aliexpress-media.com"), "imagem real do produto não foi renderizada");
 
     /* o carrinho casou a variante clicada, com quantidade e total certos */
     const esperado = (variante.price * 2 / 100).toFixed(2).replace(".", ",");
-    assert.ok(html.includes(`${primeiro.title}`), "o carrinho não mostrou o produto");
+    assert.ok(html.includes(nomeDeVitrine(primeiro)), "o carrinho não mostrou o produto");
     assert.ok(html.includes(`x2`), "o carrinho não mostrou a quantidade");
     assert.ok(html.includes(esperado), `o total da linha (${esperado}) não apareceu`);
   });
