@@ -620,7 +620,7 @@ const principal = async (): Promise<void> => {
      * que as recompõe. Aconteceu com M11 na primeira rodada — a régua a produzia e a
      * folha nunca a recebia.
      */
-    const REGRAS_DA_APRESENTACAO = ['M7', 'M8', 'M9', 'M10', 'M11'];
+    const REGRAS_DA_APRESENTACAO = ['M7', 'M8', 'M9', 'M10', 'M11', 'M12'];
     const arquivoDoResultado = join(dir, 'resultado.json');
     if (existsSync(arquivoDoResultado)) {
       const lido = ResultadoDeMarca.safeParse(JSON.parse(readFileSync(arquivoDoResultado, 'utf8')));
@@ -660,6 +660,14 @@ const principal = async (): Promise<void> => {
               ? artesProntas.map((a) => propostaPorArte[a] ?? a)
               : Object.values(arranjoPorConceito),
           conceitosSemMobile: artesProntas.length > 0 ? conceitosSemMobile : null,
+          /**
+           * As capas, MEDIDAS em disco no mesmo laço que monta a página.
+           *
+           * Marca sem vitrine responde lista vazia e passa: não ter coleção é
+           * uma resposta. `null` ficaria para o caso de ninguém ter olhado, e
+           * aqui sempre olhamos.
+           */
+          colecoesSemCapa: capasFaltando,
         }).vereditos.filter((v) => REGRAS_DA_APRESENTACAO.includes(v.codigo));
 
         const anteriores = (lido.data.conferencia ?? []).filter(

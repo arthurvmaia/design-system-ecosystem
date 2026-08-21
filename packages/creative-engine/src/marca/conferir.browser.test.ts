@@ -73,6 +73,7 @@ test('PROVA: a marca que o motor produz PASSA na regua da marca', async (t) => {
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   assert.equal(
     r.aprovado,
@@ -88,13 +89,12 @@ test('PROVA: a marca que o motor produz PASSA na regua da marca', async (t) => {
    *
    * Este teste cobre o que sai do símbolo: as versões, o recorte, a cor, a
    * procedência. A apresentação não está aqui — e marca sem apresentação não é
-   * marca pronta, então M7, M8, M9, M10 e M11 ficam pendentes. Se um dia elas
-   * passarem a verde sem ninguém montar a apresentação, é porque a regra
-   * afrouxou.
+   * marca pronta, então M7 a M12 ficam pendentes. Se um dia elas passarem a
+   * verde sem ninguém montar a apresentação, é porque a regra afrouxou.
    */
   assert.deepEqual(
     r.vereditos.filter((v) => v.estado === 'pendente').map((v) => v.codigo),
-    ['M7', 'M8', 'M9', 'M10', 'M11'],
+    ['M7', 'M8', 'M9', 'M10', 'M11', 'M12'],
   );
 });
 
@@ -148,6 +148,7 @@ test('PROVA: versoes de DESENHOS diferentes reprovam em M4', async (t) => {
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   rmSync(um, { force: true });
   rmSync(outro, { force: true });
@@ -188,6 +189,7 @@ test('PROVA: recorte que NAO pegou reprova em M2, e o defeito e invisivel no bra
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   const m2 = r.vereditos.find((v) => v.codigo === 'M2');
   assert.equal(m2?.estado, 'reprovou');
@@ -209,6 +211,7 @@ test('PROVA: cor que some no branco reprova em M5', () => {
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   const m5 = r.vereditos.find((v) => v.codigo === 'M5');
   assert.equal(m5?.estado, 'reprovou');
@@ -232,6 +235,7 @@ test('PROVA: M5 e uma regra que DISPARA, e nao decoracao', () => {
       briefingsDasArtes: null,
       propostasDosConceitos: null,
       conceitosSemMobile: null,
+      colecoesSemCapa: null,
     }).vereditos.find((v) => v.codigo === 'M5')?.estado;
 
   assert.equal(com('#0F4C81'), 'passou', 'azul profundo se lê sobre branco');
@@ -249,6 +253,7 @@ test('PROVA: sem medicao nenhuma, NADA fica verde na regua da marca', () => {
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   const verdes = r.vereditos.filter((v) => v.estado === 'passou');
   assert.equal(verdes.length, 0, `virou verde sem medida: ${verdes.map((v) => v.codigo)}`);
@@ -268,6 +273,7 @@ test('PROVA: o Orbis escolher a cor e legitimo; escolher em SILENCIO nao e', () 
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   } as const;
 
   const comMotivo = conferirMarca({
@@ -302,6 +308,7 @@ test('PROVA M9: artes do MESMO briefing sao variacoes de uma ideia, e reprovam',
     briefingsDasArtes: ['consultório vazio', 'consultório vazio', 'consultório vazio'],
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   const m9 = iguais.vereditos.find((v) => v.codigo === 'M9');
   assert.equal(m9?.estado, 'reprovou');
@@ -312,6 +319,7 @@ test('PROVA M9: artes do MESMO briefing sao variacoes de uma ideia, e reprovam',
     briefingsDasArtes: ['a recepção vazia', 'as mãos no plano de tratamento', 'a conversa'],
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   assert.equal(distintas.vereditos.find((v) => v.codigo === 'M9')?.estado, 'passou');
 });
@@ -328,6 +336,7 @@ test('PROVA M9: sem registro de briefing, fica PENDENTE — nunca verde', () => 
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   assert.equal(r.vereditos.find((v) => v.codigo === 'M9')?.estado, 'pendente');
 });
@@ -352,6 +361,7 @@ test('PROVA M8: a apresentacao que CORTA uma imagem reprova', () => {
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   const m8 = r.vereditos.find((v) => v.codigo === 'M8');
   assert.equal(m8?.estado, 'reprovou');
@@ -371,6 +381,7 @@ test('PROVA M7: apresentacao curta demais nao explica sistema nenhum', () => {
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   assert.equal(r.vereditos.find((v) => v.codigo === 'M7')?.estado, 'reprovou');
 });
@@ -394,6 +405,7 @@ test('PROVA M10: dois conceitos na MESMA proposta sao uma direcao so, e reprovam
     ...base,
     propostasDosConceitos: ['faixa-inferior', 'faixa-inferior'],
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   const m10 = iguais.vereditos.find((v) => v.codigo === 'M10');
   assert.equal(m10?.estado, 'reprovou');
@@ -403,6 +415,7 @@ test('PROVA M10: dois conceitos na MESMA proposta sao uma direcao so, e reprovam
     ...base,
     propostasDosConceitos: ['faixa-inferior', 'tela-dividida'],
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   assert.equal(distintos.vereditos.find((v) => v.codigo === 'M10')?.estado, 'passou');
 
@@ -411,6 +424,7 @@ test('PROVA M10: dois conceitos na MESMA proposta sao uma direcao so, e reprovam
     ...base,
     propostasDosConceitos: ['veu-cheio'],
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   assert.equal(sozinho.vereditos.find((v) => v.codigo === 'M10')?.estado, 'passou');
 });
@@ -429,6 +443,7 @@ test('PROVA M10: sem registro de arranjo, fica PENDENTE — nunca verde', () => 
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   assert.equal(r.vereditos.find((v) => v.codigo === 'M10')?.estado, 'pendente');
   assert.equal(
@@ -453,6 +468,7 @@ test('a folha da marca cobre a REGUA inteira: nenhum codigo some', () => {
     briefingsDasArtes: null,
     propostasDosConceitos: null,
     conceitosSemMobile: null,
+    colecoesSemCapa: null,
   });
   assert.deepEqual(
     r.vereditos.map((v) => v.codigo),
@@ -473,6 +489,7 @@ test('PROVA M11: conceito sem versao mobile REPROVA', () => {
     apresentacao: null,
     briefingsDasArtes: null,
     propostasDosConceitos: null,
+    colecoesSemCapa: null,
   } as const;
 
   const faltando = conferirMarca({ ...base, conceitosSemMobile: ['arte-completa-1.png'] });
@@ -485,4 +502,24 @@ test('PROVA M11: conceito sem versao mobile REPROVA', () => {
 
   const ninguemConferiu = conferirMarca({ ...base, conceitosSemMobile: null });
   assert.equal(ninguemConferiu.vereditos.find((v) => v.codigo === 'M11')?.estado, 'pendente');
+
+  /**
+   * M12 anda com M11 porque as duas medem a mesma coisa: uma entrega que
+   * PROMETE mais do que a pasta tem. Aqui a promessa é a categoria escolhida.
+   */
+  const semCapa = conferirMarca({
+    ...base,
+    conceitosSemMobile: null,
+    colecoesSemCapa: ['Estética'],
+  });
+  const m12 = semCapa.vereditos.find((v) => v.codigo === 'M12');
+  assert.equal(m12?.estado, 'reprovou');
+  assert.match(m12?.motivo ?? '', /Estética/);
+
+  const comCapas = conferirMarca({ ...base, conceitosSemMobile: null, colecoesSemCapa: [] });
+  assert.equal(comCapas.vereditos.find((v) => v.codigo === 'M12')?.estado, 'passou');
+
+  // Lista vazia PASSA e `null` fica pendente: marca sem vitrine é uma resposta,
+  // ninguém ter olhado não é.
+  assert.equal(ninguemConferiu.vereditos.find((v) => v.codigo === 'M12')?.estado, 'pendente');
 });

@@ -174,7 +174,7 @@ const ENTREGA: readonly {
  */
 export const capasDeColecaoParaEntregar = (
   dir: string,
-): { de: string; pasta: string; para: string }[] => {
+): { nome: string; de: string; pasta: string; para: string }[] => {
   const decisao = (
     JSON.parse(readFileSync(join(dir, 'resultado.json'), 'utf8')) as {
       colecoes?: { nomes: string[] };
@@ -184,11 +184,16 @@ export const capasDeColecaoParaEntregar = (
   return decisao.nomes.flatMap((nome) => {
     const arquivo = arquivoDaColecao(nome);
     if (!existsSync(join(dir, 'colecoes', arquivo))) return [];
-    return [{ de: `colecoes/${arquivo}`, pasta: 'Colecoes', para: `${nome}.png` }];
+    return [{ nome, de: `colecoes/${arquivo}`, pasta: 'Colecoes', para: `${nome}.png` }];
   });
 };
 
-const leiaMe = (nome: string, cor: string, temArtes: boolean): string =>
+const leiaMe = (
+  nome: string,
+  cor: string,
+  temArtes: boolean,
+  colecoes: readonly string[],
+): string =>
   [
     `${nome.toUpperCase()} — SUA MARCA`,
     '',
@@ -234,8 +239,33 @@ const leiaMe = (nome: string, cor: string, temArtes: boolean): string =>
           '',
           'ARTES PRONTAS',
           '',
-          'Sao exemplos reais, prontos para publicar: os banners para o site e os',
-          'posts para as redes. Eles mostram como a marca fica aplicada de verdade.',
+          'Sao os banners do seu site, cada um em duas versoes: a de computador e',
+          'a de celular. Publique sempre o par -- o banner de computador espremido',
+          'num telefone corta o texto.',
+          '',
+          'Eles nao servem para anuncio de trafego pago: anuncio tem outra oferta e',
+          'outra chamada, e e outro pedido.',
+          '',
+        ]
+      : []),
+    /**
+     * A pasta de coleções precisa dizer o que ela é.
+     *
+     * Sem esta seção, quem abre encontra quatro fotos com nome de categoria e
+     * nenhuma explicação de onde elas vão — que é exatamente o problema que a
+     * apresentação existe para resolver, repetido dentro da pasta.
+     */
+    ...(colecoes.length > 0
+      ? [
+          '',
+          'AS COLECOES',
+          '',
+          'Sao as capas das categorias da sua vitrine, uma para cada:',
+          ...colecoes.map((c) => `  ${c}`),
+          '',
+          'Use cada uma na categoria de mesmo nome, na loja ou no site. Elas ja',
+          'estao no formato certo e no mesmo tamanho -- trocar por uma foto de',
+          'tamanho diferente desalinha a fileira inteira.',
           '',
         ]
       : []),
@@ -286,10 +316,8 @@ const principal = (): void => {
    * contagem, mesmo tratamento de ausência. Copiá-las num segundo laço seria
    * duas implementações do mesmo copiar.
    */
-  const tudo = [
-    ...ENTREGA,
-    ...capasDeColecaoParaEntregar(dir).map((c) => ({ ...c, obrigatorio: false })),
-  ];
+  const capas = capasDeColecaoParaEntregar(dir);
+  const tudo = [...ENTREGA, ...capas.map((c) => ({ ...c, obrigatorio: false }))];
   for (const item of tudo) {
     const origem = join(dir, item.de);
     if (!existsSync(origem)) {
@@ -324,7 +352,12 @@ const principal = (): void => {
 
   writeFileSync(
     join(destino, 'LEIA-ME.txt'),
-    leiaMe(pedido.nome, resultado.cor.hex, temArtes),
+    leiaMe(
+      pedido.nome,
+      resultado.cor.hex,
+      temArtes,
+      capas.map((c) => c.nome),
+    ),
     'utf8',
   );
 

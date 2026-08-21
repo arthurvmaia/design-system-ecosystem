@@ -39,6 +39,7 @@ export const CODIGOS_DA_REGUA_DE_MARCA = [
   'M9',
   'M10',
   'M11',
+  'M12',
 ] as const;
 
 /** O lado que as versões derivadas têm de ter. O motor as desenha em 1024. */
@@ -150,6 +151,13 @@ export type MarcaParaAceite = {
    * frente Criativos, com copy de venda e orçamento próprios.
    */
   readonly conceitosSemMobile: readonly string[] | null;
+  /**
+   * As coleções decididas cujo arquivo de capa NÃO existe em disco.
+   *
+   * `null` = ninguém conferiu, e é diferente de lista vazia. Marca sem vitrine
+   * passa com a lista vazia: não ter coleção é uma resposta, não uma falta.
+   */
+  readonly colecoesSemCapa: readonly string[] | null;
 };
 
 /**
@@ -523,6 +531,35 @@ export const conferirMarca = (m: MarcaParaAceite): ResultadoDeAceite => {
         'M11',
         TITULO_M11,
         `Sem versão mobile: ${m.conceitosSemMobile.join(', ')}. O telefone é onde a maior parte vê o banner, e recortar a versão larga não serve — o texto foi diagramado para a largura que o recorte destrói.`,
+      ),
+    );
+  }
+
+  // M12 ────────────────────────────────────────────────────────────────────
+  // Uma coleção decidida e sem capa é a vitrine com uma prateleira vazia: o
+  // cliente escolheu a categoria, ela aparece na apresentação, e o arquivo não
+  // existe. Esta regra nasceu de um sumiço MEDIDO — `ResultadoDeMarca` não
+  // declarava `colecoes`, o parse de Zod descartava a chave, e a decisão
+  // evaporava no comando seguinte. As quatro capas estavam em disco e a entrega
+  // saiu sem a pasta, sem nada reclamar. A pergunta não existia em lugar
+  // nenhum, então nada respondeu.
+  const TITULO_M12 = 'Toda coleção decidida tem a sua capa';
+  if (m.colecoesSemCapa === null) {
+    vereditos.push(
+      pendente(
+        'M12',
+        TITULO_M12,
+        'Ninguém conferiu as capas de coleção. Uma categoria citada e sem imagem chega ao cliente como prateleira vazia.',
+      ),
+    );
+  } else if (m.colecoesSemCapa.length === 0) {
+    vereditos.push(passou('M12', TITULO_M12));
+  } else {
+    vereditos.push(
+      reprovou(
+        'M12',
+        TITULO_M12,
+        `Sem capa: ${m.colecoesSemCapa.join(', ')}. A categoria está decidida e aparece na apresentação, mas o arquivo não existe — quem receber a pasta vai procurar a imagem que foi prometida.`,
       ),
     );
   }

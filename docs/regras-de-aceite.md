@@ -583,8 +583,8 @@ da geração só serviria para reprovar algo que já foi pago.
 
 # Regra de aceite da MARCA CRIADA
 
-`M1` a `M11`, em `packages/shared/src/regras-de-aceite-marca.ts`, executadas por
-`pnpm marca:montar` (M1..M6) e por `pnpm marca:apresentar` (M7..M11).
+`M1` a `M12`, em `packages/shared/src/regras-de-aceite-marca.ts`, executadas por
+`pnpm marca:montar` (M1..M6) e por `pnpm marca:apresentar` (M7..M12).
 
 ## O que muda em relação às outras três
 
@@ -700,6 +700,23 @@ a largura que o recorte destrói.
 Isto é diferente do criativo de tráfego pago, que também é vertical e NÃO é o
 mesmo produto: aquele é para quem nunca ouviu falar da marca, e vive na frente
 Criativos com copy de venda e orçamento próprios.
+
+### M12. Toda coleção decidida tem a sua capa
+
+*Por que:* uma coleção decidida e sem capa é a vitrine com uma prateleira vazia.
+O cliente escolheu a categoria (ou o Orbis escolheu por ele), o nome aparece na
+apresentação, e o arquivo não existe — quem abre a pasta procura a imagem que
+foi prometida.
+
+A regra nasceu de um sumiço **medido**: `ResultadoDeMarca` não declarava
+`colecoes`, o `parse` de Zod descarta chave não declarada, e a decisão gravada
+por `marca:colecoes --definir` evaporava no comando seguinte que lesse e
+regravasse o arquivo. As quatro capas do Sorriso Vivo estavam em disco e a
+entrega saiu sem a pasta, sem nada reclamar. É o mesmo formato de furo de M11 e
+de C12: a pergunta não existia em lugar nenhum, então nada respondeu.
+
+Lista vazia **passa**: marca sem vitrine é uma resposta. `null` fica pendente:
+ninguém ter olhado não é.
 
 ## O portão da entrega da marca
 

@@ -375,6 +375,31 @@ export const ResultadoDeMarca = z.object({
   procedencia: z.object({ modelo: z.string().min(1), preset: z.string().min(1) }),
   /** O prompt EXATO que gerou o símbolo. Sem ele a peça não é reproduzível. */
   promptDoSimbolo: z.string().min(1),
+  /**
+   * As COLEÇÕES decididas: os nomes, o formato, e de quem foi a decisão.
+   *
+   * Elas moram no RESULTADO e não só no pedido porque o pedido diz o que o
+   * cliente escreveu, e o resultado diz o que ficou valendo — inclusive quando
+   * fui eu que escolhi. É a mesma separação que `cor.decidida` já faz.
+   *
+   * Declarar aqui não é formalidade: `ResultadoDeMarca.parse` DESCARTA chave
+   * não declarada, então um campo gravado por um comando e ausente do schema
+   * some no próximo comando que ler e regravar o arquivo. Medido no Sorriso
+   * Vivo: `marca:colecoes --definir` gravou a decisão, as quatro capas foram
+   * recortadas com ela, e `marca:apresentar` a apagou ao regravar a folha —
+   * a entrega saiu sem a pasta de coleções e sem nada reclamar.
+   *
+   * `null` = esta marca não tem vitrine. É diferente de lista vazia, que
+   * significa "ainda não decidido".
+   */
+  colecoes: z
+    .object({
+      nomes: z.array(z.string().min(1).max(LIMITE_DO_NOME_DA_COLECAO)).max(LIMITE_DE_COLECOES),
+      formato: FormatoDaColecao,
+      decididoPor: z.enum(['cliente', 'orbis']),
+    })
+    .nullish()
+    .default(null),
   /** A folha de conferência: o que cada regra respondeu sobre esta marca. */
   conferencia: z
     .array(

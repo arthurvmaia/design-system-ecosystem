@@ -177,6 +177,9 @@ const principal = async (): Promise<void> => {
       briefingsDasArtes: null,
       propostasDosConceitos: null,
       conceitosSemMobile: null,
+      // As capas ainda não existem neste passo: quem as recorta é
+      // `marca:colecoes --montar`, e quem as confere é `marca:apresentar`.
+      colecoesSemCapa: null,
     });
 
     /**
