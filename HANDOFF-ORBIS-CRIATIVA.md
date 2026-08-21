@@ -274,6 +274,22 @@ saiu; quem cobra a proporção é C12, que mede.
 
 ---
 
+### O que não está no schema não existe depois do primeiro parse
+
+`ResultadoDeMarca` não declarava `colecoes`. Zod descarta chave não declarada,
+então a decisão gravada por um comando evaporava no comando seguinte que lesse e
+regravasse o arquivo. O spread de `...lido.data` estava correto; o filtro era o
+`parse`.
+
+Custou uma entrega inteira sair errada sem nenhum aviso: as quatro capas em
+disco, a decisão apagada, e `marca:entregar` montando vinte arquivos sem a pasta
+`Colecoes/`. **Campo novo em arquivo persistido é entrada nova no schema**, e a
+prova de que sobreviveu é gravar, rodar o comando que regrava, e ler de novo.
+
+M12 é a régua que passou a cobrar isso.
+
+---
+
 ## 5. O que FALTA
 
 ### Trabalho
@@ -287,6 +303,27 @@ A lista inteira que estava aqui foi feita. O que ficou:
 3. **A frente de Lojas continua com o espelho do recorte** (`pnpm marca:espelhar`),
    e a decisão de trazê-la para o workspace segue aberta — é a quarta da lista
    abaixo.
+
+### Uma decisão de 75 créditos, esperando
+
+A capa de **Estética** do Sorriso Vivo não retrata a categoria: voltou uma
+pessoa sentada a uma mesa, sem nenhuma pista de odontologia. As outras três
+acertaram. A causa está corrigida — o prompt agora manda RETRATAR a categoria em
+vez de só citá-la —, mas refazer aquela capa é geração nova: **75 créditos**, e
+o teto do job está em `resta 0`.
+
+Não gastei. `pnpm criativo:razao teto job_01MARCAPROVA0000000000001 75 "<motivo>"`
+libera, e aí:
+
+```powershell
+pnpm marca:colecoes job_01MARCAPROVA0000000000001 --prompts   # o prompt novo
+# gerar, baixar para colecoes/originais/estetica.<ext>, debitar
+pnpm marca:colecoes job_01MARCAPROVA0000000000001 --montar
+pnpm marca:apresentar job_01MARCAPROVA0000000000001
+pnpm marca:entregar   job_01MARCAPROVA0000000000001 --para "$env:USERPROFILE\Desktop"
+```
+
+Recortar, reapresentar e reentregar não gastam nada — o crédito é só da geração.
 
 ### Decisões do dono
 
