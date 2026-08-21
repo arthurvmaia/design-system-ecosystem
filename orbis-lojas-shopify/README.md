@@ -29,6 +29,28 @@ npm run dev
 
 Abra `http://localhost:3000`. Um perfil local é criado automaticamente; não é necessário entrar, comprar tokens ou desbloquear o ShrinePro.
 
+## Conectar a loja de um cliente (OAuth) ou instalar o tema
+
+Estas duas coisas não funcionam com `localhost`: a Shopify **redireciona** o
+cliente de volta para o app, e **baixa** o ZIP do tema de uma URL. As duas
+precisam de um endereço público, e rodando aqui quem o dá é um túnel.
+
+```
+LEVANTAR-ENDERECO-PUBLICO.bat
+```
+
+Ele sobe o túnel, grava `ORBIS_PUBLIC_URL` no `.dev.vars` e só então sobe o
+servidor — nessa ordem, porque variável de ambiente não recarrega sozinha e um
+servidor já de pé continuaria usando o endereço velho.
+
+O endereço é **sorteado a cada vez**, então ele imprime os dois campos prontos
+para colar no Dev Dashboard da Shopify: a URL do app e a URL de redirecionamento
+(a mesma, com `/api/shopify/retorno` no fim). Os dois precisam do mesmo host, e
+se o painel pedir para publicar uma versão depois de salvar, publique:
+configuração de app é versionada, e salvar sem publicar não vale.
+
+Enquanto a janela estiver aberta, o endereço responde. Fechar derruba tudo.
+
 ## Validação
 
 ```bash
