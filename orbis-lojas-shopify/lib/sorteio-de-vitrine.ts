@@ -30,16 +30,24 @@ import type { ShopifyBlockInstance, ShopifySectionInstance, ShopifyThemeImport }
  * destes vetores — `order` em `theme-export.ts` e `block_order` logo acima —,
  * então prévia e ZIP saem iguais sem encanamento novo.
  *
- * ## Antes da marca, nunca depois
+ * ## Depois da marca, com as dobras ancoradas
  *
- * As regras de dobra são POSICIONAIS e pertencem ao dono: "a primeira dobra
- * fica calada e a segunda escreve" foi pedido por escrito, e a frase da segunda
- * vem assada no pixel. Sortear DEPOIS moveria a dobra que escreve para o topo e
- * passaria por cima disso em silêncio.
+ * A primeira versão sorteava ANTES de a marca ser aplicada, para não mexer nas
+ * regras de dobra — que são posicionais e pertencem ao dono ("a primeira dobra
+ * fica calada e a segunda escreve"). Funcionava, e não servia para nada:
+ * medido no Dawn, quatro clientes viam DUAS páginas, diferentes por dois
+ * títulos trocados de lugar.
  *
- * Sorteando antes, o que varia é QUAL seção ocupa cada vaga — com a altura, o
- * esquema de cor e o véu que ela trouxe do tema —, e a distribuição de artes e
- * textos roda sobre a ordem já sorteada. O contrato do dono continua de pé.
+ * A razão é simples e foi cara de descobrir. O conteúdo — coleções, artes,
+ * produtos — é distribuído por POSIÇÃO depois, então sortear antes movia só as
+ * caixas; e duas caixas do mesmo tipo são quase idênticas. Medir por diferença
+ * de bytes escondia isso: dez páginas "distintas" que o visitante lia como
+ * duas.
+ *
+ * Agora o sorteio roda por ÚLTIMO, quando cada vaga já carrega o conteúdo dela,
+ * e a permutação leva o conteúdo junto. O contrato do dono continua de pé por
+ * exclusão explícita: as seções de dobra (`naoMover`) ficam ancoradas — nem a
+ * posição delas muda, nem a ordem dos blocos dentro. Todo o resto permuta.
  *
  * ## Só a home
  *
@@ -92,9 +100,16 @@ function embaralhar<T>(itens: readonly T[], sortear: () => number): T[] {
  * ele já ocupava. Um `newsletter` no fim continua no fim; três banners entre si
  * trocam de ordem.
  */
-function permutarIrmaos<T extends { type: string }>(itens: readonly T[], sortear: () => number): { itens: T[]; movidos: number } {
+function permutarIrmaos<T extends { type: string }>(
+  itens: readonly T[],
+  sortear: () => number,
+  movivel: (item: T) => boolean = () => true,
+): { itens: T[]; movidos: number } {
   const porTipo = new Map<string, number[]>();
   itens.forEach((item, indice) => {
+    /* quem está ancorado não entra em grupo nenhum: não se move e não empurra
+       ninguém, porque a vaga dele continua sendo dele */
+    if (!movivel(item)) return;
     const vagas = porTipo.get(item.type);
     if (vagas) vagas.push(indice);
     else porTipo.set(item.type, [indice]);
@@ -127,11 +142,23 @@ export const PAGINA_SORTEADA = "index";
  * essa é a diferença entre "estável para aquele cliente" e "muda a cada
  * render".
  */
-export function sortearVitrine(theme: ShopifyThemeImport, semente: string): ResultadoDoSorteio {
+export type OpcoesDoSorteio = {
+  /**
+   * Tipos de seção que NÃO se movem — nem elas, nem os blocos dentro delas.
+   *
+   * Existe por causa das dobras de banner: a primeira é calada e a segunda leva
+   * a frase, por pedido do dono, e a arte de cada uma foi composta para aquela
+   * vaga. Mover isso passaria por cima de uma decisão que tem autor.
+   */
+  naoMover?: RegExp;
+};
+
+export function sortearVitrine(theme: ShopifyThemeImport, semente: string, opcoes: OpcoesDoSorteio = {}): ResultadoDoSorteio {
   const chave = String(semente ?? "").trim();
   if (!chave || theme.orbisSorteio === chave) return { theme, movidos: 0 };
 
   const sortear = sorteador(chave);
+  const ancorada = (secao: { type: string }) => Boolean(opcoes.naoMover?.test(secao.type));
   let movidos = 0;
   const pages = theme.pages.map((page) => {
     if (page.id !== PAGINA_SORTEADA) return page;
@@ -140,13 +167,13 @@ export function sortearVitrine(theme: ShopifyThemeImport, semente: string): Resu
        é consumido em sequência, e mudar a ordem das chamadas mudaria o
        resultado de uma mesma semente */
     const comBlocos: ShopifySectionInstance[] = page.sections.map((secao) => {
-      if (secao.blocks.length < 2) return secao;
+      if (secao.blocks.length < 2 || ancorada(secao)) return secao;
       const resultado = permutarIrmaos<ShopifyBlockInstance>(secao.blocks, sortear);
       movidos += resultado.movidos;
       return resultado.movidos ? { ...secao, blocks: resultado.itens } : secao;
     });
 
-    const resultado = permutarIrmaos<ShopifySectionInstance>(comBlocos, sortear);
+    const resultado = permutarIrmaos<ShopifySectionInstance>(comBlocos, sortear, (secao) => !ancorada(secao));
     movidos += resultado.movidos;
     return { ...page, sections: resultado.itens };
   });

@@ -307,20 +307,7 @@ function ehRecord(valor: unknown): valor is Record<string, ShopifyValue> {
  * real: o nome vira handle, e é isso que o tema usa nos menus e nas listas.
  */
 export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaAplicavel): ResultadoDaMarca {
-  /**
-   * A ORDEM da home sai da semente, e sai ANTES de qualquer coisa ser escrita.
-   *
-   * Antes porque as regras de dobra abaixo são POSICIONAIS e pertencem ao dono:
-   * a primeira dobra fica calada e a segunda leva a frase, foi pedido por
-   * escrito. Sortear depois moveria a dobra que escreve para o topo e passaria
-   * por cima disso em silêncio.
-   *
-   * Sorteando antes, o que varia é QUAL seção ocupa cada vaga — com a altura, o
-   * esquema de cor e o véu que ela trouxe do tema — e o contrato de dobra
-   * continua valendo, porque ele é aplicado depois, sobre a ordem já sorteada.
-   */
-  const sorteado = sortearVitrine(JSON.parse(JSON.stringify(original)) as ShopifyThemeImport, marca.semente?.trim() || marca.name);
-  const theme = sorteado.theme;
+  const theme = JSON.parse(JSON.stringify(original)) as ShopifyThemeImport;
   const alterados: string[] = [];
   const marcou = (id: string) => { if (!alterados.includes(id)) alterados.push(id); };
 
@@ -780,7 +767,20 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
   }
 
   /* último passo: nada sai daqui num formato que a Shopify recusaria */
-  return { theme, alterados, violacoes: violacoesDoTema(theme) };
+  /**
+   * A ORDEM da home sai da semente, e sai por ÚLTIMO.
+   *
+   * Por último porque é aqui que cada vaga já carrega o conteúdo dela: a
+   * permutação leva junto a coleção, a capa e a arte. Sorteando antes — como a
+   * primeira versão fazia — só as caixas se moviam, e caixas do mesmo tipo são
+   * quase idênticas: medido no Dawn, quatro clientes viam duas páginas.
+   *
+   * As dobras de banner ficam FORA. A primeira é calada e a segunda leva a
+   * frase, por pedido do dono, e a arte de cada uma foi composta para aquela
+   * vaga — mover isso seria passar por cima de uma decisão que tem autor.
+   */
+  const sorteada = sortearVitrine(theme, marca.semente?.trim() || marca.name, { naoMover: SECAO_DE_BANNER });
+  return { theme: sorteada.theme, alterados, violacoes: violacoesDoTema(sorteada.theme) };
 }
 
 /**

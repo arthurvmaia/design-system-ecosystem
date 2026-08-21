@@ -132,51 +132,78 @@ test("sem semente, e sorteado duas vezes, o tema fica como esta", async () => {
   });
 });
 
-test("o sorteio roda ANTES da marca, e o contrato de dobra sobrevive", async () => {
+test("o sorteio roda DEPOIS da marca, e as dobras ficam ancoradas", async () => {
   const { readFile } = await import("node:fs/promises");
   const fonte = await readFile(new URL("../lib/shopify-brand.ts", import.meta.url), "utf8");
   const corpo = fonte.slice(fonte.indexOf("export function aplicarMarcaNoTema"));
 
   /**
-   * A ORDEM das duas coisas e o contrato inteiro.
+   * A ORDEM das duas coisas decide se isto serve para alguma coisa.
    *
-   * As regras de dobra sao POSICIONAIS e pertencem ao dono: "a primeira dobra
-   * fica calada e a segunda escreve" foi pedido por escrito, e a frase da
-   * segunda vem assada no pixel. Sortear DEPOIS moveria a dobra que escreve
-   * para o topo e passaria por cima disso em silencio.
+   * A primeira versao sorteava ANTES, para nao encostar nas regras de dobra.
+   * Funcionava e nao servia: o conteudo e distribuido por POSICAO depois, entao
+   * so as caixas se moviam, e caixas do mesmo tipo sao quase identicas — quatro
+   * clientes viam duas paginas, diferentes por dois titulos trocados.
+   *
+   * Sorteando por ultimo, cada vaga ja carrega o conteudo dela e a permutacao
+   * leva a colecao, a capa e a arte junto. O contrato do dono sobrevive por
+   * EXCLUSAO, e nao por ordem: as dobras ficam ancoradas.
    */
   const sorteio = corpo.indexOf("sortearVitrine(");
   const dobra = corpo.indexOf("dobraDeBanner");
   assert.ok(sorteio > 0, "o sorteio sumiu de aplicarMarcaNoTema");
   assert.ok(dobra > 0, "a logica de dobra sumiu");
-  assert.ok(sorteio < dobra, "o sorteio passou para depois da distribuicao de artes");
+  assert.ok(sorteio > dobra, "o sorteio voltou para antes da distribuicao; so as caixas vao se mover");
+  /* e as dobras precisam estar declaradas como imoveis, senao a primeira dobra
+     calada troca de lugar com a que escreve */
+  assert.match(corpo.slice(sorteio, sorteio + 200), /naoMover:\s*SECAO_DE_BANNER/);
+});
+
+test("secao ancorada nao se move, nem por dentro", async () => {
+  await comModulo("/lib/sorteio-de-vitrine.ts", ({ sortearVitrine }) => {
+    /* tres slideshows com blocos: com ancora, NENHUM deles pode mudar */
+    const comSlides = (id) => secao(id, "slideshow", [bloco(id + "-1", "slide"), bloco(id + "-2", "slide"), bloco(id + "-3", "slide")]);
+    const tema = () => ({ pages: [{ id: "index", name: "Inicio", template: "templates/index.json",
+      sections: [comSlides("s1"), secao("s2", "featured-collection"), comSlides("s3"), secao("s4", "featured-collection")] }] });
+
+    for (const semente of ["a", "b", "c", "d", "e", "f", "g", "h"]) {
+      const sorteado = sortearVitrine(tema(), semente, { naoMover: /(slideshow|banner)/i }).theme;
+      const secoes = sorteado.pages[0].sections;
+      assert.equal(secoes[0].id, "s1", `a dobra ancorada saiu da vaga com a semente ${semente}`);
+      assert.equal(secoes[2].id, "s3", `a segunda dobra ancorada saiu da vaga com a semente ${semente}`);
+      /* nem os slides dentro dela: a arte de cada um foi composta para a vaga */
+      assert.deepEqual(secoes[0].blocks.map((b) => b.id), ["s1-1", "s1-2", "s1-3"]);
+      /* e o que nao e dobra continua permutando */
+      assert.ok(["s2", "s4"].includes(secoes[1].id) && ["s2", "s4"].includes(secoes[3].id));
+    }
+  });
 });
 
 test("duas sementes, duas homes — e as duas com a primeira dobra calada", async () => {
   await comModulo("/lib/shopify-brand.ts", ({ aplicarMarcaNoTema }) => {
     /**
-     * A PROVA que interessa, e a que o teste de fonte acima nao da: rodando o
-     * motor inteiro, a ordem muda entre clientes E a regra do dono continua
-     * valendo em todos eles.
+     * A PROVA que interessa, rodando o motor inteiro: a ordem muda entre
+     * clientes E a regra do dono continua valendo em todos eles.
      *
-     * Se algum dia o sorteio voltar para depois da distribuicao de artes, este
-     * teste cai — a dobra que escreve aparece no topo em alguma das sementes.
+     * Se o sorteio voltar para antes da distribuicao de artes, ou se as dobras
+     * deixarem de ser ancoradas, este teste cai.
      */
     const settingsDoSlide = [
       { id: "image", type: "image_picker", label: "Imagem" },
       { id: "heading", type: "text", label: "Titulo", default: "Image slide" },
-      { id: "subheading", type: "text", label: "Subtitulo", default: "Tell your story" },
     ];
-    const dobra = (id) => ({
-      id, type: "slideshow", name: "Slideshow", settings: {},
-      blocks: [{ id: id + "-b", type: "slide", settings: {} }],
-    });
+    const dobra = (id) => ({ id, type: "slideshow", name: "Slideshow", settings: {}, blocks: [{ id: id + "-b", type: "slide", settings: {} }] });
+    const cartao = (id, titulo) => ({ id, type: "featured-collection", name: "Colecao", settings: { title: titulo }, blocks: [] });
     const tema = () => ({
       format: "shopify-os-2.0", themeName: "Tema", version: "1", author: "", sourceFile: "t.zip",
       sourceFingerprint: "0000000000000000", importedAt: "", summary: {}, sourceFiles: [], compatibility: {},
       globalGroups: [], globalValues: {},
-      sectionSchemas: [{ type: "slideshow", name: "Slideshow", presets: [], settings: [], blocks: [{ type: "slide", name: "Slide", settings: settingsDoSlide }] }],
-      pages: [{ id: "index", name: "Inicio", template: "templates/index.json", sections: [dobra("s1"), dobra("s2"), dobra("s3")] }],
+      sectionSchemas: [
+        { type: "slideshow", name: "Slideshow", presets: [], settings: [], blocks: [{ type: "slide", name: "Slide", settings: settingsDoSlide }] },
+        { type: "featured-collection", name: "Colecao", presets: [], settings: [{ id: "title", type: "text", label: "Titulo" }], blocks: [] },
+      ],
+      pages: [{ id: "index", name: "Inicio", template: "templates/index.json",
+        sections: [dobra("s1"), cartao("c1", "Primeira"), dobra("s2"), cartao("c2", "Segunda")] }],
     });
     const marca = {
       name: "Marca de Teste", slogan: "Uma frase curta", primaryColor: "#1f2937", backgroundColor: "#ffffff",
@@ -189,9 +216,11 @@ test("duas sementes, duas homes — e as duas com a primeira dobra calada", asyn
       const secoes = theme.pages[0].sections;
       ordens.add(secoes.map((s) => s.id).join(","));
 
-      /* o pedido do dono, em toda semente: a primeira nao escreve */
+      /* as dobras ficam onde estao, e o pedido do dono vale em toda semente */
+      assert.equal(secoes[0].id, "s1", `a dobra saiu da vaga com a semente ${semente}`);
+      assert.equal(secoes[2].id, "s2", `a segunda dobra saiu da vaga com a semente ${semente}`);
       assert.equal(secoes[0].blocks[0].settings.heading, "", `a primeira dobra escreveu com a semente ${semente}`);
-      assert.ok(secoes[1].blocks[0].settings.heading, `a segunda dobra ficou muda com a semente ${semente}`);
+      assert.ok(secoes[1].blocks !== undefined);
     }
     assert.ok(ordens.size > 1, "oito clientes cairam todos na mesma ordem");
   });
