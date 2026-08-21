@@ -579,8 +579,34 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
              * Acabaram as coleções, acabou o preenchimento: a vaga sobrando é
              * apagada logo abaixo, e a vitrine mostra o que a loja tem.
              */
-            if (proximaColecao >= colecoes.length) { vagasSobrando.push({ secao, alvo }); continue; }
-            alvo.settings[definicao.id] = colecoes[proximaColecao++];
+            /**
+             * ACABOU A LISTA: e o que fazer depende de a vaga ser um BLOCO ou a
+             * SEÇÃO inteira. As duas foram medidas, e erram para lados opostos.
+             *
+             * Bloco some, como já somia: são os cartões de "Nossas Coleções",
+             * lado a lado. Repetir ali põe "Novidades" duas vezes na mesma
+             * vitrine, com fotos diferentes, e parece duas coleções.
+             *
+             * Seção NÃO pode sumir. Primeiro porque apagá-la é imprevisível num
+             * tema qualquer: este módulo serve a qualquer ZIP, e um tema com
+             * dez seções de coleção perderia quatro sem ninguém pedir. Segundo
+             * porque o que ela mostra são PRODUTOS, não um cartão de coleção,
+             * então repetir uma coleção que já é cartão não lê como duplicata.
+             *
+             * O que ela não podia era continuar como estava. Medido numa
+             * entrega real: duas `featured-collection` do Dawn ficavam
+             * apontando para "moda-feminina" e "casa-cozinha-e-jardim", as
+             * coleções da loja de ORIGEM do tema, que não existem na loja do
+             * cliente. Seção vazia na home, sem explicação.
+             */
+            if (proximaColecao >= colecoes.length && alvo !== secao) {
+              vagasSobrando.push({ secao, alvo });
+              continue;
+            }
+            /* o resto só age quando a lista acabou: até lá `% length` é o
+               próprio índice, e a distribuição é a mesma de sempre */
+            alvo.settings[definicao.id] = colecoes[proximaColecao % colecoes.length];
+            proximaColecao += 1;
             marcou(`${secao.type}.${definicao.id}`);
             continue;
           }

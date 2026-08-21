@@ -165,3 +165,61 @@ test("marca própria com nicho escolhido recebe as coleções DO NICHO", async (
     assert.deepEqual(colecoesDaLoja({ brand: { name: "Sasa" } }), []);
   });
 });
+
+test("acabando as coleções, o CARTÃO some e a seção de destaque dá a volta", async () => {
+  await comServidor(async (server) => {
+    const { aplicarMarcaNoTema } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+    const { gerarMarca } = await server.ssrLoadModule("/lib/marca-generator.mjs");
+
+    /**
+     * As duas vagas erram para lados opostos, e por isso a regra é diferente.
+     *
+     * Medido numa entrega real: as seis coleções da loja preenchiam os seis
+     * cartões de "Nossas Coleções" e ACABAVAM ali. As duas `featured-collection`
+     * do Dawn ficavam então com o que o tema trouxe de casa, apontando para
+     * "moda-feminina" e "casa-cozinha-e-jardim" — coleções da loja de ORIGEM,
+     * que não existem na loja do cliente. Duas seções vazias na home.
+     */
+    const tema = {
+      format: "shopify-os-2.0", themeName: "Tema", version: "1", author: "", sourceFile: "t.zip",
+      sourceFingerprint: "0000000000000000", importedAt: "", summary: {}, sourceFiles: [], compatibility: {},
+      globalGroups: [], globalValues: {},
+      sectionSchemas: [
+        { type: "collection-list", name: "Lista", presets: [], settings: [],
+          blocks: [{ type: "cartao", name: "Cartão", settings: [{ id: "collection", type: "collection", label: "Coleção" }] }] },
+        { type: "featured-collection", name: "Destaque", blocks: [], presets: [],
+          settings: [{ id: "collection", type: "collection", label: "Coleção" }] },
+      ],
+      pages: [{ id: "index", name: "Início", template: "templates/index.json", sections: [
+        { id: "lista", type: "collection-list", name: "Lista", settings: {}, blocks: [
+          { id: "b0", type: "cartao", settings: { collection: "da-origem-0" } },
+          { id: "b1", type: "cartao", settings: { collection: "da-origem-1" } },
+          { id: "b2", type: "cartao", settings: { collection: "da-origem-2" } },
+        ] },
+        { id: "d1", type: "featured-collection", name: "Destaque", settings: { collection: "da-origem-a" }, blocks: [] },
+        { id: "d2", type: "featured-collection", name: "Destaque", settings: { collection: "da-origem-b" }, blocks: [] },
+      ] }],
+    };
+
+    /* DUAS coleções para TRÊS cartões e DUAS seções: a lista acaba de propósito */
+    const marca = gerarMarca({ nicheId: "roupas", semente: "vaga", sobrescritas: { collections: ["Alfa", "Beta"] } });
+    const { theme } = aplicarMarcaNoTema(tema, { ...marca, imagens: {} });
+
+    const secoes = theme.pages[0].sections;
+    const lista = secoes.find((s) => s.type === "collection-list");
+    const destaques = secoes.filter((s) => s.type === "featured-collection");
+
+    /* 1. o cartão sem coleção SOME: repetir lado a lado põe a mesma coleção
+       duas vezes na mesma vitrine, com fotos diferentes, e parece duas */
+    assert.equal(lista.blocks.length, 2, "o cartão sobrando devia ter sido removido");
+    assert.deepEqual(lista.blocks.map((b) => b.settings.collection).sort(), ["alfa", "beta"]);
+
+    /* 2. a SEÇÃO não some e não fica com o handle do tema de origem: ela dá a
+       volta na lista. O que ela mostra são produtos, não um cartão de coleção */
+    assert.equal(destaques.length, 2, "seção de destaque não pode ser apagada");
+    assert.deepEqual(destaques.map((s) => s.settings.collection).sort(), ["alfa", "beta"]);
+
+    /* 3. e nada, em lugar nenhum, continua apontando para a loja de origem */
+    assert.doesNotMatch(JSON.stringify(theme.pages), /da-origem-/);
+  });
+});

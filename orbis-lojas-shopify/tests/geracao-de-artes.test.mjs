@@ -267,11 +267,22 @@ test("a capa fica gravada no tema, e é dela que o editor lê", async () => {
  * O Dawn traz sete cartões de coleção; a loja tinha seis coleções, e o resto da
  * divisão fazia "Novidades" aparecer duas vezes na mesma vitrine, com fotos
  * diferentes — o que é pior, porque parece duas coleções.
+ *
+ * A regra vale para o CARTÃO, que é a vaga que este caso mediu. A vaga que é a
+ * SEÇÃO inteira (uma `featured-collection`) é outra coisa e estava quebrada em
+ * silêncio: ela ficava com o handle do tema de ORIGEM, apontando para uma
+ * coleção que não existe na loja do cliente. Apagá-la seria imprevisível num
+ * tema qualquer, e o que ela mostra são produtos, não um cartão de coleção,
+ * então ela dá a volta. O comportamento das duas está medido em
+ * `nome-de-colecao.test.mjs`; aqui trava-se a forma que o distingue.
  */
 test("cartão sem coleção é apagado, nunca preenchido com uma repetida", async () => {
   const brand = await readFile(new URL("../lib/shopify-brand.ts", import.meta.url), "utf8");
   assert.doesNotMatch(brand, /colecoes\[proximaColecao\+\+ % colecoes\.length\]/, "o resto da divisão é a origem da coleção repetida");
-  assert.match(brand, /if \(proximaColecao >= colecoes\.length\) \{ vagasSobrando\.push/);
+  /* a sobra só existe para BLOCO: sem o `alvo !== secao`, a seção de destaque
+     volta a cair na lista de descarte e o splice a deixa como o tema a trouxe */
+  assert.match(brand, /proximaColecao >= colecoes\.length && alvo !== secao/);
+  assert.match(brand, /vagasSobrando\.push\(\{ secao, alvo \}\)/);
   assert.match(brand, /secao\.blocks\.splice\(indice, 1\)/);
 });
 
