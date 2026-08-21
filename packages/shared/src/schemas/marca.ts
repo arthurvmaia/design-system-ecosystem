@@ -287,6 +287,41 @@ export const ESTAGIOS_DA_MARCA = [
 
 export type EstagioDaMarca = (typeof ESTAGIOS_DA_MARCA)[number]['id'];
 
+/**
+ * A conta da marca para uma quantidade ESCOLHIDA de coleções.
+ *
+ * `ESTAGIOS_DA_MARCA` é uma constante, e o estágio `colecao` nela vale pelo
+ * padrão — quatro capas, que é o que o Orbis escolhe quando ninguém disse
+ * quantas. Isso fazia a tela mostrar sempre 1200: medido, com oito coleções
+ * nomeadas ela continuava dizendo "1200 créditos, no máximo" e "As capas de
+ * coleção 300", e o pedido nascia com teto de 1200 para 1500 de trabalho. O
+ * razão recusaria as quatro últimas capas no meio do job, com toda a razão, e
+ * o cliente ficaria com a vitrine pela metade.
+ *
+ * A conta continua saindo do contrato e não da tela: quem chama esta função
+ * não soma nada por conta própria. É a mesma regra de antes com o número certo.
+ */
+export const custosDaMarca = (
+  quantasColecoes: number = COLECOES_QUANDO_O_ORBIS_DECIDE,
+): {
+  teto: number;
+  geracoes: number;
+  estagios: { id: string; rotulo: string; geracoes: number; creditos: number }[];
+} => {
+  // Zero significa "o Orbis decide", e ele decide COLECOES_QUANDO_O_ORBIS_DECIDE.
+  const capas = quantasColecoes <= 0 ? COLECOES_QUANDO_O_ORBIS_DECIDE : quantasColecoes;
+  const estagios = ESTAGIOS_DA_MARCA.map((e) =>
+    e.id === 'colecao'
+      ? { id: e.id, rotulo: e.rotulo, geracoes: capas, creditos: 75 * capas }
+      : { id: e.id, rotulo: e.rotulo, geracoes: e.geracoes, creditos: e.creditos },
+  );
+  return {
+    teto: estagios.reduce((t, e) => t + e.creditos, 0),
+    geracoes: estagios.reduce((t, e) => t + e.geracoes, 0),
+    estagios,
+  };
+};
+
 /** O teto de um pacote completo: a soma dos estágios, e não um número escolhido. */
 export const TETO_DA_MARCA_COMPLETA = ESTAGIOS_DA_MARCA.reduce((t, e) => t + e.creditos, 0);
 

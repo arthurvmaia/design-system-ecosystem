@@ -16,6 +16,7 @@ import {
   LIMITE_DO_NOME_DA_COLECAO,
   PedidoDeMarca,
   ROTULO_DA_FAMILIA,
+  custosDaMarca,
 } from '@ds/shared/schemas';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Check, Sparkles } from 'lucide-react';
@@ -82,6 +83,21 @@ export function CriativosMarcaPage() {
 
   const corValida = CorDaPaleta.shape.hex.safeParse(corPreferida).success;
 
+  /**
+   * A conta ESCALADA pela quantidade de coleções que a pessoa nomeou.
+   *
+   * O endpoint devolve o padrão (quatro capas, que é o que o Orbis escolhe
+   * quando ninguém disse quantas), e ele é o certo enquanto ninguém escolheu.
+   * Escolhendo oito, a conta muda — e ela não pode mudar só no fim: é este
+   * número que vira `tetoDeCreditos` do pedido, e um teto curto faz o razão
+   * recusar as últimas capas no meio do job.
+   *
+   * A aritmética é do contrato, não daqui: `custosDaMarca` é a mesma soma que
+   * o servidor usa.
+   */
+  const nomeadas = colecoes.map((c) => c.trim()).filter((c) => c !== '');
+  const conta = custos.data === undefined ? undefined : custosDaMarca(nomeadas.length);
+
   const montarPedido = (): unknown => ({
     nome: nome.trim(),
     oQueFaz: oQueFaz.trim(),
@@ -98,8 +114,8 @@ export function CriativosMarcaPage() {
     // geração paga sem assunto.
     colecoes: colecoes.map((c) => c.trim()).filter((c) => c !== ''),
     formatoDasColecoes,
-    tetoDeCreditos: custos.data?.teto ?? 0,
-    estimativa: custos.data?.teto ?? null,
+    tetoDeCreditos: conta?.teto ?? 0,
+    estimativa: conta?.teto ?? null,
     preset: 'imagem-marca',
   });
 
@@ -466,14 +482,14 @@ export function CriativosMarcaPage() {
         <section className="ds-glass-static mt-8 rounded-none p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="text-[15px] font-medium" style={{ color: 'var(--color-fg)' }}>
-              {custos.data.teto} créditos, no máximo
+              {conta?.teto ?? custos.data.teto} créditos, no máximo
             </span>
             <span className="text-[12px]" style={{ color: 'var(--color-fg-subtle)' }}>
-              {custos.data.geracoes} imagens geradas
+              {conta?.geracoes ?? custos.data.geracoes} imagens geradas
             </span>
           </div>
           <ul className="mt-3 flex flex-col gap-1.5">
-            {custos.data.estagios.map((e) => (
+            {(conta?.estagios ?? custos.data.estagios).map((e) => (
               <li
                 key={e.id}
                 className="flex justify-between text-[12.5px]"
@@ -533,7 +549,7 @@ export function CriativosMarcaPage() {
         oQueVaiFazer={
           custos.data === undefined
             ? ''
-            : `Produzir a marca "${nome.trim()}": símbolo, versões da logo, favicons, artes de aplicação e a apresentação em PDF. Teto de ${custos.data.teto} créditos, empenhados por estágio.`
+            : `Produzir a marca "${nome.trim()}": símbolo, versões da logo, favicons, artes de aplicação e a apresentação em PDF. Teto de ${conta?.teto ?? custos.data.teto} créditos, empenhados por estágio.`
         }
         ocupado={enviar.isPending}
         erro={erroDaSenha}

@@ -2,10 +2,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  ESTAGIOS_DA_MARCA,
-  GERACOES_DA_MARCA_COMPLETA,
   PedidoDeMarca,
-  TETO_DA_MARCA_COMPLETA,
+  custosDaMarca,
   ehJobId,
   enfileirarUmaVez,
   jobNaFila,
@@ -57,14 +55,9 @@ const idDaChave = (chave: string): string =>
  */
 marcasRoute.get('/custos', (c) =>
   c.json({
-    teto: TETO_DA_MARCA_COMPLETA,
-    geracoes: GERACOES_DA_MARCA_COMPLETA,
-    estagios: ESTAGIOS_DA_MARCA.map((e) => ({
-      id: e.id,
-      rotulo: e.rotulo,
-      geracoes: e.geracoes,
-      creditos: e.creditos,
-    })),
+    // O padrão: quatro capas, que é o que o Orbis escolhe quando ninguém disse
+    // quantas. A tela reescala pela escolha, com a mesma função.
+    ...custosDaMarca(),
   }),
 );
 
@@ -173,11 +166,19 @@ marcasRoute.post('/', async (c) => {
    * e nada impede que ele chegue montado por fora. Conferir aqui é o que impede
    * um pedido de autorizar mais gasto do que a produção inteira custa.
    */
-  if (pedido.tetoDeCreditos > TETO_DA_MARCA_COMPLETA * 1.5) {
+  /**
+   * O limite acompanha o PEDIDO, e não a constante.
+   *
+   * A constante vale por quatro capas de coleção. Um pedido de oito custa mais,
+   * e comparar contra o padrão apertaria o teto de quem escolheu mais — a folga
+   * de 1.5x escondia isso, mas escondê-lo não é responder.
+   */
+  const oQueEstePedidoCusta = custosDaMarca(pedido.colecoes.length).teto;
+  if (pedido.tetoDeCreditos > oQueEstePedidoCusta * 1.5) {
     return c.json(
       {
         error: 'teto_alto_demais',
-        message: `O teto pedido (${pedido.tetoDeCreditos}) passa muito do que a marca inteira custa (${TETO_DA_MARCA_COMPLETA}). Um teto folgado assim autoriza gasto que a produção não precisa.`,
+        message: `O teto pedido (${pedido.tetoDeCreditos}) passa muito do que esta marca custa (${oQueEstePedidoCusta}). Um teto folgado assim autoriza gasto que a produção não precisa.`,
       },
       400,
     );
