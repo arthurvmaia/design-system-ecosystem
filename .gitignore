@@ -78,3 +78,4 @@ scripts/_tmp-*
 # Ancorados na raiz pelo mesmo motivo que os padrões de dado acima.
 /DIAGNOSTICO.md
 /_auditoria/
+tmp/

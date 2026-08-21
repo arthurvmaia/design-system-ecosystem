@@ -1,10 +1,11 @@
 /* ATENÇÃO: ARQUIVO ESPELHADO. NÃO EDITE AQUI.
  *
  * O original mora em `packages/creative-engine/src/marca/derivar-navegador.ts`,
- * no motor criativo, porque as três frentes do portal precisam do MESMO recorte:
- * a logo do site, a da loja e a do criativo têm de ser a mesma logo.
+ * no motor criativo, porque as três frentes do portal precisam do MESMO motor:
+ * a logo do site, a da loja e a do criativo têm de ser a mesma logo, e o modelo
+ * que a loja pede tem de ser o modelo que o produto declarou.
  *
- * Para mudar o algoritmo, edite o original e rode `pnpm marca:espelhar`.
+ * Para mudar, edite o original e rode `pnpm motor:espelhar`.
  * Editar aqui faz a suíte reprovar, de propósito.
  */
 

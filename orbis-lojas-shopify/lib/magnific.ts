@@ -21,12 +21,17 @@
  * GET em `/v1/ai/<modelo>/<task_id>`, com `status` e `generated` (URLs).
  */
 
+import { identificadorDe, presetPorId } from "./motor/presets";
+
 const BASE = "https://api.magnific.com";
 
 /**
  * Modelos liberados, por papel. É lista fechada de propósito: o modelo chega do
  * navegador e vira caminho de URL — aceitar texto livre aqui seria deixar o
  * cliente escolher para onde a chave é enviada.
+ *
+ * A lista é a fronteira de SEGURANÇA. Quem é o modelo padrão, isso não se
+ * decide aqui: decide o catálogo do motor (`modeloPadrao`, logo abaixo).
  */
 export const MODELOS_MAGNIFIC = Object.freeze({
   imagem: Object.freeze([
@@ -46,8 +51,69 @@ export function modeloValido(papel: PapelMagnific, modelo: string): boolean {
   return (MODELOS_MAGNIFIC[papel] as readonly string[]).includes(modelo);
 }
 
+/**
+ * QUE PRESET DO PRODUTO cada papel desta loja usa.
+ *
+ * O papel (`imagem`, `video`) é vocabulário desta rota; o preset é vocabulário
+ * do PRODUTO, e é ele que atravessa as três frentes. Amarrar os dois aqui é o
+ * que faz "imagem da loja" e "imagem do criativo" quererem dizer o mesmo
+ * modelo — que era justamente o que não acontecia.
+ */
+export const PRESET_DO_PAPEL: Readonly<Record<PapelMagnific, string | null>> = Object.freeze({
+  imagem: "imagem-padrao",
+  video: "video-curto",
+  /* Ampliar não é gerar uma peça: é operação avulsa, e o catálogo de presets
+     não fala dela. Ver `AVULSOS` na tabela de preço do motor. */
+  upscale: null,
+});
+
+/**
+ * O identificador REST daquele preset, ou `null` quando ninguém o mediu.
+ *
+ * Vale repetir por que o `null` não vira um palpite: o mesmo modelo tem nome
+ * diferente no MCP e no REST, e dois deles se contradizem — `imagen-nano-banana-2`
+ * é o **Pro**, não o 2. Copiar o slug de um transporte para o outro gera imagem,
+ * cobra crédito e entrega outra coisa, sem erro nenhum na tela.
+ */
+export function modeloDoPreset(presetId: string): string | null {
+  const preset = presetPorId(presetId);
+  return preset ? identificadorDe(preset, "rest") : null;
+}
+
+/**
+ * O modelo padrão de um papel — do CATÁLOGO, e só dele quando ele responde.
+ *
+ * Antes era o primeiro item da lista de segurança acima, e o primeiro item era
+ * `mystic`: um modelo que o produto nunca declarou, cujo preço ninguém mediu, e
+ * que só estava ali por ordem alfabética do dia em que a lista nasceu. Toda
+ * imagem de toda loja saía dele, porque a tela nunca manda `modelo`.
+ *
+ * O que sobra de fallback é DECLARADO, não silencioso: papel cujo preset não
+ * tem identificador REST medido (vídeo, hoje) continua no primeiro da lista, e
+ * `papeisForaDoCatalogo()` diz quais são — para a dívida aparecer numa lista em
+ * vez de aparecer numa fatura.
+ */
 export function modeloPadrao(papel: PapelMagnific): string {
+  const presetId = PRESET_DO_PAPEL[papel];
+  const doCatalogo = presetId === null ? null : modeloDoPreset(presetId);
+  if (doCatalogo !== null && modeloValido(papel, doCatalogo)) return doCatalogo;
   return MODELOS_MAGNIFIC[papel][0];
+}
+
+/** Os papéis que ainda caem no fallback, e por quê. Existe para o teste e para o handoff. */
+export function papeisForaDoCatalogo(): { papel: PapelMagnific; motivo: string }[] {
+  const fora: { papel: PapelMagnific; motivo: string }[] = [];
+  for (const papel of Object.keys(PRESET_DO_PAPEL) as PapelMagnific[]) {
+    const presetId = PRESET_DO_PAPEL[papel];
+    if (presetId === null) {
+      fora.push({ papel, motivo: "não é geração de peça: é operação avulsa, fora do catálogo de presets" });
+      continue;
+    }
+    const modelo = modeloDoPreset(presetId);
+    if (modelo === null) fora.push({ papel, motivo: `o preset "${presetId}" não tem identificador REST medido` });
+    else if (!modeloValido(papel, modelo)) fora.push({ papel, motivo: `o catálogo pede "${modelo}", que não está na lista de segurança` });
+  }
+  return fora;
 }
 
 export function magnificDisponivel(chave: string | undefined): boolean {

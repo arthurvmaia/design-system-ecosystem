@@ -486,10 +486,20 @@ Isso valida o schema, registra no SQLite e move o job para `concluido/`. Se o sc
   de marca saem de `@ds/creative` — não importa se quem pediu foi a geração de
   site, a loja Shopify ou a frente Criativos. Uma segunda implementação de
   qualquer parte visual é defeito, porque a divergência aparece tarde e como
-  "a logo da loja não é a mesma do site". O recorte das versões da logo mora em
-  `packages/creative-engine/src/marca/derivar-navegador.ts`; a frente de Lojas
-  tem um ESPELHO verificado por teste (`pnpm marca:espelhar`), porque ela é um
-  projeto com deploy separado e não pode importar do workspace.
+  "a logo da loja não é a mesma do site". A frente de Lojas não pode importar do
+  workspace (projeto separado, deploy próprio), então o NÚCLEO do motor vive lá
+  como ESPELHO verificado por teste, regravado por `pnpm motor:espelhar`:
+  o recorte das versões da logo (`lib/logo-derivar.ts`), o catálogo de presets,
+  a tabela de preço e o razão (`lib/motor/`). O núcleo só aceita código
+  portável — nada de `node:`, Playwright ou `@ds/*` —, e o teste recusa espelho
+  que puxe qualquer um dos três.
+- **Qual modelo pedir é decisão do CATÁLOGO, nas três frentes.** O mesmo modelo
+  tem nome diferente no MCP e no REST, e dois deles se contradizem: o slug
+  `imagen-nano-banana-2` é o **Pro**, não o 2. Cada frente manter a própria
+  lista foi o que fez a loja gerar por `mystic` — modelo que o produto nunca
+  declarou e cujo preço ninguém mediu — enquanto Criativos gerava por
+  `imagem-padrao`. Identificador não medido é `null`, e `null` não vira palpite:
+  quem cair no fallback tem de se DECLARAR com motivo.
 - **Do símbolo saem as versões, por cálculo — nunca por geração.** Pedir "o
   mesmo símbolo em fundo branco" abre um pedido NOVO e o modelo desenha outro
   símbolo: é assim que a marca chega em três modelos diferentes em vez de uma
@@ -537,7 +547,8 @@ pnpm marca:montar     # o prompt do símbolo (--prompt) e a marca inteira (--sim
 pnpm marca:apresentar # a apresentação em PDF, com todas as artes. OBRIGATÓRIA
 pnpm marca:entregar   # monta a pasta DO CLIENTE (--para "<pasta>")
 pnpm marca:derivar    # do símbolo saem as 3 versões da logo, por cálculo (não gasta crédito)
-pnpm marca:espelhar   # regrava o espelho do recorte na frente de Lojas (--seco só confere)
+pnpm motor:espelhar   # regrava o núcleo do motor espelhado na frente de Lojas (--seco só confere)
+                      # (`pnpm marca:espelhar` continua valendo, é o mesmo comando)
 pnpm fila             # lista a fila
 pnpm extrair          # extrai um job de URL por navegador (renderiza o DOM real) — passo 1 do modo queue
 pnpm explorar         # captura profunda: descobre estados interativos e baixa assets (opcional)
