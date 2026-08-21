@@ -146,3 +146,56 @@ test("todo arquivo de lib/motor avisa que é espelho e nomeia o original", async
     assert.match(fonte, /packages\/creative-engine\/src\//, arquivo);
   }
 });
+
+/**
+ * O GASTO passa a ser DECLARADO no ponto onde ele acontece.
+ *
+ * O `CLAUDE.md` cobra que orçamento generativo seja "declarado e contado". Esta
+ * rota não fazia nem uma coisa nem outra: abria a tarefa na Magnific e seguia.
+ * Agora ela declara — com a MESMA tabela medida que as outras duas frentes
+ * usam, e não com um número escrito aqui.
+ *
+ * A rota não pode ser importada num teste (`cloudflare:workers` só existe no
+ * workerd), então a conferência é sobre a fonte, como nos outros testes de rota
+ * deste projeto.
+ */
+test("a rota de geração declara o custo pela tabela do motor, não por número próprio", async () => {
+  const rota = await readFile(new URL("../app/api/marca-imagens/route.ts", import.meta.url), "utf8");
+
+  assert.match(rota, /from "@\/lib\/motor\/precos"/, "o custo sai do motor");
+  assert.match(rota, /custoDeclarado\(papel, corpo\.resolucao\)/, "e ele acompanha a resposta da geração");
+  assert.match(rota, /transporte: "rest"/, "declarado no transporte que esta frente usa");
+  /* e o papel vira PRESET antes de virar preço: é o preset que atravessa as três frentes */
+  assert.match(rota, /PRESET_DO_PAPEL\[papel\]/);
+
+  /* nenhum número de crédito escrito à mão nesta rota */
+  const linhasDeCredito = rota.split("\n").filter((l) => /cr[eé]dito/i.test(l) && /[0-9]{2,}/.test(l));
+  assert.deepEqual(linhasDeCredito, [], `crédito com número na rota: ${linhasDeCredito.join(" | ")}`);
+});
+
+/**
+ * E o que ele declara HOJE é uma ausência, com o motivo escrito.
+ *
+ * A tabela do motor não tem linha REST medida: a API REST não tem endpoint de
+ * simulação, então não dá para medi-la sem gastar. Copiar o número do MCP faria
+ * a resposta parecer uma conta sendo um palpite — o erro que o catálogo inteiro
+ * existe para impedir.
+ *
+ * Este teste trava a ausência DECLARADA. Quando alguém medir o REST e a tabela
+ * ganhar a linha, ele reprova — e é isso que se quer: o dia em que o número
+ * existir é o dia de ligar o razão, que já está espelhado ao lado.
+ */
+test("o custo em créditos ainda é uma ausência declarada, e não um palpite", async () => {
+  await comVite(async (server) => {
+    const { estimar } = await server.ssrLoadModule("/lib/motor/precos.ts");
+    const hoje = new Date().toISOString().slice(0, 10);
+    for (const presetId of ["imagem-padrao", "video-curto"]) {
+      const conta = estimar({ presetId, transporte: "rest", quantidade: 1, segundos: 8, comAudio: true, hoje });
+      assert.equal(conta.ok, false, presetId);
+      assert.match(conta.motivo, /não foi medido/, presetId);
+      /* o motivo tem de nomear o transporte: "não medido" sem dizer onde manda
+         adivinhar se o problema é o preset, a resolução ou o caminho */
+      assert.match(conta.motivo, /rest/, presetId);
+    }
+  });
+});
