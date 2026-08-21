@@ -291,12 +291,15 @@ M12 é a régua que passou a cobrar isso.
 
 A lista inteira que estava aqui foi feita. O que ficou:
 
-1. **`problemasDaEntregaDeMarca` não confere a marca CONTRA a régua.** Ele exige
-   que a folha esteja completa e sem reprovação, mas quem a escreve é o próprio
-   comando que produziu a marca. Um resultado forjado à mão passaria.
+1. **Metade da régua da marca ainda vale pela palavra do produtor.** O portão
+   passou a refazer a medida das peças (cabeçalho do arquivo) e a existência das
+   capas de coleção, e onde o disco responde ele vence a folha. Mas M2, M3 e M5 —
+   transparência, silhueta e contraste — continuam saindo do que a folha diz:
+   refazê-las exige decodificar pixel, e `@ds/shared` não abre navegador. Está
+   declarado em `docs/regras-de-aceite.md`; não está resolvido.
 2. **A frente de Lojas continua com o espelho do recorte** (`pnpm marca:espelhar`),
    e a decisão de trazê-la para o workspace segue aberta — é a quarta da lista
-   abaixo.
+   abaixo. O espelho está **em dia** (conferido em 21/08/2026).
 
 A comparação de pixel que estava nesta lista era da frente PAUSADA. Mudou para a
 §7, com o que foi medido e o que sobrou para decidir.
@@ -319,6 +322,21 @@ créditos, saldo conferido antes e depois (6585 → 6510).
 **O que ficou para o olho do dono:** as outras três capas têm gente e esta é um
 still de objeto. A luz, o azul e o consultório são os mesmos, então elas leem
 como conjunto — mas é a única sem pessoa, e trocar isso custa 75.
+
+### O estado da verificação, medido em 21/08/2026
+
+```
+pnpm lint          limpo
+pnpm typecheck     limpo
+pnpm test          2000 passam, 1 falha
+pnpm medir-fidelidade --falhar-se-piorar   passa (849 bundles, 57 sites)
+pnpm audit         nenhuma vulnerabilidade conhecida
+pnpm marca:espelhar --seco                 em dia
+```
+
+A falha única é `acervo-regressao`: 7,1% de bytes duplicados entre segmentos de
+UM site capturado, meta 5%. Ela lê só o `vault/`, é da frente pausada e é
+anterior a este trabalho.
 
 ### Decisões do dono
 
