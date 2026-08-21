@@ -253,9 +253,24 @@ export function AppShell({ identity }: { identity: Identity }) {
                    precisa saber que a arte foi reencontrada, senão vai procurar
                    os arquivos achando que perdeu */
                 const religadas = payload.imagensReligadas ?? 0;
-                setToast(religadas
-                  ? `${payload.compatibility.architecture} carregado, senhor. Reencontrei ${religadas} ${religadas === 1 ? "imagem sua" : "imagens suas"} e já as reconectei.`
-                  : `${payload.compatibility.architecture} carregado, senhor. A prévia aguarda suas ordens.`);
+                /**
+                 * E dizer também quantas NÃO voltaram, que é a metade que
+                 * faltava. Quadro vazio na tela não explica se a arte ficou de
+                 * fora do pacote, se a mídia foi apagada, ou se o ZIP veio
+                 * exportado da Shopify, que não leva imagem de loja dentro de
+                 * tema. Os três chegavam aqui como o mesmo silêncio, e era esse
+                 * silêncio que virava "importei e não pegou imagem".
+                 */
+                const perdidas = payload.imagensPerdidas?.length ?? 0;
+                const reencontrei = religadas
+                  ? `Reencontrei ${religadas} ${religadas === 1 ? "imagem sua" : "imagens suas"} e já as reconectei.`
+                  : "";
+                const faltando = perdidas
+                  ? `${perdidas} ${perdidas === 1 ? "imagem desta loja não veio" : "imagens desta loja não vieram"} no pacote e ${perdidas === 1 ? "não está" : "não estão"} neste computador. Se o ZIP foi exportado da Shopify, a arte fica nos Arquivos da loja e não viaja dentro do tema.`
+                  : "";
+                setToast([`${payload.compatibility.architecture} carregado, senhor.`, reencontrei, faltando]
+                  .filter(Boolean)
+                  .join(" ") || `${payload.compatibility.architecture} carregado, senhor. A prévia aguarda suas ordens.`);
               }} />}
               {tab === "code" && <ThemeCodeView data={data} initialThemeId={codeThemeId} onMessage={setToast} />}
               {tab === "themes" && <ThemesView data={data} onPreview={setPreviewTheme} onUse={(theme) => void openTheme(theme)} onEditCode={(theme) => { setCodeThemeId(theme.id); setTab("code"); }} onFavorite={async (themeId, favorite) => {
@@ -306,7 +321,7 @@ function SignedOutLanding() {
   );
 }
 
-function ExtractThemeView({ onImported }: { onImported: (payload: { data: BootstrapData; themeId: string; summary: ShopifyThemeImport["summary"]; compatibility: ShopifyThemeImport["compatibility"]; imagensReligadas?: number }) => void }) {
+function ExtractThemeView({ onImported }: { onImported: (payload: { data: BootstrapData; themeId: string; summary: ShopifyThemeImport["summary"]; compatibility: ShopifyThemeImport["compatibility"]; imagensReligadas?: number; imagensPerdidas?: string[] }) => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);

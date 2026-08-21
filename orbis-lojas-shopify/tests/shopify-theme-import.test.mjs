@@ -456,7 +456,7 @@ test("a imagem da loja volta do acervo ou do próprio pacote, e o resto fica com
     /* 3. o que não é nosso não é inventado: quadro vazio avisa, imagem errada não */
     assert.equal(t.pages[0].sections[0].blocks[0].settings.foto, "shopify://shop_images/de-outra-loja.png");
     assert.equal(t.pages[0].sections[0].blocks[0].settings.titulo, "Oi", "texto que não casa fica intacto");
-    assert.deepEqual(contagem, { doAcervo: 1, doPacote: 2 }, "a capa também conta");
+    assert.deepEqual(contagem, { doAcervo: 1, doPacote: 2, perdidas: [] }, "a capa também conta");
 
     /* as CAPAS seguem o mesmo caminho: sem isso a vitrine volta a cair na foto
        de produto sorteada pelo handle, que é o defeito que elas corrigem */
@@ -469,6 +469,29 @@ test("a imagem da loja volta do acervo ou do próprio pacote, e o resto fica com
     assert.equal(fora.globalValues.logo, "shopify://shop_images/orbis-aaaaaaaa-logo.png", "sem arquivo, nada é inventado");
     assert.equal(fora.pages[0].sections[0].settings.fundo, "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png");
     assert.equal(soPacote.doAcervo, 0);
+
+    /**
+     * E o que NÃO voltou de lugar nenhum sai POR NOME.
+     *
+     * O logo e a capa de `oculos-de-sol` ficaram para trás: nenhum dos dois
+     * está no acervo desta máquina nem no pacote. A capa guarda
+     * `/api/media/<id>`, um endereço DESTA máquina, então noutra ela some do
+     * mesmo jeito que o arquivo.
+     * Antes disto o único sinal era o quadro vazio na tela, e quadro vazio não
+     * distingue arte que ficou fora do pacote, mídia apagada, e ZIP exportado
+     * da Shopify (que não leva imagem de loja dentro do tema, e por isso nunca
+     * poderia trazê-la). Os três chegavam como o mesmo silêncio, e era esse
+     * silêncio que virava "importei e não pegou imagem".
+     */
+    assert.deepEqual(soPacote.perdidas.sort(), ["capa de oculos-de-sol", "orbis-aaaaaaaa-logo.png"]);
+
+    /* imagem que não é NOSSA não entra na lista: `de-outra-loja.png` é do tema
+       de origem e nunca esteve aqui para se perder */
+    assert.ok(!soPacote.perdidas.some((n) => n.includes("de-outra-loja")));
+
+    /* e sem fonte nenhuma, TUDO o que é desta loja é declarado */
+    const nada = reconectarImagens(tema(), new Map(), new Map());
+    assert.deepEqual(nada.perdidas.sort(), ["capa de oculos-de-sol", "capa de polarizados", "orbis-aaaaaaaa-logo.png", "orbis-bbbbbbbb-banner.png"]);
   } finally {
     await server.close();
   }

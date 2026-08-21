@@ -127,9 +127,19 @@ export function reconectarImagens(
   theme: ShopifyThemeImport,
   midiaLocalPorPrefixo: Map<string, string>,
   artesDoPacote: Map<string, string>,
-): { doAcervo: number; doPacote: number } {
+): { doAcervo: number; doPacote: number; perdidas: string[] } {
   let doAcervo = 0;
   let doPacote = 0;
+  /**
+   * As artes desta loja que NÃO voltaram de lugar nenhum.
+   *
+   * Sem esta lista, o único sinal de que a loja importou sem imagem é o quadro
+   * vazio na tela — e quadro vazio não diz se o arquivo ficou de fora do
+   * pacote, se a mídia foi apagada, ou se o ZIP veio exportado da Shopify (que
+   * não põe imagem de loja em tema, e por isso nunca poderia trazê-la). Era o
+   * "importei e não pegou imagem": não havia como saber qual dos três.
+   */
+  const perdidas = new Set<string>();
   /* as artes do pacote também indexadas pelo prefixo do id, que é como a capa
      se identifica: ela guarda `/api/media/<id>`, não o nome do arquivo */
   const pacotePorPrefixo = new Map<string, string>();
@@ -146,6 +156,9 @@ export function reconectarImagens(
     if (completo) { doAcervo += 1; return `/api/media/${completo}`; }
     const url = artesDoPacote.get(arquivo.toLowerCase());
     if (url) { doPacote += 1; return url; }
+    /* só o que é ARTE DESTA LOJA conta como perdido: `shopify://shop_images/`
+       de imagem do próprio tema de origem nunca esteve aqui para se perder */
+    if (id) perdidas.add(arquivo);
     return null;
   });
 
@@ -166,12 +179,13 @@ export function reconectarImagens(
       if (id && local && local.toLowerCase() === id.toLowerCase()) { capas[handle] = valor; continue; }
       const doPacoteUrl = prefixo ? pacotePorPrefixo.get(prefixo) : undefined;
       if (doPacoteUrl) { capas[handle] = doPacoteUrl; doPacote += 1; continue; }
+      if (id) perdidas.add(`capa de ${handle}`);
       capas[handle] = valor;
     }
     theme.orbisCapas = capas;
   }
 
-  return { doAcervo, doPacote };
+  return { doAcervo, doPacote, perdidas: [...perdidas] };
 }
 
 function fnv1a(input: string): string {

@@ -45,6 +45,15 @@ export async function POST(request: Request) {
     return Response.json({
       ...result,
       imagensReligadas: religadas.doAcervo + religadas.doPacote,
+      /**
+       * O que NÃO voltou, dito por extenso.
+       *
+       * Quadro vazio não explica nada: pode ser arte que ficou fora do pacote,
+       * mídia apagada, ou um tema EXPORTADO DA SHOPIFY — que não leva imagem de
+       * loja no ZIP e por isso nunca poderia trazê-la de volta. Sem esta lista,
+       * os três casos chegavam na tela como o mesmo silêncio.
+       */
+      imagensPerdidas: religadas.perdidas,
       /* separado porque as duas dizem coisas diferentes: o que veio do acervo
          está na biblioteca do editor e dá para trocar; o que veio do pacote
          viajou com a loja e funciona em qualquer máquina */
@@ -94,8 +103,13 @@ async function religarImagensDaOrbis(viewerId: string, tema: ShopifyThemeImport)
       .all<{ id: string }>();
     for (const linha of linhas.results ?? []) porPrefixo.set(linha.id.slice(0, 8).toLowerCase(), linha.id);
   }
-  if (!porPrefixo.size && !artesDoPacote.size) return { doAcervo: 0, doPacote: 0 };
-
+  /**
+   * Sem atalho quando as duas fontes estão vazias, e é de propósito.
+   *
+   * Sair aqui poupava um percurso — e calava justamente o PIOR caso: nada para
+   * religar é exatamente quando a pessoa precisa ouvir que a loja importou sem
+   * as imagens dela, e por quê. O percurso é sobre os settings já em memória.
+   */
   return reconectarImagens(tema, porPrefixo, artesDoPacote);
 }
 
