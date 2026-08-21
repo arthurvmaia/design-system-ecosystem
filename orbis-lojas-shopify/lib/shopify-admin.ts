@@ -553,12 +553,65 @@ export async function instalarTema(
   loja: LojaShopify,
   { nome, zipUrl }: { nome: string; zipUrl: string },
   ambiente: Ambiente = {},
-): Promise<{ id: number; nome: string }> {
+): Promise<{ id: number; nome: string; substituidos: number[] }> {
   const resposta = (await chamar(loja, "/themes.json", {
     method: "POST",
     body: JSON.stringify({ theme: { name: nome.slice(0, 50), src: zipUrl, role: "unpublished" } }),
     passo: "instalar o tema",
   }, ambiente)) as { theme?: { id: number; name: string } };
   if (!resposta.theme?.id) throw falha("instalar o tema", "a Shopify não devolveu o tema criado");
-  return { id: resposta.theme.id, nome: resposta.theme.name };
+  const criado = { id: resposta.theme.id, nome: resposta.theme.name };
+  return { ...criado, substituidos: await recolherTemasAntigos(loja, criado, ambiente) };
+}
+
+/**
+ * Recolhe as instalações ANTERIORES desta mesma loja.
+ *
+ * Coleção, produto e arquivo já deduplicavam; tema não, e a diferença não tinha
+ * motivo. Medido na loja real depois de três instalações: três temas de nome
+ * "My Store · Orbis" no seletor, idênticos no rótulo, e o cliente sem como saber
+ * qual é o de agora. Reinstalar é o gesto mais comum de quem está testando.
+ *
+ * A identidade é o NOME, pelo mesmo motivo dos arquivos: ele sai do nome da
+ * loja e é estável entre instalações. Uma loja NOVA não casa, e o tema dela fica
+ * — que é o certo.
+ *
+ * Duas proteções que não são enfeite:
+ *
+ * 1. **Depois, nunca antes.** O tema novo já existe quando o velho sai. Apagar
+ *    primeiro deixaria a loja sem nenhum se o download do ZIP falhasse.
+ * 2. **O PUBLICADO fica.** O tema que a Shopify marca como principal é a vitrine
+ *    no ar; apagá-la derrubaria a loja do cliente para trocar por um tema que
+ *    ele ainda nem conferiu. A comparação abaixo só LÊ esse papel — este módulo
+ *    nunca o atribui, e há um teste que reprova o arquivo inteiro se atribuir.
+ *
+ * Falhar aqui não derruba a instalação: o tema novo entrou, que era o pedido.
+ * O que sobra é um tema a mais na lista, e quem chamou reporta isso.
+ */
+async function recolherTemasAntigos(
+  loja: LojaShopify,
+  criado: { id: number; nome: string },
+  ambiente: Ambiente = {},
+): Promise<number[]> {
+  try {
+    const lista = (await chamar(loja, "/themes.json", {
+      method: "GET",
+      passo: "conferir os temas da loja",
+    }, ambiente)) as { themes?: Array<{ id: number; name: string; role: string }> };
+    const antigos = (lista.themes ?? []).filter(
+      (t) => t.id !== criado.id && t.role !== "main" && t.name === criado.nome,
+    );
+    const removidos: number[] = [];
+    for (const t of antigos) {
+      try {
+        await chamar(loja, `/themes/${t.id}.json`, { method: "DELETE", passo: "recolher o tema anterior" }, ambiente);
+        removidos.push(t.id);
+      } catch {
+        /* um que resiste não pode levar os outros junto */
+      }
+    }
+    return removidos;
+  } catch {
+    return [];
+  }
 }

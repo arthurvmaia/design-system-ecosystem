@@ -66,7 +66,7 @@ type Relatorio = {
   colecoes: { criadas: number; nomes: string[] };
   produtos: { criados: number; semColecao: number; jaExistiam: number };
   arquivos: { enviados: number; falhas: string[]; jaExistiam: number };
-  tema: { instalado: boolean; nome?: string; id?: number; motivo?: string };
+  tema: { instalado: boolean; nome?: string; id?: number; motivo?: string; substituidos?: number };
   avisos: string[];
 };
 
@@ -299,8 +299,11 @@ export async function POST(request: Request) {
       if (publicado.endereco) {
         try {
           const instalado = await instalarTema(loja, { nome: `${dados.nome} · Orbis`, zipUrl: publicado.endereco });
-          relatorio.tema = { instalado: true, id: instalado.id, nome: instalado.nome };
+          relatorio.tema = { instalado: true, id: instalado.id, nome: instalado.nome, substituidos: instalado.substituidos.length };
           relatorio.avisos.push("O tema entrou SEM publicar: confira e publique quando quiser trocar a loja no ar.");
+          /* recolher em silêncio faria o cliente achar que perdeu um tema */
+          if (instalado.substituidos.length)
+            relatorio.avisos.push(`${instalado.substituidos.length} instalação(ões) anterior(es) desta loja foram recolhidas; a publicada, se houver, ficou onde estava.`);
         } catch (erro) {
           relatorio.tema = { instalado: false, motivo: (erro as { mensagem?: string }).mensagem ?? "a instalação do tema falhou" };
         }

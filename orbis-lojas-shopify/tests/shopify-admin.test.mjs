@@ -232,6 +232,52 @@ test("o tema entra sem publicar, e a URL do pacote vai no corpo", async () => {
   });
 });
 
+test("reinstalar recolhe a instalação anterior, e nunca a que está no ar", async () => {
+  await comModulo(async ({ instalarTema }) => {
+    /**
+     * Medido na loja real: três instalações deixaram três temas de nome
+     * "My Store · Orbis" no seletor, sem como distinguir um do outro. Coleção,
+     * produto e arquivo já deduplicavam; só o tema acumulava.
+     */
+    const { chamadas, buscar } = buscaDeMentira([
+      { status: 200, json: { theme: { id: 99, name: "Loja · Orbis" } } },
+      { status: 200, json: { themes: [
+        { id: 99, name: "Loja · Orbis", role: "unpublished" },   // o que acabou de entrar
+        { id: 7, name: "Loja · Orbis", role: "unpublished" },    // instalação anterior: sai
+        { id: 8, name: "Loja · Orbis", role: "main" },           // a vitrine no ar: FICA
+        { id: 9, name: "Tema do cliente", role: "unpublished" }, // não é nosso: FICA
+      ] } },
+      { status: 200, json: {} },
+    ]);
+    const { relogio } = relogioDeMentira();
+    const tema = await instalarTema(LOJA, { nome: "Loja · Orbis", zipUrl: "https://pacote/x.zip" }, { buscar, relogio });
+
+    assert.deepEqual(tema.substituidos, [7]);
+    const apagados = chamadas.filter((c) => c.metodo === "DELETE").map((c) => c.url);
+    assert.equal(apagados.length, 1, "apagou mais do que a instalação anterior");
+    assert.match(apagados[0], /\/themes\/7\.json$/);
+    /* a ORDEM é a garantia: o tema novo já existe quando o velho sai */
+    assert.equal(chamadas[0].metodo, "POST");
+    assert.ok(chamadas.findIndex((c) => c.metodo === "DELETE") > 0);
+  });
+});
+
+test("recolher o tema antigo é acessório: falhar ali não derruba a instalação", async () => {
+  await comModulo(async ({ instalarTema }) => {
+    /* o pedido era instalar, e o tema novo entrou. Sobrar um tema a mais na
+       lista não é motivo para dizer ao cliente que a instalação falhou */
+    const { buscar } = buscaDeMentira([
+      { status: 200, json: { theme: { id: 99, name: "Loja · Orbis" } } },
+      { status: 403, json: { errors: "sem permissão para listar temas" } },
+    ]);
+    const { relogio } = relogioDeMentira();
+    const tema = await instalarTema(LOJA, { nome: "Loja · Orbis", zipUrl: "https://pacote/x.zip" }, { buscar, relogio });
+
+    assert.equal(tema.id, 99);
+    assert.deepEqual(tema.substituidos, []);
+  });
+});
+
 test("o ritmo das chamadas respeita o balde da Shopify", async () => {
   await comModulo(async ({ criarColecoes }) => {
     /* a API REST devolve duas chamadas por segundo; disparadas juntas, as
