@@ -398,6 +398,36 @@ contraste passaram a ser medidos por quem não produziu a marca. Só a divergên
 acusa — refeita reprova e folha diz `passou` —, e sem navegador a conferência é
 pulada dizendo que foi pulada.
 
+### O job `navegador` do CI, adiado de propósito (21/08/2026)
+
+O dono viu e disse "resolva isso depois". Fica escrito para não se perder.
+
+O job `navegador (chromium)` foi CANCELADO em 25m17s — ele bate no
+`timeout-minutes: 25` declarado no `ci.yml`. Antes de estourar, um teste
+reprovou:
+
+```
+✓ auto-validação real: fixture → segmenter → validarPreviews → …   4,3 s
+✓ validador: valida scroll real e grava o resultado (navegador)    3,4 s
+✗ Biblioteca: componente com CSS externo funciona após apagar a extração   1,6 s
+Error: The operation was canceled.
+```
+
+O teste mora em `apps/server/src/routes/library.assets.browser.test.ts:60`. Ele
+**não foi tocado** por nenhum commit desta rodada — nem ele, nem
+`routes/library.ts`. Não é regressão desta frente, e é da frente PAUSADA
+(Biblioteca/extração).
+
+O job **não bloqueia** (`continue-on-error: true`), por decisão registrada no
+próprio `ci.yml`: são testes com orçamento de tempo fixo, e um runner de 4 vCPU
+tende a estourá-los. A condição escrita lá para ele virar bloqueante é "duas
+semanas de verde, e só depois de afrouxar as asserções sensíveis à velocidade da
+máquina" — e ela continua não cumprida.
+
+Duas coisas a separar quando alguém pegar isto, porque o log as mistura: o teste
+que REPROVOU (1,6 s, não é tempo de parede) e o job que ESTOUROU o teto (25 min).
+São causas diferentes, e consertar uma não conserta a outra.
+
 ### O estado da verificação, medido em 21/08/2026
 
 ```
