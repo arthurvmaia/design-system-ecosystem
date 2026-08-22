@@ -154,15 +154,30 @@ test("todo nicho tem tradução completa, e o nome da marca NÃO traduz", () => 
   }
 
   /**
-   * A MARCA é a mesma nos três idiomas, e isso é decisão, não esquecimento.
+   * A RAIZ da marca é a mesma nos três idiomas; o SUFIXO acompanha a língua.
    *
-   * Raízes e sufixos não entram na tradução porque nome próprio não se traduz:
-   * "Hora Watches" é a mesma marca em qualquer língua. Traduzi-los faria a
-   * loja MUDAR DE NOME ao trocar a tela de idioma — com a logo, o slug e a
-   * identidade inteira atrás.
+   * Decisão revista, e o motivo estava na tela: o sufixo parecia parte do nome
+   * e é palavra de CATEGORIA — o cliente a lê como palavra. Deixá-lo fora
+   * entregava "Aura Cosméticos", "Órbita Relojoaria" e "Balão Infantil" numa
+   * loja em inglês, no lugar mais visível que existe.
+   *
+   * As listas são POSICIONALMENTE PARALELAS, então o sorteio pega a mesma vaga
+   * e a marca continua sendo a mesma: "Aura Cosméticos" e "Aura Cosmetics", não
+   * duas lojas diferentes. É esse paralelismo que este teste trava — sem ele, o
+   * mesmo cliente veria a marca inteira mudar ao trocar de idioma.
    */
-  const nomes = IDIOMAS.map((codigo) => gerarMarca({ nicheId: "relogios", semente: "prova", idioma: codigo }).name);
-  assert.equal(new Set(nomes).size, 1, `a marca mudou de nome ao trocar de idioma: ${nomes.join(" / ")}`);
+  for (const nicho of NICHOS) {
+    const porIdioma = IDIOMAS.map((codigo) => gerarMarca({ nicheId: nicho.id, semente: "prova", idioma: codigo }).name);
+    const raizes = porIdioma.map((nome) => nome.split(" ")[0]);
+    assert.equal(new Set(raizes).size, 1, `${nicho.id}: a raiz da marca mudou de idioma: ${porIdioma.join(" / ")}`);
+    const traduzidos = NICHOS_TRADUZIDOS.en[nicho.id].sufixos;
+    assert.equal(traduzidos.length, nicho.sufixos.length, `${nicho.id}: sufixos em inglês fora de paralelo`);
+    assert.equal(NICHOS_TRADUZIDOS.es[nicho.id].sufixos.length, nicho.sufixos.length, `${nicho.id}: sufixos em espanhol fora de paralelo`);
+  }
+  /* e os três que estavam errados na tela saem certos agora */
+  assert.equal(gerarMarca({ nicheId: "beleza", semente: "mesma", idioma: "en" }).name, "Aura Cosmetics");
+  assert.equal(gerarMarca({ nicheId: "beleza", semente: "mesma", idioma: "pt-BR" }).name, "Aura Cosméticos");
+  assert.equal(gerarMarca({ nicheId: "infantil", semente: "mesma", idioma: "en" }).name, "Balão Junior");
 
   /* mas tudo o que é TEXTO muda */
   const pt = gerarMarca({ nicheId: "relogios", semente: "prova", idioma: "pt-BR" });
@@ -534,4 +549,63 @@ test("o cartão de nicho da tela acompanha o idioma escolhido", async () => {
   /* e a lista traduzida é a MESMA em todo lugar: o cartão, o resumo da revisão
      e a linha do catálogo. Duas fontes divergem na primeira mudança. */
   assert.doesNotMatch(tela, /NICHOS\.find\(/, "a revisão voltou a ler o nicho em português");
+});
+
+/**
+ * A PREVIA LE AS COLECOES DA MESMA FONTE QUE A ENTREGA.
+ *
+ * `colecoesDaLoja` decide isto num lugar so: o que a pessoa digitou vence; sem
+ * nada digitado, as do nicho. A entrega ja a chamava — a PREVIA nao, e usava
+ * cru o que o navegador mandasse.
+ *
+ * O estrago era invisivel em metade dos casos e gritante na outra. Quem pede a
+ * Orbis que crie a marca chega com a lista preenchida e ve a loja certa. Quem
+ * chega com marca PROPRIA e escolhe o nicho so para ter catalogo manda a lista
+ * VAZIA — e a vitrine abria com as colecoes do TEMA DE ORIGEM: "Casa Cozinha e
+ * Jardim", "Moda Feminina", "Pet Shop", as mesmas em qualquer nicho, com as
+ * fotos certas por baixo. Trocar de nicho nao trocava nada.
+ */
+test("a prévia resolve as coleções pela mesma regra da entrega", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const rota = await readFile(new URL("../app/api/theme-render/route.ts", import.meta.url), "utf8");
+  /* a REGRA tem um dono, e as duas telas o chamam */
+  assert.match(rota, /colecoesDaLoja\(\{/);
+  /* e o que vai para o tema é o resultado dela, não a lista crua do navegador */
+  assert.match(rota, /aplicarMarcaNoTema\(base, \{ \.\.\.marca, collections: nomes \}\)/);
+  assert.doesNotMatch(rota, /const nomes = Array\.isArray\(marca\.collections\)/, "a prévia voltou a usar a lista crua");
+
+  const entrega = await readFile(new URL("../app/api/client-request/route.ts", import.meta.url), "utf8");
+  assert.match(entrega, /colecoesDaLoja\(/, "a entrega deixou de usar a regra");
+});
+
+test("cada nicho sem coleções digitadas cai nas coleções DELE, nos três idiomas", async () => {
+  const { colecoesDaLoja } = await import("../lib/shopify-brand.ts").catch(() => ({}));
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const brand = colecoesDaLoja ? { colecoesDaLoja } : await server.ssrLoadModule("/lib/shopify-brand.ts");
+    const { NICHOS: nichos } = await import("../lib/marca-generator.mjs");
+    const vistas = new Map();
+    for (const nicho of nichos) {
+      for (const idioma of IDIOMAS) {
+        const lista = brand.colecoesDaLoja({ nicheId: nicho.id, idioma, brand: { collections: [] } });
+        assert.ok(lista.length >= 4, `${nicho.id}/${idioma}: veio com ${lista.length} coleções`);
+        /* e cada nicho tem as SUAS: duas listas iguais em nichos diferentes é o
+           defeito que o dono viu — óculos e relógios com a mesma vitrine */
+        const chave = `${idioma}:${lista.join("|")}`;
+        const jaEra = vistas.get(chave);
+        assert.equal(jaEra, undefined, `${nicho.id} tem a mesma vitrine de ${jaEra} em ${idioma}`);
+        vistas.set(chave, nicho.id);
+      }
+    }
+    /* e a lista digitada continua vencendo a do nicho, nos três idiomas */
+    for (const idioma of IDIOMAS) {
+      assert.deepEqual(
+        brand.colecoesDaLoja({ nicheId: "oculos", idioma, brand: { collections: ["Minha", "Lista"] } }),
+        ["Minha", "Lista"],
+        `${idioma}: o que a pessoa digitou deixou de vencer`,
+      );
+    }
+  } finally {
+    await server.close();
+  }
 });

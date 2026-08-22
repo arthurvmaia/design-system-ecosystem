@@ -9,10 +9,18 @@
  *
  * ## O que NÃO viaja para cá
  *
- * **As raízes e os sufixos do nome da marca** (`Hora`, `Cronos`, `Watches`),
- * porque nome próprio não se traduz: "Hora Watches" é a mesma marca nos três
- * idiomas, e traduzi-la faria a mesma loja mudar de nome ao trocar a tela de
- * idioma.
+ * **As RAÍZES do nome da marca** (`Hora`, `Cronos`, `Aura`, `Íris`), porque nome
+ * próprio não se traduz: é a raiz que carrega a identidade, e traduzi-la faria
+ * a loja trocar de nome ao trocar a tela de idioma.
+ *
+ * O SUFIXO é outra coisa, e esta é uma decisão revista. Ele parecia parte do
+ * nome e é uma palavra de CATEGORIA — o cliente a lê como palavra, não como
+ * marca. Deixá-lo fora entregava "Aura Cosméticos", "Órbita Relojoaria" e
+ * "Balão Infantil" numa loja em inglês, no lugar mais visível que existe: o
+ * cabeçalho, a logo e o rodapé. As listas são POSICIONALMENTE PARALELAS às do
+ * português — mesmo tamanho, mesma ordem —, então o sorteio escolhe a mesma
+ * vaga nos três idiomas e a marca continua sendo a mesma marca: "Aura
+ * Cosméticos" e "Aura Cosmetics", não duas lojas diferentes.
  *
  * **A voz da marca** (`precisa e sóbria`), porque ela não chega à loja: é um
  * campo da bancada de marca, que é tela do app — e o app fala português.
@@ -40,6 +48,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Clothing & fashion",
       resumo: "Everyday clothing, basics and seasonal collections.",
       produto: "clothing",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Atelier", "Studio", "Wear", "Co.", "Fashion"],
       colecoes: ["New in", "Basics", "Seasonal", "Tailoring", "Sale", "Last pieces"],
       beneficios: ["Returns within 30 days", "Free shipping over $199", "Size chart on every item"],
       perguntas: [
@@ -53,6 +63,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Glasses & eyewear",
       resumo: "Sunglasses and prescription frames.",
       produto: "eyewear",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Eyewear", "Optics", "Studio", "Co."],
       colecoes: ["Sunglasses", "Prescription frames", "Polarised", "Unisex", "New arrivals", "Accessories"],
       beneficios: ["UV400 protection on every model", "Case and cloth included", "12-month warranty"],
       perguntas: [
@@ -66,6 +78,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Watches",
       resumo: "Analogue watches, digital watches and smartwatches.",
       produto: "watches",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Watches", "Watchmakers", "Time", "Co."],
       colecoes: ["Smartwatches", "Analogue", "Sport", "Straps", "New arrivals", "Deals"],
       beneficios: ["Tested water resistance", "12-month warranty", "Extra strap on selected models"],
       perguntas: [
@@ -79,6 +93,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Beauty & skincare",
       resumo: "Skin, hair and make-up care.",
       produto: "cosmetics",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Beauty", "Skin", "Cosmetics", "Care"],
       colecoes: ["Face", "Hair", "Body", "Sets", "Best sellers", "New arrivals"],
       beneficios: ["Dermatologically tested formulas", "Never tested on animals", "Discreet, sealed delivery"],
       perguntas: [
@@ -92,6 +108,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Home & decor",
       resumo: "Homeware, storage and decoration for the home.",
       produto: "home decor objects",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Home", "House", "Decor", "Studio"],
       colecoes: ["Kitchen", "Storage", "Decor", "Bed & bath", "Lighting", "Deals"],
       beneficios: ["Free shipping over $249", "90-day warranty", "Reinforced packaging"],
       perguntas: [
@@ -105,6 +123,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Pet",
       resumo: "Accessories, toys and care for dogs and cats.",
       produto: "products for dogs and cats",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Pet", "Petshop", "Store", "Co."],
       colecoes: ["Dogs", "Cats", "Toys", "Grooming", "Walks", "Best sellers"],
       beneficios: ["Non-toxic materials", "Easy 30-day returns", "Free shipping over $149"],
       perguntas: [
@@ -118,6 +138,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Fitness & sports",
       resumo: "Equipment, accessories and training clothing.",
       produto: "training gear",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Fit", "Sports", "Training", "Co."],
       colecoes: ["Strength", "Running", "Yoga & mobility", "Supplements", "Accessories", "Deals"],
       beneficios: ["12-month warranty", "Free shipping over $199", "Assembly support"],
       perguntas: [
@@ -131,6 +153,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Electronics & gadgets",
       resumo: "Tech accessories, audio and the connected home.",
       produto: "electronics",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Tech", "Labs", "Gadgets", "Store"],
       colecoes: ["Audio", "Chargers", "Smart home", "Accessories", "New arrivals", "Deals"],
       beneficios: ["12-month warranty", "Compatibility listed on every product", "Ships within 24h"],
       perguntas: [
@@ -144,6 +168,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Kids & baby",
       resumo: "Nursery, toys and accessories for children.",
       produto: "children's goods",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Kids", "Baby", "Junior", "Store"],
       colecoes: ["Nursery", "Toys", "Little clothes", "Bath time", "Out and about", "Best sellers"],
       beneficios: ["Certified non-toxic materials", "30-day returns", "Gift wrapping"],
       perguntas: [
@@ -157,6 +183,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Jewellery & accessories",
       resumo: "Gold-plated jewellery, costume pieces and everyday accessories.",
       produto: "jewellery",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Jewels", "Accessories", "Studio", "Co."],
       colecoes: ["Necklaces", "Earrings", "Rings", "Bracelets", "Sets", "New arrivals"],
       beneficios: ["18k gold plating", "12-month warranty against tarnishing", "Gift packaging"],
       perguntas: [
@@ -173,6 +201,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Ropa y moda",
       resumo: "Prendas de vestir, básicos y colecciones de temporada.",
       produto: "ropa",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Atelier", "Studio", "Wear", "Co.", "Moda"],
       colecoes: ["Novedades", "Básicos", "Temporada", "Sastrería", "Rebajas", "Últimas piezas"],
       beneficios: ["Cambios hasta 30 días", "Envío gratis desde 199 €", "Guía de tallas en cada prenda"],
       perguntas: [
@@ -186,6 +216,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Gafas y eyewear",
       resumo: "Gafas de sol y monturas graduadas.",
       produto: "gafas",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Eyewear", "Óptica", "Studio", "Co."],
       colecoes: ["Gafas de sol", "Monturas graduadas", "Polarizadas", "Unisex", "Novedades", "Accesorios"],
       beneficios: ["Protección UV400 en todos los modelos", "Estuche y gamuza incluidos", "Garantía de 12 meses"],
       perguntas: [
@@ -199,6 +231,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Relojes",
       resumo: "Relojes analógicos, digitales y smartwatches.",
       produto: "relojes",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Watches", "Relojería", "Time", "Co."],
       colecoes: ["Smartwatches", "Analógicos", "Deportivos", "Correas", "Novedades", "Ofertas"],
       beneficios: ["Resistencia al agua comprobada", "Garantía de 12 meses", "Correa extra en modelos seleccionados"],
       perguntas: [
@@ -212,6 +246,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Belleza y skincare",
       resumo: "Cuidado de la piel, el cabello y maquillaje.",
       produto: "cosméticos",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Beauty", "Skin", "Cosmética", "Care"],
       colecoes: ["Rostro", "Cabello", "Cuerpo", "Kits", "Más vendidos", "Novedades"],
       beneficios: ["Fórmulas testadas dermatológicamente", "Sin testar en animales", "Envío discreto y sellado"],
       perguntas: [
@@ -225,6 +261,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Casa y decoración",
       resumo: "Menaje, organización y decoración para el hogar.",
       produto: "objetos de decoración para casa",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Home", "Casa", "Decor", "Studio"],
       colecoes: ["Cocina", "Organización", "Decoración", "Textil de hogar", "Iluminación", "Ofertas"],
       beneficios: ["Envío gratis desde 249 €", "Garantía de 90 días", "Embalaje reforzado"],
       perguntas: [
@@ -238,6 +276,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Mascotas",
       resumo: "Accesorios, juguetes y cuidados para perros y gatos.",
       produto: "productos para perros y gatos",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Pet", "Petshop", "Store", "Co."],
       colecoes: ["Perros", "Gatos", "Juguetes", "Higiene", "Paseo", "Más vendidos"],
       beneficios: ["Materiales atóxicos", "Cambio fácil en 30 días", "Envío gratis desde 149 €"],
       perguntas: [
@@ -251,6 +291,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Fitness y deportes",
       resumo: "Equipamiento, accesorios y ropa de entrenamiento.",
       produto: "artículos de entrenamiento",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Fit", "Sports", "Training", "Co."],
       colecoes: ["Musculación", "Running", "Yoga y movilidad", "Suplementos", "Accesorios", "Ofertas"],
       beneficios: ["Garantía de 12 meses", "Envío gratis desde 199 €", "Soporte para el montaje"],
       perguntas: [
@@ -264,6 +306,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Electrónica y gadgets",
       resumo: "Accesorios de tecnología, audio y hogar conectado.",
       produto: "electrónica",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Tech", "Labs", "Gadgets", "Store"],
       colecoes: ["Audio", "Cargadores", "Hogar inteligente", "Accesorios", "Novedades", "Ofertas"],
       beneficios: ["Garantía de 12 meses", "Compatibilidad indicada en cada producto", "Envío en 24h"],
       perguntas: [
@@ -277,6 +321,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Infantil y bebé",
       resumo: "Canastilla, juguetes y accesorios para niños.",
       produto: "artículos infantiles",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Kids", "Baby", "Infantil", "Store"],
       colecoes: ["Canastilla", "Juguetes", "Ropita", "Higiene", "Paseo", "Más vendidos"],
       beneficios: ["Materiales atóxicos y certificados", "Cambios en 30 días", "Embalaje para regalo"],
       perguntas: [
@@ -290,6 +336,8 @@ export const NICHOS_TRADUZIDOS = {
       nome: "Joyas y accesorios",
       resumo: "Semijoyas, bisutería y accesorios de uso diario.",
       produto: "joyas",
+      /* posicionalmente paralelo ao portugues: o sorteio pega a mesma vaga */
+      sufixos: ["Joyas", "Accesorios", "Studio", "Co."],
       colecoes: ["Collares", "Pendientes", "Anillos", "Pulseras", "Kits", "Novedades"],
       beneficios: ["Baño de oro de 18k", "Garantía de 12 meses contra la oxidación", "Embalaje para regalo"],
       perguntas: [
@@ -318,6 +366,8 @@ export function nichoNoIdioma(nicho, idioma) {
     nome: tabela.nome ?? nicho.nome,
     resumo: tabela.resumo ?? nicho.resumo,
     produto: tabela.produto ?? nicho.produto,
+    /* a raiz fica; o sufixo, que e palavra de categoria, acompanha a lingua */
+    sufixos: tabela.sufixos ?? nicho.sufixos,
     colecoes: tabela.colecoes ?? nicho.colecoes,
     beneficios: tabela.beneficios ?? nicho.beneficios,
     perguntas: tabela.perguntas ?? nicho.perguntas,

@@ -4,7 +4,7 @@ import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
 import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { renderThemePage, type PreviewCartItem } from "@/lib/theme-render";
-import { aplicarMarcaNoTema, handleDeColecao } from "@/lib/shopify-brand";
+import { aplicarMarcaNoTema, colecoesDaLoja, handleDeColecao } from "@/lib/shopify-brand";
 
 const FINGERPRINT = /^[0-9a-f]{16}$/;
 
@@ -132,7 +132,34 @@ export async function POST(request: Request) {
       try { base = (JSON.parse(linha.defaults) as { shopify?: ShopifyThemeImport }).shopify ?? null; } catch { base = null; }
       if (!base) return Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 404 });
       const marca = body.marca as Parameters<typeof aplicarMarcaNoTema>[1];
-      const { theme } = aplicarMarcaNoTema(base, marca);
+      /**
+       * AS COLEÇÕES DA LOJA, pela MESMA regra da entrega.
+       *
+       * `colecoesDaLoja` decide isto num lugar só: o que a pessoa digitou
+       * vence; sem nada digitado, as do nicho. A entrega já a chamava — a
+       * PRÉVIA não, e usava cru o que o navegador mandasse.
+       *
+       * O estrago era invisível em metade dos casos e gritante na outra. Quem
+       * pede à Orbis que crie a marca chega aqui com a lista preenchida e vê a
+       * loja certa. Quem chega com marca PRÓPRIA e escolhe o nicho só para ter
+       * catálogo manda a lista VAZIA — e a vitrine abria com as coleções do
+       * TEMA DE ORIGEM: "Casa Cozinha e Jardim", "Moda Feminina", "Pet Shop",
+       * as mesmas em qualquer nicho, com as fotos certas por baixo. Foi o que o
+       * dono viu em óculos e em relógios: trocar de nicho não trocava nada.
+       *
+       * É a segunda metade do conserto que a entrega recebeu sozinha. Duas
+       * telas lendo a mesma fonte é o que impede a prévia de prometer uma loja
+       * e o ZIP entregar outra.
+       */
+      const nicheId = typeof (body.marca as { nicheId?: unknown }).nicheId === "string"
+        ? (body.marca as { nicheId: string }).nicheId
+        : undefined;
+      const nomes = colecoesDaLoja({
+        nicheId,
+        idioma: typeof marca.idioma === "string" ? marca.idioma : undefined,
+        brand: { collections: Array.isArray(marca.collections) ? marca.collections : [] },
+      });
+      const { theme } = aplicarMarcaNoTema(base, { ...marca, collections: nomes });
       /**
        * A capa de cada coleção, casada pelo HANDLE.
        *
@@ -141,17 +168,13 @@ export async function POST(request: Request) {
        * a foto de "Bolsas" vá para o cartão de "Bolsas". Casar por posição só
        * funciona porque as duas listas saem da MESMA lista de nomes.
        */
-      const nomes = Array.isArray(marca.collections) ? marca.collections : [];
       const capasDeColecao: Record<string, string> = {};
-      nomes.forEach((nome, indice) => {
+      nomes.forEach((nome: string, indice: number) => {
         const capa = (marca.imagens as Record<string, string> | undefined)?.[`colecao-${indice + 1}`];
         const chave = handleDeColecao(String(nome));
         if (capa && chave) capasDeColecao[chave] = capa;
       });
-      const resposta = await renderResponse(viewer.id, theme, String(body.page ?? "index"), {
-        capasDeColecao,
-        nicheId: typeof (body.marca as { nicheId?: unknown }).nicheId === "string" ? (body.marca as { nicheId: string }).nicheId : undefined,
-      });
+      const resposta = await renderResponse(viewer.id, theme, String(body.page ?? "index"), { capasDeColecao, nicheId });
       return resposta ?? Response.json({ error: "RENDER_UNAVAILABLE" }, { status: 404 });
     }
 
