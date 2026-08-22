@@ -67,7 +67,7 @@ function makeZip() {
     "sections/promo.liquid": section("Promo", [{ type: "text", id: "heading", label: "Título", default: "Promo" }]),
     /* Banner com imagem da LOJA (shopify://shop_images/…), que é o caso de toda
        loja real: o arquivo mora nos Arquivos da loja e não viaja no ZIP. */
-    "sections/image-banner.liquid": `<div class="banner">desktop={{ section.settings.image.width }}x{{ section.settings.image.height }} celular={{ section.settings.mobile_image.width }}x{{ section.settings.mobile_image.height }}</div>{% schema %}${JSON.stringify({
+    "sections/image-banner.liquid": `<div class="banner">desktop={{ section.settings.image.width }}x{{ section.settings.image.height }} celular={{ section.settings.mobile_image.width }}x{{ section.settings.mobile_image.height }} url=[{{ section.settings.image | image_url }}]</div>{% schema %}${JSON.stringify({
       name: "Banner",
       settings: [
         { type: "image_picker", id: "image", label: "Imagem" },
@@ -154,6 +154,7 @@ test("render reproduz cores, esquemas, fontes e grupos como a Shopify", async ()
        lê, então elas têm de vir no formato da Shopify: 3:1 no desktop
        (1800×600) e 1080×1350 no celular. */
     assert.match(html, /desktop=1800x600 celular=1080x1350/, "o placeholder de banner tem de sair 3:1 e 1080x1350");
+    assert.match(html, /url=\[data:image\/svg\+xml,/, "sem arquivo, o banner sai com o placeholder");
     /* fora de banner o quadrado continua: é o formato de cartão de produto */
     const semBanner = await renderThemePage({ theme, files, pageId: "product", assetBase: (path) => `/x/${path}` });
     assert.doesNotMatch(semBanner, /1800x600/, "só banner recebe 3:1");
@@ -196,6 +197,50 @@ test("filtros de cor aceitam o drop e convertem entre formatos", async () => {
     assert.match(html, /rgb=rgb\(51, 102, 153\);/);
     assert.match(html, /claro=rgb\(92, 133, 173\);/);
     assert.match(html, /alpha=rgba\(51, 102, 153, 0\.5\);/);
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * A ARTE QUE VOLTOU NO PACOTE APARECE.
+ *
+ * Reimportar a própria loja religa cada arte para `/api/theme-assets?fp=…`, o
+ * endereço com que este app serve o arquivo que veio dentro do ZIP. O render
+ * não conhecia esse formato: ele tirava o "basename" da URL — `?` fora, o que
+ * dá `theme-assets`, sem extensão — e o valor caía no fim da função como
+ * "não é imagem". O tema então desenhava o `placeholder_svg_tag`.
+ *
+ * O efeito medido numa loja real de relógios: logo, dois banners e três capas
+ * religados no banco, e a prévia abrindo com o quadro cinza no banner, o
+ * cabeçalho escrevendo o nome do tema de ORIGEM no lugar do logo, e os cartões
+ * de coleção caindo na foto de produto. Seis arquivos dentro do pacote, zero
+ * na tela.
+ */
+test("a arte religada do pacote aparece no render, em vez do quadro cinza", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemeBytes, themeFilesFromZip } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const { renderThemePage } = await server.ssrLoadModule("/lib/theme-render.ts");
+    const { urlDeAssetDoTema } = await server.ssrLoadModule("/lib/asset-do-tema.ts");
+    const bytes = makeZip();
+    const theme = extractShopifyThemeBytes(bytes, "religada.zip");
+    const files = themeFilesFromZip(bytes);
+
+    /* o endereço é montado pelo dono do formato, não escrito à mão: quando ele
+       mudar, este teste muda junto e não fica aprovando a forma antiga */
+    const religada = urlDeAssetDoTema("f420738eb3209278", "assets/orbis-390d7e56-banner-1.jpg");
+    const faixa = theme.pages.find((page) => page.id === "index").sections.find((section) => section.id === "faixa");
+    faixa.settings.image = religada;
+    faixa.settings.mobile_image = religada;
+
+    const html = await renderThemePage({ theme, files, pageId: "index", assetBase: (path) => `/x/${path}` });
+
+    /* o arquivo religado é a imagem: o tema recebe a URL servida, não um SVG */
+    assert.match(html, /url=\[\/api\/theme-assets\?fp=f420738eb3209278&path=assets%2Forbis-390d7e56-banner-1\.jpg\]/);
+    assert.doesNotMatch(html, /url=\[data:image\/svg\+xml,/, "com arquivo em mãos, nada de placeholder");
+    /* e a seção deixa de ser dimensionada como placeholder de banner */
+    assert.doesNotMatch(html, /desktop=1800x600/, "o 3:1 é a medida do placeholder, não a da arte");
   } finally {
     await server.close();
   }

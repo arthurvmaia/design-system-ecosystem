@@ -45,6 +45,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { ehUrlDeAssetDoTema } from "@/lib/asset-do-tema";
 import type { BootstrapData, Project, Theme, Viewer } from "@/lib/types";
 import { MAX_UPLOAD_MB, normalizeCustomization } from "@/lib/business-rules.mjs";
 import { enderecoDoPortal } from "@/app/portal";
@@ -1615,6 +1616,10 @@ function RangeField({ label, value, min, max, step, suffix, onChange }: { label:
 function mediaPreviewSource(value: string, assetUrls?: Record<string, string>) {
   if (!value) return "";
   if (value.startsWith("/api/media/") || value.startsWith("data:image/") || /^https?:\/\//.test(value)) return value;
+  /* a arte religada do pacote JÁ é um endereço servido; o basename dela é
+     `theme-assets`, então o mapa abaixo nunca a encontrava e a miniatura do
+     campo de imagem ficava vazia com o arquivo em mãos */
+  if (ehUrlDeAssetDoTema(value)) return value;
   const name = value.split("?")[0].split("/").at(-1)?.toLowerCase() ?? "";
   return assetUrls?.[name] ?? "";
 }

@@ -6,6 +6,7 @@
 import { Liquid, type TagToken, type TopLevelToken, type Context, type Emitter } from "liquidjs";
 import { strFromU8 } from "fflate";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
+import { ehUrlDeAssetDoTema } from "./asset-do-tema";
 import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
 import { nichoPorId } from "./marca-generator.mjs";
 import { handleDeColecao } from "./shopify-brand";
@@ -743,6 +744,17 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     if (typeof value !== "string") return null;
     /* mídia enviada pelo editor do Orbis e data URIs são imagens válidas */
     if (value.startsWith("/api/media/") || value.startsWith("data:image/")) return new ThemeImage(value);
+    /**
+     * E a arte que voltou DENTRO do pacote, que este app já serve.
+     *
+     * Reimportar a própria loja religa cada arte a `/api/theme-assets?fp=…`, e
+     * era aqui que ela morria: o ramo abaixo tira o basename da URL, `?` fora,
+     * o que dá `theme-assets` — sem extensão, sem casar com asset nenhum. O
+     * valor caía no `return null` do fim e o tema desenhava o
+     * `placeholder_svg_tag`. Uma loja com logo, dois banners e três capas
+     * abria com o quadro cinza em todos, e o arquivo estava no pacote.
+     */
+    if (ehUrlDeAssetDoTema(value)) return new ThemeImage(value);
     const name = value.split("?")[0].split("/").at(-1) ?? "";
     if (/^https?:\/\//i.test(value) && !assetPathByName.has(name.toLowerCase())) return new ThemeImage(value);
     if (assetPathByName.has(name.toLowerCase())) return new ThemeImage(assetUrl(name));

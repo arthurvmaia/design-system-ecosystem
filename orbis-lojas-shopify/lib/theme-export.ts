@@ -11,6 +11,7 @@ import { strFromU8, strToU8, zipSync } from "fflate";
 /* relativo, não `@/lib/...`: o alias existe só na build do app, e o `import
    type` vizinho não denuncia isso porque some na compilação */
 import { ARQUIVO_DA_LOJA, marcadorDaLoja } from "./shopify-theme";
+import { nomeDoAssetNaUrl } from "./asset-do-tema";
 import type { ShopifyPage, ShopifySectionInstance, ShopifyThemeImport } from "@/lib/shopify-theme";
 
 export type ThemeExportResult = { zip: Uint8Array; modified: string[]; warnings: string[] };
@@ -179,7 +180,20 @@ export function reconectarImagens(
       if (id && local && local.toLowerCase() === id.toLowerCase()) { capas[handle] = valor; continue; }
       const doPacoteUrl = prefixo ? pacotePorPrefixo.get(prefixo) : undefined;
       if (doPacoteUrl) { capas[handle] = doPacoteUrl; doPacote += 1; continue; }
-      if (id) perdidas.add(`capa de ${handle}`);
+      /**
+       * A capa que não voltou SAI do mapa, e sair aqui não é inventar nada.
+       *
+       * O valor guardado é `/api/media/<id>` — um endereço desta máquina, e a
+       * mídia não está nela. Mantê-lo fazia a vitrine pedir ao navegador uma
+       * imagem que responde 404, e o cartão saía com o ícone de figura
+       * quebrada: pior que o quadro vazio, porque quadro vazio avisa e figura
+       * quebrada só suja. Sem a capa, aquele cartão cai na foto da coleção,
+       * que é exatamente o que ele mostra numa loja que nunca teve capa.
+       *
+       * O aviso não se perde: o handle vai para `perdidas`, e a tela de
+       * importação diz quantas artes não vieram e por quê.
+       */
+      if (id) { perdidas.add(`capa de ${handle}`); continue; }
       capas[handle] = valor;
     }
     theme.orbisCapas = capas;
@@ -217,7 +231,7 @@ function rewriteDeep(value: unknown, rewrite: (raw: string) => string): unknown 
   return value;
 }
 
-type MediaRewriter = { assets: Map<string, Uint8Array>; apply: <T>(value: T) => T };
+type MediaRewriter = { assets: Map<string, Uint8Array>; apply: <T>(value: T) => T; garantirArquivo: (valor: string) => void };
 
 /** Alguma imagem do editor (upload ou data URI) mora nesta seção? */
 function hasEditorImage(section: ShopifySectionInstance): boolean {
@@ -265,6 +279,23 @@ function createMediaRewriter(
   };
 
   const rewrite = (raw: string): string => {
+    /**
+     * A arte que a REIMPORTAÇÃO religou volta à forma canônica.
+     *
+     * Ela chega como `/api/theme-assets?fp=…&path=assets%2Forbis-x.png`, que é
+     * um endereço DESTA máquina: o `fp` é o do pacote aberto aqui e a rota pede
+     * a sessão do dono. Saindo assim dentro do ZIP, a referência morre na
+     * Shopify e morre também na próxima importação, que gera outro `fp` — a
+     * loja perdia a arte a cada volta, com o arquivo dentro do pacote.
+     *
+     * O nome é o que atravessa: o arquivo já viaja no ZIP (a entrega o guarda
+     * em `previa-local/imagens-para-a-shopify/`, e o `output` copia tudo o que
+     * veio), então basta devolver a referência que o tema procura. Registrar
+     * de novo em `assets/` só duplicaria megabytes — foi o que levou um pacote
+     * a 140 MB.
+     */
+    const doPacote = nomeDoAssetNaUrl(raw);
+    if (doPacote) return `shopify://shop_images/${doPacote}`;
     const mediaId = EDITOR_MEDIA_URL.exec(raw)?.[1];
     if (mediaId) {
       const media = editorMedia.get(mediaId);
@@ -311,7 +342,24 @@ function createMediaRewriter(
     return raw;
   };
 
-  return { assets, apply: <T,>(value: T) => rewriteDeep(value, rewrite) as T };
+  /**
+   * Grava o arquivo no ZIP sem que ninguém precise apontar para ele.
+   *
+   * Existe para as CAPAS, e só para elas. Toda outra imagem chega aqui porque
+   * um setting a referencia, e é o próprio ato de reescrever a referência que
+   * registra o arquivo. A capa não: ela mora no marcador, e o marcador guarda
+   * `/api/media/<id>` de propósito — é o id que a reimportação usa para casar a
+   * arte pelo prefixo do nome. Reescrevê-lo perderia essa identidade.
+   *
+   * Sem isto, a capa que não coube em nenhum cartão saía do pacote sem o
+   * arquivo: o id continuava no marcador, o arquivo não ia junto, e fora desta
+   * máquina o cartão daquela coleção virava um endereço morto. Medido numa loja
+   * de seis coleções: seis capas geradas, três com vaga na página, três no
+   * pacote. As outras três voltaram quebradas.
+   */
+  const garantirArquivo = (valor: string) => { rewrite(valor); };
+
+  return { assets, apply: <T,>(value: T) => rewriteDeep(value, rewrite) as T, garantirArquivo };
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -446,6 +494,10 @@ export function exportThemeZip(
       warnings.push(`imagens trocadas em "${page.name}" não couberam no formato do tema (a página não tem template JSON) e ficaram de fora`);
     }
   }
+
+  /* as CAPAS apontam do marcador, que não passa pelo reescritor: aqui elas
+     garantem o arquivo, para a vitrine voltar inteira fora desta máquina */
+  for (const capa of Object.values(theme.orbisCapas ?? {})) media.garantirArquivo(capa);
 
   /* por último: só entram os assets que alguma referência gravada aponta */
   for (const [path, data] of media.assets.entries()) {

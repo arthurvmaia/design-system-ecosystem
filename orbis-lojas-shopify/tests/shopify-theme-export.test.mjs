@@ -425,3 +425,90 @@ test("o nome próprio da loja e o modelo do estúdio sobrevivem à exportação"
     await server.close();
   }
 });
+
+/**
+ * A ARTE RELIGADA VOLTA À FORMA CANÔNICA AO SAIR.
+ *
+ * Reimportar a própria loja religa cada arte para `/api/theme-assets?fp=…`, um
+ * endereço DESTA máquina: o `fp` é o do pacote aberto aqui e a rota exige a
+ * sessão do dono. Saindo assim dentro do ZIP, a referência morre duas vezes —
+ * na Shopify, que não conhece a rota, e na próxima importação, que gera outro
+ * `fp`. A loja perdia a arte a cada volta com o arquivo dentro do pacote.
+ */
+test("a arte religada do pacote sai do ZIP como shopify://shop_images", async () => {
+  const { server, shopifyTheme, themeExport } = await loadModules();
+  try {
+    const { urlDeAssetDoTema } = await server.ssrLoadModule("/lib/asset-do-tema.ts");
+    const original = buildFixtureZip();
+    const theme = shopifyTheme.extractShopifyThemeBytes(original, "fixture.zip");
+    const files = shopifyTheme.themeFilesFromZip(original);
+
+    /* o endereço vem de quem o define, para este teste não aprovar a forma
+       antiga depois que ela mudar */
+    theme.globalValues.logo = urlDeAssetDoTema("f420738eb3209278", "assets/orbis-222660fd-logotipo.png");
+    const instancia = theme.pages.find((page) => page.id === "index").sections[0];
+    instancia.settings.image = urlDeAssetDoTema("f420738eb3209278", "assets/orbis-390d7e56-banner-1.jpg");
+
+    const exportado = unzipSync(themeExport.exportThemeZip(theme, files).zip);
+
+    const settingsData = JSON.parse(strFromU8(exportado["config/settings_data.json"]));
+    assert.equal(settingsData.current.logo, "shopify://shop_images/orbis-222660fd-logotipo.png");
+    const index = JSON.parse(strFromU8(exportado["templates/index.json"]));
+    assert.equal(index.sections.destaque.settings.image, "shopify://shop_images/orbis-390d7e56-banner-1.jpg");
+
+    /* e nada de duplicar megabyte: o arquivo já viaja no pacote de onde veio.
+       Registrá-lo outra vez em `assets/` foi o que levou um ZIP a 140 MB. */
+    assert.equal(exportado["assets/orbis-222660fd-logotipo.png"], undefined);
+    assert.equal(exportado["assets/orbis-390d7e56-banner-1.jpg"], undefined);
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * A CAPA SEM VAGA NA PÁGINA TAMBÉM LEVA O ARQUIVO.
+ *
+ * A capa mora no marcador, não num setting, e era o ato de reescrever um
+ * setting que registrava o arquivo no ZIP. Capa que não coubesse em cartão
+ * nenhum saía do pacote como id sem arquivo: fora desta máquina, o cartão
+ * daquela coleção virava um endereço morto.
+ *
+ * Medido numa loja de relógios com seis coleções: seis capas geradas, três com
+ * vaga na página, três no pacote. As outras três voltaram com o ícone de figura
+ * quebrada, e o cliente viu isso na tela.
+ */
+test("a capa sem vaga na página viaja no pacote e volta na reimportação", async () => {
+  const { server, shopifyTheme, themeExport } = await loadModules();
+  try {
+    const original = buildFixtureZip();
+    const theme = shopifyTheme.extractShopifyThemeBytes(original, "fixture.zip");
+    const files = shopifyTheme.themeFilesFromZip(original);
+
+    /* uma capa que NENHUM setting menciona: só o marcador sabe dela */
+    const idDaCapa = "cccccccc-1111-2222-3333-444444444444";
+    const daLoja = { ...theme, orbisNicheId: "relogios", orbisCapas: { pulseiras: `/api/media/${idDaCapa}` } };
+    const bytesDaCapa = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    const editorMedia = new Map([[idDaCapa, { filename: `orbis-${idDaCapa.slice(0, 8)}-capa.png`, data: bytesDaCapa }]]);
+
+    const { zip } = themeExport.exportThemeZip(daLoja, files, editorMedia);
+    const exportado = unzipSync(zip);
+    assert.ok(exportado["assets/orbis-cccccccc-capa.png"], "o arquivo da capa precisa entrar no ZIP");
+
+    /* o marcador guarda o ID, e é de propósito: é o prefixo dele que casa a
+       arte na volta. Reescrevê-lo para o nome perderia essa identidade. */
+    const marcador = JSON.parse(strFromU8(exportado[shopifyTheme.ARQUIVO_DA_LOJA]));
+    assert.deepEqual(marcador.orbisCapas, { pulseiras: `/api/media/${idDaCapa}` });
+
+    /* A VOLTA, que é o que o cliente vive: outra máquina, banco vazio. Sem
+       acervo nenhum, a capa tem de sair do próprio pacote. */
+    const devolta = shopifyTheme.extractShopifyThemePackage(zip, "loja.zip");
+    const urls = Object.fromEntries(devolta.images.map((asset) => [asset.name.toLowerCase(), `/servido/${asset.name}`]));
+    const artesDoPacote = new Map(Object.entries(urls));
+    const contagem = themeExport.reconectarImagens(devolta.theme, new Map(), artesDoPacote);
+
+    assert.equal(devolta.theme.orbisCapas.pulseiras, "/servido/orbis-cccccccc-capa.png", "a capa volta do pacote");
+    assert.deepEqual(contagem.perdidas, [], "nada se perde quando o arquivo viajou");
+  } finally {
+    await server.close();
+  }
+});

@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { urlDeAssetDoTema } from "@/lib/asset-do-tema";
 import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
 import { themeFilesFromZip, type ShopifyThemeImport } from "@/lib/shopify-theme";
@@ -20,7 +21,7 @@ async function renderResponse(viewerId: string, shopify: ShopifyThemeImport, pag
     theme: shopify,
     files,
     pageId,
-    assetBase: (path) => `/api/theme-assets?fp=${fingerprint}&path=${encodeURIComponent(path)}`,
+    assetBase: (path) => urlDeAssetDoTema(fingerprint, path),
     cartItems: extras.cartItems,
     onlySections: extras.onlySections,
     handle: extras.handle,

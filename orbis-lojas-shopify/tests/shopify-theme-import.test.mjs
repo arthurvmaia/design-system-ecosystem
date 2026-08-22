@@ -485,6 +485,19 @@ test("a imagem da loja volta do acervo ou do próprio pacote, e o resto fica com
      */
     assert.deepEqual(soPacote.perdidas.sort(), ["capa de oculos-de-sol", "orbis-aaaaaaaa-logo.png"]);
 
+    /**
+     * E a capa que não voltou SAI do mapa, em vez de virar figura quebrada.
+     *
+     * O valor guardado é `/api/media/<id>`, um endereço desta máquina. Mantê-lo
+     * numa máquina que não tem a mídia fazia a vitrine pedir ao navegador uma
+     * imagem que responde 404: o cartão saía com o ícone de figura quebrada —
+     * pior que o quadro vazio, porque quadro vazio avisa e figura quebrada só
+     * suja. Sem a capa, o cartão cai na foto da coleção, que é o que ele mostra
+     * numa loja que nunca teve capa. O aviso continua em `perdidas`.
+     */
+    assert.equal("oculos-de-sol" in fora.orbisCapas, false, "capa sem arquivo não fica como endereço morto");
+    assert.equal(fora.orbisCapas.polarizados, "/api/theme-assets?fp=ff&path=assets%2Forbis-bbbbbbbb-banner.png", "a que voltou continua lá");
+
     /* imagem que não é NOSSA não entra na lista: `de-outra-loja.png` é do tema
        de origem e nunca esteve aqui para se perder */
     assert.ok(!soPacote.perdidas.some((n) => n.includes("de-outra-loja")));
@@ -504,6 +517,15 @@ test("a busca de mídia continua escopada ao dono", async () => {
   /* e a resposta diz quantas voltaram, e de onde */
   assert.match(rota, /imagensDoAcervo: religadas\.doAcervo/);
   assert.match(rota, /imagensDoPacote: religadas\.doPacote/);
+  /**
+   * O que o pacote oferece para religar é TUDO o que ele serve.
+   *
+   * Filtrar por `orbisArtes` — a lista da pasta de entrega — deixava de fora o
+   * pacote que o próprio estúdio produz, que grava a arte em `assets/`. Com o
+   * filtro, uma loja baixada e reaberta em outra máquina voltava sem imagem
+   * nenhuma, com o arquivo dentro do ZIP.
+   */
+  assert.match(rota, /artesDoPacote = new Map<string, string>\(Object\.entries\(tema\.assetUrls \?\? \{\}\)\)/);
 });
 
 /**
@@ -624,10 +646,21 @@ test("a chave do mapa de assets e a mesma que o Editor procura", async () => {
   for (const prefixo of ["urls" + ABRE, "Urls?." + ABRE]) {
     for (const pedaco of importacao.split(prefixo).slice(1)) acessos.push(pedaco.split(FECHA)[0].trim());
   }
-  assert.ok(acessos.length >= 4, `esperava as duas gravacoes e as duas leituras do mapa, achei ${acessos.length}`);
+  assert.ok(acessos.length >= 3, `esperava as duas gravacoes e a leitura da previa, achei ${acessos.length}`);
   for (const chave of acessos) {
     assert.ok(chave.includes("chaveDeAsset("), `mapa de assets acessado sem normalizar a caixa: ${chave}`);
   }
+
+  /**
+   * E a OUTRA forma de consumir o mapa: inteiro, sem indexar.
+   *
+   * A religacao leva o mapa completo para casar as artes do pacote, e por isso
+   * nao aparece na varredura acima — nao ha chave para normalizar quando se
+   * levam todas. Fica declarado aqui para que a ausencia dela na lista de
+   * acessos seja um fato conhecido, e nao um buraco por onde uma leitura
+   * indexada sem `chaveDeAsset` possa entrar de novo.
+   */
+  assert.match(importacao, /new Map<string, string>\(Object\.entries\(tema\.assetUrls \?\? \{\}\)\)/);
 
   /* do lado da tela, a busca continua em caixa baixa */
   const previa = tela.slice(tela.indexOf("function mediaPreviewSource"));

@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { urlDeAssetDoTema } from "@/lib/asset-do-tema";
 import { getIdentity } from "@/lib/auth";
 import { ensureUser, getD1, importShopifyTheme, registerThemeSource } from "@/lib/data";
 import { extractShopifyThemePackage, type ShopifyThemeImageAsset, type ShopifyThemeImport } from "@/lib/shopify-theme";
@@ -85,12 +86,20 @@ export async function POST(request: Request) {
  * loja de outro por coincidência de id.
  */
 async function religarImagensDaOrbis(viewerId: string, tema: ShopifyThemeImport) {
-  /* as artes que vieram DENTRO do pacote, já instaladas e servíveis */
-  const artesDoPacote = new Map<string, string>();
-  for (const nome of tema.orbisArtes ?? []) {
-    const url = tema.assetUrls?.[chaveDeAsset(nome)];
-    if (url) artesDoPacote.set(nome.toLowerCase(), url);
-  }
+  /**
+   * As artes que vieram DENTRO do pacote, já instaladas e servíveis.
+   *
+   * É `assetUrls` inteiro, e não só `orbisArtes`. `orbisArtes` lista o que veio
+   * da pasta de ENTREGA (`previa-local/imagens-para-a-shopify/`), e usá-la como
+   * filtro deixava de fora justamente o pacote que o próprio estúdio produz: a
+   * exportação grava a arte em `assets/`, ali `orbisArtes` nasce vazio, e a
+   * loja baixada e reaberta em outra máquina voltava sem imagem nenhuma — com
+   * o arquivo dentro do ZIP e já servido por este app.
+   *
+   * `assetUrls` é a resposta certa para a pergunta certa: que arquivos ESTE
+   * pacote serve, venham eles de onde vierem.
+   */
+  const artesDoPacote = new Map<string, string>(Object.entries(tema.assetUrls ?? {}));
 
   const prefixos = prefixosDeMidia(tema);
   const porPrefixo = new Map<string, string>();
@@ -147,7 +156,7 @@ async function installThemeImages(ownerId: string, fingerprint: string, assets: 
           customMetadata: { ownerId },
         });
         if (asset.contentType.startsWith("image/")) {
-          urls[chaveDeAsset(asset.name)] = `/api/theme-assets?fp=${fingerprint}&path=${encodeURIComponent(asset.path)}`;
+          urls[chaveDeAsset(asset.name)] = urlDeAssetDoTema(fingerprint, asset.path);
         }
       } catch (error) {
         const causa = error instanceof Error ? error.message : "falha desconhecida";
