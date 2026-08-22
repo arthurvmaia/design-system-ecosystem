@@ -54,10 +54,13 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { getDb, tables } from '@ds/indexer';
 import {
+  type ConferenciaDePixel,
   type PecaParaAceite,
   SegmentsManifest,
   type SegmentsManifest as SegmentsManifestType,
   alvosPerdidosDoBundle,
+  associarConferencias,
+  lerComparacoesDaCaptura,
   libraryComponentDir,
   rastreamentoDoBundle,
   vaultSegmentsManifest,
@@ -94,6 +97,66 @@ const manifestoDe = (() => {
  * aqui, importar este arquivo num teste rodaria a curadoria do acervo real da
  * máquina, porque a última linha chamava `principal()`.
  */
+/**
+ * De quem é cada comparação de pixel, para TODO o acervo de uma vez.
+ *
+ * A associação em si mora em `@ds/shared` porque a Galeria também a usa — duas
+ * implementações divergiriam exatamente onde dói: uma tela acusando e a
+ * curadoria promovendo a mesma peça.
+ *
+ * Isto é feito em UMA passada e não dentro de `avaliar` porque a associação é
+ * por design system inteiro: ela precisa de todos os segmentos daquele site em
+ * ordem de posição, e não de um segmento solto.
+ */
+const conferenciasPorSegmento = (
+  segs: readonly { id: string; designSystemId: string; position: number }[],
+): Map<string, ConferenciaDePixel> => {
+  const out = new Map<string, ConferenciaDePixel>();
+  const porDs = new Map<string, { id: string; position: number }[]>();
+  for (const s of segs) {
+    const lista = porDs.get(s.designSystemId);
+    if (lista === undefined) porDs.set(s.designSystemId, [{ id: s.id, position: s.position }]);
+    else lista.push({ id: s.id, position: s.position });
+  }
+
+  for (const [dsId, doDs] of porDs) {
+    const comparacoes = lerComparacoesDaCaptura(dsId);
+    if (comparacoes.length === 0) continue;
+    const ordenados = [...doDs].sort((a, b) => a.position - b.position);
+    const manifesto = manifestoDe(dsId);
+    const comFrameNoManifesto = new Set(
+      (manifesto?.insights ?? []).filter((i) => i.framePath !== undefined).map((i) => i.segmentId),
+    );
+    /**
+     * A cápsula só é levantada quando a heurística vai ser usada.
+     *
+     * Descobrir quem é cápsula custa um `lerBundleInfo` por segmento, e o
+     * caminho por IDENTIDADE (comparação que carrega o próprio `position`) não
+     * olha para isso. Captura nova sempre grava o dono, então em quase todo o
+     * acervo esta lista é trabalho jogado fora.
+     */
+    const porIdentidade = comparacoes.some((c) => c.position !== undefined);
+    const capsulas = porIdentidade
+      ? []
+      : ordenados
+          .filter(
+            (s) =>
+              lerBundleInfo(dsId as `ds_${string}`, { position: s.position })?.representation ===
+              'capsula-runtime',
+          )
+          .map((s) => s.id);
+
+    for (const [id, conferencia] of associarConferencias({
+      comparacoes,
+      comFrame: ordenados.filter((s) => comFrameNoManifesto.has(s.id)).map((s) => s.id),
+      capsulas,
+      porPosicao: new Map(ordenados.map((s) => [s.position, s.id])),
+    }))
+      out.set(id, conferencia);
+  }
+  return out;
+};
+
 const avaliar = (seg: {
   id: string;
   designSystemId: string;
@@ -103,6 +166,8 @@ const avaliar = (seg: {
   htmlSnippet: string | null;
   position: number;
   inLibrary: boolean;
+  /** A conferência de pixel daquele segmento, ou `null` se nada a mediu. */
+  conferencia: ConferenciaDePixel | null;
 }): Nota => {
   const manifesto = manifestoDe(seg.designSystemId);
   const insight = (manifesto?.insights ?? []).find((i) => i.segmentId === seg.id) ?? null;
@@ -118,13 +183,36 @@ const avaliar = (seg: {
     jaNaBiblioteca: seg.inLibrary,
     fidelidade: insight?.fidelity ?? 0,
     representacao: (bundle?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
+    /**
+     * A representação vem do BUNDLE, e o insight não a tem.
+     *
+     * Esta linha lia `insight.representation`, que `SegmentInsight` não declara
+     * e o manifesto não grava — então ela era `null` desde sempre. O valor real
+     * é o de cima, lido do bundle; manter a leitura morta ao lado dele só fazia
+     * parecer que havia duas fontes.
+     */
     representacaoDoInsight:
-      (insight?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
+      (bundle?.representation as PecaParaAceite['representacao'] | undefined) ?? null,
     interacoes: insight?.interactions?.length ?? 0,
     movimentoProprio: (insight?.scroll?.length ?? 0) > 0 || seg.kind === 'animation',
     suporte: insight?.support ?? null,
-    comparacaoVisualOk: insight?.comparacaoVisual?.ok ?? null,
-    comparacaoVisualDelta: insight?.comparacaoVisual?.delta ?? null,
+    /**
+     * A comparação de pixel entre o bundle e o que a captura VIU.
+     *
+     * Ela demorou a chegar aqui, e a ausência não era teórica: em
+     * `curadoria-escolha.ts`, `comparacaoVisualOk === false` é uma condição de
+     * REPROVA — "o bundle não bate com o que a captura viu" —, e o campo era
+     * lido de `insight.comparacaoVisual`, que o `SegmentInsight` não declara. Ele
+     * era `null` desde sempre e a reprovação NUNCA disparou: peça cujo bundle
+     * diverge da captura entrava na Biblioteca em silêncio, incluindo uma que
+     * divergiu 100% do print.
+     *
+     * `null` continua sendo uma resposta legítima e frequente: captura antiga
+     * sem comparação gravada não foi medida, e dizer isso é diferente de
+     * aprovar. Quem reprova é só o `false`.
+     */
+    comparacaoVisualOk: seg.conferencia?.passou ?? null,
+    comparacaoVisualDelta: seg.conferencia?.delta ?? null,
     // O bundle está em disco AGORA: G8 é a única regra do aceite que a curadoria
     // consegue conferir por inteiro, e é a que evita levar para o kit uma peça
     // cujo script mistura o analytics da origem com o comportamento dela.
@@ -171,6 +259,7 @@ const principal = (): void => {
    * novo, e não é — é a mesma peça de novo.
    */
   const orfas = linhasDaBiblioteca.filter((r) => r.segmentId === null).length;
+  const conferencias = conferenciasPorSegmento(segs);
   const notas = segs.map((s) =>
     avaliar({
       id: s.id,
@@ -181,6 +270,7 @@ const principal = (): void => {
       htmlSnippet: s.htmlSnippet,
       position: s.position,
       inLibrary: naBiblioteca.has(s.id),
+      conferencia: conferencias.get(s.id) ?? null,
     }),
   );
 

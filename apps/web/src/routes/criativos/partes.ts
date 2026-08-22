@@ -2,9 +2,9 @@ import type { ProjectRecord } from '@/lib/api';
 import { mediaUrl } from '@/routes/projects/partes';
 import {
   ARQUETIPOS,
+  CAMPOS_DO_PEDIDO,
   type FormatoCriativo,
   LIMITES_DO_PEDIDO,
-  PedidoCriativo,
   TONS_DE_VOZ,
   normalizarProjectBranding,
 } from '@ds/shared/schemas';
@@ -38,19 +38,13 @@ export const ROTULO_DO_FORMATO: Record<FormatoCriativo, string> = {
  * O padrão de variações vem do CONTRATO, não de um número redigitado aqui: se
  * o default do schema mudar, as telas mudam junto sem ninguém lembrar delas.
  */
-export const VARIACOES_PADRAO: number = PedidoCriativo.shape.variacoes.parse(undefined);
+export const VARIACOES_PADRAO: number = CAMPOS_DO_PEDIDO.variacoes.parse(undefined);
 
 /**
- * Custo de ENSAIO por variação, em créditos. Números de mentira, e as telas
- * dizem isso por extenso: 75 é o que a via expressa do DS já mostra para uma
- * imagem no Magnific; o de vídeo é chute deliberado. O valor real sai do
- * `simulate_cost` quando o motor entrar (passo 3 da espec) — até lá, fingir
- * precisão seria o Orbis prometendo o que não entrega.
+ * O teto do job mora no CONTRATO (`tetoComFolga`, em `@ds/shared/schemas`), e
+ * não aqui: a mesma conta vale para a tela que mostra o número e para o
+ * servidor que o confere quando o pedido chega.
  */
-export const CUSTO_FALSO_POR_VARIACAO: Record<'imagem' | 'video', number> = {
-  imagem: 75,
-  video: 300,
-};
 
 // ── A voz das issues do contrato ─────────────────────────────────────────────
 
@@ -67,6 +61,13 @@ export const VOZ_POR_CAMPO: Record<string, string> = {
   descricaoParaGerar: `A descrição passou de ${LIMITES_DO_PEDIDO.descricaoParaGerar} caracteres. Me diga o essencial da cena.`,
   restricoes: `As restrições passaram de ${LIMITES_DO_PEDIDO.restricoes} caracteres.`,
   marca: `O nome da marca passa de ${LIMITES_DO_PEDIDO.marca} caracteres: na peça ele não cabe assim.`,
+  /**
+   * O teto só fica zerado quando o custo medido não chegou. Sem ele o pedido
+   * não pode nascer: o motor para ao zerar o teto, e parar exige saber onde
+   * fica o zero. A frase diz o que aconteceu em vez de acusar o campo.
+   */
+  tetoDeCreditos:
+    'Ainda não sei quanto isto custa, então não deixo confirmar. Recarregue a página: o custo vem do servidor, e pedir sem saber o preço é o que o teto existe para impedir.',
 };
 
 export const vozDaIssue = (issue: {

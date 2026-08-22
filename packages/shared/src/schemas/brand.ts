@@ -306,7 +306,7 @@ export const LocalDeLogo = z.enum([
 export type LocalDeLogo = z.infer<typeof LocalDeLogo>;
 
 /** Preferência de variante por local, em ordem — o primeiro que existir vence. */
-const PREFERENCIA_POR_LOCAL: Record<LocalDeLogo, TipoDeLogo[]> = {
+export const PREFERENCIA_POR_LOCAL: Record<LocalDeLogo, TipoDeLogo[]> = {
   'cabecalho-claro': ['escura', 'principal', 'horizontal', 'monocromatica'],
   'cabecalho-escuro': ['clara', 'principal', 'horizontal', 'monocromatica'],
   'menu-mobile': ['simbolo', 'reduzida', 'principal'],
@@ -424,7 +424,7 @@ export const ajustarHex = (hex: string, fator: number): string => {
  * porque este arquivo é schema e não pode depender das regras — o teste amarra
  * os dois para não desencostarem.
  */
-const PISO_DE_TEXTO = 3;
+export const PISO_DE_TEXTO = 3;
 
 /**
  * A cor ajustada até se LER sobre os fundos onde ela vai pousar.
@@ -443,7 +443,7 @@ const PISO_DE_TEXTO = 3;
  * O passo é pequeno (0,06) e o teto é 12 voltas: paleta impossível devolve o
  * melhor que deu, nunca um laço infinito nem um branco chapado.
  */
-const legivelComoTexto = (cor: string, fundos: readonly string[]): string => {
+export const legivelComoTexto = (cor: string, fundos: readonly string[]): string => {
   if (fundos.length === 0) return cor;
   const pior = (c: string): number =>
     fundos.reduce((m, f) => Math.min(m, contrasteRatio(c, f)), Number.POSITIVE_INFINITY);

@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { ComponentId, DesignSystemId, ProjectId, TaskId } from './ids.js';
 
 /**
@@ -40,11 +40,57 @@ export const ehComponentId = (valor: string): valor is ComponentId =>
 export const ehTaskId = (valor: string): valor is TaskId => /^task_[A-Za-z0-9]+$/.test(valor);
 /** Id de job da fila (`job_` + base36). Vira nome de arquivo em `queue/`. */
 export const ehJobId = (valor: string): boolean => /^job_[A-Za-z0-9]+$/.test(valor);
+/** Id de rascunho de criativo: onde o upload espera antes de existir job. */
+export const ehRascunhoId = (valor: string): boolean => /^rasc_[A-Za-z0-9]+$/.test(valor);
 /** Chave de segmento em disco: tanto `seg_<ulid>` quanto a pasta `seg_3` do bundle. */
 export const ehChaveDeSegmento = (valor: string): boolean => /^seg_[A-Za-z0-9]+$/.test(valor);
 /** Nome de versão gerada (`2026-07-29T02-16-11-833Z`): só caracteres de nome simples. */
 export const ehNomeDeVersao = (valor: string): boolean =>
   /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(valor) && !valor.includes('..');
+
+// ── Guarda de contenção ────────────────────────────────────────────────────
+/**
+ * O alvo ABSOLUTO está dentro da raiz ABSOLUTA?
+ *
+ * A conta é feita com `relative()`, e não com `startsWith()` de texto, por um
+ * motivo que já estava vivo numa rota: `startsWith(raiz)` sem separador aprova
+ * um IRMÃO com prefixo comum. Com a raiz em `criativos/job_ab`, o caminho
+ * `criativos/job_abc/segredo.png` passa — são strings diferentes que começam
+ * igual, e o disco não tem nada a ver com isso.
+ *
+ * A raiz não conta como estando dentro de si mesma: servir um diretório não é
+ * servir um arquivo.
+ *
+ * O que ela NÃO faz: seguir link simbólico. Um link dentro da raiz apontando
+ * para fora passa por aqui. Hoje nada no ecossistema cria link; se um dia
+ * criar, esta função precisa de `realpathSync` e de decidir o que fazer quando
+ * o alvo ainda não existe.
+ */
+export const estaContido = (raiz: string, alvo: string): boolean => {
+  const rel = relative(resolve(raiz), resolve(alvo));
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+};
+
+/**
+ * Resolve um caminho RELATIVO dentro de uma raiz, ou devolve `null` se ele
+ * escapar.
+ *
+ * Existe para ser o único idioma de contenção do servidor. Havia quatro
+ * escritos à mão — `vault`, `site` e `asset` conferiam com `relative()`, e
+ * `criativos` conferia com `startsWith()` de texto. Quatro cópias de uma regra
+ * de segurança acabam divergindo, e a que divergir primeiro é a que vaza.
+ *
+ * Recusa antes de resolver o que já se sabe errado: caminho vazio, caminho
+ * absoluto, e qualquer segmento `..` — inclusive com barra invertida, que é o
+ * separador do Windows e não seria pego por uma conta feita só com `/`.
+ */
+export const dentroDaRaiz = (raiz: string, relativo: string): string | null => {
+  if (relativo === '') return null;
+  if (isAbsolute(relativo)) return null;
+  if (relativo.split(/[/\\]/).includes('..')) return null;
+  const alvo = resolve(raiz, relativo);
+  return estaContido(raiz, alvo) ? alvo : null;
+};
 
 const conferido = (valor: string, ok: boolean): string => {
   if (!ok) {
@@ -165,9 +211,7 @@ export const libraryComponentTokens = (id: ComponentId): string =>
  */
 export const podeApagarDesignSystem = (dir: string, raizDoVault: string, id: string): boolean => {
   if (!ehDesignSystemId(id)) return false;
-  const raiz = resolve(raizDoVault);
-  const alvo = resolve(dir);
-  return alvo !== raiz && alvo.startsWith(raiz + sep);
+  return estaContido(raizDoVault, dir);
 };
 
 // ── Projects ───────────────────────────────────────────────────────────────
@@ -200,6 +244,64 @@ export const projectGeneratedVersionDir = (id: ProjectId, isoTimestamp: string):
 export const criativosRootDir = (): string => join(getRoot(), 'criativos');
 export const criativosDir = (jobId: string): string =>
   join(criativosRootDir(), conferido(jobId, ehJobId(jobId)));
+
+/**
+ * O RETRATO do pedido, gravado ao lado da saída.
+ *
+ * A fila é uma caixa de entrada, não um arquivo: o `fila:limpar` a esvazia e o
+ * job some. Enquanto o pedido morava só lá, esvaziar a fila apagava o teto de
+ * créditos, os claims autorizados e a própria existência da peça na tela — os
+ * arquivos ficavam órfãos numa pasta que ninguém mais alcançava.
+ *
+ * Aqui ele fica ao lado do que produziu, e sobrevive à faxina. É a mesma ideia
+ * do `ajustes.json` viajando dentro da versão gerada: o que pertence à entrega
+ * mora com a entrega.
+ */
+export const criativoPedidoPath = (jobId: string): string =>
+  join(criativosDir(jobId), 'pedido.json');
+
+/**
+ * O arquivo que o cliente enviou, dentro da pasta do job.
+ *
+ * Subpasta própria porque ele é MATERIAL DELE, e não saída nossa: quando a
+ * pasta for varrida para empacotar ou para limpar derivados, o que veio de fora
+ * fica visivelmente separado do que o motor produziu. É a mesma distinção que o
+ * contrato faz quando diz que o upload vence a geração.
+ */
+export const criativoUploadDir = (jobId: string): string => join(criativosDir(jobId), 'upload');
+
+// ── Marcas criadas ─────────────────────────────────────────────────────────
+/**
+ * As MARCAS criadas ficam fora de `criativos/`, e de propósito.
+ *
+ * Uma marca não é uma peça: ela não tem canal, não vence, e é INSUMO das outras
+ * duas frentes — o site e a loja vão buscar as versões da logo aqui. Guardá-la
+ * junto das peças de tráfego faria a faxina de criativos levar embora o que o
+ * resto do portal depende.
+ */
+export const marcasRootDir = (): string => join(getRoot(), 'marcas');
+export const marcaDir = (jobId: string): string =>
+  join(marcasRootDir(), conferido(jobId, ehJobId(jobId)));
+
+/** O retrato do pedido de marca, ao lado do que ele produziu. */
+export const marcaPedidoPath = (jobId: string): string => join(marcaDir(jobId), 'pedido.json');
+
+// ── Rascunhos de criativo ──────────────────────────────────────────────────
+/**
+ * Onde o upload espera ANTES de existir job.
+ *
+ * O contrato exige o caminho do arquivo dentro do próprio pedido, e o job só
+ * nasce quando o pedido é aceito. Isso é um ovo e uma galinha: sem um lugar
+ * para o arquivo esperar, escolher "tenho a foto" criaria um pedido apontando
+ * para um arquivo que não existe em lugar nenhum — uma promessa que só seria
+ * descoberta na hora de produzir, depois de a pessoa já ter confirmado.
+ *
+ * O rascunho é indexado pela CHAVE DO ENVIO, a mesma que dá o id do job. Assim
+ * o pedido aceito sabe exatamente qual pasta é a dele, sem inventar vínculo.
+ */
+export const criativosRascunhosDir = (): string => join(getRoot(), 'criativos-rascunhos');
+export const criativoRascunhoDir = (rascunhoId: string): string =>
+  join(criativosRascunhosDir(), conferido(rascunhoId, ehRascunhoId(rascunhoId)));
 
 // ── Cache ──────────────────────────────────────────────────────────────────
 export const cacheDir = (): string => join(getRoot(), 'cache');
@@ -255,4 +357,5 @@ export const topLevelDirs = (): readonly string[] => [
   queueDoneDir(),
   // Sem ela no bootstrap, a rota de download lê de uma pasta que nunca nasceu.
   criativosRootDir(),
+  criativosRascunhosDir(),
 ];

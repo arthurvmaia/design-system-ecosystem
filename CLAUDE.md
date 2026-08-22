@@ -210,19 +210,214 @@ nenhuma peça visual nasce fora do motor.
    motor (MCP), e só onde o pixel não existe.
 2. **Upload vence geração, sempre.** `origem: 'upload'` nunca passa por
    gerador — o schema já reprova o payload ambíguo, e o motor respeita.
-3. **Orçamento contado.** `simulate_cost` antes (read-only), declare o custo,
-   debite do `tetoDeCreditos` do pedido e PARE ao zerar — parar é resultado,
-   estourar em silêncio é defeito.
+3. **Orçamento contado, e agora com registro.** O caminho sancionado é este, e
+   é o único que deixa prova:
+
+   ```powershell
+   pnpm criativo:precos                              # o preset e o preço medido
+   mcp: account_balance                              # o saldo ANTES do lote
+   pnpm criativo:razao reservar <job> <ref> <custo>  # confere e empenha; RECUSA se não couber
+   mcp: images_generate ...                          # só depois de o empenho passar
+   pnpm criativo:razao debitar  <job> <ref> <custo>  # o provedor cobrou
+   pnpm criativo:razao liberar  <job> <ref> "<por quê>"  # falhou ANTES de cobrar
+   mcp: account_balance                              # o saldo DEPOIS; a diferença é achado
+   ```
+
+   O `reservar` confere contra três tetos e vence o menor: o do pedido
+   (`tetoDeCreditos`), o da rodada (`ORBIS_CRIATIVO_TETO_LOTE`, sem default) e o
+   saldo real. Ele recusa com a conta escrita — parar é resultado, estourar em
+   silêncio é defeito.
+
+   O preset padrão é `imagem-padrao` (Nano Banana 2 em 2K). Para o símbolo e os
+   ativos finais da marca use `imagem-marca`: é o Nano Banana **Pro**, custa o
+   mesmo (75, medido) e tem mais fidelidade. Nunca derive o slug do rótulo — o
+   slug `imagen-nano-banana-2` é o **Pro**, não o 2. O catálogo é a fonte.
 4. **Nada inventado.** Preço, desconto, prazo, frete, depoimento e
    certificação só aparecem se estiverem em `autorizacoesDeClaim` — ou seja,
    se o cliente digitou.
-5. **Saída em disco**: `criativosDir(jobId)` com as variações e um
-   `resultado.json` no formato `ResultadoCriativo`. Reporte
-   `pnpm fila:progresso` por variação.
-6. **Verificação antes do download** (estágio 5 do motor): dimensão
-   exatamente a do formato pedido, texto legível no tamanho real do canal,
-   produto do cliente preservado quando houve upload. Peça reprovada não vira
-   download: o resultado diz o que falhou. Feche com `pnpm fila:concluir`.
+5. **`textoPelaMarca` e `cenaPelaMarca`: quando VOCÊ escreve.** O cliente pode
+   não digitar a headline nem a cena e pedir que o Orbis escreva. Isso é uma
+   decisão registrada no pedido, não um campo vazio — e ela vem com o material
+   de onde a frase sai já conferido pelo contrato: `textoPelaMarca` exige
+   `direcao.tom` preenchido, `cenaPelaMarca` exige `direcao.estiloVisual`.
+
+   Escreva DERIVANDO daquilo, e de mais nada. O tom diz como a marca fala; o
+   estilo visual diz como as imagens dela parecem. **Delegar a escrita não
+   autoriza afirmação:** preço, desconto, prazo, frete, depoimento e
+   certificação continuam saindo só de `autorizacoesDeClaim`. Escrever no tom
+   da marca é derivar; afirmar um desconto é inventar, e a chave não muda isso.
+
+   **Grave o que você escreveu** em `resultado.json`, junto da peça. O que está
+   queimado no pixel fala em nome da marca do cliente — ele tem de conseguir ler
+   depois a frase que saiu no nome dele, sem abrir a imagem.
+
+   O que o cliente digitou VENCE. A tela já impede mandar os dois, e o contrato
+   recusa o par como ambíguo: se chegar pedido com a chave ligada E o campo
+   preenchido, é defeito de quem montou o payload — pare e diga.
+6. **O pixel do provedor pousa DENTRO de `criativosDir(jobId)`.** A URL que o
+   provedor devolve traz token que expira, então ela não é entrega: baixe o
+   arquivo para a pasta do job antes de qualquer outra coisa.
+7. **Componha. O pixel gerado NÃO é a peça.** Medido na primeira geração paga:
+   um pedido de 1080×1080 voltou 736×414 — o provedor devolve a proporção que
+   ele quer. Quem entrega a dimensão exata, o texto literal, o logotipo, a cor
+   do botão e a tipografia da marca é a composição, e ela é um comando:
+
+   ```powershell
+   pnpm criativo:compor <job> <n> --fundo <arquivo que você baixou>
+   ```
+
+   Ele compõe na medida exata, MEDE no navegador (onde cada papel foi parar,
+   se o logotipo carregou e não deformou, se a fonte da marca aplicou), roda
+   C1..C11 e grava a folha de conferência junto da peça. Rode uma vez por
+   variação. Sem esta etapa o `fila:concluir` RECUSA fechar — e aí o crédito
+   já saiu.
+
+   Leia os avisos que ele imprime. "o logotipo não está na pasta", "nenhuma
+   cor de apoio se lê no botão" e "não consegui obter a fonte" são coisas que
+   se conserta ANTES de entregar, e recompor não gasta crédito nenhum: o pixel
+   já está em disco.
+8. **Saída em disco**: `criativosDir(jobId)` com as variações e um
+   `resultado.json` no formato `ResultadoCriativo` — o `criativo:compor` grava.
+   Reporte `pnpm fila:progresso` por variação.
+9. **Verificação antes do download** (estágio 5 do motor): a folha C1..C11 é
+   ela. Dimensão exata, texto DENTRO do quadro, marca visível e não deformada,
+   contraste real, tipografia da marca aplicada, produto do cliente preservado.
+   Peça reprovada não vira download: o resultado diz o que falhou. Peça com
+   pendência sai "aprovada com ressalva", com a ressalva nomeada. Feche com
+   `pnpm fila:concluir`.
+
+### `marca`
+
+O cliente pediu a MARCA pela tela `/criativos/marca` — a porta fica no passo 1
+da frente Criativos, ao lado de imagem e vídeo ("ainda não tenho marca"). Ela é
+tela própria porque uma marca não tem formato de canal, nem origem de imagem,
+nem copy: nada do que os quatro passos da peça perguntam.
+
+O cliente pediu a MARCA, não uma peça. O payload segue `PedidoDeMarca`
+(`packages/shared/src/schemas/marca.ts`) e a saída mora em `marcas/<job>/` —
+fora de `criativos/`, porque uma marca não vence, não tem canal e é INSUMO das
+outras duas frentes: a faxina de criativos não pode levá-la junto.
+
+**Marca sem APRESENTAÇÃO não é marca pronta.** É regra do dono, e ela vale
+como qualquer outra da casa: um punhado de PNGs numa pasta obriga quem recebe
+a adivinhar qual é a logo, quando usar cada versão e o que é a cor — o trabalho
+que contratar uma marca vinha evitar. A apresentação é o que transforma
+arquivos em SISTEMA, e todas as artes que ela mostra têm de existir.
+
+O modelo é a referência aprovada em
+`output/orbis-criativa-planejamento-claude/06-ENTREGAVEIS-MARCA-E-REFERENCIA-CASTEVANI.md`.
+Dela vale o MÉTODO — editorial, muito respiro, hierarquia clara, paginação
+consistente, exemplos reais de aplicação, faça/evite, pendências declaradas —
+e nunca a marca dela: cada apresentação sai na cor e na letra da própria marca.
+O PDF sai de HTML versionado (decisão nº 7); PPTX não é necessário.
+
+**A pasta que vai para o cliente é do CLIENTE.** `pnpm marca:entregar` monta
+só o que ele usa, com nomes que dizem QUANDO usar cada arquivo e um
+`LEIA-ME.txt` que explica. Retrato do pedido, razão de crédito e folha de
+conferência são registro nosso e ficam de fora: quem abre a pasta procurando a
+logo tem de achar a logo.
+
+**Uma geração, e só uma.** O símbolo nasce UMA vez e as três versões saem dele
+por cálculo. Pedir "o mesmo símbolo em fundo branco" ao gerador abre um pedido
+NOVO e ele desenha outro símbolo: foi assim que a marca chegava em três modelos
+diferentes em vez de uma marca em três roupas. **Teto: 75 créditos por pedido**,
+que é exatamente o custo de uma geração com `imagem-marca`.
+
+```powershell
+pnpm marca:montar <job> --prompt                  # o prompt EXATO, montado do briefing
+mcp: account_balance                              # o saldo ANTES
+pnpm criativo:razao reservar <job> simbolo 75     # empenha; RECUSA se não couber
+mcp: images_generate ... (preset imagem-marca)    # só depois do empenho
+#   baixe o arquivo para marcas/<job>/simbolo-original.png
+pnpm criativo:razao debitar <job> simbolo 75      # o provedor cobrou
+pnpm marca:montar <job> --simbolo simbolo-original.png
+mcp: account_balance                              # o saldo DEPOIS; a diferença é achado
+```
+
+**Passe o prompt sem reescrever.** Ele é montado por regra a partir do briefing,
+e é ele que fica gravado no resultado — é o que faz a marca ser reproduzível
+(M6). Reescrever transforma "tentar de novo" em "começar de novo", e cada
+tentativa custa 75.
+
+**O que o prompt exige do gerador não é gosto.** Fundo liso de cor única é a
+condição que torna o recorte exato em vez de estimativa; sem texto porque
+modelo erra letra e a grafia da marca é fato; sem sombra nem degradê porque
+meio-tom impede a versão monocromática de ser silhueta.
+
+**A régua é M1..M11** (`docs/regras-de-aceite.md`, executável em
+`packages/shared/src/regras-de-aceite-marca.ts`) e ela
+mede o que faz uma marca ser INUTILIZÁVEL, não se ficou bonita: as três versões
+são o mesmo símbolo, a transparente é transparente de verdade, a monocromática é
+silhueta, a cor se lê sobre branco, e o prompt ficou registrado. Recorte que
+falhou não vira entrega.
+
+**A ARTE é gerada por inteiro no Magnific.** Regra do dono: *"delegue tudo para
+o magnific em questão de imagem e vídeo"*. O prompt descreve a peça completa —
+foto, layout, cor da marca, chamada e botão — e o motor só busca o arquivo
+pronto (`arte-completa-N.png` em `artes/`). O compositor continua inteiro e
+continua sendo o caminho quando a arte chega crua.
+
+O que isso CUSTA, e tem de ser declarado na apresentação em vez de escondido: a
+régua da peça mede o DOCUMENTO, e arte gerada não tem documento. C2 (texto
+literal), C3 (grafia da marca), C4 (contraste) e C11 (tipografia) saem do DOM
+que o compositor monta; sobre um PNG, responder qualquer uma exigiria OCR. Elas
+não são respondidas, e a página de pendências diz isso. Confira a grafia com o
+olho, letra por letra — acento em português é onde o modelo mais erra.
+
+**Existe brand kit no Magnific, e ele resolve a tipografia.** `brandKitId` no
+`images_generate` faz o provedor aplicar paleta, logo e tipografia da marca
+sozinho. `brand_kit_list` NÃO está exposto no MCP, então o kit tem de ser criado
+no app pelo dono; com o id na mão, passe-o em toda geração daquela marca.
+
+**Dois conceitos são duas PROPOSTAS VISUAIS, e elas saem do BRIEFING.** Esta é a
+regra que custou três rodadas para acertar, e ela vale para qualquer marca. O
+dono reclamou do mesmo defeito três vezes: *"estão todas com a mesma ideia de
+arte"*, *"você fez 1 estilo de banner só para os dois"* e, depois de dois
+consertos de geometria, *"por que você está fazendo só nesse estilo?"*.
+
+As duas primeiras correções trocaram o LAYOUT e mantiveram a linguagem visual:
+bloco na cor da marca, texto branco, foto de gente sorrindo — três vezes.
+**Geometria diferente não é proposta diferente.** Uma proposta é uma direção
+inteira: que peso de cor (claro ou escuro), que assunto (o que a marca FAZ ou
+quem ela atende), que registro (editorial, documental, gráfico).
+
+E ela sai do briefing daquela marca, **nunca de um cardápio fixo de estilos** —
+um cardápio é o mesmo erro com outro dono, porque devolve as mesmas duas ideias
+para clínica, padaria e escritório de advocacia. Exemplo do que funcionou, com o
+briefing "clínica de bairro, famílias, prevenção, explicar antes de tratar":
+uma proposta pegou *explicar* (fundo claro, azul como tinta, o plano de
+tratamento como assunto) e a outra pegou *bairro* (foto quente de hora dourada,
+família na rua, azul só no botão). **M10** recusa dois conceitos na mesma
+proposta, lendo `artes/propostas.json`.
+
+**Todo banner de site tem versão DESKTOP e MOBILE.** O telefone é onde a maior
+parte vê o banner, e a versão do telefone NÃO é um recorte da larga: o texto foi
+diagramado para a largura que o recorte destrói. A convenção é
+`arte-completa-N.png` e `arte-completa-N-mobile.png`, e **M11** recusa a entrega
+que só tem metade. Isso é diferente do criativo de tráfego pago, que também é
+vertical e é outro produto — ver abaixo.
+
+**Os CONCEITOS de banner são quatro ARRANJOS, não quatro fotos.** O compositor
+tinha um layout só, e dois conceitos saíam com a mesma composição — o dono viu.
+Hoje `comporPeca` aceita `faixa-inferior`, `tela-dividida`, `veu-cheio` e
+`texto-sobre-imagem`; o `marca:apresentar` compõe cada conceito, MEDE pela régua
+da peça e, se reprovar, tenta o arranjo seguinte (recompor é geometria e não
+gasta crédito nenhum). **M10** recusa dois conceitos no mesmo arranjo, conferindo
+a PROCEDÊNCIA registrada em `artes/arranjos.json` — nunca a distância de pixel,
+que já se provou incapaz de separar as classes.
+
+**Onze regras verdes não são uma peça boa.** O banner passou em C1..C11 e o dono
+reprovou de olho: a faixa tinha 52% da peça e a foto 48%. **C12** mede o que
+sobrou da foto (piso de metade, porque uma peça em que a foto é a menor parte é
+um painel de texto com uma tira de imagem), e a disposição da faixa passou a ser
+DERIVADA — em peça larga ela vira uma linha só, e a foto voltou para 60-71%.
+
+**Sobre FOTO, o contraste é amostrado, não declarado.** Os arranjos `veu-cheio` e
+`texto-sobre-imagem` tiram o texto da faixa sólida, e ali o par declarado
+continuaria saindo bonito e deixaria de descrever a peça. O motor amostra o pior
+pixel sob a caixa do texto. O alfa do véu é DERIVADO — o menor que faz o pior
+pixel possível vencer 3:1 —, então ele muda com a cor da marca e nunca é um
+número escolhido.
 
 ### `ajustar`
 
@@ -306,6 +501,28 @@ Isso valida o schema, registra no SQLite e move o job para `concluido/`. Se o sc
 - **Nunca crie um watcher, cron, daemon ou qualquer coisa que processe a fila sem uma pessoa mandar.** O único gatilho válido é alguém abrir o `PROCESSAR.bat` e escolher os jobs na janela. A partir daí o processamento corre sozinho até o fim — mas só sobre os ids escolhidos, e a janela encerra quando acaba. Agendar, disparar em background ou ficar de olho na pasta descaracteriza o modo e coloca a conta do usuário em risco.
 - Não chame a API da Anthropic a partir do código no modo `queue` — o trabalho é seu.
 - Não invente conteúdo que não esteja no material do usuário.
+- **O motor criativo é UM, e atende as três frentes.** Imagem, vídeo e criação
+  de marca saem de `@ds/creative` — não importa se quem pediu foi a geração de
+  site, a loja Shopify ou a frente Criativos. Uma segunda implementação de
+  qualquer parte visual é defeito, porque a divergência aparece tarde e como
+  "a logo da loja não é a mesma do site". A frente de Lojas não pode importar do
+  workspace (projeto separado, deploy próprio), então o NÚCLEO do motor vive lá
+  como ESPELHO verificado por teste, regravado por `pnpm motor:espelhar`:
+  o recorte das versões da logo (`lib/logo-derivar.ts`), o catálogo de presets,
+  a tabela de preço e o razão (`lib/motor/`). O núcleo só aceita código
+  portável — nada de `node:`, Playwright ou `@ds/*` —, e o teste recusa espelho
+  que puxe qualquer um dos três.
+- **Qual modelo pedir é decisão do CATÁLOGO, nas três frentes.** O mesmo modelo
+  tem nome diferente no MCP e no REST, e dois deles se contradizem: o slug
+  `imagen-nano-banana-2` é o **Pro**, não o 2. Cada frente manter a própria
+  lista foi o que fez a loja gerar por `mystic` — modelo que o produto nunca
+  declarou e cujo preço ninguém mediu — enquanto Criativos gerava por
+  `imagem-padrao`. Identificador não medido é `null`, e `null` não vira palpite:
+  quem cair no fallback tem de se DECLARAR com motivo.
+- **Do símbolo saem as versões, por cálculo — nunca por geração.** Pedir "o
+  mesmo símbolo em fundo branco" abre um pedido NOVO e o modelo desenha outro
+  símbolo: é assim que a marca chega em três modelos diferentes em vez de uma
+  marca em três roupas. Gere o símbolo UMA vez e rode `pnpm marca:derivar`.
 - **Toda peça visual passa pelo motor `orbis-suite`.** Qualquer processo do app
   que crie imagem, vídeo ou peça de design — nas três frentes — segue a skill
   `orbis-suite`: briefing separando fato de direção, rota de produção declarada,
@@ -341,6 +558,16 @@ pnpm test:navegador   # os 11 arquivos com Chromium (~4min, precisa do playwrigh
 pnpm test:tudo        # os dois
 pnpm verificar        # lint + typecheck + test + portao de fidelidade
 pnpm db:migrate       # aplica migrations
+pnpm criativo:precos  # catálogo de presets + tabela de preço MEDIDA, e o que falta medir
+pnpm criativo:compor  # compõe UMA variação na medida exata, mede no navegador e roda C1..C11
+                      # --arranjo <nome> recompõe noutro layout, sem gastar crédito
+pnpm criativo:razao   # ver/reservar/debitar/liberar o crédito de um job criativo
+pnpm marca:montar     # o prompt do símbolo (--prompt) e a marca inteira (--simbolo <arq>)
+pnpm marca:apresentar # a apresentação em PDF, com todas as artes. OBRIGATÓRIA
+pnpm marca:entregar   # monta a pasta DO CLIENTE (--para "<pasta>")
+pnpm marca:derivar    # do símbolo saem as 3 versões da logo, por cálculo (não gasta crédito)
+pnpm motor:espelhar   # regrava o núcleo do motor espelhado na frente de Lojas (--seco só confere)
+                      # (`pnpm marca:espelhar` continua valendo, é o mesmo comando)
 pnpm fila             # lista a fila
 pnpm extrair          # extrai um job de URL por navegador (renderiza o DOM real) — passo 1 do modo queue
 pnpm explorar         # captura profunda: descobre estados interativos e baixa assets (opcional)
@@ -354,7 +581,8 @@ pnpm medir-fidelidade # mede o acervo e compara com a linha de base (--gravar ad
                       # --falhar-se-piorar vira PORTAO: sai 1 se reprovar, 2 se nao der para verificar
 pnpm reextrair        # re-captura um ds_id (ou --todos) no MESMO id, trocando só no fim
 pnpm regiao:recompilar # limpa/recompila bundles do acervo sem reabrir navegador (--todos, --seco)
-pnpm fila:limpar      # zera a fila inteira (roda no fim do PROCESSAR.bat)
+pnpm fila:limpar      # limpa os jobs do lote (roda no fim do PROCESSAR.bat); poupa `criativo`
+                      # por padrão — só sai com --incluir-criativos escrito à mão
 pnpm acervo:limpar-orfas # lista (e com --apagar remove) pastas do vault sem design system no app
 pnpm acervo:exportar  # zip portátil do acervo (EXPORTAR-ACERVO.bat)
 pnpm acervo:importar  # importa acervo de outra máquina reescrevendo caminhos (IMPORTAR-ACERVO.bat)

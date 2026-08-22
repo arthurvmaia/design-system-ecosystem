@@ -10,8 +10,10 @@ import {
   nivelDaSenha,
   nivelDaSessao,
   senhaConfere,
+  senhaDeAcaoConfere,
   sessaoValida,
   temNivelDeVisita,
+  trancaDeAcaoAtiva,
 } from './portao.js';
 
 /**
@@ -28,6 +30,8 @@ afterEach(() => {
   process.env.ORBIS_SENHA_VISITA = ambienteOriginal.ORBIS_SENHA_VISITA;
   process.env.ORBIS_SEGREDO = ambienteOriginal.ORBIS_SEGREDO;
   process.env.NODE_ENV = ambienteOriginal.NODE_ENV;
+  process.env.ORBIS_LOCAL = ambienteOriginal.ORBIS_LOCAL;
+  process.env.ORBIS_SENHA_ACAO = ambienteOriginal.ORBIS_SENHA_ACAO;
 });
 
 test('sem credencial em produção o portão FECHA, não abre', () => {
@@ -39,11 +43,36 @@ test('sem credencial em produção o portão FECHA, não abre', () => {
   assert.equal(senhaConfere('qualquer'), false);
 });
 
-test('sem credencial em desenvolvimento o portão fica desligado', () => {
+/**
+ * O caso que o desenho existia para proteger, e que nunca acontecia.
+ *
+ * A regra era "em desenvolvimento, desligado", e desenvolvimento era
+ * `NODE_ENV !== 'production'`. Como NADA neste repositório define `NODE_ENV`, um
+ * servidor publicado por túnel sem senha caía em "desenvolvimento" e servia o
+ * acervo inteiro para quem achasse o endereço.
+ */
+test('PROVA: sem senha e sem NODE_ENV, o portao FECHA em vez de abrir', () => {
+  process.env.ORBIS_SENHA = '';
+  process.env.ORBIS_LOCAL = '';
+  process.env.NODE_ENV = undefined;
+  assert.equal(estadoDoPortao(), 'sem-credencial');
+});
+
+test('sem credencial, a maquina local abre quando DECLARADA', () => {
   process.env.ORBIS_SENHA = '';
   process.env.NODE_ENV = 'development';
-  // É a sua máquina. Trancar o localhost só ensinaria a contornar.
+  process.env.ORBIS_LOCAL = '1';
+  // É a sua máquina, e você disse isso. Trancar o localhost só ensinaria a
+  // contornar — mas quem trabalha nele afirma que é ele, em vez de o servidor
+  // adivinhar.
   assert.equal(estadoDoPortao(), 'desligado');
+});
+
+test('ORBIS_LOCAL nao abre um servidor declarado como producao', () => {
+  process.env.ORBIS_SENHA = '';
+  process.env.ORBIS_LOCAL = '1';
+  process.env.NODE_ENV = 'production';
+  assert.equal(estadoDoPortao(), 'sem-credencial', 'producao vence a declaracao de local');
 });
 
 test('com credencial o portão está ativo nos dois ambientes', () => {
@@ -188,4 +217,39 @@ test('o cookie é lido no meio de outros', () => {
   assert.equal(lerCookieDaSessao('a=1; orbis_sessao=abc.def; b=2'), 'abc.def');
   assert.equal(lerCookieDaSessao('a=1; b=2'), undefined);
   assert.equal(lerCookieDaSessao(undefined), undefined);
+});
+
+/**
+ * A segunda tranca — a das ações que custam — e a pergunta que a INTERFACE faz
+ * sobre ela.
+ *
+ * `trancaDeAcaoAtiva` nasceu porque a tela e o servidor discordavam: o diálogo
+ * pedia a credencial sempre, inclusive na máquina local sem `ORBIS_SENHA_ACAO`,
+ * onde o servidor deixa passar. Quem usava o app tinha de inventar um texto
+ * qualquer para o botão habilitar.
+ */
+
+test('PROVA: sem ORBIS_SENHA_ACAO a tranca de acao nao existe, e ela DIZ isso', () => {
+  process.env.ORBIS_SENHA_ACAO = '';
+  assert.equal(trancaDeAcaoAtiva(), false, 'a interface precisa saber para nao pedir a toa');
+  assert.equal(senhaDeAcaoConfere(undefined), true, 'e o servidor deixa passar');
+  assert.equal(senhaDeAcaoConfere('qualquer coisa'), true);
+});
+
+test('PROVA: com ORBIS_SENHA_ACAO a tranca volta, e so a senha certa passa', () => {
+  process.env.ORBIS_SENHA_ACAO = 'confirma';
+  assert.equal(trancaDeAcaoAtiva(), true);
+  assert.equal(senhaDeAcaoConfere('confirma'), true);
+  assert.equal(senhaDeAcaoConfere('confirmA'), false, 'quase-certa nao passa');
+  assert.equal(senhaDeAcaoConfere(''), false);
+  assert.equal(senhaDeAcaoConfere(undefined), false);
+});
+
+test('a resposta da tranca acompanha a variavel, e nao um valor lido uma vez', () => {
+  // Ela e lida a cada chamada de proposito: um servidor que trocasse a variavel
+  // em tempo de execucao passaria a exigir sem precisar reiniciar.
+  process.env.ORBIS_SENHA_ACAO = '';
+  assert.equal(trancaDeAcaoAtiva(), false);
+  process.env.ORBIS_SENHA_ACAO = 'agora sim';
+  assert.equal(trancaDeAcaoAtiva(), true);
 });

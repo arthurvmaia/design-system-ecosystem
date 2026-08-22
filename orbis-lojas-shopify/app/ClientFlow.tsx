@@ -12,7 +12,7 @@ import { DEFINICOES, IDIOMAS, IDIOMA_PADRAO } from "@/lib/idiomas.mjs";
 import { nichoNoIdioma } from "@/lib/nichos-textos.mjs";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 import { coresDaMarca, fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
-import { derivarLogos } from "@/lib/logo-derivar";
+import { converterParaBlob, derivarLogos } from "@/lib/logo-derivar";
 import {
   alteracoesRestantes, aprovar, arteLida, arteNova, comAlteracao, estadoDaArte,
   placarDasArtes, podeGerar, podePedirAlteracao, urlsAprovadas, type ArteDaLoja,
@@ -745,9 +745,13 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
         setProgressoIa("recortando o símbolo e montando as versões…");
         try {
           const versoes = await derivarLogos(prontas.logo);
-          prontas.logo = await subir(versoes.transparente, "logotipo");
-          prontas["logo-fundo-branco"] = await subir(versoes.fundoBranco, "logotipo-fundo-branco");
-          prontas["logo-fundo-preto"] = await subir(versoes.fundoPreto, "logotipo-fundo-preto");
+          /* As versões chegam como data URI, e não como Blob, porque o mesmo
+             algoritmo roda aqui e dentro do Playwright do motor — e Blob não
+             atravessa a fronteira entre a página e o Node. Converter aqui é o
+             preço de haver UMA implementação do recorte para as três frentes. */
+          prontas.logo = await subir(converterParaBlob(versoes.transparente), "logotipo");
+          prontas["logo-fundo-branco"] = await subir(converterParaBlob(versoes.fundoBranco), "logotipo-fundo-branco");
+          prontas["logo-fundo-preto"] = await subir(converterParaBlob(versoes.fundoPreto), "logotipo-fundo-preto");
           substituir("logo", prontas.logo);
           substituir("logo-fundo-branco", prontas["logo-fundo-branco"]);
           substituir("logo-fundo-preto", prontas["logo-fundo-preto"]);

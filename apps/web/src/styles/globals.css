@@ -175,6 +175,30 @@
     color: var(--color-ion-3);
   }
 
+  /* A lista aberta de um <select> é desenhada pelo SISTEMA, não pela página.
+     Os campos do app usam `background: transparent` e `color: var(--color-fg)`,
+     que é quase branco — bonito no controle fechado, sobre o fundo escuro da
+     página. Aberta, a lista caía no branco padrão do Windows e o texto quase
+     branco ia junto: 46 fontes invisíveis e uma única linha legível, a que
+     estava sob o cursor, porque essa recebe as cores de destaque do sistema.
+
+     `color-scheme: dark` é o que manda o navegador desenhar o popup no tema
+     escuro. As duas regras seguintes são o cinto do suspensório: onde ele não
+     for respeitado, a opção continua tendo fundo e cor próprios, e nunca
+     depende de herdar o `transparent` do controle. */
+  select {
+    color-scheme: dark;
+  }
+
+  select option {
+    /* OPACA de propósito: `--color-surface` é branco translúcido e, composto
+       contra o branco do popup do sistema, continuaria branco. O destaque da
+       linha sob o cursor fica com o navegador, que já o desenha escuro depois
+       do `color-scheme`. */
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-signal);
     outline-offset: 2px;

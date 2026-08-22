@@ -10,7 +10,9 @@ import {
   SegmentValidationFile,
   SegmentsManifest,
   aplicarValidacoes,
+  associarConferencias,
   ehDesignSystemId,
+  lerComparacoesDaCaptura,
   listarAssetsFaltando,
   podeApagarDesignSystem,
   resumirPipeline,
@@ -122,62 +124,6 @@ const lerManifesto = (
 };
 
 // ── Conferência de pixel e declarações do bundle ─────────────────────────────
-
-/** O que a Galeria mostra da conferência de pixel de um segmento. Frações 0..1. */
-type ConferenciaDePixel = { delta: number; limiar: number; passou: boolean };
-
-/** Uma comparação como está no manifesto V2, sem round-trip de schema. */
-type ComparacaoBruta = {
-  a: string;
-  b: string;
-  delta: number;
-  threshold: number;
-  ok: boolean;
-  /** O dono, quando a captura o gravou (capturas novas sempre gravam). */
-  position?: number;
-  segmentHash?: string;
-};
-
-/**
- * As comparações de pixel do manifesto V2, lidas UMA vez por design system.
- * Parse cru de propósito: o manifesto passa de 1 MB e a listagem só precisa
- * deste array; validar o documento inteiro por schema custaria mais do que a
- * informação vale.
- */
-const lerComparacoesV2 = (dsId: string): ComparacaoBruta[] => {
-  const path = vaultCaptureV2Manifest(dsId as `ds_${string}`);
-  if (!existsSync(path)) return [];
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf8')) as { visualComparisons?: unknown };
-    if (!Array.isArray(raw.visualComparisons)) return [];
-    return raw.visualComparisons.flatMap((c): ComparacaoBruta[] => {
-      if (
-        typeof c !== 'object' ||
-        c === null ||
-        typeof (c as ComparacaoBruta).a !== 'string' ||
-        typeof (c as ComparacaoBruta).b !== 'string' ||
-        typeof (c as ComparacaoBruta).delta !== 'number' ||
-        typeof (c as ComparacaoBruta).threshold !== 'number' ||
-        typeof (c as ComparacaoBruta).ok !== 'boolean'
-      )
-        return [];
-      const bruta = c as ComparacaoBruta & { position?: unknown; segmentHash?: unknown };
-      return [
-        {
-          a: bruta.a,
-          b: bruta.b,
-          delta: bruta.delta,
-          threshold: bruta.threshold,
-          ok: bruta.ok,
-          ...(typeof bruta.position === 'number' ? { position: bruta.position } : {}),
-          ...(typeof bruta.segmentHash === 'string' ? { segmentHash: bruta.segmentHash } : {}),
-        },
-      ];
-    });
-  } catch {
-    return [];
-  }
-};
 
 /**
  * As limitações que a CAPTURA declarou, lidas do manifesto V2.
@@ -330,81 +276,6 @@ const lerBundleParaListagem = (
 };
 
 /**
- * Liga cada comparação de pixel ao segmento dela — só quando dá para AFIRMAR.
- *
- * O caminho principal é por IDENTIDADE: capturas novas gravam `position` (o
- * bundle mora em `seg_<position>`) dentro de cada comparação, e o lookup é
- * direto. Foi o conserto do defeito medido no acervo: a associação anterior
- * era pela ordem do array e exigia `comparações == segmentos com print`,
- * condição falsa em 7 de 7 capturas porque item pulado por orçamento não deixa
- * marca. O manifesto tinha 8 de 10 reprovações e a tela dizia que nada rodou.
- *
- * Para o acervo antigo (sem `position`) sobram os dois casos em que a ordem
- * ainda permite afirmar:
- *
- * - Na captura, quando a cobertura foi completa: mesmo tamanho dos dois lados,
- *   tudo `captura`×`bundle`.
- * - Na validação por preview com uma única cápsula: não há o que confundir.
- *
- * Fora disso a medição existe mas não tem dono identificável, e atribuí-la por
- * palpite seria pintar número de medição. Fica sem dono.
- */
-const associarConferencias = (opts: {
-  comparacoes: ComparacaoBruta[];
-  /** Ids dos segmentos COM print da dobra, em ordem de posição. */
-  comFrame: string[];
-  /** Ids dos segmentos cuja representação é cápsula de runtime, em ordem. */
-  capsulas: string[];
-  /** position → id do segmento, para o lookup por identidade. */
-  porPosicao?: Map<number, string>;
-}): Map<string, ConferenciaDePixel> => {
-  const out = new Map<string, ConferenciaDePixel>();
-  const cs = opts.comparacoes;
-  if (cs.length === 0) return out;
-
-  const resumo = (c: ComparacaoBruta): ConferenciaDePixel => ({
-    delta: c.delta,
-    limiar: c.threshold,
-    passou: c.ok,
-  });
-
-  // Identidade primeiro. Uma captura ou grava o dono em tudo ou em nada (o
-  // campo nasceu junto com o compilador que o escreve), então a presença em
-  // qualquer item indica manifesto novo e a ordem deixa de importar.
-  const comDono = cs.filter((c) => c.position !== undefined);
-  if (comDono.length > 0 && opts.porPosicao !== undefined) {
-    for (const c of comDono) {
-      const id = c.position !== undefined ? opts.porPosicao.get(c.position) : undefined;
-      if (id !== undefined) out.set(id, resumo(c));
-    }
-    return out;
-  }
-
-  const daCaptura = cs.every((c) => c.a === 'captura' && c.b === 'bundle');
-  if (daCaptura && cs.length === opts.comFrame.length) {
-    cs.forEach((c, i) => {
-      const id = opts.comFrame[i];
-      if (id !== undefined) out.set(id, resumo(c));
-    });
-    return out;
-  }
-
-  const daValidacao = cs.every((c) => c.b === 'preview');
-  const unica = cs[0];
-  const capsula = opts.capsulas[0];
-  if (
-    daValidacao &&
-    cs.length === 1 &&
-    opts.capsulas.length === 1 &&
-    unica !== undefined &&
-    capsula !== undefined
-  ) {
-    out.set(capsula, resumo(unica));
-  }
-  return out;
-};
-
-/**
  * Registros de validação em navegador, agrupados por segmento. É o que permite
  * mostrar `validated` na Galeria — mas só onde a reprodução foi de fato
  * executada e conferida. Ausente → nada é promovido (tudo continua no máximo
@@ -532,7 +403,7 @@ designSystemsRoute.get('/:id/segments', (c) => {
   const midias = lerMidiasV2(id) ?? [];
   const ordenados = [...segmentos].sort((a, b) => a.position - b.position);
   const conferencias = associarConferencias({
-    comparacoes: lerComparacoesV2(id),
+    comparacoes: lerComparacoesDaCaptura(id),
     comFrame: ordenados.filter((s) => insights.get(s.id)?.framePath !== undefined).map((s) => s.id),
     capsulas: ordenados
       .filter((s) => bundles.get(s.id)?.representacao === 'capsula-runtime')

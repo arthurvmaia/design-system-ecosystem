@@ -2,7 +2,8 @@ import { env } from "cloudflare:workers";
 import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
 import { MAX_ARTE_GERADA_BYTES, MAX_ARTE_GERADA_MB, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
-import { consultarTarefa, magnificDisponivel, modeloPadrao, modeloValido, pedirGeracao, promptDaVitrine, type PapelMagnific } from "@/lib/magnific";
+import { PRESET_DO_PAPEL, consultarTarefa, magnificDisponivel, modeloPadrao, modeloValido, papeisForaDoCatalogo, pedirGeracao, promptDaVitrine, type PapelMagnific } from "@/lib/magnific";
+import { estimar } from "@/lib/motor/precos";
 
 /**
  * Imagens da loja gerada, quando há provedor de IA configurado.
@@ -38,7 +39,11 @@ export async function GET(request: Request) {
     });
   }
   const taskId = url.searchParams.get("taskId");
-  if (!taskId) return Response.json({ disponivel: true, provedor: "magnific" });
+  if (!taskId) {
+    /* o que ainda não sai do catálogo aparece aqui, com motivo: dívida que
+       ninguém lê é dívida que ninguém paga */
+    return Response.json({ disponivel: true, provedor: "magnific", foraDoCatalogo: papeisForaDoCatalogo() });
+  }
 
   const papel = papelDe(url.searchParams.get("papel"));
   const modelo = url.searchParams.get("modelo") ?? modeloPadrao(papel);
@@ -111,6 +116,43 @@ async function guardarComoMidia(viewerId: string, url: string, nome: string) {
 
 /** As resoluções que o provedor aceita. Fora daqui, ele decide. */
 const RESOLUCOES = new Set(["1k", "2k", "4k"]);
+
+/**
+ * O que ESTA geração vai custar — declarado antes de ela sair.
+ *
+ * O `CLAUDE.md` cobra que orçamento generativo seja "declarado e contado". Este
+ * caminho não contava nem declarava: abria a tarefa e seguia. Aqui ele passa a
+ * declarar, com a mesma tabela medida que as outras duas frentes usam.
+ *
+ * **E ele devolve `null` mais vezes do que gostaríamos, de propósito.** A
+ * tabela do motor não tem linha REST medida: a API REST não tem endpoint de
+ * simulação, então não dá para medi-la sem gastar. Copiar o número do MCP faria
+ * a resposta parecer uma conta sendo um palpite — o erro que o catálogo inteiro
+ * existe para impedir. Então o custo sai `null` COM o motivo escrito, e quem
+ * lê sabe que este gasto ainda não é contado.
+ *
+ * O que falta para fechar o contrato é medir o REST e ligar o razão (que já
+ * está espelhado em `lib/motor/razao.ts`) a uma tabela em D1. Isso mexe no
+ * schema de um app publicado, e a decisão é do dono.
+ */
+function custoDeclarado(papel: PapelMagnific, resolucao: string | undefined) {
+  const presetId = PRESET_DO_PAPEL[papel];
+  if (presetId === null) {
+    return { presetId: null, creditos: null, motivo: "operação avulsa: não é geração de peça, e o catálogo de presets não fala dela" };
+  }
+  const conta = estimar({
+    presetId,
+    transporte: "rest",
+    quantidade: 1,
+    segundos: 8,
+    comAudio: true,
+    resolucao: resolucao ?? null,
+    hoje: new Date().toISOString().slice(0, 10),
+  });
+  return conta.ok
+    ? { presetId, creditos: conta.creditos, motivo: null }
+    : { presetId, creditos: null, motivo: conta.motivo };
+}
 
 /**
  * Os fins de linha do provedor: daqui não sai imagem, por mais que se pergunte.
@@ -199,7 +241,7 @@ export async function POST(request: Request) {
          fazia arquivo de 20 MB que arrastava a rodada e estourava o teto. */
       resolucao: RESOLUCOES.has(String(corpo.resolucao)) ? String(corpo.resolucao) : undefined,
     });
-    return Response.json({ disponivel: true, papel, ...tarefa });
+    return Response.json({ disponivel: true, papel, custo: custoDeclarado(papel, corpo.resolucao), ...tarefa });
   } catch (erro) {
     return Response.json({ error: erro instanceof Error ? erro.message : "MAGNIFIC_FALHOU" }, { status: 502 });
   }

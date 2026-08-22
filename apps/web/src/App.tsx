@@ -6,6 +6,7 @@ import { ROTA_INICIAL_DO_CLIENTE, capturarPerfilDaUrl, perfilAtual } from '@/lib
 import { aplicarMovimento, usePreferencias } from '@/lib/preferencias';
 import { CriativosPage } from '@/routes/Criativos';
 import { CriativosExpressoPage } from '@/routes/CriativosExpresso';
+import { CriativosMarcaPage } from '@/routes/CriativosMarca';
 import { CriativosPecasPage } from '@/routes/CriativosPecas';
 import { ExtractPage } from '@/routes/Extract';
 import { GalleryPage } from '@/routes/Gallery';
@@ -81,6 +82,10 @@ export function App() {
                     tela dos mesmos criativos, não uma frente nova. */}
                 <Route path="/criativos/expresso" element={<CriativosExpressoPage />} />
                 <Route path="/criativos/pecas" element={<CriativosPecasPage />} />
+                {/* A criação de MARCA tem tela própria: ela não tem formato de
+                    canal, nem origem de imagem, nem copy — nada do que o wizard
+                    da peça pergunta. */}
+                <Route path="/criativos/marca" element={<CriativosMarcaPage />} />
               </Route>
               <Route element={<Shell />}>
                 <Route

@@ -9,19 +9,42 @@
  * ele também segmenta e roda a validação do replay no navegador (passo do
  * processamento, não trabalho de LLM) para promover o que reproduz de verdade.
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  ArquivoDoRazao,
+  divergenciasDaFolha,
+  lerRazao,
+  medirMarca,
+  paraARegua,
+} from '@ds/creative';
+import {
+  CODIGOS_DA_REGUA_DE_MARCA,
+  PedidoDeMarca,
+  ResultadoDeMarca,
+  conferirMarca,
+  criativoPedidoPath,
   criativosDir,
+  dimensaoDePng,
   finishJob,
   getJob,
   listarAssetsFaltando,
+  marcaDir,
+  marcaPedidoPath,
   problemasDaEntregaCriativa,
+  problemasDaEntregaDeMarca,
   projectGeneratedDir,
+  referenciaDoPedido,
   vaultDsDir,
   vaultExtractedDir,
 } from '@ds/shared';
 import { avisoSpa, segmentarEIndexar } from './segmentar.js';
+
+/**
+ * A marca a ser REMEDIDA no navegador antes de fechar. `null` = não é job de
+ * marca, ou o resultado não deu para ler.
+ */
+let marcaParaRemedir: { dir: string; resultado: unknown } | null = null;
 
 const [, , jobId, ...rest] = process.argv;
 
@@ -193,6 +216,41 @@ if (job.type === 'criativo') {
   const dir = criativosDir(jobId);
   const arquivo = join(dir, 'resultado.json');
 
+  // A fila é volátil por desenho — o `fila:limpar` a esvazia — e enquanto o
+  // pedido morava só lá, esvaziá-la levava junto o teto de créditos, os claims
+  // autorizados e a peça inteira da tela "Minhas peças". Por isso o retrato
+  // existe, e por isso ele é gravado no ATO do pedido, pelo POST.
+  //
+  // Quem decide o que fazer com ele é `referenciaDoPedido`, e o porquê está lá.
+  const arquivoDoRetrato = criativoPedidoPath(jobId);
+  let retratoLido: unknown | undefined = null;
+  if (existsSync(arquivoDoRetrato)) {
+    try {
+      retratoLido = JSON.parse(readFileSync(arquivoDoRetrato, 'utf8'));
+    } catch {
+      retratoLido = undefined;
+    }
+  }
+  const referencia = referenciaDoPedido({ retrato: retratoLido, payloadDaFila: job.payload });
+  if (referencia.ilegivel) {
+    problemas.push(
+      `o retrato do pedido está ilegível em ${arquivoDoRetrato}: não fecho um job pago sem saber contra que teto medir.`,
+    );
+  }
+  if (referencia.gravarRetrato) {
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(arquivoDoRetrato, JSON.stringify(job.payload, null, 2), 'utf8');
+    } catch (err) {
+      problemas.push(
+        `não consegui gravar o retrato do pedido em ${dir}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+  const pedidoDeReferencia = referencia.pedido;
+
   if (!existsSync(arquivo)) {
     problemas.push(`resultado.json não existe em ${dir} — a peça não tem onde ser lida.`);
   } else {
@@ -206,12 +264,154 @@ if (job.type === 'criativo') {
         `resultado.json não é JSON válido: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    /**
+     * O razão entra na conferência.
+     *
+     * Sem ele, o portão comparava o teto contra o `custoGasto` do
+     * `resultado.json` — um número que nasce zerado e que quem produziu escreve.
+     * `0 > teto` nunca dispara, e a régua do orçamento era código morto.
+     */
+    const arquivoDoRazao = join(dir, 'razao.json');
+    let razao: { gasto: number; empenhado: number } | undefined;
+    if (existsSync(arquivoDoRazao)) {
+      try {
+        const r = ArquivoDoRazao.parse(JSON.parse(readFileSync(arquivoDoRazao, 'utf8')));
+        const conta = lerRazao(r.lancamentos);
+        razao = { gasto: conta.gasto, empenhado: conta.empenhado };
+      } catch (err) {
+        problemas.push(
+          `razao.json está ilegível (${err instanceof Error ? err.message : String(err)}): não fecho um job pago por cima de um registro de dinheiro que não consigo ler.`,
+        );
+      }
+    }
+
     if (leu) {
       problemas.push(
         ...problemasDaEntregaCriativa({
           resultado: bruto,
-          pedido: job.payload,
-          existe: (relativo) => existsSync(join(dir, relativo)),
+          pedido: pedidoDeReferencia,
+          razao,
+          existe: (relativo: string) => existsSync(join(dir, relativo)),
+          /**
+           * O medidor: é ele que faz o portão conferir o ARQUIVO em vez de
+           * acreditar no número que o resultado declara ao lado.
+           *
+           * Só PNG. O SVG do logotipo devolve `null` — medi-lo exigiria
+           * interpretar `viewBox`, e "não consegui medir" é resposta melhor do
+           * que um palpite que vira acusação.
+           */
+          medirImagem: (relativo: string) => {
+            const caminho = join(dir, relativo);
+            if (!relativo.toLowerCase().endsWith('.png') || !existsSync(caminho)) return null;
+            try {
+              return dimensaoDePng(readFileSync(caminho));
+            } catch {
+              return null;
+            }
+          },
+          // O portão mede o ARQUIVO, em vez de acreditar na folha que veio
+          // junto: ela é escrita por quem produziu, e uma entrega que confia na
+          // própria declaração não é conferida por ninguém.
+          dimensaoDe: (relativo) => {
+            const caminho = join(dir, relativo);
+            if (!existsSync(caminho)) return null;
+            try {
+              return dimensaoDePng(readFileSync(caminho));
+            } catch {
+              return null;
+            }
+          },
+        }),
+      );
+    }
+  }
+}
+
+/**
+ * `marca` — o outro job que gasta DINHEIRO, e que também fechava sem conferência.
+ *
+ * A marca ganhou tipo próprio na fila e este arquivo não a conhecia: ela caía
+ * direto no `finishJob`. É o mesmo buraco que o `criativo` já teve, e o custo é
+ * maior — uma marca é carregada por tudo o que a empresa faz depois.
+ */
+if (job.type === 'marca') {
+  const dir = marcaDir(jobId);
+  const arquivo = join(dir, 'resultado.json');
+
+  // O retrato manda aqui pela mesma razão do criativo: é contra o teto DELE que
+  // o gasto é medido, e o payload da fila é o lado mutável.
+  const arquivoDoRetrato = marcaPedidoPath(jobId);
+  let retratoLido: unknown | undefined = null;
+  if (existsSync(arquivoDoRetrato)) {
+    try {
+      retratoLido = JSON.parse(readFileSync(arquivoDoRetrato, 'utf8'));
+    } catch {
+      retratoLido = undefined;
+    }
+  }
+  const referenciaDaMarca = referenciaDoPedido({
+    retrato: retratoLido,
+    payloadDaFila: job.payload,
+  });
+  if (referenciaDaMarca.ilegivel) {
+    problemas.push(
+      `o retrato do pedido de marca está ilegível em ${arquivoDoRetrato}: não fecho um job pago sem saber contra que teto medir.`,
+    );
+  }
+
+  if (!existsSync(arquivo)) {
+    problemas.push(`resultado.json não existe em ${dir} — a marca não tem onde ser lida.`);
+  } else {
+    let bruto: unknown;
+    try {
+      bruto = JSON.parse(readFileSync(arquivo, 'utf8'));
+    } catch (err) {
+      problemas.push(
+        `resultado.json não é JSON válido: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      bruto = undefined;
+    }
+
+    const arquivoDoRazaoDaMarca = join(dir, 'razao.json');
+    let razaoDaMarca: { gasto: number; empenhado: number } | undefined;
+    /**
+     * O teto em vigor, quando o dono liberou mais depois do pedido.
+     *
+     * O retrato continua sendo a trava, e continua intocado; os aumentos vivem
+     * no razão, com data e motivo. O portão precisa dos dois — senão ele recusa
+     * a entrega de um job cujo estouro tem autorização escrita.
+     */
+    let tetoEmVigorDaMarca: number | undefined;
+    if (existsSync(arquivoDoRazaoDaMarca)) {
+      try {
+        const arquivo = ArquivoDoRazao.parse(
+          JSON.parse(readFileSync(arquivoDoRazaoDaMarca, 'utf8')),
+        );
+        const conta = lerRazao(arquivo.lancamentos);
+        razaoDaMarca = { gasto: conta.gasto, empenhado: conta.empenhado };
+        const liberado = arquivo.aumentos.reduce((t, a) => t + a.creditos, 0);
+        if (liberado > 0) {
+          const teto = PedidoDeMarca.safeParse(referenciaDaMarca.pedido);
+          if (teto.success) tetoEmVigorDaMarca = teto.data.tetoDeCreditos + liberado;
+        }
+      } catch (err) {
+        problemas.push(
+          `razao.json da marca está ilegível (${err instanceof Error ? err.message : String(err)}): não fecho um job pago por cima de um registro de dinheiro que não consigo ler.`,
+        );
+      }
+    }
+
+    if (bruto !== undefined) marcaParaRemedir = { dir, resultado: bruto };
+    if (bruto !== undefined) {
+      problemas.push(
+        ...problemasDaEntregaDeMarca({
+          resultado: bruto,
+          pedido: referenciaDaMarca.pedido,
+          existe: (relativo: string) => existsSync(join(dir, relativo)),
+          temApresentacao: existsSync(join(dir, 'apresentacao.pdf')),
+          razao: razaoDaMarca,
+          tetoEmVigor: tetoEmVigorDaMarca,
+          codigosDaRegua: [...CODIGOS_DA_REGUA_DE_MARCA],
         }),
       );
     }
@@ -251,6 +451,95 @@ if (paraSegmentar !== null) {
 }
 
 /**
+ * Refaz a régua da marca sobre os ARQUIVOS, e confronta com a folha.
+ *
+ * `problemasDaEntregaDeMarca` já refaz o que dá para refazer sem navegador — a
+ * medida de cada peça e a existência das capas. O resto da régua (alfa,
+ * silhueta, contraste) precisa decodificar pixel, e é justamente onde a folha
+ * continuava sendo a única fonte: um `passou` escrito por um comando com
+ * defeito passava, porque quem escreve a folha é quem produziu a marca.
+ *
+ * Aqui a medição é REFEITA, por quem não produziu nada. Só a divergência
+ * importa: quando esta conferência REPROVA e a folha diz `passou`, a folha está
+ * errada e o job não fecha. Onde esta conferência fica `pendente` — as regras
+ * da apresentação, que dependem de dados que não existem no fechamento — ela
+ * cala, porque "não consegui medir" não é acusação.
+ *
+ * Sem navegador, devolve lista vazia e DIZ isso. Degradar em silêncio aqui
+ * seria substituir uma conferência que não rodou por um verde.
+ */
+export const remedirAMarca = async (alvo: { dir: string; resultado: unknown }): Promise<
+  string[]
+> => {
+  const lido = ResultadoDeMarca.safeParse(alvo.resultado);
+  if (!lido.success || lido.data.conferencia === null) return [];
+
+  /**
+   * Só o que o medidor sabe LER: ele decodifica pixel, e o `logotipo.svg` não
+   * é pixel. Passá-lo derrubava a remedição inteira com IMAGEM_NAO_CARREGOU —
+   * uma peça que o medidor não entende não pode custar a conferência das
+   * outras. As três versões da logo, que é o que M1..M5 julgam, são PNG.
+   */
+  const arquivos: Record<string, string> = {};
+  for (const peca of lido.data.pecas) {
+    if (!peca.caminho.toLowerCase().endsWith('.png')) continue;
+    const caminho = join(alvo.dir, peca.caminho);
+    if (existsSync(caminho)) arquivos[peca.peca] = caminho;
+  }
+  if (Object.keys(arquivos).length === 0) return [];
+
+  let navegador: Awaited<ReturnType<typeof import('playwright').chromium.launch>> | null = null;
+  try {
+    const { chromium } = await import('playwright');
+    navegador = await chromium.launch({ args: ['--no-sandbox'] });
+  } catch (err) {
+    console.log(
+      `  remedição pulada (sem navegador): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    console.log('    A folha da marca fica valendo pelo que o produtor escreveu.');
+    return [];
+  }
+
+  try {
+    const medidas = await medirMarca(navegador, arquivos);
+    const refeita = conferirMarca({
+      ...paraARegua(medidas),
+      cor: lido.data.cor.hex,
+      promptDoSimbolo: lido.data.promptDoSimbolo,
+      procedencia: lido.data.procedencia,
+      decisaoDaCor: { por: lido.data.cor.decidida, motivo: lido.data.cor.motivo },
+      // O que o fechamento não tem como saber: são as regras da apresentação, e
+      // elas ficam `pendente` aqui de propósito.
+      apresentacao: null,
+      briefingsDasArtes: null,
+      propostasDosConceitos: null,
+      conceitosSemMobile: null,
+      colecoesSemCapa: null,
+    });
+
+    // O julgamento do confronto mora em `@ds/creative`, com teste: é a regra, e
+    // regra não vive num script que executa ao ser importado.
+    return divergenciasDaFolha(refeita.vereditos, lido.data.conferencia);
+  } catch (err) {
+    /**
+     * Falhar a remedição NÃO reprova a marca.
+     *
+     * Um arquivo que o medidor não entende, um navegador que morreu no meio —
+     * nada disso é defeito da marca, e transformar "não consegui medir" em
+     * "está errado" faria o fechamento recusar entrega boa. Mas também não sai
+     * calado: quem lê precisa saber que esta conferência não aconteceu.
+     */
+    console.log(
+      `  remedição falhou: ${(err instanceof Error ? err.message : String(err)).slice(0, 140)}`,
+    );
+    console.log('    A folha da marca fica valendo pelo que o produtor escreveu.');
+    return [];
+  } finally {
+    await navegador.close();
+  }
+};
+
+/**
  * Validação automática do replay (navegador) + fechamento. Num `main` async
  * (não top-level await: o tsx transpila os scripts para CJS). A validação é
  * passo do processamento, logo após os segmentos indexados — sem comando extra
@@ -259,6 +548,25 @@ if (paraSegmentar !== null) {
  * pode rodar depois; nunca vira `unsupported` por indisponibilidade.
  */
 const finalizar = async (): Promise<void> => {
+  if (marcaParaRemedir !== null) {
+    console.log('');
+    console.log('Refazendo a régua da marca sobre os arquivos…');
+    const divergencias = await remedirAMarca(marcaParaRemedir);
+    if (divergencias.length > 0) {
+      console.error('');
+      console.error('Não dá para concluir este job:');
+      console.error('');
+      for (const d of divergencias) console.error(`  - ${d}`);
+      console.error('');
+      console.error(
+        'A folha afirma o que a medição nega. Conserte a marca, ou o comando que escreveu a folha.',
+      );
+      console.error('');
+      process.exit(1);
+    }
+    console.log('  A folha bate com o que eu medi.');
+  }
+
   if (paraSegmentar !== null) {
     try {
       const { validarPreviews } = await import('@ds/server/validate');

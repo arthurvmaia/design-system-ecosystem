@@ -867,17 +867,30 @@ test("o símbolo gerado só ocupa o campo de logo depois de recortado", async ()
  * devolve outro desenho. Aqui o símbolo é gerado uma vez e as versões saem
  * dele, por cálculo. Este teste trava as decisões que fazem o recorte parecer
  * profissional em vez de recorte de tesoura.
+ *
+ * O arquivo virou ESPELHO do motor criativo quando as três frentes do portal
+ * passaram a compartilhar o recorte. Ele deixou de ter ajudantes soltos no topo
+ * e virou UMA função com tudo dentro — porque a injeção no navegador serializa
+ * pelo `toString()`, e ajudante declarado fora não viajaria junto.
+ *
+ * Este teste continuou cobrando a forma ANTIGA (`function corDoFundo`) e passou
+ * a reprovar sem ninguém ver: a frente de Lojas está fora do workspace pnpm e
+ * fora do CI do GitHub, então nenhuma verificação automática a alcança. As
+ * decisões cobradas são as mesmas; o que mudou é que elas são procuradas pelo
+ * NOME do ajudante em vez da palavra `function` na frente dele — a palavra era
+ * detalhe de escrita, o nome é a decisão.
  */
 test("as versões da logo são derivadas do mesmo símbolo, por cálculo", async () => {
   const fonte = await readFile(new URL("../lib/logo-derivar.ts", import.meta.url), "utf8");
 
   /* a cor do fundo é lida nas BORDAS, não num canto: um canto pode cair numa
      sombra e levar o recorte inteiro embora */
-  assert.match(fonte, /function corDoFundo/);
+  assert.match(fonte, /ARQUIVO ESPELHADO\. NÃO EDITE AQUI/, "o recorte é espelho do motor criativo");
+  assert.match(fonte, /const corDoFundo = \(/);
   assert.match(fonte, /mediana/, "um pixel fora da curva não pode decidir o fundo");
 
   /* faixa de transição, e não corte seco: corte seco serrilha a borda */
-  const chave = fonte.match(/function tirarOFundo[\s\S]*?\n\}/)?.[0] ?? "";
+  const chave = fonte.match(/const tirarOFundo = [\s\S]*?\n  \};/)?.[0] ?? "";
   assert.ok(chave, "tirarOFundo sumiu");
   assert.match(chave, /const dentro/);
   assert.match(chave, /const fora/);
@@ -885,12 +898,12 @@ test("as versões da logo são derivadas do mesmo símbolo, por cálculo", async
 
   /* apara e centraliza pela FORMA, não pelo quadro: o gerador quase nunca põe
      o símbolo no meio exato, e uma logo descentrada parece defeito */
-  assert.match(fonte, /function areaDoSimbolo/);
+  assert.match(fonte, /const areaDoSimbolo = \(/);
   assert.match(fonte, /const MARGEM/, "logo encostada na borda não respira");
 
   /* a monocromática usa o ALFA como máscara: é o que a faz sobreviver a
      bordado, carimbo e uma tinta só */
-  assert.match(fonte, /globalCompositeOperation = "source-in"/);
+  assert.match(fonte, /globalCompositeOperation = 'source-in'/);
 
   /* recorte que não pegou nada não pode virar entrega: melhor o arquivo como
      veio do que um corte que comeu metade do desenho */

@@ -26,6 +26,7 @@ import {
 } from '@/lib/etapas-core';
 import { resumoDaVoz } from '@/lib/marca-rotulos';
 import { bloqueantes, validarProjeto } from '@/lib/revisao-core';
+import { useExigeCredencialDeAcao } from '@/lib/sessao';
 import { toast } from '@/lib/toast';
 import {
   type ObjetivoDoSite,
@@ -58,6 +59,7 @@ export function ProjectWizard({
   onClose: () => void;
   onGenerated: (res: StartWorkResponse) => void;
 }) {
+  const exigeCredencial = useExigeCredencialDeAcao();
   const qc = useQueryClient();
   const kits = useQuery({ queryKey: ['kits'], queryFn: api.listKits });
 
@@ -580,6 +582,7 @@ export function ProjectWizard({
       </div>
 
       <ConfirmarAcaoCara
+        exigeCredencial={exigeCredencial}
         aberto={pedindoSenha}
         oQueVaiFazer="Vou montar o site inteiro a partir do seu kit, o que leva minutos."
         ocupado={gerar.isPending}

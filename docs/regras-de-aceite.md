@@ -333,3 +333,429 @@ benigna. A regra acusa só quando existe no HTML um id terminando em
 `-<procurado>` — o que pega os 4 bundles medidos no acervo e nenhum a mais.
 Busca montada em tempo de execução (`'#' + nome`) fica fora: sem executar não se
 sabe o alvo, e acusar no escuro reprova peça boa.
+
+---
+
+# Regra de aceite da PEÇA CRIATIVA
+
+Vale para cada variação produzida na frente Criativos, no momento em que ela
+seria marcada como `aprovada`.
+
+> **A peça criativa custa dinheiro e sai da casa.** As outras duas réguas
+> protegem o acervo; esta protege o cliente e a conta de quem paga. Por isso o
+> `pendente` aqui quase nunca é limite técnico: é **coisa que não temos como
+> medir** — e o que não se mede não pode ser chamado de aprovado.
+
+Uma peça com pendência sai rotulada **"aprovada com ressalva"**, com a ressalva
+nomeada, e a folha de conferência viaja com ela. O contrato recusa fechar um job
+cuja variação está `aprovada` sem folha, ou com uma regra reprovada dentro dela:
+veredito que contradiz a própria medição é pior que não medir, porque alguém
+olhou, viu errado, e carimbou verde assim mesmo.
+
+### C1. A dimensão é exatamente a do formato
+
+*Por que:* peça fora de medida não entra no lugar. O canal corta, estica ou
+recusa, e quem descobre é o cliente, depois de pagar.
+
+*Como se confere:* largura e altura MEDIDAS no arquivo, contra
+`DIMENSAO_DO_FORMATO`. A medida sai do cabeçalho do PNG, sem biblioteca.
+
+*Falhou:* a primeira geração paga saiu 736×414 num pedido de 1080×1080 — o
+provedor devolve a proporção que ele quer, não a que se pediu. É por isso que a
+composição recorta para a dimensão exata em vez de confiar na saída.
+
+### C2. O texto pedido está na peça, e dentro do quadro
+
+*Por que:* o cliente digitou uma headline literal. Ela aparecer "parecida" é o
+mesmo que não aparecer — e ela aparecer FORA do quadro também.
+
+*Como se confere:* duas medições, porque são duas perguntas. A primeira lê o
+texto renderizado e cobra a headline e o CTA literais. A segunda mede
+`getBoundingClientRect()` de cada `[data-papel]` e cobra que a caixa esteja
+dentro do quadro do formato, nos quatro lados. Sem a segunda medição a regra
+fica **pendente**, nunca verde.
+
+*Falhou:* medido em Chromium num `banner-3x1` com uma headline de 176
+caracteres (o schema permite 200): a faixa de leitura cresceu para cima e a
+linha da marca terminou **601px acima** do topo do quadro de 500px. A peça saiu
+sem marca visível e a headline entrou cortada no meio — e as **dez** regras
+ficaram verdes, com o rótulo "aprovada". Nenhuma delas perguntava onde o texto
+estava; todas perguntavam se ele existia, e `innerText` responde sobre o
+documento, não sobre o pixel.
+
+Foi por causa desse caso que a composição passou a derivar o corpo da letra do
+comprimento do texto, em vez de usar uma fração fixa da largura.
+
+### C3. A marca está na peça, exata
+
+*Por que:* a marca é FATO, não estilo. É o único pedaço da peça que não admite
+interpretação.
+
+*Como se confere:* depende de COMO ela assina, porque "exata" quer dizer coisas
+diferentes nos dois casos.
+
+Assinando em **texto**: a grafia é procurada no texto do papel `marca`, com a
+caixa exata. Se aparece só ignorando maiúsculas, REPROVA, porque
+`text-transform: uppercase` muda o que se vê sem mudar o documento: "iFood" vira
+"IFOOD" na tela e continua "iFood" no DOM.
+
+A busca é no PAPEL, e não na peça toda. Varrendo todos os textos, uma headline
+que mencionasse a marca satisfazia a regra enquanto a linha da marca estava com
+outra grafia, ou ausente. Sem a geometria medida não há como saber qual texto é
+de qual papel, e aí a varredura larga é o que há: o veredito diz isso na frase,
+em vez de afirmar mais do que mediu.
+
+Assinando em **logotipo**: o arquivo carregou (`naturalWidth` maior que zero) e
+a proporção dele na peça bate com a do arquivo, com 2% de folga de
+arredondamento. As duas coisas são invisíveis para qualquer leitura de texto.
+Uma imagem que não carrega continua ocupando lugar, então a peça sai com um
+buraco onde deveria estar a marca e nenhuma medida de geometria reclama; e um
+logotipo esticado é a falha que o dono da marca reconhece antes de todas.
+
+### C4. O texto se lê no tamanho real
+
+*Por que:* peça de tráfego que não se lê não cumpre função nenhuma.
+
+*Como se confere:* o menor contraste entre texto e fundo fica em 3:1 ou acima —
+o mesmo piso das outras réguas da casa. O número é CALCULADO entre o par de
+cores que a composição escolheu, não amostrado do pixel, e isso é barato e
+exato enquanto valerem as duas condições que o tornam verdade: o texto é opaco,
+e a faixa sob ele é sólida. As duas são medidas aqui, não presumidas.
+
+*Falhou:* na mesma peça de C2, a régua declarava **11,82:1** e o pixel real no
+topo da linha da marca media **2,51:1**. A faixa era um degradê que começava
+transparente e a marca vinha com `opacity:.85`: o par de cores continuava o
+mesmo, e nenhuma das duas cores estava na tela. Hoje o degradê vive num véu
+acima da caixa de texto, a marca é opaca, e a régua **reprova** quando encontra
+qualquer `[data-papel]` com opacidade menor que 1 — porque nesse caso o número
+declarado deixou de descrever a peça.
+
+Contraste que não dá para calcular (`NaN`, de cor em formato que a conta não lê)
+fica **pendente**. Sem essa conferência ele passava por baixo do piso em
+silêncio, já que `NaN < 3` é `false`.
+
+### C5. O material do cliente foi preservado
+
+*Por que:* upload vence geração. Trocar o arquivo dele por material inventado é
+o contrário do que ele pediu.
+
+*Como se confere:* houve upload? Então ele tem de estar na peça. **Não houve
+upload** e **ninguém conferiu** são coisas diferentes: a primeira passa, a
+segunda é pendência. Enquanto as duas foram o mesmo `null`, a régua dava verde
+para o que ninguém tinha olhado.
+
+### C6. As variações são de fato diferentes
+
+*Por que:* cobrar duas e entregar uma.
+
+*Como se confere:* o hash do conteúdo não bate com o de nenhuma irmã do mesmo
+pedido.
+
+### C7. Nenhum texto espúrio dentro do pixel
+
+*Por que:* modelo de imagem inventa letra torta, legenda e assinatura. Nada
+disso pode chegar ao cliente como se fosse da marca dele.
+
+*Como se confere:* **não se confere.** Ler o que está DENTRO da imagem exige
+OCR, e este repositório não tem. Com pixel gerado, a regra é PENDENTE e vai para
+revisão humana. Peça sem pixel gerado passa: não há o que inventar.
+
+### C8. Sem marca d'água do provedor
+
+*Por que:* marca d'água de terceiro numa peça de campanha é problema do cliente,
+não do fornecedor.
+
+*Como se confere:* também não se confere. O plano da conta não é prova sobre o
+pixel — dizer "o plano é premium, logo não tem marca d'água" é vender cadastro
+como proveniência. PENDENTE quando houve geração.
+
+### C9. A procedência está registrada
+
+*Por que:* peça que não diz de que modelo e preset saiu não é reproduzível nem
+auditável. Quando o cliente pedir "outra igual a essa", não há como.
+
+*Como se confere:* a variação traz modelo e preset. Sem isso, pendência.
+
+### C10. Nenhum caractere se perdeu no caminho
+
+*Por que:* C2 e C3 comparam o texto renderizado com o texto do pedido. Se os
+dois vierem corrompidos, os dois concordam e ambos passam — a régua fica verde
+sobre uma peça que mostra "cole��o".
+
+*Como se confere:* duas assinaturas, porque a corrupção tem duas formas.
+
+A primeira é a **perda**: o texto não contém o caractere de substituição
+(U+FFFD), que é o rastro que sobra quando alguma etapa leu os bytes com a
+codificação errada e não soube o que fazer com eles.
+
+A segunda é o **embaralhamento**, e ela não deixa rastro nenhum. Quando bytes de
+UTF-8 são lidos como se fossem de uma tabela de um byte, "coleção" vira
+"coleÃ§Ã£o": nada se perdeu, cada byte virou um caractere válido, e não há U+FFFD
+para denunciar. A regra procura a assinatura desse acidente (um `Ã` ou `Â`
+seguido de um caractere da faixa de continuação, ou o `â€` das aspas
+tipográficas), que português correto nunca produz. Há teste com "coleção",
+"Estação" e "São João" provando que ela não acusa peça boa.
+
+*Falhou:* a primeira peça composta deste repositório saiu com o CTA
+"Ver a cole��o", e as nove regras da época ficaram verdes. Quem percebeu foi o
+olho, ao abrir o PNG. Esta regra existe para o olho não precisar ser o único —
+e a segunda assinatura existe porque a primeira só pegava metade dos casos.
+
+### C11. A peça saiu na tipografia da marca
+
+*Por que:* o `font-family` do CSS é um PEDIDO, e o fallback dele é silencioso
+por desenho. Sem a fonte carregada, o navegador desenha noutra letra e nada no
+arquivo diz que isso aconteceu: a peça alega ser da marca sem ser.
+
+*Como se confere:* a composição EMBUTE o arquivo da fonte na página (o Chromium
+que compõe não tem as fontes do mundo instaladas), e depois percorre
+`document.fonts` procurando uma face daquela família com `status: "loaded"`.
+Pedido que não escolheu tipografia passa: a letra da casa foi decisão.
+
+*Falhou:* a primeira tentativa usou `document.fonts.check()`, e ele responde a
+pergunta errada, que é se o navegador consegue desenhar o texto de ALGUM jeito.
+Medido: uma família inventada passava por aplicada, porque o fallback do
+sistema dá conta.
+
+*Por que reprova em vez de virar ressalva:* recompor não gasta crédito. O pixel
+gerado já está pago e em disco, e `pnpm criativo:compor` monta de novo a partir
+dele. Como o conserto é de graça, deixar sair uma peça na letra errada seria
+escolher entregar errado.
+
+### C12. A foto continua sendo a peça
+
+*Por que:* esta regra nasceu de uma peça que passou em ONZE regras e o dono
+reprovou de olho. Medido no banner real da marca de prova: a faixa de leitura
+saiu com **52% da peça** e a foto com **48%**. C1 dizia que a dimensão era
+exata, C2 que o texto cabia no quadro, C3 que a marca estava lá, C4 que se lia,
+C11 que a tipografia era a da marca — todas certas, e nenhuma perguntava o que
+sobrou da imagem. Uma peça com foto em que a foto é a MENOR parte não é uma peça
+com foto; é um painel de texto com uma tira de imagem em cima.
+
+*Como se confere:* a geometria, medida no navegador. A camada da foto (a peça
+inteira, ou a metade dela numa tela dividida) menos a área que as superfícies
+OPACAS de texto cobrem, sobre a área da peça. O véu não conta como cobertura:
+ele escurece a foto e continua mostrando-a, e é essa a diferença entre uma foto
+sob véu e uma tira de foto acima de um painel.
+
+*Por que o piso é METADE:* porque não é um número calibrado — é onde a definição
+da peça empata consigo mesma, e empatar já é o extremo tolerável. Medido antes
+de o número ser escrito, no mesmo banner e nos quatro arranjos:
+
+```
+48%                      a peça que o dono reprovou de olho
+56%  60%  100%  100%     as que ele não reprovou
+```
+
+As duas classes não se cruzam, e o piso cai entre elas sem ter sido ajustado
+para isso. Se um dia se cruzarem, a regra está errada e sai — é a mesma lição
+que aposentou o piso de distância visual entre artes (M9).
+
+*Três estados, e não dois:* peça SEM foto passa (a faixa é a peça, por decisão);
+peça com foto que ninguém mediu fica PENDENTE; quem não disse nem se há foto
+também fica pendente. `false` é um padrão, não uma medida, e com dois estados
+uma conferência vazia saía com C12 verde.
+
+*Por que reprova em vez de virar ressalva:* recompor noutro arranjo é geometria
+sobre um pixel que já está pago e em disco. Como o conserto é de graça, deixar
+sair a peça errada seria escolher entregar errado.
+
+### O portão da entrega cobra a folha INTEIRA
+
+Uma variação `aprovada` precisa de folha com **todas** as regras (C1 a C11), e
+não com algumas. Enquanto uma folha com uma regra só passava, "aprovada com
+folha" parecia auditável: bastava declarar C1 e a ausência das outras dez não
+aparecia em lugar nenhum. Regra que some de uma folha é regra que ninguém
+rodou.
+
+A lista canônica (`CODIGOS_DA_REGUA`) mora no contrato, e não na régua, para o
+portão poder cobrá-la sem depender dela. Um teste amarra as duas: a régua tem
+de produzir exatamente essa lista, senão o portão passa a exigir o que não
+existe, ou deixa de exigir o que passou a existir.
+
+### Antes de gastar: claim não autorizado
+
+Não é regra de aceite — é porteiro. Preço, desconto, prazo e frete no texto da
+peça são conferidos **no pedido**, contra `autorizacoesDeClaim`. Conferir depois
+da geração só serviria para reprovar algo que já foi pago.
+
+---
+
+# Regra de aceite da MARCA CRIADA
+
+`M1` a `M12`, em `packages/shared/src/regras-de-aceite-marca.ts`, executadas por
+`pnpm marca:montar` (M1..M6) e por `pnpm marca:apresentar` (M7..M12).
+
+## O que muda em relação às outras três
+
+Uma peça criativa erra e vira lixo de uma campanha. **Uma marca errada é
+carregada por tudo o que a empresa faz depois** — o site, a loja, a assinatura de
+e-mail, o bordado do uniforme — e o erro só é notado quando já está em todos
+eles.
+
+Por isso o que esta régua mede não é "ficou bonita", que ninguém mede, e sim as
+coisas que fazem uma marca ser **inutilizável** e que se medem exatamente.
+
+### M1. As três versões saíram, na medida
+
+*Por que:* as versões (transparente, fundo branco, monocromática) saem do símbolo
+por CÁLCULO, não por geração. Faltar uma, ou sair fora do lado padrão, significa
+que o recorte falhou — e recorte que falhou não vira entrega.
+
+### M2. A transparente é transparente de verdade
+
+*Por que:* um PNG "transparente" cujo alfa é opaco em toda parte é um retângulo
+branco esperando para aparecer sobre o primeiro fundo colorido. E o oposto
+também reprova: alfa zero em todo lugar é o recorte que comeu o desenho.
+
+### M3. A monocromática é silhueta, não foto sem cor
+
+*Por que:* ela existe para bordado, carimbo e impressão de uma tinta, onde não há
+meio-tom. Uma versão dessaturada parece certa na tela e sai como mancha no
+tecido.
+
+*Como se confere:* a fração do desenho que é meio-tom. O piso é 12%, e ele
+acomoda a borda macia do recorte — que é meio-tom por natureza e é o que faz a
+logo não parecer recorte de tesoura. A primeira versão desta regra contava
+"quantos tons distintos existem" e reprovava toda silhueta correta, porque
+contava o antialiasing como tinta.
+
+### M4. As versões são o MESMO símbolo
+
+*Por que:* é a queixa que originou o motor inteiro. Pedir "o mesmo símbolo em
+fundo branco" ao gerador abre um pedido NOVO e ele desenha outro símbolo — foi
+assim que uma marca chegou em três modelos diferentes em vez de uma marca em três
+roupas.
+
+*Como se confere:* a distância visual entre as versões e o símbolo de origem.
+Elas são recortadas e recentradas do MESMO arquivo, então a diferença esperada é
+de borda e de escala; geração independente produz distâncias muito acima.
+
+### M5. A cor da marca se lê sobre branco
+
+*Por que:* uma peça de campanha ilegível se refaz; um logotipo ilegível vai para
+a fachada.
+
+### M6. A marca é reproduzível e a decisão está escrita
+
+*Por que:* sem o prompt e a procedência registrados, pedir uma variação desta
+marca é começar de novo e receber outro desenho — e cada tentativa custa. Quando
+a cor foi escolhida pelo Orbis e não pelo cliente, o motivo tem de existir: cor
+escolhida em silêncio é cor que ninguém pode discutir depois.
+
+### M7. A apresentação existe, e explica o sistema
+
+*Por que:* regra do dono — **marca sem apresentação não é marca pronta**. Um
+punhado de PNGs numa pasta obriga quem recebe a adivinhar qual é a logo, quando
+usar cada versão e o que é a cor, que é exatamente o trabalho que contratar uma
+marca vinha evitar.
+
+### M8. A apresentação não corta nem esconde nada
+
+*Por que:* ela nasceu sem régua, e a primeira consequência apareceu na primeira
+leitura: um banner recortado com a headline cortada no meio. Quem viu foi o olho,
+e o olho não escala. O que passa da borda some na impressão, e o que é recortado
+numa página de aplicação vira outra peça.
+
+### M9. Cada arte veio do próprio briefing
+
+*Por que:* *"estão todas com a mesma ideia de arte"*. A causa não era o gerador:
+foi pedir N imagens com `count: N` num prompt só, o que devolve N variações de
+UMA ideia por construção.
+
+*Como se confere:* a PROCEDÊNCIA — de que briefing cada arte veio —, e não o
+pixel. A primeira versão media distância visual entre as artes, com piso 0,08.
+Medido depois, contra pares de classe conhecida:
+
+```
+0,225  0,207  0,188  0,129   pares que são A MESMA ideia
+0,174  0,259                 pares que são ideias DIFERENTES
+```
+
+As faixas se CRUZAM. Um par da mesma ideia (0,225) está mais distante que um par
+de ideias diferentes (0,174), e nenhum piso separa as classes. A regra saiu.
+
+### M10. Cada conceito é uma proposta visual diferente
+
+*Por que:* a mesma queixa, três vezes. *"você fez 1 estilo de banner só para os
+dois"*, e depois de dois consertos de geometria, *"por que você está fazendo só
+nesse estilo?"*. As duas primeiras correções trocaram o LAYOUT e mantiveram a
+linguagem visual — bloco na cor da marca, texto branco, foto de gente sorrindo,
+três vezes seguidas.
+
+**Geometria diferente não é proposta diferente.** Uma proposta é uma direção
+inteira: que peso de cor, que assunto, que registro. E ela sai do BRIEFING
+daquela marca, nunca de um cardápio fixo de estilos — um cardápio devolve as
+mesmas duas ideias para clínica, padaria e escritório de advocacia.
+
+*Como se confere:* `artes/propostas.json`, pela mesma razão de M9.
+
+### M11. Cada conceito tem versão desktop e mobile
+
+*Por que:* um banner de site vive num site responsivo, e o telefone é onde a
+maior parte das pessoas o vê. Entregar só a versão larga é entregar metade — e a
+outra metade **não se obtém recortando esta**, porque o texto foi diagramado para
+a largura que o recorte destrói.
+
+Isto é diferente do criativo de tráfego pago, que também é vertical e NÃO é o
+mesmo produto: aquele é para quem nunca ouviu falar da marca, e vive na frente
+Criativos com copy de venda e orçamento próprios.
+
+### M12. Toda coleção decidida tem a sua capa
+
+*Por que:* uma coleção decidida e sem capa é a vitrine com uma prateleira vazia.
+O cliente escolheu a categoria (ou o Orbis escolheu por ele), o nome aparece na
+apresentação, e o arquivo não existe — quem abre a pasta procura a imagem que
+foi prometida.
+
+A regra nasceu de um sumiço **medido**: `ResultadoDeMarca` não declarava
+`colecoes`, o `parse` de Zod descarta chave não declarada, e a decisão gravada
+por `marca:colecoes --definir` evaporava no comando seguinte que lesse e
+regravasse o arquivo. As quatro capas do Sorriso Vivo estavam em disco e a
+entrega saiu sem a pasta, sem nada reclamar. É o mesmo formato de furo de M11 e
+de C12: a pergunta não existia em lugar nenhum, então nada respondeu.
+
+Lista vazia **passa**: marca sem vitrine é uma resposta. `null` fica pendente:
+ninguém ter olhado não é.
+
+## O portão da entrega da marca
+
+`problemasDaEntregaDeMarca` recusa fechar o job quando: não há resultado, ou ele
+está fora do contrato; ele aponta para arquivo que não existe; **o arquivo em
+disco não tem a medida que o resultado declara**; a folha não cobre a régua
+inteira, ou alguma regra reprovou; **uma coleção decidida não tem capa em
+disco**; **não há apresentação em PDF**; há crédito empenhado sem desfecho; o
+custo declarado não bate com o razão; ou o gasto passou do teto.
+
+**O portão não acredita na folha onde ele mesmo consegue medir.** Quem escreve
+`conferencia` é o mesmo comando que produziu a marca, então até aqui o portão
+conferia o que o produtor DISSE, não o que o produto É: doze `passou` digitados
+à mão passavam inteiros, e — o caso realista — um comando com defeito que
+gravasse `passou` numa regra que não chegou a avaliar passava igual.
+
+Duas perguntas o próprio portão refaz, porque são baratas: a MEDIDA de cada peça
+(cabeçalho do PNG) e a EXISTÊNCIA da capa de cada coleção. Onde o disco responde,
+ele vence a folha — e quando os dois discordam, a contradição é dita por extenso,
+porque uma folha que jurou o que o disco nega desqualifica o resto dela.
+
+O resto — alfa, silhueta, contraste — precisa decodificar pixel, e o pacote de
+contratos não abre navegador. Quem refaz essas é o `pnpm fila:concluir`, logo
+antes de fechar: ele abre o navegador, MEDE os arquivos de novo e roda M1..M6 por
+quem não produziu a marca. Só a divergência acusa (refeita REPROVA e a folha diz
+`passou`); refeita `pendente` cala, porque não medir não é acusar. Sem navegador
+a conferência é pulada, e ela DIZ que foi pulada — trocar "não consegui medir"
+por um verde seria o defeito que tudo isto existe para evitar.
+
+O teto é o do RETRATO do pedido, gravado antes da fila — mais o que o dono
+liberou depois, que vive no razão com data e motivo (`pnpm criativo:razao teto`).
+O retrato continua intocado, e é ele que prova qual era o teto quando o job
+entrou.
+
+## O que a régua da marca NÃO mede
+
+**A arte gerada por inteiro.** Quando o pixel já chega com a copy dentro — que é
+como as artes de banner nascem hoje —, C2 (texto literal), C3 (grafia da marca),
+C4 (contraste) e C11 (tipografia) não se aplicam: elas medem o DOCUMENTO, e um
+PNG não tem documento. Responder qualquer uma delas exigiria OCR. A apresentação
+declara isso na página de pendências, e a conferência da grafia é de olho —
+acento em português é onde o modelo mais erra.

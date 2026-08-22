@@ -2,11 +2,12 @@ import { ConfirmarAcaoCara } from '@/components/ConfirmarAcaoCara';
 import { Mascote } from '@/components/Mascote';
 import { type KitAutomaticoSugestao, PrecisaDaSenhaDeAcao, api } from '@/lib/api';
 import { TRATAMENTO } from '@/lib/orbis';
+import { useExigeCredencialDeAcao } from '@/lib/sessao';
 import { toast } from '@/lib/toast';
 import { useTrabalho } from '@/lib/trabalho';
 import { useReveal } from '@/lib/use-reveal';
 import { OBJETIVOS, type ObjetivoDoSite } from '@ds/shared/schemas';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { ArrowRight, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -34,6 +35,7 @@ type Resultado = {
 };
 
 export function ExpressoPage() {
+  const exigeCredencial = useExigeCredencialDeAcao();
   const [objetivo, setObjetivo] = useState<ObjetivoDoSite | null>(null);
   const [nicho, setNicho] = useState('');
   const [marca, setMarca] = useState('');
@@ -45,7 +47,7 @@ export function ExpressoPage() {
    *
    * A via expressa é um clique que faz três coisas caras, e uma delas passou a
    * poder gastar crédito de verdade: o ilimitado do Magnific não vale na
-   * sessão, e cada imagem custa ~75. O dono pediu que a tela SEMPRE pergunte
+   * sessão, e cada imagem consome crédito. O dono pediu que a tela SEMPRE pergunte
    * aqui — no wizard, onde ele preenche etapa por etapa, o padrão já é Magnific
    * porque a intenção está demonstrada.
    *
@@ -53,6 +55,22 @@ export function ExpressoPage() {
    * gastar diz que quer.
    */
   const [imagens, setImagens] = useState<'desenho' | 'magnific'>('desenho');
+  /**
+   * O PREÇO sai da tabela medida do motor, nunca da tela.
+   *
+   * Aqui estava escrito "~75 por imagem" à mão. É o mesmo defeito que a tela de
+   * Criativos já tinha tido (lá o número de vídeo estava errado por 73%) e que
+   * a trava do servidor tinha (o de vídeo, por 3×): número de dinheiro escrito
+   * numa tela continua respondendo com a mesma confiança depois de virar
+   * ficção. Enquanto o preço não chega, o rótulo diz que está buscando — e não
+   * um número provável.
+   */
+  const custos = useQuery({
+    queryKey: ['criativos', 'custos'],
+    queryFn: api.custosCriativos,
+    staleTime: 5 * 60 * 1000,
+  });
+  const custoPorImagem = custos.data?.porVariacao.imagem;
   const { acompanhar } = useTrabalho();
 
   useReveal([resultado]);
@@ -196,12 +214,25 @@ export function ExpressoPage() {
                 vale nesta sessão e cada imagem consome crédito. No wizard, onde
                 a pessoa preenche etapa por etapa, o padrão já é Magnific — aqui,
                 num atalho de um clique, ela decide.
+
+                O custo vem de `/api/criativos/custos`, que lê a tabela MEDIDA do
+                motor criativo. Ele não é escrito aqui de propósito: preço em
+                tela envelhece calado.
               */}
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 {(
                   [
                     { v: 'desenho', t: 'Desenho local', d: 'grátis, mais simples' },
-                    { v: 'magnific', t: 'Magnific', d: 'gera crédito: ~75 por imagem' },
+                    {
+                      v: 'magnific',
+                      t: 'Magnific',
+                      d:
+                        custoPorImagem === undefined
+                          ? custos.isError
+                            ? 'gera crédito: preço indisponível, veja o aviso'
+                            : 'gera crédito: buscando o preço medido…'
+                          : `gera crédito: ${custoPorImagem} por imagem`,
+                    },
                   ] as const
                 ).map((op) => (
                   <button
@@ -297,6 +328,7 @@ export function ExpressoPage() {
       )}
 
       <ConfirmarAcaoCara
+        exigeCredencial={exigeCredencial}
         aberto={pedindoSenha}
         oQueVaiFazer="Montar o kit, criar a marca e gerar o site, tudo de uma vez."
         ocupado={disparar.isPending}

@@ -18,11 +18,26 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
  * ## Quando o portão está de pé
  *
  * - `ORBIS_SENHA` definida → portão ativo, sempre.
- * - Sem `ORBIS_SENHA`, em desenvolvimento → portão desligado. É a sua máquina,
+ * - Sem `ORBIS_SENHA`, com `ORBIS_LOCAL=1` → portão desligado. É a sua máquina,
  *   e trancar o localhost só ensinaria a contornar.
- * - Sem `ORBIS_SENHA`, em produção → portão FECHADO, e ninguém entra. Um
- *   servidor publicado que esqueceu a senha não pode abrir para todo mundo: o
- *   erro cai sobre quem publicou, e não sobre a conta de quem paga.
+ * - Sem `ORBIS_SENHA` e sem declaração nenhuma → portão FECHADO. Ninguém entra.
+ *
+ * ## Por que a máquina local precisa ser DECLARADA
+ *
+ * A regra do meio era "em desenvolvimento", e desenvolvimento era
+ * `NODE_ENV !== 'production'`. O problema é que **nada neste repositório define
+ * `NODE_ENV`** — nem o `pnpm dev`, nem o `pnpm start`, nem o script do túnel.
+ * Logo `ehProducao()` era falso SEMPRE, e o caso "servidor publicado que
+ * esqueceu a senha" — o único que o desenho existia para proteger — nunca
+ * acontecia: ele caía em `desligado`, que é aberto.
+ *
+ * O app é exposto por túnel. Um endereço público servindo o acervo inteiro sem
+ * pedir nada é o resultado que a documentação achava estar evitando.
+ *
+ * Inverter para "fechado por omissão" custa uma linha a quem trabalha no
+ * localhost sem senha, e essa linha é uma AFIRMAÇÃO: "esta máquina é minha".
+ * Ninguém publica um servidor declarando isso por engano. `NODE_ENV=production`
+ * continua fechando, para não mudar o comportamento de quem já o define.
  */
 
 export type EstadoDoPortao = 'ativo' | 'desligado' | 'sem-credencial';
@@ -52,9 +67,13 @@ const naoVazia = (v: string | undefined): string | null =>
 const senhaConfigurada = (): string | null => naoVazia(process.env.ORBIS_SENHA);
 const senhaDeVisita = (): string | null => naoVazia(process.env.ORBIS_SENHA_VISITA);
 
+/** "Esta máquina é minha" — dito por extenso, nunca deduzido. */
+const localDeclarado = (): boolean => process.env.ORBIS_LOCAL === '1';
+
 export const estadoDoPortao = (): EstadoDoPortao => {
   if (senhaConfigurada() !== null) return 'ativo';
-  return ehProducao() ? 'sem-credencial' : 'desligado';
+  if (ehProducao()) return 'sem-credencial';
+  return localDeclarado() ? 'desligado' : 'sem-credencial';
 };
 
 /** O nível de visita está configurado neste servidor? */
@@ -108,6 +127,28 @@ const segredoDeSessao = (): string => {
   if (typeof doAmbiente === 'string' && doAmbiente !== '') return doAmbiente;
   if (segredoSorteado === null) segredoSorteado = randomBytes(32).toString('hex');
   return segredoSorteado;
+};
+
+/**
+ * O que o boot avisa quando o portão está ativo e o segredo é sorteado.
+ * `null` quando não há o que dizer.
+ *
+ * O sorteio tem duas consequências, e a segunda é a que morde: reiniciar
+ * derruba as sessões (chato), e com MAIS DE UMA INSTÂNCIA cada uma assina com
+ * um segredo diferente — o cookie feito por uma é recusado pela outra, e quem
+ * usa é deslogado a esmo, sem padrão. Numa hospedagem que escala sozinha, isso
+ * deixa de ser inconveniente e vira defeito.
+ *
+ * O segredo fica em variável de ambiente, e NÃO num arquivo do acervo: o
+ * `ecosystem.config.json` é copiado para dentro do zip do
+ * `pnpm acervo:exportar` (`scripts/acervo-exportar.ts:122`), então guardá-lo ali
+ * mandaria a chave que assina as sessões junto com um arquivo feito para ser
+ * levado de uma máquina para outra.
+ */
+export const avisoDoSegredoDeSessao = (): string | null => {
+  if (estadoDoPortao() !== 'ativo') return null;
+  if (naoVazia(process.env.ORBIS_SEGREDO) !== null) return null;
+  return 'ORBIS_SEGREDO não definida: o segredo da sessão é sorteado a cada boot, então reiniciar desloga todo mundo — e com mais de uma instância as sessões se recusam entre si. Defina-a em apps/server/.env.';
 };
 
 /** Quanto tempo uma sessão dura. Uma semana: o sócio testa sem redigitar todo dia. */
@@ -203,6 +244,22 @@ export const cookieDeSessao = (opts: {
 
 /** O cabeçalho onde a credencial da ação viaja. Nunca na URL: URL vai para log. */
 export const CABECALHO_DA_ACAO = 'x-orbis-acao';
+
+/**
+ * Esta tranca está de pé?
+ *
+ * A interface precisa saber, e antes ela não tinha como. O diálogo pedia a
+ * credencial SEMPRE, inclusive numa máquina local sem `ORBIS_SENHA_ACAO`, onde
+ * a docstring acima promete que "esta tranca não existe e o app se comporta
+ * como antes". Tela e servidor discordavam sobre uma tranca — e quem via isso
+ * era quem estava tentando usar o app, tendo de inventar um texto qualquer para
+ * o botão habilitar.
+ *
+ * A CONFIRMAÇÃO continua acontecendo dos dois jeitos: o atrito é o ponto, e ele
+ * não vem da senha e sim de a pessoa ter de dizer que quis este gasto. O que
+ * some, quando a tranca está desligada, é só o campo que não protege nada.
+ */
+export const trancaDeAcaoAtiva = (): boolean => naoVazia(process.env.ORBIS_SENHA_ACAO) !== null;
 
 export const senhaDeAcaoConfere = (tentativa: string | undefined): boolean => {
   const esperada = naoVazia(process.env.ORBIS_SENHA_ACAO);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   AutorizacoesDeClaim,
+  CODIGOS_DA_REGUA,
   DIMENSAO_DO_FORMATO,
   OrigemDaImagem,
   PedidoCriativo,
@@ -191,8 +192,44 @@ test('PROVA: upload com descricao de geracao e o espelho ambiguo, e reprova', ()
  * para o inishJob. Descoberto ao exercitar o fluxo de ponta a ponta pela
  * primeira vez.
  */
+/**
+ * A folha de conferência que acompanha uma peça aprovada.
+ *
+ * Ela passou a ser exigida: "aprovada" afirma que alguém mediu, e sem a folha
+ * ninguém consegue dizer O QUE foi medido. Um carimbo verde que não se audita é
+ * pior que peça reprovada com motivo, porque a reprovada avisa e esta não.
+ */
+/**
+ * Uma folha de conferência COMPLETA, com um veredito trocado quando se quer.
+ *
+ * O portão cobra a régua inteira: uma folha com uma regra só passava por
+ * auditável enquanto a ausência das outras dez não aparecia em lugar nenhum.
+ * Então as fixtures daqui também são completas — usar folha parcial nos testes
+ * seria testar um portão que não é o que roda.
+ */
+const folhaCom = (
+  trocas: Partial<
+    Record<(typeof CODIGOS_DA_REGUA)[number], { estado: string; motivo: string }>
+  > = {},
+) =>
+  CODIGOS_DA_REGUA.map((codigo) => ({
+    codigo,
+    titulo: `regra ${codigo}`,
+    estado: trocas[codigo]?.estado ?? 'passou',
+    motivo: trocas[codigo]?.motivo ?? '',
+  }));
+
+const folhaLimpa = folhaCom();
+
 const entregaBoa = {
-  variacoes: [{ caminho: '02_exportados/peca-1.png', estado: 'aprovada', motivo: null }],
+  variacoes: [
+    {
+      caminho: '02_exportados/peca-1.png',
+      estado: 'aprovada',
+      motivo: null,
+      conferencia: folhaLimpa,
+    },
+  ],
   custoGasto: 150,
 };
 
@@ -227,6 +264,101 @@ test('aprovada cujo arquivo nao existe em disco NAO fecha', () => {
   });
   assert.equal(p.length, 1);
   assert.match(p.join('\n'), /não teria o que baixar/);
+});
+
+test('PROVA: aprovada SEM folha de conferencia nao fecha', () => {
+  // O carimbo verde que ninguém consegue auditar. Enquanto a folha era
+  // opcional, bastava escrever "aprovada" no arquivo para o job fechar.
+  const p = problemasDaEntregaCriativa({
+    resultado: {
+      variacoes: [{ caminho: 'peca-1.png', estado: 'aprovada', motivo: null }],
+      custoGasto: 10,
+    },
+    pedido: pedidoBom,
+    existe: sempreExiste,
+  });
+  assert.equal(p.length, 1);
+  assert.match(p.join('\n'), /sem folha de conferência/);
+});
+
+test('PROVA: aprovada com regra REPROVADA na folha nao fecha', () => {
+  // O veredito contradizendo a própria medição é pior que não medir: alguém
+  // olhou, viu que estava errado, e carimbou verde mesmo assim.
+  const p = problemasDaEntregaCriativa({
+    resultado: {
+      variacoes: [
+        {
+          caminho: 'peca-1.png',
+          estado: 'aprovada',
+          motivo: null,
+          conferencia: folhaCom({ C1: { estado: 'reprovou', motivo: 'saiu 1024×1024' } }),
+        },
+      ],
+      custoGasto: 10,
+    },
+    pedido: pedidoBom,
+    existe: sempreExiste,
+  });
+  assert.equal(p.length, 1);
+  assert.match(p.join('\n'), /contradiz a medição/);
+});
+
+test('pendente na folha NAO impede fechar: e ressalva declarada, nao defeito', () => {
+  const p = problemasDaEntregaCriativa({
+    resultado: {
+      variacoes: [
+        {
+          caminho: 'peca-1.png',
+          estado: 'aprovada',
+          motivo: null,
+          conferencia: folhaCom({ C7: { estado: 'pendente', motivo: 'exige OCR' } }),
+        },
+      ],
+      custoGasto: 10,
+    },
+    pedido: pedidoBom,
+    existe: sempreExiste,
+  });
+  assert.deepEqual(p, []);
+});
+
+test('PROVA: o portao mede o ARQUIVO, e nao acredita na folha', () => {
+  // A folha diz que a dimensão está certa. O arquivo diz outra coisa. Quem
+  // decide é o arquivo — senão uma folha escrita à mão, ou um arquivo trocado
+  // depois de conferido, passaria com o carimbo de alguém.
+  const p = problemasDaEntregaCriativa({
+    resultado: entregaBoa,
+    pedido: pedidoBom,
+    existe: sempreExiste,
+    dimensaoDe: () => ({ largura: 1024, altura: 1024 }),
+  });
+  assert.equal(p.length, 1);
+  assert.match(p.join('\n'), /1024×1024/);
+  assert.match(p.join('\n'), /1080×1080/);
+});
+
+test('quando a medida bate, o portao segue', () => {
+  const p = problemasDaEntregaCriativa({
+    resultado: entregaBoa,
+    pedido: pedidoBom,
+    existe: sempreExiste,
+    dimensaoDe: () => ({ largura: 1080, altura: 1080 }),
+  });
+  assert.deepEqual(p, []);
+});
+
+test('PROVA: aprovada que nao da para medir NAO fecha', () => {
+  // "Não consegui medir" virava `continue`, em silêncio — o caminho pelo qual
+  // um `.mp4` entregue como aprovado nunca tinha a dimensão conferida, e uma
+  // imagem parada entregue como vídeo saía limpa.
+  const p = problemasDaEntregaCriativa({
+    resultado: entregaBoa,
+    pedido: pedidoBom,
+    existe: sempreExiste,
+    dimensaoDe: () => null,
+  });
+  assert.equal(p.length, 1);
+  assert.match(p.join('\n'), /não consigo medir/);
 });
 
 test('reprovada com arquivo ausente nao acusa: ela nao promete download', () => {

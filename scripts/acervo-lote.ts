@@ -22,7 +22,20 @@ import { enqueueJob } from '@ds/shared';
 
 type ItemDoCatalogo = { path: string; name: string };
 
-const manifesto = JSON.parse(readFileSync(process.argv[2], 'utf8')) as ItemDoCatalogo[];
+/**
+ * O caminho do manifesto é conferido antes de abrir o arquivo.
+ *
+ * Sem isto, chamar o comando sem argumento entregava `undefined` ao
+ * `readFileSync` e a pessoa recebia um erro de Node cru sobre tipo de
+ * parâmetro — que não diz o que fazer. Dizer o uso custa três linhas.
+ */
+const caminhoDoManifesto = process.argv[2];
+if (caminhoDoManifesto === undefined || caminhoDoManifesto.trim() === '') {
+  console.error('  Uso: pnpm acervo:lote <manifesto.json>');
+  process.exit(1);
+}
+
+const manifesto = JSON.parse(readFileSync(caminhoDoManifesto, 'utf8')) as ItemDoCatalogo[];
 const db = getDb();
 const jaTemos = new Set(
   db

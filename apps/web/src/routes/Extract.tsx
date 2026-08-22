@@ -4,6 +4,7 @@ import { QueuePanel } from '@/components/QueuePanel';
 import { PrecisaDaSenhaDeAcao, type QueueJobRef, type TaskRecord, api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { TRABALHANDO, saudacaoCompleta } from '@/lib/orbis';
+import { useExigeCredencialDeAcao } from '@/lib/sessao';
 import { toast } from '@/lib/toast';
 import { useTrabalho } from '@/lib/trabalho';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -32,6 +33,7 @@ function tamanhoLegivel(bytes: number): string {
  * tempo; sem a hora, viram frases soltas e não dá para saber onde travou.
  */
 export function ExtractPage() {
+  const exigeCredencial = useExigeCredencialDeAcao();
   const health = useQuery({ queryKey: ['health'], queryFn: api.health });
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -287,6 +289,7 @@ export function ExtractPage() {
       )}
 
       <ConfirmarAcaoCara
+        exigeCredencial={exigeCredencial}
         aberto={pedindoSenha}
         oQueVaiFazer="Vou abrir este endereço num navegador de verdade e varrer a página inteira, o que leva minutos."
         ocupado={start.isPending}

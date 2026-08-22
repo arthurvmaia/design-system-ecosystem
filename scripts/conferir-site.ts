@@ -808,14 +808,17 @@ const escreverCorrecoes = (
 
   for (const m of medidas) {
     for (const c of m.contrastesAbaixoDoPiso) {
-      if (c.seletor === null || c.tinta === null) {
+      // `== null` cobre null E undefined: o campo é opcional no contrato,
+      // porque uma medição antiga pode não tê-lo, e "não veio" e "não deu para
+      // dizer" levam à mesma decisão — não há onde escrever a correção.
+      if (c.seletor == null || c.tinta == null) {
         semAlvo += 1;
         continue;
       }
       porSeletor.set(c.seletor, `  color: var(${c.tinta});`);
     }
     for (const t of m.textoApagado) {
-      if (t.seletor === null) {
+      if (t.seletor == null) {
         semAlvo += 1;
         continue;
       }
@@ -984,9 +987,13 @@ export const cookieDoPortao = async (
   // string só e o `split(';')` pegaria o atributo errado.
   const cabecalhos = entrada.headers.getSetCookie?.() ?? [];
   for (const c of cabecalhos) {
-    const [par] = c.split(';');
+    // `split` de string vazia devolve [''], nunca [], mas o tipo não sabe
+    // disso: com `noUncheckedIndexedAccess` os dois destructurings saem
+    // possivelmente indefinidos. Um cabeçalho vazio simplesmente não é o
+    // cookie que se procura.
+    const par = c.split(';')[0] ?? '';
     const [nome, ...resto] = par.split('=');
-    if (nome.trim() === COOKIE_DO_PORTAO) return resto.join('=');
+    if ((nome ?? '').trim() === COOKIE_DO_PORTAO) return resto.join('=');
   }
   throw new Error('o portão aceitou a credencial mas não devolveu cookie de sessão.');
 };
@@ -1197,12 +1204,16 @@ export const lerArgumentos = (
 } => {
   const iCred = args.indexOf('--credencial');
   const doAmbiente = ambiente.ORBIS_SENHA;
+  // O valor é lido UMA vez numa variável, e não três vezes por índice: o
+  // TypeScript não estreita `args[i]` entre uma leitura e a seguinte, porque
+  // nada garante que a lista não mudou no meio.
+  const apos = iCred >= 0 ? args[iCred + 1] : undefined;
   return {
     corrigir: args.includes('--corrigir'),
     visivel: args.includes('--ver'),
     credencial:
-      iCred >= 0 && args[iCred + 1] !== undefined && !args[iCred + 1].startsWith('--')
-        ? args[iCred + 1]
+      apos !== undefined && !apos.startsWith('--')
+        ? apos
         : typeof doAmbiente === 'string' && doAmbiente !== ''
           ? doAmbiente
           : undefined,

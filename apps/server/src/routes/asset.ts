@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, isAbsolute, join, normalize, relative } from 'node:path';
+import { extname, join } from 'node:path';
 import {
+  dentroDaRaiz,
   ehComponentId,
   ehDesignSystemId,
   libraryComponentBundleDir,
@@ -71,12 +72,8 @@ const HEADERS_SEGURANCA = {
 const servirDe = (dir: string, relPath: string, range: string | undefined): Response => {
   if (!existsSync(dir)) return jsonResp(404, 'not_found');
   if (!relPath) return jsonResp(404, 'not_found');
-  if (isAbsolute(relPath) || relPath.split(/[/\\]/).includes('..'))
-    return jsonResp(403, 'forbidden');
-
-  const abs = normalize(join(dir, relPath));
-  const rel = relative(dir, abs);
-  if (rel.startsWith('..') || isAbsolute(rel)) return jsonResp(403, 'forbidden');
+  const abs = dentroDaRaiz(dir, relPath);
+  if (abs === null) return jsonResp(403, 'forbidden');
   if (!existsSync(abs) || statSync(abs).isDirectory()) return jsonResp(404, 'not_found');
 
   const mime = MIME[extname(abs).toLowerCase()] ?? 'application/octet-stream';

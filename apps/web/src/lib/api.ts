@@ -184,6 +184,15 @@ export type SessaoDoPortao = {
   nivel: 'admin' | 'visita' | null;
   /** Este servidor tem credencial de visita configurada. */
   temVisita?: boolean;
+  /**
+   * Este servidor exige a credencial DA AÇÃO em cada gasto?
+   *
+   * `ORBIS_SENHA_ACAO` é opcional. Ausente no servidor, ele deixa passar — e a
+   * interface pedia assim mesmo, obrigando quem usa a máquina local a inventar
+   * um texto qualquer para o botão habilitar. Ausente aqui, o padrão é `true`,
+   * que é o lado seguro para quem ainda não recebeu a resposta.
+   */
+  exigeAcao?: boolean;
 };
 
 export type SegmentRecord = {
@@ -660,9 +669,69 @@ export type PecaCriativa = {
     caminho: string | null;
     estado: 'aprovada' | 'reprovada' | 'falhou';
     motivo: string | null;
+    /**
+     * A FOLHA DE CONFERÊNCIA, regra a regra.
+     *
+     * Ela sempre viajou do servidor e este tipo não a declarava, então a tela
+     * não tinha como saber que uma peça `aprovada` carregava pendência: o
+     * `estado` gravado só conhece três palavras, e "aprovada com ressalva" vira
+     * "aprovada" ao encostar no disco. O rótulo honesto é DERIVADO daqui, por
+     * `rotuloDaConferencia`. `null` nas peças anteriores à régua.
+     */
+    conferencia:
+      | {
+          codigo: string;
+          titulo: string;
+          estado: 'passou' | 'reprovou' | 'pendente';
+          motivo: string;
+        }[]
+      | null;
   }[];
   aprovadas: number;
+  /** Quantas das aprovadas têm pendência nomeada. Derivado da folha, no servidor. */
+  comRessalva: number;
   custoGasto: number | null;
+};
+
+/**
+ * O que a criação de MARCA custa, por estágio.
+ *
+ * A conta vem do contrato (`ESTAGIOS_DA_MARCA`) e não da tela, pela mesma razão
+ * do preço da peça: dois lados somando números digitados em lugares diferentes
+ * é como a conta diverge sem ninguém errar.
+ */
+export type CustosDaMarca = {
+  teto: number;
+  geracoes: number;
+  estagios: { id: string; rotulo: string; geracoes: number; creditos: number }[];
+};
+
+/** Uma marca criada, como a tela a mostra. */
+export type MarcaCriada = {
+  id: string;
+  nome: string;
+  oQueFaz: string;
+  status: 'pendente' | 'concluido' | 'erro' | 'cancelado';
+  criadoEm: number;
+  /** Derivado da folha de conferência, como nas peças. */
+  rotulo: 'aprovada' | 'aprovada com ressalva' | 'reprovada' | 'sem folha';
+  /** Marca sem apresentação não é marca pronta: a tela diz isso. */
+  temApresentacao: boolean;
+  custoGasto: number | null;
+};
+
+/**
+ * Quanto custa uma variação, medido — não escrito na tela.
+ *
+ * `medidoEm` e `validaAte` viajam junto porque um preço sem data é palpite se
+ * passando por número: quando a tabela vence, a rota recusa em vez de responder
+ * com a mesma confiança de sempre.
+ */
+export type CustosCriativos = {
+  medidoEm: string;
+  validaAte: string;
+  porVariacao: { imagem: number; video: number };
+  detalhe: { imagem: string; video: string };
 };
 
 /**
@@ -964,6 +1033,113 @@ export const api = {
   // ── Meus sites (versões geradas em disco) ───────────────────────────────
   listMeusProjetos: () => jsonFetch<{ items: MeusProjetosItem[] }>('/api/meus-projetos'),
   listPecasCriativas: () => jsonFetch<{ items: PecaCriativa[] }>('/api/criativos'),
+  /**
+   * Apaga a peça e os arquivos dela. Irreversível, e por isso pede a credencial
+   * da ação — o servidor recusa com 409 se o pedido ainda estiver na fila.
+   */
+  excluirPecaCriativa: (jobId: string, credencial: string) =>
+    jsonFetch<{ ok: true }>(`/api/criativos/${jobId}`, {
+      method: 'DELETE',
+      headers: { [CABECALHO_DA_ACAO]: credencial },
+    }),
+
+  // ── Marca ────────────────────────────────────────────────────────────────
+  /** O que a marca custa, com a conta aberta por estágio. Vem do contrato. */
+  custosDaMarca: () => jsonFetch<CustosDaMarca>('/api/marcas/custos'),
+  listMarcas: () => jsonFetch<{ items: MarcaCriada[] }>('/api/marcas'),
+  /** Apaga a marca e os arquivos dela. Mesmas condições da peça. */
+  excluirMarca: (jobId: string, credencial: string) =>
+    jsonFetch<{ ok: true }>(`/api/marcas/${jobId}`, {
+      method: 'DELETE',
+      headers: { [CABECALHO_DA_ACAO]: credencial },
+    }),
+  /**
+   * Cria o pedido de marca.
+   *
+   * A chave de envio é a mesma ideia da peça: o id do job sai dela, então
+   * clicar duas vezes devolve o MESMO job em vez de abrir dois pedidos pagos.
+   */
+  criarPedidoDeMarca: async (chaveDeEnvio: string, pedido: unknown, senhaDeAcao?: string) => {
+    const res = await fetch('/api/marcas', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+        ...(senhaDeAcao === undefined ? {} : { 'x-orbis-acao': senhaDeAcao }),
+      },
+      body: JSON.stringify({ chaveDeEnvio, pedido }),
+    });
+    if (res.status === 428) throw new PrecisaDaSenhaDeAcao();
+    if (!res.ok) {
+      const corpo = await res.text();
+      let msg = 'Não consegui registrar o pedido.';
+      try {
+        const p = JSON.parse(corpo) as { message?: string };
+        if (typeof p.message === 'string' && p.message.trim() !== '') msg = p.message;
+      } catch {
+        // corpo não-JSON: fica a frase genérica
+      }
+      throw new Error(msg);
+    }
+    return (await res.json()) as { job: { id: string }; repetido: boolean };
+  },
+  custosCriativos: () => jsonFetch<CustosCriativos>('/api/criativos/custos'),
+  /**
+   * Cria o pedido criativo.
+   *
+   * A `chaveDeEnvio` é o que impede o mesmo clique de virar dois pedidos pagos:
+   * o servidor deriva o id do job dela, então repetir a chamada devolve o
+   * MESMO job em vez de abrir outro. Ela nasce quando a tela monta o pedido, e
+   * só muda quando a pessoa começa um envio novo.
+   */
+  /**
+   * Manda o arquivo do cliente ANTES de o pedido existir.
+   *
+   * Sem `Content-Type`: o navegador precisa escrever o `boundary` do multipart
+   * sozinho, e fixar o cabeçalho aqui quebraria o corpo.
+   */
+  subirArquivoCriativo: async (
+    chaveDeEnvio: string,
+    file: File,
+    /**
+     * Qual arquivo do pedido é este. A imagem da peça e o logotipo da marca vão
+     * para gavetas diferentes: sem o papel, mandar um apagaria o outro.
+     */
+    papel: 'imagem' | 'logotipo' = 'imagem',
+  ) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(
+      `/api/criativos/rascunhos/${encodeURIComponent(chaveDeEnvio)}/arquivo?papel=${papel}`,
+      { method: 'POST', body: fd, credentials: 'include' },
+    );
+    if (!res.ok) {
+      const corpo = await res.text();
+      let msg = 'Não consegui receber o arquivo.';
+      try {
+        const p = JSON.parse(corpo) as { message?: string };
+        if (typeof p.message === 'string' && p.message.trim() !== '') msg = p.message;
+      } catch {
+        // corpo não-JSON: fica a frase genérica
+      }
+      throw new Error(msg);
+    }
+    return (await res.json()) as { caminho: string; tipo: 'imagem' | 'video' | null };
+  },
+  criarPedidoCriativo: (
+    chaveDeEnvio: string,
+    pedido: unknown,
+    /** A credencial desta ação. Ausente = o servidor responde 428 e a tela pede. */
+    senhaDeAcao?: string,
+  ) =>
+    jsonFetch<{ job: { id: string; label: string; status: string }; repetido: boolean }>(
+      '/api/criativos',
+      {
+        method: 'POST',
+        body: JSON.stringify({ chaveDeEnvio, pedido }),
+        headers: senhaDeAcao === undefined ? undefined : { [CABECALHO_DA_ACAO]: senhaDeAcao },
+      },
+    ),
   meusProjetosContagem: () => jsonFetch<{ total: number }>('/api/meus-projetos/contagem'),
   abrirPasta: (id: string) =>
     jsonFetch<{ ok: boolean }>(`/api/meus-projetos/${id}/abrir-pasta`, { method: 'POST' }),

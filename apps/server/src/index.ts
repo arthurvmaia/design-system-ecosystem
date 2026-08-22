@@ -6,8 +6,15 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { cabecalhosDeSeguranca } from './lib/cabecalhos-de-seguranca.js';
 import { getExecutionMode } from './lib/execution-mode.js';
-import { ehLeitura, estadoDoPortao, lerCookieDaSessao, nivelDaSessao } from './lib/portao.js';
+import {
+  avisoDoSegredoDeSessao,
+  ehLeitura,
+  estadoDoPortao,
+  lerCookieDaSessao,
+  nivelDaSessao,
+} from './lib/portao.js';
 import { appCompiladoExiste, appWebRoute } from './routes/app-web.js';
 import { assetRoute, frameRoute, libraryAssetRoute } from './routes/asset.js';
 import { criativosRoute } from './routes/criativos.js';
@@ -17,6 +24,7 @@ import { enderecosRoute } from './routes/enderecos.js';
 import { healthRoute } from './routes/health.js';
 import { kitsRoute } from './routes/kits.js';
 import { libraryRoute } from './routes/library.js';
+import { marcasRoute } from './routes/marcas.js';
 import { meusProjetosRoute } from './routes/meus-projetos.js';
 import { movimentoRoute } from './routes/movimento.js';
 import { orbisRoute } from './routes/orbis.js';
@@ -33,6 +41,9 @@ const app = new Hono();
 const agoraEmS = (): number => Math.floor(Date.now() / 1000);
 
 app.use('*', logger());
+// Antes de tudo: os cabeçalhos valem para TODA resposta, inclusive as de erro e
+// as que não chegam a passar pelo portão.
+app.use('*', cabecalhosDeSeguranca);
 // Devolver o próprio `origin` liberava qualquer site a chamar esta API com
 // credenciais — inclusive um site aberto por acaso no navegador, já que o
 // servidor escuta em localhost. Fixamos na origem do app, que é o que o
@@ -125,6 +136,7 @@ app.route('/api/library-asset', libraryAssetRoute);
 app.route('/api/frame', frameRoute);
 app.route('/api/rejeitados', rejeitadosRoute);
 app.route('/api/criativos', criativosRoute);
+app.route('/api/marcas', marcasRoute);
 app.route('/api/queue', queueRoute);
 app.route('/api/movimento', movimentoRoute);
 app.route('/api/tasks', tasksRoute);
@@ -162,6 +174,9 @@ const boot = () => {
   console.log(`  data root : ${getRoot()}`);
   console.log(`  modo      : ${getExecutionMode()}`);
   console.log(`  listening : http://localhost:${port}`);
+
+  const aviso = avisoDoSegredoDeSessao();
+  if (aviso !== null) console.warn(`  aviso     : ${aviso}`);
 
   serve({ fetch: app.fetch, port });
 };

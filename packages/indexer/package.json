@@ -20,12 +20,12 @@
   "dependencies": {
     "@ds/shared": "workspace:*",
     "better-sqlite3": "^12.11.1",
-    "drizzle-orm": "^0.36.4"
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.2",
-    "drizzle-kit": "^0.29.1",
+    "drizzle-kit": "^0.31.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

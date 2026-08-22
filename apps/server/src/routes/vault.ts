@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, isAbsolute, join, normalize, relative } from 'node:path';
-import { ehDesignSystemId, vaultExtractedDir } from '@ds/shared/paths';
+import { extname } from 'node:path';
+import { dentroDaRaiz, ehDesignSystemId, vaultExtractedDir } from '@ds/shared/paths';
 import { Hono } from 'hono';
 
 export const vaultRoute = new Hono();
@@ -47,16 +47,10 @@ vaultRoute.get('/:dsId/*', (c) => {
     return c.redirect(`/vault/${dsId}/design-system.html`);
   }
 
-  // URLs sempre usam /, mas o filesystem no Windows usa \. join+normalize resolve.
-  if (isAbsolute(relPath) || relPath.split(/[/\\]/).includes('..')) {
-    return c.json({ error: 'forbidden' }, 403);
-  }
-
-  const abs = normalize(join(dir, relPath));
-  const rel = relative(dir, abs);
-  if (rel.startsWith('..') || isAbsolute(rel)) {
-    return c.json({ error: 'forbidden' }, 403);
-  }
+  // URLs sempre usam /, mas o filesystem no Windows usa \. `dentroDaRaiz` trata
+  // os dois separadores e é o mesmo idioma das outras rotas que servem arquivo.
+  const abs = dentroDaRaiz(dir, relPath);
+  if (abs === null) return c.json({ error: 'forbidden' }, 403);
   if (!existsSync(abs) || statSync(abs).isDirectory()) {
     return c.json({ error: 'not_found' }, 404);
   }

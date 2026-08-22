@@ -34,6 +34,13 @@ apps/web/vite.config.js
 /library/
 /projects/
 /queue/
+# Material que ENTRA na máquina: pacote de planejamento, referência de cliente,
+# saída de ferramenta. Ancorado como os vizinhos, e aqui por um motivo concreto:
+# a pasta tinha 6,8 MB com a apresentação de marca de um cliente dentro, e um
+# `git add -A` — o gesto normal para commitar um lote de arquivos novos — a
+# levaria para um repositório público. Vazamento de material de terceiro não se
+# desfaz apagando o arquivo: o histórico guarda.
+/output/
 *.db
 *.db-shm
 *.db-wal
@@ -71,3 +78,4 @@ scripts/_tmp-*
 # Ancorados na raiz pelo mesmo motivo que os padrões de dado acima.
 /DIAGNOSTICO.md
 /_auditoria/
+tmp/

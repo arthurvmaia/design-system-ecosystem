@@ -55,15 +55,25 @@ const tokensDe = (nome: string): Set<string> =>
   );
 
 for (const cmp of pecas) {
+  /**
+   * Peça sem design system de origem não tem onde ser procurada.
+   *
+   * `designSystemId` é anulável na Biblioteca, e o casamento inteiro deste
+   * script parte dela: mesma origem, mesmo nome — depois mesma origem, mesma
+   * categoria. Sem origem não há a primeira metade de nenhuma das duas buscas,
+   * então ela entra na lista de não-casadas com o motivo em vez de derrubar a
+   * consulta.
+   */
+  const daOrigem = cmp.designSystemId;
+  if (daOrigem === null) {
+    naoCasadas.push(`${cmp.name} (sem design system de origem)`);
+    continue;
+  }
+
   const candidatos = db
     .select()
     .from(tables.segments)
-    .where(
-      and(
-        eq(tables.segments.designSystemId, cmp.designSystemId),
-        eq(tables.segments.name, cmp.name),
-      ),
-    )
+    .where(and(eq(tables.segments.designSystemId, daOrigem), eq(tables.segments.name, cmp.name)))
     .all();
   let seg =
     candidatos.length <= 1
@@ -80,7 +90,7 @@ for (const cmp of pecas) {
       .from(tables.segments)
       .where(
         and(
-          eq(tables.segments.designSystemId, cmp.designSystemId),
+          eq(tables.segments.designSystemId, daOrigem),
           eq(tables.segments.category, cmp.category),
         ),
       )

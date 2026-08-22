@@ -50,10 +50,18 @@ test('sem tempo restante, não confere', () => {
   assert.match(d.rodar ? '' : d.motivo, /sobraram 500 ms/);
 });
 
-test('quem desligou a verificação não recebe explicação', () => {
+/**
+ * Este teste já pediu o CONTRÁRIO: silêncio, porque "quem desligou sabe que
+ * desligou". A premissa confundia quem roda o comando com quem lê o manifesto
+ * meses depois — e o acervo cobrou: 57 capturas de 57 sem comparação e sem uma
+ * linha dizendo por quê, porque `pnpm reextrair --todos` desliga a verificação
+ * por padrão em lote.
+ */
+test('verificação desligada também deixa rastro no manifesto', () => {
   const d = decidirComparacao({ ...base, querVerificar: false });
   assert.equal(d.rodar, false);
-  assert.equal(d.rodar ? '' : d.motivo, '', 'silêncio: quem desligou sabe que desligou');
+  assert.match(d.rodar ? '' : d.motivo, /verificação visual estava desligada/);
+  assert.match(d.rodar ? '' : d.motivo, /ninguém olhou/);
 });
 
 test('nenhuma frase da decisão usa travessão', () => {
