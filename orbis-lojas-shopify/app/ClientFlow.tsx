@@ -9,6 +9,7 @@ import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente, textoSobre } from "@/lib/marca-generator.mjs";
 import { DEFINICOES, IDIOMAS, IDIOMA_PADRAO } from "@/lib/idiomas.mjs";
+import { nichoNoIdioma } from "@/lib/nichos-textos.mjs";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 import { coresDaMarca, fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
 import { derivarLogos } from "@/lib/logo-derivar";
@@ -417,6 +418,21 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
       url: artes[peca.chave]?.url ?? (peca.origem === "desenhada" ? fallbackDataUri(peca) : ""),
     }))
     .filter((item) => Boolean(item.url)), [pecas, artes]);
+  /**
+   * OS NICHOS NO IDIOMA DA LOJA.
+   *
+   * O cartão diz o que a loja VENDE, e quem está escolhendo acabou de dizer em
+   * que língua a loja vai falar: mostrar "Roupas e moda" logo abaixo de uma
+   * escolha de inglês faz a pessoa duvidar se a escolha pegou. O rótulo do app
+   * em volta continua em português, porque o app é a ferramenta e a loja é o
+   * produto — mas o nome do nicho é conteúdo da loja, e ele acompanha.
+   */
+  const nichosNoIdioma = useMemo(
+    () => NICHOS.map((nicho: { id: string; nome: string; resumo: string }) => nichoNoIdioma(nicho, idioma) as { id: string; nome: string; resumo: string }),
+    [idioma],
+  );
+  const nichoEscolhido = nichosNoIdioma.find((nicho) => nicho.id === nicheId);
+
   const temGaleria = passo === 2 && modo === "gerada" && galeria.length > 0;
   const quantasPodemGerar = useMemo(
     () => pecasGeradas.filter((peca) => podeGerar(artes[peca.chave])).length,
@@ -1182,7 +1198,7 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
                       : "Traz os produtos da vitrine. Sua marca continua sendo a que você preencher. Sem escolher, a loja sai sem catálogo."}
                   </p>
                   <div className="cf-nichos">
-                    {NICHOS.map((nicho: { id: string; nome: string; resumo: string }) => (
+                    {nichosNoIdioma.map((nicho) => (
                       <button key={nicho.id} className={`cf-nicho ${nicheId === nicho.id ? "selecionado" : ""}`} onClick={() => escolherNicho(nicho.id)}>
                         {/* eslint-disable-next-line @next/next/no-img-element -- arquivo local do app; o desenho vetorial é a reserva. */}
                         <img
@@ -1379,12 +1395,12 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
                 }}
               />
               <dl className="cf-review">
-                <div><dt>Como foi criada</dt><dd>{modo === "gerada" ? `Gerada pela Orbis a partir de ${NICHOS.find((n: { id: string; nome: string }) => n.id === nicheId)?.nome ?? "um nicho"}` : "Preenchida por você"}</dd></div>
+                <div><dt>Como foi criada</dt><dd>{modo === "gerada" ? `Gerada pela Orbis a partir de ${nichoEscolhido?.nome ?? "um nicho"}` : "Preenchida por você"}</dd></div>
                 {/* o catálogo é decisão à parte da marca, então aparece à parte
                     — e "sem catálogo" é dito, não deixado para a pessoa
                     descobrir com a loja pronta e a vitrine vazia */}
                 <div><dt>Catálogo</dt><dd>{nicheId
-                  ? `${NICHOS.find((n: { id: string; nome: string }) => n.id === nicheId)?.nome ?? nicheId}: 10 produtos com foto e preço`
+                  ? `${nichoEscolhido?.nome ?? nicheId}: 10 produtos com foto e preço`
                   : "Sem catálogo: a loja sai com a vitrine vazia"}</dd></div>
                 <div><dt>Marca</dt><dd>{marca.name.trim() || "Minha Marca"}</dd></div>
                 {marca.slogan && <div><dt>Slogan</dt><dd>{marca.slogan}</dd></div>}

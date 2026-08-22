@@ -467,3 +467,71 @@ test("os marcadores do tema atravessam a tradução inteiros", async () => {
     }
   }
 });
+
+/**
+ * OS DEZ NICHOS, NAS TRES LINGUAS, sem uma palavra fora do lugar.
+ *
+ * O defeito desta funcionalidade nunca foi um nicho quebrado: foi UM campo
+ * esquecido em UM nicho, que ninguem ve ate a loja daquele nicho ser gerada. Um
+ * teste por nicho e caro e nao cobre o que importa; este varre os trinta pares
+ * de uma vez, sobre a marca inteira que cada nicho produz.
+ *
+ * O detector usa so o que NAO existe em espanhol — `-cao/-coes/-oes`, `voce`,
+ * `nao`, `frete`, `preco`, `nossa`, `tambem`, `ate`, `mais` —, senao a loja em
+ * espanhol se acusaria sozinha.
+ */
+test("os 10 nichos geram marca inteira nos 3 idiomas, sem sobra de portugues", async () => {
+  const { NICHOS: nichos, gerarMarca: gerar } = await import("../lib/marca-generator.mjs");
+  const { textosDoIdioma: textos } = await import("../lib/textos.mjs");
+
+  const SO_PORTUGUES = /\b\w*(ção|ções|ões)\b|\b(você|vocês|não|frete|preço|preços|nossa|nosso|nossas|nossos|também|até|mais|são|seu|sua|seus|suas|então)\b/i;
+
+  for (const nicho of nichos) {
+    for (const idioma of ["en", "es"]) {
+      const marca = gerar({ nicheId: nicho.id, semente: "varredura", idioma });
+      /* TUDO o que o nicho manda para a loja, num saco só: manchete, descrição,
+         faixa de anúncio, coleções, benefícios e as três perguntas do FAQ */
+      const doNicho = [
+        marca.slogan,
+        marca.description,
+        marca.announcement,
+        ...marca.collections,
+        ...marca.benefits,
+        ...marca.faq.flatMap((item) => [item.pergunta, item.resposta]),
+      ];
+      for (const frase of doNicho) {
+        assert.ok(
+          !SO_PORTUGUES.test(String(frase)),
+          `${nicho.id}/${idioma}: sobrou português em ${JSON.stringify(frase)}`,
+        );
+      }
+      /* e nada VAZIO: um campo em branco não acusa português, mas deixa a loja
+         com uma seção muda, que é o mesmo estrago pelo outro lado */
+      for (const frase of doNicho) assert.ok(String(frase ?? "").trim().length > 0, `${nicho.id}/${idioma}: campo vazio`);
+      /* as contagens acompanham o português: coleção a menos é cartão vazio na
+         vitrine, pergunta a menos é FAQ mais curto sem ninguém notar */
+      const emPortugues = gerar({ nicheId: nicho.id, semente: "varredura", idioma: "pt-BR" });
+      assert.equal(marca.collections.length, emPortugues.collections.length, `${nicho.id}/${idioma}: coleções`);
+      assert.equal(marca.benefits.length, emPortugues.benefits.length, `${nicho.id}/${idioma}: benefícios`);
+      assert.equal(marca.faq.length, emPortugues.faq.length, `${nicho.id}/${idioma}: FAQ`);
+      /* e a frase de cola do nicho é a do idioma, não a portuguesa */
+      assert.ok(marca.announcement.includes(textos(idioma).marca.envio), `${nicho.id}/${idioma}: a faixa não usou a frase de envio do idioma`);
+    }
+  }
+});
+
+test("o cartão de nicho da tela acompanha o idioma escolhido", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const tela = await readFile(new URL("../app/ClientFlow.tsx", import.meta.url), "utf8");
+  /**
+   * O cartão diz o que a loja VENDE, e quem o lê acabou de escolher a língua
+   * dela. "Roupas e moda" logo abaixo de uma escolha de inglês faz a pessoa
+   * duvidar se a escolha pegou. O rótulo do app em volta continua português: o
+   * app é a ferramenta, a loja é o produto.
+   */
+  assert.match(tela, /nichosNoIdioma/);
+  assert.match(tela, /nichoNoIdioma\(nicho, idioma\)/);
+  /* e a lista traduzida é a MESMA em todo lugar: o cartão, o resumo da revisão
+     e a linha do catálogo. Duas fontes divergem na primeira mudança. */
+  assert.doesNotMatch(tela, /NICHOS\.find\(/, "a revisão voltou a ler o nicho em português");
+});

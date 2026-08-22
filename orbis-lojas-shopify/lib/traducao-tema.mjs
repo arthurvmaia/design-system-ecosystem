@@ -21,7 +21,7 @@
  *
  * ## O que ela cobre, e o que não
  *
- * As 58 frases que um COMPRADOR lê numa loja gerada: comprar, esgotado, preço,
+ * As 60 frases que um COMPRADOR lê ou OUVE numa loja gerada: comprar, esgotado, preço,
  * carrinho, busca, newsletter, login, 404. Não cobre as 290 chaves do tema — filtro de coleção, painel de conta,
  * endereço, pedido — porque essas não aparecem numa loja recém-nascida. A
  * lista saiu de MEDIR: renderizar a home nos três idiomas e caçar o que
@@ -98,6 +98,11 @@ export const TRADUCAO_DE_TEMA = {
     "products.product.quantity.decrease": "Decrease quantity for {{ product }}",
     "products.facets.clear_all": "Remove all",
     "accessibility.close": "Close",
+    /* o bloco `<ul hidden>` do layout: nao aparece na tela, mas e o que o
+       leitor de tela anuncia. Loja em ingles anunciando em portugues e o mesmo
+       defeito, so que para quem nao pode ve-lo. */
+    "accessibility.refresh_page": "Choosing a selection results in a full page refresh.",
+    "accessibility.link_messages.new_window": "Opens in a new window.",
   },
   es: {
     "products.product.add_to_cart": "Agregar al carrito",
@@ -158,6 +163,8 @@ export const TRADUCAO_DE_TEMA = {
     "products.product.quantity.decrease": "Reducir cantidad para {{ product }}",
     "products.facets.clear_all": "Eliminar todos",
     "accessibility.close": "Cerrar",
+    "accessibility.refresh_page": "Al seleccionar una opción, se actualiza toda la página.",
+    "accessibility.link_messages.new_window": "Se abre en una nueva ventana.",
   },
 };
 
