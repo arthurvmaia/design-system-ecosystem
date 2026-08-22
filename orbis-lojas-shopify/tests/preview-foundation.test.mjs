@@ -182,7 +182,11 @@ test("carrinho do preview: formulário fiel, Ajax Cart API simulada e gaveta com
   assert.match(render, /function buildCart/);
   /* a vitrine da renderização entra como parâmetro: loja de pet e loja de
      óculos podem renderizar ao mesmo tempo sem trocar de catálogo */
-  assert.match(render, /cart: buildCart\(loja, cartItems\)/);
+  assert.match(render, /cart: buildCart\(loja, cartItems, /);
+  /* e a MOEDA junto, pelo mesmo motivo: duas lojas em idiomas diferentes
+     renderizam ao mesmo tempo, e o carrinho de uma nao pode herdar o simbolo
+     da outra */
+  assert.match(render, /cart: buildCart\(loja, cartItems, paisEMoeda\.moeda\)/);
   assert.match(render, /onlySections/, "Section Rendering API para atualizar a gaveta");
   const preview = await readFile(new URL("../app/ShopifyStorePreview.tsx", import.meta.url), "utf8");
   assert.match(preview, /cartRef/, "o carrinho sobrevive à troca de página");

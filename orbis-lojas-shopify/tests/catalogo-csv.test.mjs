@@ -100,7 +100,10 @@ test("o CSV do nicho tem o cabeçalho da Shopify e uma linha por imagem", async 
 test("o pacote entregue leva o CSV e o passo a passo, fora da raiz do tema", async () => {
   const rota = await readFile(new URL("../app/api/client-request/route.ts", import.meta.url), "utf8");
   /* as coleções vão junto: é a importação que as cria */
-  assert.match(rota, /csvDeProdutos\(parsed\.data\.nicheId, marca\.collections \?\? \[\]\)/);
+  /* o IDIOMA vai junto: o CSV e a loja que o cliente sobe na Shopify, e ela
+     nao pode chegar la em portugues quando a previa que ele aprovou estava em
+     ingles */
+  assert.match(rota, /csvDeProdutos\(parsed\.data\.nicheId, marca\.collections \?\? \[\], idioma\)/);
   /* dentro de previa-local: arquivo solto na raiz é risco de a Shopify recusar
      a importação do tema, que exige layout/theme.liquid no topo */
   assert.match(rota, /previa-local\/produtos-para-importar\.csv/);

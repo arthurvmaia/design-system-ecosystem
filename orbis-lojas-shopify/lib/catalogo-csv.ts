@@ -1,5 +1,7 @@
 import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
 import { descricaoDoProduto, nomeDeVitrine } from "./nome-de-produto";
+import { IDIOMA_PADRAO, idiomaDe } from "./idiomas.mjs";
+import { textosDoIdioma } from "./textos.mjs";
 
 /**
  * O catálogo do nicho no formato que a Shopify importa.
@@ -68,18 +70,18 @@ function preco(centavos: number | null | undefined): string {
  * handle e a foto, com a posição. Repetir os dados nas linhas de imagem faria
  * a importação criar variante a mais.
  */
-function linhasDoProduto(p: ProdutoDoNicho, colecao: string): string[][] {
+function linhasDoProduto(p: ProdutoDoNicho, colecao: string, idioma: string): string[][] {
   /* o MESMO nome da vitrine: o CSV é a loja que o cliente sobe na Shopify, e
      ela não pode chegar lá com o título cru que a prévia já não mostra */
-  const nome = nomeDeVitrine(p);
-  const descricao = descricaoDoProduto(p);
+  const nome = nomeDeVitrine(p, idioma);
+  const descricao = descricaoDoProduto(p, idioma);
   const fotos = p.images.length ? p.images : [""];
   const primeira: string[] = [
     colecao,
     nome,
     p.handle,
     descricao,
-    "Curadoria da loja",
+    textosDoIdioma(idioma).render.curadoria,
     "",
     "",
     "TRUE",
@@ -117,7 +119,10 @@ function linhasDoProduto(p: ProdutoDoNicho, colecao: string): string[][] {
  * Devolve string vazia quando o nicho não existe: loja sem catálogo não ganha
  * um arquivo vazio para confundir quem abre o pacote.
  */
-export function csvDeProdutos(nicheId: string | undefined, colecoes: string[] = []): string {
+export function csvDeProdutos(nicheId: string | undefined, colecoes: string[] = [], idioma: string = IDIOMA_PADRAO): string {
+  /* o CSV e a loja que o cliente sobe na Shopify: ele tem de chegar la no
+     mesmo idioma da vitrine que ele viu na previa */
+  const codigo = idiomaDe(idioma);
   const chave = String(nicheId ?? "").trim();
   const fonte = chave ? PRODUTOS_POR_NICHO[chave] : undefined;
   if (!fonte?.length) return "";
@@ -128,7 +133,7 @@ export function csvDeProdutos(nicheId: string | undefined, colecoes: string[] = 
   const linhas = [COLUNAS_CSV.join(",")];
   fonte.forEach((p, i) => {
     const colecao = destinos.length ? destinos[i % destinos.length] : "";
-    for (const linha of linhasDoProduto(p, colecao)) linhas.push(linha.map(campo).join(","));
+    for (const linha of linhasDoProduto(p, colecao, codigo)) linhas.push(linha.map(campo).join(","));
   });
   /* BOM: o Excel abre CSV UTF-8 sem ele com os acentos quebrados, e o arquivo
      passa pela mão de quem vende antes de chegar na Shopify. */

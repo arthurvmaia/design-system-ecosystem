@@ -8,6 +8,7 @@ import { ClientPreviaReal, type Dispositivo } from "@/app/ClientPreviaReal";
 import { RealHomeThumbnail } from "@/app/PreviewCard";
 import { SITE_TEMPLATES } from "@/lib/site-generator.mjs";
 import { NICHOS, fotoDoNicho, gerarMarca, ilustracaoDataUri, logoDaMarca, novaSemente, textoSobre } from "@/lib/marca-generator.mjs";
+import { DEFINICOES, IDIOMAS, IDIOMA_PADRAO } from "@/lib/idiomas.mjs";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/business-rules.mjs";
 import { coresDaMarca, fallbackDataUri, pecasDaMarca } from "@/lib/marca-imagens";
 import { derivarLogos } from "@/lib/logo-derivar";
@@ -76,8 +77,8 @@ const MARCA_VAZIA: MarcaCliente = {
 };
 
 /** A marca gerada volta como `MarcaCliente`, com o que a pessoa digitou vencendo. */
-function marcaGerada(nicheId: string, semente: string, sobrescritas: Partial<MarcaCliente>): MarcaCliente {
-  const gerada = gerarMarca({ nicheId, semente, sobrescritas });
+function marcaGerada(nicheId: string, semente: string, sobrescritas: Partial<MarcaCliente>, idioma: string = IDIOMA_PADRAO): MarcaCliente {
+  const gerada = gerarMarca({ nicheId, semente, sobrescritas, idioma });
   return {
     name: gerada.name, slogan: gerada.slogan, description: gerada.description,
     primaryColor: gerada.primaryColor, backgroundColor: gerada.backgroundColor, accentColor: gerada.accentColor,
@@ -199,6 +200,15 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
   const [passoMaisLonge, setPassoMaisLonge] = useState(() => passoRestauravel(ponto, Object.keys(artesGuardadas).length > 0));
   const [modo, setModo] = useState<Modo | null>(() => (ponto.modo === "gerada" || ponto.modo === "manual" ? ponto.modo : null));
   const [nicheId, setNicheId] = useState(() => ponto.nicheId);
+  /**
+   * O IDIOMA da loja, escolhido antes do nicho.
+   *
+   * Antes do nicho de proposito: e ele que decide em que lingua os cartoes de
+   * nicho, a marca gerada e a previa aparecem dali para a frente. Trocar depois
+   * REGERA a marca, porque manchete, colecoes e FAQ vem do nicho traduzido —
+   * deixa-los como estavam entregaria uma loja meio inglesa e meio portuguesa.
+   */
+  const [idioma, setIdioma] = useState(() => ponto.idioma);
   const [semente, setSemente] = useState(() => lerSemente(ponto.nicheId) || "orbis");
   const [gerada, setGerada] = useState(() => ponto.modo === "gerada" && Boolean(ponto.nicheId));
   /* a marca é RECONSTRUÍDA da semente guardada, não gravada: a mesma semente
@@ -206,7 +216,7 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
      à mão entra por cima */
   const [marca, setMarca] = useState<MarcaCliente>(() => (
     ponto.modo === "gerada" && ponto.nicheId
-      ? marcaGerada(ponto.nicheId, lerSemente(ponto.nicheId) || "orbis", lerEdicoes(ponto.nicheId))
+      ? marcaGerada(ponto.nicheId, lerSemente(ponto.nicheId) || "orbis", lerEdicoes(ponto.nicheId), ponto.idioma)
       : { ...MARCA_VAZIA, ...lerEdicoes(ponto.nicheId) }
   ));
   const [editadoAMao, setEditadoAMao] = useState<Partial<MarcaCliente>>(() => lerEdicoes(ponto.nicheId));
@@ -344,10 +354,10 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
   useEffect(() => {
     try {
       window.localStorage.setItem(CHAVE_DO_PONTO, JSON.stringify({
-        passo, modo: modo ?? "", nicheId, themeId, estado,
+        passo, modo: modo ?? "", nicheId, themeId, estado, idioma,
       }));
     } catch { /* sem armazenamento local a sessão continua, só não guarda */ }
-  }, [passo, modo, nicheId, themeId, estado]);
+  }, [passo, modo, nicheId, themeId, estado, idioma]);
 
   /* o provedor de imagem é opcional: a tela só oferece o que existe */
   useEffect(() => {
@@ -416,12 +426,12 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
   const gerarMarcaAgora = useCallback((sementeNova: string) => {
     if (!nicheId) return;
     setSemente(sementeNova);
-    setMarca(marcaGerada(nicheId, sementeNova, editadoAMao));
+    setMarca(marcaGerada(nicheId, sementeNova, editadoAMao, idioma));
     setGerada(true);
     /* marca nova, cofre limpo: a arte da anterior não serve a esta */
     setArtes({});
     try { const c = chaveDoCofre(nicheId); if (c) window.localStorage.removeItem(c); } catch { /* sem armazenamento */ }
-  }, [nicheId, editadoAMao]);
+  }, [nicheId, editadoAMao, idioma]);
 
   function ajustarMarca(parcial: Partial<MarcaCliente>) {
     setEditadoAMao((atual) => ({ ...atual, ...parcial }));
@@ -442,6 +452,24 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
    * marca: quem chegou com nome, cores e logo próprios não pode ver isso ser
    * sobrescrito por ter escolhido o que vende.
    */
+  /**
+   * TROCAR DE IDIOMA REGERA A MARCA, e tem de regerar.
+   *
+   * Manchete, descrição, coleções, benefícios e FAQ saem do NICHO, e o nicho é
+   * lido no idioma da loja. Trocar a língua sem regerar deixaria a marca em
+   * português dentro de uma loja em inglês — o pior dos dois mundos, porque a
+   * pessoa veria metade mudar e concluiria que o resto está quebrado.
+   *
+   * O que a pessoa DIGITOU continua vencendo: `lerEdicoes` devolve os campos
+   * que ela escreveu, e eles entram como sobrescritas por cima da marca nova.
+   * Nome próprio não se traduz, e é isso que mantém a identidade estável.
+   */
+  function trocarIdioma(codigo: string) {
+    if (codigo === idioma) return;
+    setIdioma(codigo);
+    if (modo === "gerada" && nicheId) setMarca(marcaGerada(nicheId, semente, lerEdicoes(nicheId), codigo));
+  }
+
   function escolherNicho(id: string) {
     setNicheId(id);
     /* o que já existe para este nicho volta: a semente guardada devolve a MESMA
@@ -451,7 +479,7 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
     setModo("gerada");
     const sementeNova = guardada || novaSemente();
     setSemente(sementeNova);
-    setMarca(marcaGerada(id, sementeNova, editadoAMao));
+    setMarca(marcaGerada(id, sementeNova, editadoAMao, idioma));
     setGerada(true);
   }
 
@@ -775,6 +803,9 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
           templateId,
           /* o nicho vai nos dois modos: ele é o CATÁLOGO, não a marca */
           nicheId: nicheId || undefined,
+          /* e o IDIOMA vai sempre: ele decide a lingua da loja inteira, e o
+             servidor regera a marca com ele */
+          idioma,
           /* e quem escreve a marca é dito por extenso, não deduzido do nicho */
           criarMarca: modo === "gerada",
           /* a semente, essa sim, só faz sentido quando a Orbis inventa a marca */
@@ -1094,6 +1125,44 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
                 </button>
               </div>
 
+              {/* O IDIOMA vem ANTES do nicho, e a ordem é a mensagem: ele
+                  decide a língua de tudo o que vem depois — os nomes das
+                  coleções, a manchete, o FAQ, os produtos e o texto do próprio
+                  tema. Perguntar depois faria a pessoa escolher um nicho, ver a
+                  marca pronta e assistir tudo mudar ao trocar a língua. */}
+              {modo !== null && (
+                <>
+                  <span className="cf-secao-titulo">Em que idioma a loja vai falar?</span>
+                  {/* o que NÃO muda também é dito, e aqui: o tema pode trazer
+                      texto que o lojista de origem digitou (uma faixa de promo,
+                      um título de vitrine), e isso não é tradução nossa. Melhor
+                      a pessoa saber antes do que descobrir na loja pronta. */}
+                  <p className="cf-secao-ajuda">
+                    Muda a loja inteira: seções, coleções, produtos, preço e o texto do tema. Dá para trocar até o último
+                    passo. Um tema pode trazer alguma frase escrita pela loja de origem: essa continua como veio.
+                  </p>
+                  <div className="cf-idiomas">
+                    {(IDIOMAS as string[]).map((codigo) => {
+                      const definicao = DEFINICOES[codigo as keyof typeof DEFINICOES];
+                      return (
+                        <button
+                          key={codigo}
+                          type="button"
+                          className={`cf-idioma ${idioma === codigo ? "selecionado" : ""}`}
+                          aria-pressed={idioma === codigo}
+                          onClick={() => trocarIdioma(codigo)}
+                        >
+                          <strong>{definicao.rotulo}</strong>
+                          <small>{definicao.resumo}</small>
+                          <span className="cf-idioma-moeda">{definicao.moeda.simbolo} {definicao.moeda.iso}</span>
+                          {idioma === codigo && <span className="cf-selected-badge"><Check size={12} /> Escolhido</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
               {/* O nicho vale nos DOIS caminhos. As duas caixas acima decidem
                   quem escreve a MARCA; o nicho decide o que a loja VENDE, e uma
                   coisa não diz nada sobre a outra. Enquanto ele morava dentro
@@ -1291,6 +1360,11 @@ export function ClientFlow({ onExit, dominioShopify = "" }: { onExit: () => void
                 semTema={temasCarregando ? "Procurando o tema…" : "Escolha um tema no passo anterior para ver a loja."}
                 marca={{
                   name: marca.name || "Minha Marca", slogan: marca.slogan, description: marca.description,
+                  /* o IDIOMA vai para a prévia pelo mesmo caminho da marca: é
+                     `aplicarMarcaNoTema` que o grava no tema, e é dali que o
+                     renderizador o lê. Sem ele aqui, a pessoa escolheria
+                     inglês e veria a prévia em português até baixar o ZIP. */
+                  idioma,
                   /* a MESMA semente do pedido, porque ela decide também a ORDEM
                      da home: sem ela aqui, a prévia mostraria uma loja e o ZIP
                      sairia com outra. Marca preenchida à mão não tem semente —

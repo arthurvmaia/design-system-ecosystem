@@ -7,6 +7,9 @@ import { Liquid, type TagToken, type TopLevelToken, type Context, type Emitter }
 import { strFromU8 } from "fflate";
 import type { ShopifyPage, ShopifySectionInstance, ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "@/lib/shopify-theme";
 import { ehUrlDeAssetDoTema } from "./asset-do-tema";
+import { IDIOMA_PADRAO, definicaoDoIdioma, formatarDinheiro, formatoDeDinheiro, idiomaDe } from "./idiomas.mjs";
+import { textosDoIdioma } from "./textos.mjs";
+import { redeDeTraducao } from "./traducao-tema.mjs";
 import { PRODUTOS_POR_NICHO, type ProdutoDoNicho } from "./catalogo-nichos";
 import { nichoPorId } from "./marca-generator.mjs";
 import { handleDeColecao } from "./shopify-brand";
@@ -40,6 +43,13 @@ export type RenderOptions = {
   capasDeColecao?: Record<string, string>;
   /** Nicho da loja gerada: define quais produtos abastecem a vitrine. */
   nicheId?: string;
+  /**
+   * O IDIOMA da loja. Decide o arquivo de traducao do tema, o formato do
+   * dinheiro, o `shop.locale` e os poucos rotulos que este motor escreve por
+   * conta. Ausente, cai no do proprio tema e depois no portugues — que e o de
+   * toda loja gerada antes desta tela existir.
+   */
+  idioma?: string;
 };
 
 /**
@@ -250,39 +260,47 @@ const PRODUTO_VAZIO: ProdutoDaLoja = produtoDoCatalogo({
     price: 0, compareAtPrice: null, available: false, imageSrc: null,
   }],
 });
-/* o catálogo de um nicho é montado uma vez e reaproveitado entre renderizações */
+/**
+ * O catálogo de um nicho é montado uma vez e reaproveitado entre renderizações.
+ *
+ * A chave leva o IDIOMA junto, e não é detalhe: sem ele, a primeira loja
+ * renderizada fixava a língua do catálogo para todas as seguintes — o servidor
+ * fica de pé entre requisições, e o cliente seguinte via os produtos no idioma
+ * do cliente anterior.
+ */
 const LOJAS_POR_NICHO = new Map<string, Loja>();
 
-export function lojaDoNicho(nicheId: string | undefined): Loja {
-  const chave = String(nicheId ?? "").trim();
+export function lojaDoNicho(nicheId: string | undefined, idioma: string = IDIOMA_PADRAO): Loja {
+  const codigo = idiomaDe(idioma);
+  const chave = `${String(nicheId ?? "").trim()}:${codigo}`;
+  if (chave.startsWith(":")) return LOJA_VAZIA;
   /* Sem nicho é tema importado: ele abre COMO VEIO, sem mercadoria emprestada.
      Quem tem nicho é loja gerada, e aí os produtos são os da vitrine dela. */
-  if (!chave) return LOJA_VAZIA;
   const pronta = LOJAS_POR_NICHO.get(chave);
   if (pronta) return pronta;
-  const fonte = PRODUTOS_POR_NICHO[chave];
+  const fonte = PRODUTOS_POR_NICHO[String(nicheId ?? "").trim()];
   /* nicho sem catálogo também nasce vazio: inventar mercadoria faria dois
      temas diferentes parecerem a mesma loja */
   if (!fonte?.length) return LOJA_VAZIA;
-  const loja = indexarLoja(fonte.map(produtoDoNicho));
+  const loja = indexarLoja(fonte.map((produto) => produtoDoNicho(produto, codigo)));
   LOJAS_POR_NICHO.set(chave, loja);
   return loja;
 }
 
 /** Converte um produto do nicho (AliExpress) para o formato que os temas leem. */
-function produtoDoNicho(fonte: ProdutoDoNicho): ProdutoDaLoja {
+function produtoDoNicho(fonte: ProdutoDoNicho, idioma: string = IDIOMA_PADRAO): ProdutoDaLoja {
   /* o anúncio do fornecedor vira nome de vitrine aqui, num lugar só: o cartão,
      a página do produto, o carrinho e o alt da foto leem todos deste campo */
-  const nome = nomeDeVitrine(fonte);
+  const nome = nomeDeVitrine(fonte, idioma);
   return produtoDoCatalogo({
     id: fonte.id,
     handle: fonte.handle,
     title: nome,
-    vendor: "Curadoria da loja",
+    vendor: textosDoIdioma(idioma).render.curadoria,
     type: "",
     tags: [],
     publishedAt: new Date().toISOString(),
-    descriptionHtml: descricaoDoProduto(fonte),
+    descriptionHtml: descricaoDoProduto(fonte, idioma),
     options: [{ name: "Título", position: 1, values: ["Padrão"] }],
     images: fonte.images.map((src) => ({ src, width: 350, height: 350, alt: nome, variantIds: [] })),
     variants: [{
@@ -377,7 +395,7 @@ function demoProduct(loja: Loja, handle: string, index = 0): ProdutoDaLoja {
  * itens com produto, variante, preços e a linha final. É o que faz a gaveta
  * mostrar item, quantidade e total de verdade.
  */
-function buildCart(loja: Loja, items: PreviewCartItem[] | undefined) {
+function buildCart(loja: Loja, items: PreviewCartItem[] | undefined, moedaDaPagina: { iso: string; simbolo: string }) {
   const linhas = (items ?? [])
     .map((item, index) => {
       const produto = loja.porVariante.get(item.variantId) ?? loja.produtos[index % loja.produtos.length] ?? PRODUTO_VAZIO;
@@ -406,7 +424,7 @@ function buildCart(loja: Loja, items: PreviewCartItem[] | undefined) {
   return {
     item_count: contagem, items: linhas, total_price: total, original_total_price: total,
     items_subtotal_price: total, total_discount: 0, empty: linhas.length === 0,
-    currency: { iso_code: "BRL", symbol: "R$" }, note: null, attributes: {},
+    currency: { iso_code: moedaDaPagina.iso, symbol: moedaDaPagina.simbolo }, note: null, attributes: {},
     cart_level_discount_applications: [], discount_applications: [],
     requires_shipping: linhas.length > 0, taxes_included: false, checkout_charge_amount: total,
     token: "orbis-preview-cart", created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -458,8 +476,8 @@ const LIGACAO_NO_TITULO = new Set(["de", "do", "da", "dos", "das", "e", "ou", "a
  * um com o outro. Sem esse mapa — tema antigo, coleção que não é da loja — o
  * slug ainda é a última reserva, mas ao menos sem maiúscula em ligação.
  */
-function tituloDaColecao(handle: string, nomes: Record<string, string> = {}): string {
-  if (!handle) return "Coleção em destaque";
+function tituloDaColecao(handle: string, nomes: Record<string, string> = {}, idioma: string = IDIOMA_PADRAO): string {
+  if (!handle) return textosDoIdioma(idioma).render.colecaoDemo;
   const nome = nomes[handle];
   if (nome) return nome;
   return handle
@@ -471,8 +489,8 @@ function tituloDaColecao(handle: string, nomes: Record<string, string> = {}): st
     .join(" ");
 }
 
-function demoCollection(loja: Loja, handle: string, capas: Record<string, string> = {}, vaga?: number, nomes: Record<string, string> = {}) {
-  const title = tituloDaColecao(handle, nomes);
+function demoCollection(loja: Loja, handle: string, capas: Record<string, string> = {}, vaga?: number, nomes: Record<string, string> = {}, idioma: string = IDIOMA_PADRAO) {
+  const title = tituloDaColecao(handle, nomes, idioma);
   return {
     id: 9000001, title, handle: handle || "colecao-demo", url: `/collections/${handle || "colecao-demo"}`, description: "",
     products: loja.produtos, products_count: loja.produtos.length, all_products_count: loja.produtos.length,
@@ -503,11 +521,21 @@ function demoCollection(loja: Loja, handle: string, capas: Record<string, string
   };
 }
 
-const DEMO_LINKS = [
-  { title: "Início", url: "/", active: true, current: true, child_active: false, child_current: false, links: [], levels: 0, handle: "inicio", type: "frontpage_link", object: null },
-  { title: "Produtos", url: "/collections/all", active: false, current: false, child_active: false, child_current: false, links: [], levels: 0, handle: "produtos", type: "catalog_link", object: null },
-  { title: "Contato", url: "/pages/contact", active: false, current: false, child_active: false, child_current: false, links: [], levels: 0, handle: "contato", type: "page_link", object: null },
-];
+/**
+ * O menu da PREVIA, no idioma da loja.
+ *
+ * A loja real recebe o menu que o cliente escreveu; este e o que a demonstracao
+ * mostra enquanto ele nao existe. Era uma constante em portugues, e por isso
+ * uma loja em ingles abria com "Inicio / Produtos / Contato" no cabecalho.
+ */
+function linksDeDemonstracao(idioma: string) {
+  const menu = textosDoIdioma(idioma).render.menu;
+  return [
+    { title: menu.inicio, url: "/", active: true, current: true, child_active: false, child_current: false, links: [], levels: 0, handle: "inicio", type: "frontpage_link", object: null },
+    { title: menu.produtos, url: "/collections/all", active: false, current: false, child_active: false, child_current: false, links: [], levels: 0, handle: "produtos", type: "catalog_link", object: null },
+    { title: menu.contato, url: "/pages/contact", active: false, current: false, child_active: false, child_current: false, links: [], levels: 0, handle: "contato", type: "page_link", object: null },
+  ];
+}
 
 function proxyWithFallback<T>(base: Record<string, T>, make: (key: string) => T) {
   return new Proxy(base, {
@@ -535,7 +563,7 @@ function resolveSettingValues(
   definitions: ShopifySettingDefinition[],
   /* `vaga` é a posição do BLOCO na seção: no Dawn cada cartão da vitrine é um
      bloco com o handle dentro, e é ela que impede a foto de reserva de repetir */
-  helpers: { loja: Loja; capas?: Record<string, string>; nomes?: Record<string, string>; vaga?: number; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
+  helpers: { loja: Loja; idioma: string; capas?: Record<string, string>; nomes?: Record<string, string>; vaga?: number; imageFor: (value: ShopifyValue, secao?: string, campo?: string) => ThemeImage | null; schemeFor: (id: ShopifyValue) => unknown; registerFont?: (font: ShopifyFontDrop) => void },
   /* O tipo da seção (ou do bloco) chega até aqui só por causa do placeholder:
      é o par seção+campo que diz qual FORMATO o vazio deve ter. */
   secao?: string,
@@ -560,7 +588,7 @@ function resolveSettingValues(
     /* AQUI é por onde o cartão de coleção passa de verdade: o `settings` do
        bloco guarda o handle, e era este caminho que ficava sem as capas — o
        proxy de `collections[...]` só atende busca por handle escrita no Liquid */
-    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}, helpers.vaga, helpers.nomes ?? {}); continue; }
+    if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}, helpers.vaga, helpers.nomes ?? {}, helpers.idioma); continue; }
     if (type === "product") { resolved[id] = demoProduct(helpers.loja, typeof value === "string" ? value : "", 2); continue; }
     if (type === "collection_list") {
       /* as coleções DA LOJA quando elas existem: a lista fixa de "colecao-1..4"
@@ -568,11 +596,11 @@ function resolveSettingValues(
          escreveu */
       const daLoja = Object.keys(helpers.capas ?? {});
       const lista = daLoja.length ? daLoja : ["colecao-1", "colecao-2", "colecao-3", "colecao-4"];
-      resolved[id] = lista.map((handle, vaga) => demoCollection(helpers.loja, handle, helpers.capas ?? {}, vaga, helpers.nomes ?? {}));
+      resolved[id] = lista.map((handle, vaga) => demoCollection(helpers.loja, handle, helpers.capas ?? {}, vaga, helpers.nomes ?? {}, helpers.idioma));
       continue;
     }
     if (type === "product_list") { resolved[id] = helpers.loja.produtos; continue; }
-    if (type === "link_list" || type === "menu") { resolved[id] = { title: "Menu", handle: String(value ?? "main-menu"), links: DEMO_LINKS, levels: 1 }; continue; }
+    if (type === "link_list" || type === "menu") { resolved[id] = { title: "Menu", handle: String(value ?? "main-menu"), links: linksDeDemonstracao(helpers.idioma), levels: 1 }; continue; }
     if (type === "blog") { const blogHandle = String(value ?? "blog"); resolved[id] = { title: "Blog", handle: blogHandle, url: `/blogs/${blogHandle}`, articles: [], articles_count: 0, all_tags: [] }; continue; }
     if (type === "article") { resolved[id] = null; continue; }
     if (type === "page") { const pageHandle = String(value ?? "pagina"); resolved[id] = { title: "Página", handle: pageHandle, content: "", url: `/pages/${pageHandle}` }; continue; }
@@ -722,9 +750,50 @@ function argPairs(args: unknown[]): Record<string, unknown> {
   return named;
 }
 
-export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId, nicheId, capasDeColecao }: RenderOptions): Promise<string> {
+/**
+ * O ARQUIVO DE TRADUCAO do tema para o idioma pedido — conferindo o conteudo.
+ *
+ * O nome do arquivo nao prova nada, e isto foi medido: num Dawn baixado de uma
+ * loja brasileira, `locales/en.json` esta byte a byte igual ao
+ * `pt-BR.default.json`. E o que a Shopify faz ao trocar o idioma padrao da
+ * loja — ela renomeia o arquivo padrao com o conteudo ja traduzido e deixa uma
+ * copia no nome antigo. Confiar no nome entregava uma loja "em ingles" com o
+ * carrinho inteiro em portugues.
+ *
+ * A prova e simples: um candidato IGUAL ao arquivo padrao do tema, quando o
+ * padrao nao e o idioma pedido, e copia e nao traducao. `fiel` diz qual dos
+ * dois casos aconteceu, e e ele que liga a rede de `traducao-tema.mjs`.
+ */
+function traducaoDoTema(files: Map<string, Uint8Array>, idioma: string): { conteudo: string; arquivo: string; fiel: boolean } {
+  const caminhoPadrao = Array.from(files.keys()).find((path) => /^locales\/[^.]+\.default\.json$/.test(path)) ?? "";
+  const padrao = text(files, caminhoPadrao) ?? text(files, "locales/en.default.json") ?? "{}";
+  const idiomaDoPadrao = caminhoPadrao.slice("locales/".length).replace(/\.default\.json$/, "");
+  const padraoServe = idiomaDe(idiomaDoPadrao) === idiomaDe(idioma);
+  for (const nome of definicaoDoIdioma(idioma).locales) {
+    const conteudo = text(files, `locales/${nome}`);
+    if (!conteudo) continue;
+    if (conteudo === padrao && !padraoServe) continue;
+    return { conteudo, arquivo: `locales/${nome}`, fiel: true };
+  }
+  /* nada de fiel: fica o padrao do tema, e quem chamou sabe pelo `fiel` que o
+     texto do tema NAO esta no idioma pedido */
+  return { conteudo: padrao, arquivo: caminhoPadrao, fiel: padraoServe };
+}
+
+export async function renderThemePage({ theme, files, pageId, assetBase, cartItems, onlySections, handle, variantId, nicheId, capasDeColecao, idioma }: RenderOptions): Promise<string> {
+  /**
+   * O IDIOMA desta renderizacao, resolvido UMA vez.
+   *
+   * Na ordem: o que o chamador pediu, o que o tema salvo declara e, por fim, o
+   * portugues — que e o idioma de toda loja gerada antes desta tela. Resolver
+   * aqui, e nao em cada ponto, e o que impede meia pagina numa lingua e meia
+   * noutra quando alguem esquece de passar o parametro adiante.
+   */
+  const cod = idiomaDe(idioma ?? theme.orbisIdioma ?? theme.globalValues?.language);
+  const T = textosDoIdioma(cod);
+  const paisEMoeda = definicaoDoIdioma(cod);
   /* a vitrine desta renderização: os produtos do nicho, ou o catálogo padrão */
-  const loja = lojaDoNicho(nicheId);
+  const loja = lojaDoNicho(nicheId, cod);
   const assetPathByName = new Map<string, string>();
   for (const path of files.keys()) {
     if (path.startsWith("assets/")) assetPathByName.set(path.slice("assets/".length).toLowerCase(), path);
@@ -768,7 +837,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
          responde 1200×1200 mantém o banner quadrado por mais correto que o SVG
          esteja. */
       return new ThemeImage(
-        PLACEHOLDER_SVG("Conecte esta imagem", undefined, formato),
+        PLACEHOLDER_SVG(T.render.placeholderConecte, undefined, formato),
         "",
         formato.largura,
         formato.altura,
@@ -818,14 +887,33 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     const chave = handleDeColecao(String(nome ?? ""));
     if (chave && !nomes[chave]) nomes[chave] = String(nome).trim();
   }
-  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, capas, nomes, imageFor, schemeFor, registerFont });
+  const settings = resolveSettingValues(theme.globalValues, allGlobalDefinitions, { loja, idioma: cod, capas, nomes, imageFor, schemeFor, registerFont });
   if (schemeList.length) settings.color_schemes = schemeCollection;
 
-  const localeFile =
-    text(files, "locales/pt-BR.json") ?? text(files, "locales/pt-PT.json") ??
-    text(files, Array.from(files.keys()).find((path) => /^locales\/[^.]+\.default\.json$/.test(path)) ?? "") ??
-    text(files, "locales/en.default.json");
-  const translations = flattenTranslations(parseJson<Record<string, unknown>>(localeFile, {}));
+  const escolhida = traducaoDoTema(files, cod);
+  /**
+   * A REDE por baixo: as frases de vitrine que o tema nao trouxe.
+   *
+   * Entra ABAIXO da traducao do tema — ele vence onde tem —, e so tem efeito
+   * quando ele NAO traz o idioma escolhido. Ver `traducao-tema.mjs`: medido no
+   * acervo, um Dawn de loja brasileira traz 29 traducoes de verdade e um
+   * `en.json` que e copia do portugues, entao escolher ingles entregava a loja
+   * com o botao dizendo "Adicionar ao carrinho".
+   */
+  const doTema = flattenTranslations(parseJson<Record<string, unknown>>(escolhida.conteudo, {}));
+  /**
+   * A ORDEM importa, e inverte conforme o tema seja fiel ou nao.
+   *
+   * Tema FIEL: so ele. Quem conhece as chaves daquele tema e ele, e a Shopify
+   * escreve melhor a Shopify do que nos.
+   *
+   * Tema NAO fiel: ele continua sendo o CHAO — as 250 chaves que a rede nao
+   * cobre precisam resolver para alguma coisa —, mas a rede vem POR CIMA. Ao
+   * contrario, o portugues do tema sobrescrevia a rede e o botao continuava
+   * dizendo "Adicionar ao carrinho" numa loja em ingles. Medido: 7 palavras
+   * portuguesas na home, com a rede carregada e vencida.
+   */
+  const translations = escolhida.fiel ? doTema : { ...doTema, ...redeDeTraducao(cod) };
 
   const schemaByType = new Map(theme.sectionSchemas.map((schema) => [schema.type, schema]));
   /* fontes de seções/blocos de QUALQUER página entram antes do render: o
@@ -849,14 +937,14 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   }
   const resolveSection = (section: ShopifySectionInstance) => {
     const schema = schemaByType.get(section.type);
-    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, capas, nomes, imageFor, schemeFor, registerFont }, section.type);
+    const resolvedSettings = resolveSettingValues(section.settings, schema?.settings ?? [], { loja, idioma: cod, capas, nomes, imageFor, schemeFor, registerFont }, section.type);
     const blocks = section.blocks.map((block, index) => {
       const blockSchema = schema?.blocks.find((item) => item.type === block.type);
       return {
         id: block.id, type: block.type,
         /* o formato do placeholder é da SEÇÃO: no Dawn a imagem do banner mora
            num bloco `slide`, cujo nome não diz que aquilo é um banner */
-        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, capas, nomes, vaga: index, imageFor, schemeFor, registerFont }, section.type),
+        settings: resolveSettingValues(block.settings, blockSchema?.settings ?? [], { loja, idioma: cod, capas, nomes, vaga: index, imageFor, schemeFor, registerFont }, section.type),
         shopify_attributes: `data-block-id="${block.id}"`,
         index: index + 1, index0: index,
       };
@@ -864,9 +952,9 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     return { id: section.id, settings: resolvedSettings, blocks, index: 1, index0: 0, location: "template", type: section.type, disabled: section.disabled === true };
   };
 
-  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle, capas, undefined, nomes));
+  const collectionsProxy = proxyWithFallback<unknown>({}, (handle) => demoCollection(loja, handle, capas, undefined, nomes, cod));
   const productsProxy = proxyWithFallback<unknown>({}, (handle) => demoProduct(loja, handle, 2));
-  const linklistsProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: "Menu", handle, links: DEMO_LINKS, levels: 1 }));
+  const linklistsProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: "Menu", handle, links: linksDeDemonstracao(cod), levels: 1 }));
   const pagesProxy = proxyWithFallback<unknown>({}, (handle) => ({ title: handle, handle, content: "", url: `/pages/${handle}` }));
   const imagesProxy = proxyWithFallback<unknown>({}, (name) => imageFor(name) ?? demoImage("Imagem"));
 
@@ -874,12 +962,12 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   const globals: Record<string, unknown> = {
     settings,
     shop: {
-      name: theme.themeName.replace(/\s*\(.*\)$/, ""), locale: "pt-BR", currency: "BRL",
-      money_format: "R$ {{amount_with_comma_separator}}", money_with_currency_format: "R$ {{amount_with_comma_separator}} BRL",
+      name: theme.themeName.replace(/\s*\(.*\)$/, ""), locale: paisEMoeda.locale, currency: paisEMoeda.moeda.iso,
+      money_format: formatoDeDinheiro(cod), money_with_currency_format: `${formatoDeDinheiro(cod)} ${paisEMoeda.moeda.iso}`,
       url: "", secure_url: "", domain: "minha-loja.exemplo", permanent_domain: "minha-loja.exemplo",
       email: "contato@exemplo.com", description: "", products_count: loja.produtos.length, collections_count: 3,
       customer_accounts_enabled: true, customer_accounts_optional: true,
-      enabled_payment_types: ["visa", "master", "pix"], published_locales: [{ iso_code: "pt-BR", primary: true }],
+      enabled_payment_types: ["visa", "master", "pix"], published_locales: [{ iso_code: paisEMoeda.locale, primary: true }],
       metafields: {}, brand: { logo: null, colors: {} },
     },
     /* caminhos REAIS (como na Shopify): é o que permite ao editor traduzir um
@@ -896,11 +984,11 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     },
     localization: {
       language: { iso_code: "pt-BR", endonym_name: "português (Brasil)" },
-      country: { iso_code: "BR", name: "Brasil", currency: { iso_code: "BRL", symbol: "R$" }, unit_system: "metric", market: { handle: "br" } },
+      country: { iso_code: paisEMoeda.pais.iso, name: paisEMoeda.pais.nome, currency: { iso_code: paisEMoeda.moeda.iso, symbol: paisEMoeda.moeda.simbolo }, unit_system: "metric", market: { handle: paisEMoeda.pais.iso.toLowerCase() } },
       market: { handle: "br", metafields: {} },
       available_countries: [], available_languages: [],
     },
-    cart: buildCart(loja, cartItems),
+    cart: buildCart(loja, cartItems, paisEMoeda.moeda),
     customer: null,
     template: { name: pageBase, suffix: pageId.includes(".") ? pageId.split(".").slice(1).join(".") : null, directory: null, toString: () => pageBase },
     /* getter: quando o layout imprime {{ content_for_header }} (sempre por
@@ -915,7 +1003,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
          temas depende dele (designMode, locale, routes) para inicializar
          sliders, carrosséis e menus. Sem o shim, ReferenceError e seção morta. */
       const themeName = JSON.stringify(theme.themeName);
-      const runtime = `<script>window.Shopify=window.Shopify||{};Object.assign(window.Shopify,{designMode:true,shop:"minha-loja.exemplo",locale:"pt-BR",currency:{active:"BRL",rate:"1.0"},country:"BR",theme:{name:${themeName},role:"development"},routes:{root:"/"},cdnHost:"cdn.shopify.com",PaymentButton:{init:function(){}}});</script>`;
+      const runtime = `<script>window.Shopify=window.Shopify||{};Object.assign(window.Shopify,{designMode:true,shop:"minha-loja.exemplo",locale:"${paisEMoeda.locale}",currency:{active:"${paisEMoeda.moeda.iso}",rate:"1.0"},country:"${paisEMoeda.pais.iso}",theme:{name:${themeName},role:"development"},routes:{root:"/"},cdnHost:"cdn.shopify.com",PaymentButton:{init:function(){}}});</script>`;
       return `<meta name="orbis-preview" content="1">${runtime}${fonts}`;
     },
     linklists: linklistsProxy,
@@ -928,7 +1016,7 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     /* o handle da rota escolhe o produto/coleção: é o que faz cada cartão
        clicado abrir o SEU produto, e o quick-add mostrar o certo */
     product: comVarianteSelecionada(demoProduct(loja, pageId.startsWith("product") ? handle ?? "" : ""), variantId),
-    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo", capas, undefined, nomes),
+    collection: demoCollection(loja, pageId.startsWith("collection") ? handle ?? "" : "colecao-demo", capas, undefined, nomes, cod),
     article: { title: "Artigo de demonstração", content: "<p>Conteúdo do artigo aparecerá aqui.</p>", excerpt: "", author: "Equipe", published_at: new Date().toISOString(), image: null, url: "/blogs/news/artigo-demo", tags: [], comments: [], comments_count: 0, comments_enabled: false },
     blog: { title: "Blog", url: "/blogs/news", articles: [], articles_count: 0, all_tags: [] },
     page: { title: "Página", content: "<p>Conteúdo da página.</p>", url: "/pages/pagina" },
@@ -1031,9 +1119,17 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     return ehInteiro(esquerda) && ehInteiro(direita) && !argumentoFracionario(this) ? Math.floor(resto) : resto;
   });
 
+  /**
+   * O DINHEIRO no formato do idioma.
+   *
+   * O simbolo acompanha a lingua e o VALOR nao muda: `R$ 13,11` vira `$13.11`.
+   * Nao e cambio, e rotulo — a decisao esta escrita em `idiomas.mjs`, junto do
+   * porque. O catalogo do acervo e demonstracao, e quem publica troca pelos
+   * precos dele.
+   */
   const moneyFormat = (cents: unknown) => {
-    const value = typeof cents === "number" ? cents / 100 : parseFloat(String(cents ?? 0)) / 100;
-    return `R$ ${(Number.isFinite(value) ? value : 0).toFixed(2).replace(".", ",")}`;
+    const bruto = typeof cents === "number" ? cents : parseFloat(String(cents ?? 0));
+    return formatarDinheiro(Number.isFinite(bruto) ? bruto : 0, cod);
   };
   const urlOf = (value: unknown): string => value instanceof ThemeImage ? value.src : typeof value === "string" ? value : String(record(value).src ?? record(value).url ?? "");
 
@@ -1041,17 +1137,17 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   engine.registerFilter("asset_img_url", (name) => assetUrl(String(name)));
   engine.registerFilter("global_asset_url", (name) => `https://cdn.shopify.com/shopifycloud/shopify/assets/${name}`);
   engine.registerFilter("shopify_asset_url", (name) => `https://cdn.shopify.com/shopifycloud/shopify/assets/${name}`);
-  engine.registerFilter("file_url", (name) => imageFor(String(name))?.src ?? PLACEHOLDER_SVG("Arquivo da loja"));
-  engine.registerFilter("file_img_url", (name) => imageFor(String(name))?.src ?? PLACEHOLDER_SVG("Arquivo da loja"));
-  engine.registerFilter("image_url", (value) => urlOf(value ?? "") || PLACEHOLDER_SVG("Imagem"));
-  engine.registerFilter("img_url", (value) => urlOf(value ?? "") || PLACEHOLDER_SVG("Imagem"));
+  engine.registerFilter("file_url", (name) => imageFor(String(name))?.src ?? PLACEHOLDER_SVG(T.render.placeholderArquivo));
+  engine.registerFilter("file_img_url", (name) => imageFor(String(name))?.src ?? PLACEHOLDER_SVG(T.render.placeholderArquivo));
+  engine.registerFilter("image_url", (value) => urlOf(value ?? "") || PLACEHOLDER_SVG(T.render.placeholderImagem));
+  engine.registerFilter("img_url", (value) => urlOf(value ?? "") || PLACEHOLDER_SVG(T.render.placeholderImagem));
   engine.registerFilter("image_tag", function (value, ...args) {
     const named = argPairs(args);
     const url = urlOf(value ?? "");
     const cls = named.class ? ` class="${named.class}"` : "";
     const alt = named.alt ?? (value instanceof ThemeImage ? value.alt : "");
     const sizes = named.sizes ? ` sizes="${named.sizes}"` : "";
-    return `<img src="${url || PLACEHOLDER_SVG("Imagem")}"${cls} alt="${alt}" loading="lazy"${sizes}>`;
+    return `<img src="${url || PLACEHOLDER_SVG(T.render.placeholderImagem)}"${cls} alt="${alt}" loading="lazy"${sizes}>`;
   });
   engine.registerFilter("placeholder_svg_tag", (name, cls) =>
     `<svg class="${cls ?? ""} placeholder-svg" viewBox="0 0 525 525" xmlns="http://www.w3.org/2000/svg"><rect width="525" height="525" fill="#e5e7eb"/><path d="M0 525 393 131l131 131v263z" fill="#d1d5db"/><circle cx="140" cy="140" r="61" fill="#d1d5db"/></svg>`);
@@ -1077,9 +1173,9 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
     return value;
   });
   engine.registerFilter("money", moneyFormat);
-  engine.registerFilter("money_with_currency", (cents) => `${moneyFormat(cents)} BRL`);
-  engine.registerFilter("money_without_currency", (cents) => moneyFormat(cents).replace("R$ ", ""));
-  engine.registerFilter("money_without_trailing_zeros", (cents) => moneyFormat(cents).replace(/,00$/, ""));
+  engine.registerFilter("money_with_currency", (cents) => `${moneyFormat(cents)} ${paisEMoeda.moeda.iso}`);
+  engine.registerFilter("money_without_currency", (cents) => moneyFormat(cents).replace(paisEMoeda.moeda.simbolo, "").trim());
+  engine.registerFilter("money_without_trailing_zeros", (cents) => moneyFormat(cents).replace(paisEMoeda.moeda.decimal === "," ? /,00/ : /\.00/, ""));
   engine.registerFilter("weight_with_unit", (grams) => `${((Number(grams) || 0) / 1000).toFixed(1)} kg`);
   engine.registerFilter("handle", (value) => String(value ?? "").toLowerCase().replace(/[^\w]+/g, "-").replace(/^-+|-+$/g, ""));
   engine.registerFilter("handleize", (value) => String(value ?? "").toLowerCase().replace(/[^\w]+/g, "-").replace(/^-+|-+$/g, ""));
@@ -1411,9 +1507,11 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
    título, preço e imagem do produto, sem depender de raspar o DOM do tema */
 var catalogo=${JSON.stringify(catalogoPorVariante(loja))};
 var itens=[];var pedidos={};var seq=0;
-function moeda(c){return "R$ "+(c/100).toFixed(2).replace(".",",");}
+/* o dinheiro do carrinho do NAVEGADOR, no mesmo formato do servidor: dois
+   formatos na mesma pagina e o tipo de coisa que so aparece na loja */
+function moeda(c){var n=(c/100).toFixed(2).replace(".","${paisEMoeda.moeda.decimal}");return ${paisEMoeda.moeda.simboloAntes ? `"${paisEMoeda.moeda.simbolo}${paisEMoeda.moeda.espaco}"+n` : `n+"${paisEMoeda.moeda.espaco}${paisEMoeda.moeda.simbolo}"`};}
 function estado(){var total=0,contagem=0;for(var i=0;i<itens.length;i++){total+=itens[i].price*itens[i].quantity;contagem+=itens[i].quantity;}
-return {token:"orbis-preview-cart",item_count:contagem,total_price:total,original_total_price:total,items_subtotal_price:total,total_discount:0,currency:"BRL",requires_shipping:itens.length>0,note:null,attributes:{},items:itens.map(function(it,idx){return {id:it.id,key:it.id+":"+idx,quantity:it.quantity,title:it.title,product_title:it.product_title||it.title,variant_title:it.variant_title||null,price:it.price,final_price:it.price,line_price:it.price*it.quantity,final_line_price:it.price*it.quantity,original_line_price:it.price*it.quantity,url:it.url,image:it.image,featured_image:{url:it.image,alt:it.title},product_id:it.product_id,variant_id:it.id,handle:it.handle,quantity_rule:{min:1,max:null,increment:1},properties:{}};})};}
+return {token:"orbis-preview-cart",item_count:contagem,total_price:total,original_total_price:total,items_subtotal_price:total,total_discount:0,currency:"${paisEMoeda.moeda.iso}",requires_shipping:itens.length>0,note:null,attributes:{},items:itens.map(function(it,idx){return {id:it.id,key:it.id+":"+idx,quantity:it.quantity,title:it.title,product_title:it.product_title||it.title,variant_title:it.variant_title||null,price:it.price,final_price:it.price,line_price:it.price*it.quantity,final_line_price:it.price*it.quantity,original_line_price:it.price*it.quantity,url:it.url,image:it.image,featured_image:{url:it.image,alt:it.title},product_id:it.product_id,variant_id:it.id,handle:it.handle,quantity_rule:{min:1,max:null,increment:1},properties:{}};})};}
 function dadosDoBotao(alvo){var form=alvo&&alvo.closest?alvo.closest("form"):null;var card=alvo&&alvo.closest?alvo.closest("[data-product-id],.card-wrapper,.grid__item,product-card,.card"):null;
 var id=null;if(form){var input=form.querySelector('[name="id"]');if(input&&input.value)id=parseInt(input.value,10);}
 var titulo=(card&&(card.querySelector(".card__heading,.card-information__text,h3,h2")||{}).textContent||"").replace(/\\s+/g," ").trim();

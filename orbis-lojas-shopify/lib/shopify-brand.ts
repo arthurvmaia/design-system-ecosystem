@@ -26,6 +26,8 @@
 import { misturar, nichoPorId, textoSobre } from "./marca-generator.mjs";
 import type { ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "./shopify-theme";
 import { sortearVitrine } from "./sorteio-de-vitrine";
+import { idiomaDe } from "./idiomas.mjs";
+import { nichoNoIdioma } from "./nichos-textos.mjs";
 
 export type MarcaAplicavel = {
   name: string;
@@ -47,6 +49,16 @@ export type MarcaAplicavel = {
   bodyFont?: string;
   collections?: string[];
   announcement?: string;
+  /**
+   * O IDIOMA da loja, que o tema passa a carregar consigo.
+   *
+   * Ele nao muda setting nenhum aqui — o texto ja veio traduzido de quem
+   * gerou a marca. O que ele faz e ficar GRAVADO no tema, para o Editor, a
+   * previa e o pacote lerem depois: sem isso, a loja em ingles voltava em
+   * portugues assim que alguem a reabria, porque o idioma so existia no
+   * pedido que a criou.
+   */
+  idioma?: string;
   /**
    * URL de cada peça de imagem, por chave (`logo`, `banner-desktop`,
    * `banner-mobile`, `colecao-1`…). Vem do provedor de IA quando o cliente
@@ -806,6 +818,12 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
    * vaga — mover isso seria passar por cima de uma decisão que tem autor.
    */
   const sorteada = sortearVitrine(theme, marca.semente?.trim() || marca.name, { naoMover: SECAO_DE_BANNER });
+  /* o idioma viaja GRAVADO no tema, junto do nicho e das capas: e o que faz a
+     loja continuar na lingua dela ao ser reaberta ou reimportada */
+  if (marca.idioma) {
+    sorteada.theme.orbisIdioma = marca.idioma;
+    sorteada.theme.globalValues = { ...sorteada.theme.globalValues, language: marca.idioma };
+  }
   return { theme: sorteada.theme, alterados, violacoes: violacoesDoTema(sorteada.theme) };
 }
 
@@ -892,11 +910,16 @@ export function violacoesDoTema(theme: ShopifyThemeImport): string[] {
  * SEM nicho não há padrão de onde tirar, e a lista continua vazia: inventar
  * categoria para quem não escolheu catálogo seria pior que não ter nenhuma.
  */
-export function colecoesDaLoja(dados: { nicheId?: string; brand: { collections?: string[] } }): string[] {
+export function colecoesDaLoja(dados: { nicheId?: string; idioma?: string; brand: { collections?: string[] } }): string[] {
   const escritas = (dados.brand.collections ?? []).map((nome) => String(nome ?? "").trim()).filter(Boolean);
   if (escritas.length) return escritas;
   if (!dados.nicheId) return [];
-  return (nichoPorId(dados.nicheId).colecoes ?? []).slice(0, 6);
+  /* as do nicho NO IDIOMA da loja: sem isto, o cliente que nao digitou
+     colecao nenhuma recebia uma loja em ingles com "Smartwatches, Analogicos,
+     Esportivos" na vitrine — e a instalacao criava as coleções com esses nomes
+     na conta dele */
+  const nicho = nichoNoIdioma(nichoPorId(dados.nicheId), idiomaDe(dados.idioma));
+  return (nicho.colecoes ?? []).slice(0, 6);
 }
 
 export function handleDeColecao(nome: string): string {

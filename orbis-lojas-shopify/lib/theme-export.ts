@@ -517,13 +517,14 @@ export function exportThemeZip(
   /* e o NOME próprio da loja viaja junto, com o modelo nativo do estúdio: sem
      eles a loja importava com o id do TEMA de origem, por cima dele, e com o
      conteúdo de demonstração no lugar da marca */
-  if (theme.orbisNicheId || theme.orbisCapas || theme.orbisLoja || theme.orbisColecoes) {
+  if (theme.orbisNicheId || theme.orbisCapas || theme.orbisLoja || theme.orbisColecoes || theme.orbisIdioma) {
     output[ARQUIVO_DA_LOJA] = strToU8(marcadorDaLoja(theme.orbisNicheId ?? "", theme.orbisCapas ?? {}, {
       nome: theme.orbisLoja?.nome,
       slug: theme.orbisLoja?.slug,
       customizacao: theme.orbisCustomizacao,
       colecoes: theme.orbisColecoes,
       sorteio: theme.orbisSorteio,
+      idioma: theme.orbisIdioma,
     }));
   }
 

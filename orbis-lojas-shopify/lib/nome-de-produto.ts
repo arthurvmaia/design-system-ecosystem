@@ -26,6 +26,9 @@
  */
 
 import { NOMES_CURADOS } from "./nomes-curados";
+import { produtoNoIdioma } from "./catalogo-idiomas";
+import { IDIOMA_PADRAO, idiomaDe } from "./idiomas.mjs";
+import { textosDoIdioma } from "./textos.mjs";
 
 /**
  * Onde o anúncio deixa de falar do produto e passa a falar da operação.
@@ -189,7 +192,17 @@ export function caracteristicasDoProduto(bruto: string, limite = 60): string[] {
  * (`nomes-curados.ts`), é ele que vale; produto novo, que o extrator traga
  * amanhã, continua saindo pela regra em vez de sair sem nome.
  */
-export function nomeDeVitrine(produto: { handle?: string; title: string }): string {
+export function nomeDeVitrine(produto: { handle?: string; title: string }, idioma: string = IDIOMA_PADRAO): string {
+  /**
+   * NO IDIOMA DA LOJA primeiro, e o nome traduzido vem antes do curado.
+   *
+   * Sem isto, uma loja em ingles abria com o cartao dizendo "Camiseta de malha
+   * manga curta" no meio de uma pagina inteira em ingles: o nome curado e
+   * portugues, e ele vencia por ser o mais especifico. Traduzido e MAIS
+   * especifico ainda — e o nome curado daquela loja.
+   */
+  const traduzido = produto.handle ? produtoNoIdioma(produto.handle, idiomaDe(idioma))?.nome : undefined;
+  if (traduzido) return traduzido;
   const curado = produto.handle ? NOMES_CURADOS[produto.handle] : undefined;
   return curado ?? nomeDeProduto(produto.title);
 }
@@ -208,13 +221,28 @@ function seguro(texto: string): string {
  * origem continua declarada como o que é: da ORIGEM, não uma avaliação que
  * esta loja recebeu.
  */
-export function descricaoDoProduto(fonte: { title: string; rating?: number | null; sold?: string }): string {
-  const caracteristicas = caracteristicasDoProduto(fonte.title);
+export function descricaoDoProduto(
+  fonte: { handle?: string; title: string; rating?: number | null; sold?: string },
+  idioma: string = IDIOMA_PADRAO,
+): string {
+  const codigo = idiomaDe(idioma);
+  /**
+   * O TITULO no idioma da loja e a fonte de tudo o que sai daqui.
+   *
+   * A descricao nao e escrita: ela e derivada do anuncio. Trocando o anuncio
+   * pelo traduzido, a lista de caracteristicas e o paragrafo de reserva saem no
+   * idioma da loja sem que nada abaixo precise mudar — e sem inventar frase
+   * nenhuma, porque continuam sendo as palavras do fornecedor.
+   */
+  const titulo = (fonte.handle ? produtoNoIdioma(fonte.handle, codigo)?.titulo : undefined) ?? fonte.title;
+  const caracteristicas = caracteristicasDoProduto(titulo);
   const corpo = caracteristicas.length
     ? `<ul>${caracteristicas.map((item) => `<li>${seguro(item)}</li>`).join("")}</ul>`
-    : `<p>${seguro(comInicialMaiuscula(semLigacaoFinal(trechos(fonte.title).join(", "))))}</p>`;
+    : `<p>${seguro(comInicialMaiuscula(semLigacaoFinal(trechos(titulo).join(", "))))}</p>`;
+  /* a nota e da ORIGEM, e a frase diz isso nos tres idiomas: nao e avaliacao
+     que ESTA loja recebeu */
   const nota = fonte.rating
-    ? `<p>Nota ${fonte.rating} na origem${fonte.sold ? `, ${seguro(limpar(fonte.sold))}` : ""}.</p>`
+    ? `<p>${seguro(textosDoIdioma(codigo).render.notaDaOrigem(fonte.rating, fonte.sold ? limpar(fonte.sold) : ""))}</p>`
     : "";
   return `${corpo}${nota}`;
 }

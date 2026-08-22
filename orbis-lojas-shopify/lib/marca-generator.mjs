@@ -23,6 +23,10 @@
  *
  * Puro e testável com `node --test`, como o resto das regras.
  */
+import { IDIOMA_PADRAO, idiomaDe } from "./idiomas.mjs";
+import { textosDoIdioma } from "./textos.mjs";
+import { nichoNoIdioma } from "./nichos-textos.mjs";
+
 
 /** Hash FNV-1a: transforma a semente de texto em número para o gerador. */
 function hashSemente(valor) {
@@ -523,8 +527,22 @@ export function logoDaMarca({ name, primaryColor, accentColor }) {
  * preenchido ali vence o gerado, campo a campo. É o que permite gerar tudo e
  * depois trocar só o nome, sem perder o resto.
  */
-export function gerarMarca({ nicheId, semente = "orbis", sobrescritas = {} } = {}) {
-  const nicho = nichoPorId(nicheId);
+/**
+ * @param {{ nicheId?: string, semente?: string, sobrescritas?: Record<string, unknown>, idioma?: string }} [pedido]
+ */
+export function gerarMarca({ nicheId, semente = "orbis", sobrescritas = {}, idioma = IDIOMA_PADRAO } = {}) {
+  /**
+   * O nicho JA NO IDIOMA da loja, e o sorteio a partir do id.
+   *
+   * Traduzir o nicho aqui, no comeco, e o que faz a manchete, as colecoes, os
+   * beneficios e o FAQ sairem na lingua escolhida sem que nada mais adiante
+   * precise saber que existe idioma. O SORTEIO continua sendo pelo `id`, que
+   * nao traduz: a mesma semente devolve a mesma loja nos tres idiomas, e o
+   * cliente que troca de idioma nao ve a marca inteira mudar por baixo.
+   */
+  const codigo = idiomaDe(idioma);
+  const textos = textosDoIdioma(codigo);
+  const nicho = nichoNoIdioma(nichoPorId(nicheId), codigo);
   const sorteio = sorteador(`${nicho.id}:${semente}`);
 
   const raiz = escolher(sorteio, nicho.raizes);
@@ -562,10 +580,13 @@ export function gerarMarca({ nicheId, semente = "orbis", sobrescritas = {} } = {
   return {
     nicheId: nicho.id,
     nicheNome: nicho.nome,
+    /* o idioma viaja COM a marca: e ele que o gerador, o tema e o pacote leem
+       adiante, e um campo paralelo seria esquecido numa das pontas */
+    idioma: codigo,
     semente: String(semente),
     name: nome,
     slogan: texto(sobrescritas.slogan) || manchete,
-    description: texto(sobrescritas.description) || `${nicho.resumo} Curadoria, envio para todo o Brasil e atendimento de gente de verdade.`,
+    description: texto(sobrescritas.description) || `${nicho.resumo} ${textos.marca.curadoria}`,
     primaryColor: primaria,
     backgroundColor: fundo,
     accentColor: destaque,
@@ -581,7 +602,7 @@ export function gerarMarca({ nicheId, semente = "orbis", sobrescritas = {} } = {
     collections: colecoes,
     benefits: nicho.beneficios,
     faq: nicho.perguntas.map(([pergunta, resposta]) => ({ pergunta, resposta })),
-    announcement: `${nicho.beneficios[0]} · Envio para todo o Brasil`,
+    announcement: `${nicho.beneficios[0]} · ${textos.marca.envio}`,
   };
 }
 

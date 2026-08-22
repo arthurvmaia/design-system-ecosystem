@@ -8,6 +8,7 @@ import { aplicarMarcaNoTema, colecoesDaLoja, handleDeColecao } from "@/lib/shopi
 import { ARQUIVO_DA_LOJA, marcadorDaLoja, type ShopifyThemeImport } from "@/lib/shopify-theme";
 import { pecasDaMarca } from "@/lib/marca-imagens";
 import { csvDeProdutos } from "@/lib/catalogo-csv";
+import { IDIOMA_PADRAO, IDIOMAS, idiomaDe } from "@/lib/idiomas.mjs";
 import { kitDeLogo } from "@/lib/kit-de-logo";
 import { montarTemaShopify } from "@/lib/pacote-da-loja";
 
@@ -52,6 +53,15 @@ const requestSchema = z.object({
    * vale, para não quebrar pedido gravado antes disto.
    */
   criarMarca: z.boolean().optional(),
+  /**
+   * O IDIOMA da loja, escolhido na primeira tela.
+   *
+   * Ausente e portugues, e nao por omissao: e o unico idioma que existia antes
+   * desta tela, e todo pedido gravado ate aqui tem de continuar valendo.
+   */
+  /* a tupla vem de `idiomas.mjs`, que e a fonte unica; o `as` existe porque o
+     modulo e JS e o zod pede tupla, nao array */
+  idioma: z.enum(IDIOMAS as [string, ...string[]]).optional(),
   seed: z.string().min(1).max(40).optional(),
   brand: z.object({
     name: z.string().min(2).max(48),
@@ -119,9 +129,12 @@ export async function POST(request: Request) {
        isso, com o que ele digitou vencendo campo a campo. O nicho sozinho não
        autoriza inventar identidade — ele é o catálogo. */
     const criarMarca = parsed.data.criarMarca ?? Boolean(parsed.data.nicheId);
+    /* o IDIOMA e resolvido uma vez e desce por todo o resto: marca, tema,
+       catalogo, previa, CSV e marcador leem daqui */
+    const idioma = idiomaDe(parsed.data.idioma ?? IDIOMA_PADRAO);
     const marca = criarMarca && parsed.data.nicheId
-      ? gerarMarca({ nicheId: parsed.data.nicheId, semente: parsed.data.seed ?? "orbis", sobrescritas: parsed.data.brand })
-      : { ...parsed.data.brand, collections: colecoesDaLoja(parsed.data), announcement: "" };
+      ? gerarMarca({ nicheId: parsed.data.nicheId, semente: parsed.data.seed ?? "orbis", sobrescritas: parsed.data.brand, idioma })
+      : { ...parsed.data.brand, idioma, collections: colecoesDaLoja({ ...parsed.data, idioma }), announcement: "" };
     /* toda loja sai com logo, inclusive a preenchida à mão: sem isto o
        cabeçalho do site entregue ficava com o espaço da marca vazio */
     if (!marca.logoDataUri) marca.logoDataUri = logoDaMarca(marca).dataUri;
@@ -230,6 +243,7 @@ export async function POST(request: Request) {
     }
     const resultado = aplicarMarcaNoTema(shopify, {
       ...marca,
+      idioma,
       /* explícita, e não herdada do formato do gerador: é ela que sorteia a
          ordem da home, e o mesmo valor foi enviado na prévia */
       semente: parsed.data.seed?.trim() || undefined,
@@ -244,6 +258,7 @@ export async function POST(request: Request) {
       orbisNicheId: parsed.data.nicheId,
       ...(Object.keys(capasDeColecao).length ? { orbisCapas: capasDeColecao } : {}),
       orbisLoja: { nome: brand.name, slug: brand.slug },
+      orbisIdioma: idioma,
       orbisCustomizacao: modeloNativo,
     };
     customizacao.shopify = temaComMarca;
@@ -317,7 +332,7 @@ export async function POST(request: Request) {
      */
     /* as coleções vão no CSV: é a importação que as CRIA, e é por isso que o
        tema pode apontar para elas sem deixar cartão vazio */
-    const csv = csvDeProdutos(parsed.data.nicheId, marca.collections ?? []);
+    const csv = csvDeProdutos(parsed.data.nicheId, marca.collections ?? [], idioma);
     if (csv) {
       arquivos["previa-local/produtos-para-importar.csv"] = strToU8(csv);
       arquivos["previa-local/COMO-SUBIR-OS-PRODUTOS.txt"] = strToU8(
@@ -430,6 +445,7 @@ export async function POST(request: Request) {
       customizacao: modeloNativo,
       colecoes: temaComMarca.orbisColecoes,
       sorteio: temaComMarca.orbisSorteio,
+      idioma,
     }));
 
     const zip = zipSync(arquivos, { level: 6 });

@@ -1,4 +1,5 @@
 import { placarDasArtes, type ArteDaLoja } from "./artes-da-loja";
+import { IDIOMA_PADRAO, idiomaDe } from "./idiomas.mjs";
 
 /**
  * EM QUE PONTO O PROJETO ESTÁ — e onde o cliente parou.
@@ -59,10 +60,18 @@ export type PontoDoProjeto = {
   themeId: string;
   /** O último estado registrado, para o resumo. A verdade é `estadoDoProjeto`. */
   estado: EstadoDoProjeto;
+  /**
+   * O IDIOMA em que a loja vai nascer.
+   *
+   * Guardado junto do resto do ponto porque a escolha e do PRIMEIRO passo e o
+   * pedido so sai no ultimo: quem fecha o navegador no meio tem de voltar na
+   * lingua que escolheu, e nao em portugues.
+   */
+  idioma: string;
 };
 
 export const PONTO_INICIAL: PontoDoProjeto = {
-  passo: 0, modo: "", nicheId: "", themeId: "", estado: "editing",
+  passo: 0, modo: "", nicheId: "", themeId: "", estado: "editing", idioma: IDIOMA_PADRAO,
 };
 
 /**
@@ -126,6 +135,9 @@ export function pontoLido(bruto: unknown): PontoDoProjeto {
     nicheId: texto(dado.nicheId),
     themeId: texto(dado.themeId),
     estado: ESTADOS.includes(estado) ? estado : "editing",
+    /* quem parou no meio antes desta tela existir volta em portugues, que era
+       o unico idioma que havia — nao numa lingua sorteada */
+    idioma: idiomaDe(dado.idioma),
   };
 }
 

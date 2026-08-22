@@ -4,6 +4,7 @@ import { getIdentity } from "@/lib/auth";
 import { ensureDatabase, ensureUser, getD1 } from "@/lib/data";
 import { PRODUTOS_POR_NICHO } from "@/lib/catalogo-nichos";
 import { descricaoDoProduto, nomeDeVitrine } from "@/lib/nome-de-produto";
+import { IDIOMA_PADRAO } from "@/lib/idiomas.mjs";
 import { nichoPorId } from "@/lib/marca-generator.mjs";
 import { zipSync } from "fflate";
 import { montarTemaShopify } from "@/lib/pacote-da-loja";
@@ -89,14 +90,16 @@ async function temaDoProjeto(viewerId: string, projectId: string): Promise<Shopi
  * que entregassem lojas diferentes seriam duas verdades sobre o que o cliente
  * aprovou.
  */
-function produtosDoNicho(nicheId: string | undefined, colecoes: readonly string[]): ProdutoParaLoja[] {
+function produtosDoNicho(nicheId: string | undefined, colecoes: readonly string[], idioma: string = IDIOMA_PADRAO): ProdutoParaLoja[] {
+  /* a loja instalada na conta do cliente recebe os produtos NO IDIOMA dela:
+     era a ultima ponta em portugues de uma loja escolhida em ingles */
   const fonte = nicheId ? PRODUTOS_POR_NICHO[nicheId] : undefined;
   if (!fonte?.length) return [];
   const destinos = colecoes.map((nome) => String(nome ?? "").trim()).filter(Boolean);
   return fonte.map((produto, indice) => ({
     handle: produto.handle,
-    titulo: nomeDeVitrine(produto),
-    descricaoHtml: descricaoDoProduto(produto),
+    titulo: nomeDeVitrine(produto, idioma),
+    descricaoHtml: descricaoDoProduto(produto, idioma),
     precoCentavos: produto.price,
     precoComparadoCentavos: produto.compareAtPrice,
     imagens: produto.images ?? [],
@@ -232,7 +235,7 @@ export async function POST(request: Request) {
     if (!tema) return Response.json({ error: "PROJECT_NOT_FOUND" }, { status: 404 });
 
     const colecoes = (tema.orbisColecoes ?? nichoPorId(tema.orbisNicheId).colecoes ?? []).slice(0, 12);
-    const produtos = produtosDoNicho(tema.orbisNicheId, colecoes);
+    const produtos = produtosDoNicho(tema.orbisNicheId, colecoes, tema.orbisIdioma);
 
     /* CONFERIR não escreve nada: diz o que vai acontecer, para a pessoa
        aprovar sabendo o tamanho do que autorizou */

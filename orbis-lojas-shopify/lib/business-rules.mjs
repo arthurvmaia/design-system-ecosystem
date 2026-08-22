@@ -41,182 +41,223 @@ export const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / (1024 * 1024);
 export const MAX_ARTE_GERADA_BYTES = 40 * 1024 * 1024;
 export const MAX_ARTE_GERADA_MB = MAX_ARTE_GERADA_BYTES / (1024 * 1024);
 
-export const DEFAULT_CUSTOMIZATION = Object.freeze({
-  global: {
-    font: "Inter",
-    buttonRadius: 10,
-    sectionSpacing: 40,
-    contentWidth: 1200,
-    language: "pt-BR",
-  },
-  announcement: {
-    enabled: true,
-    text: "FRETE GRÁTIS EM PEDIDOS SELECIONADOS",
-    background: "#008060",
-    textColor: "#ffffff",
-  },
-  header: {
-    brand: "CACTUS",
-    background: "#f4f7f5",
-    textColor: "#10231c",
-    accentColor: "#008060",
-    menuItems: ["Novidades", "Mais vendidos", "Sobre"],
-    searchEnabled: true,
-    cartEnabled: true,
-    sticky: true,
-  },
-  hero: {
-    eyebrow: "NOVA COLEÇÃO · 2026",
-    headline: "CACTUS 12",
-    body: "Produtos essenciais, selecionados com cuidado e enviados para todo o Brasil.",
-    buttonLabel: "Comprar agora",
-    background: "#a8d6b8",
-    textColor: "#3700ff",
-    accentColor: "#05acff",
-    buttonTextColor: "#ffffff",
-    image: "",
-  },
-  benefits: {
-    background: "#a8d6b8",
-    textColor: "#3700ff",
-    borderColor: "#7dbf9c",
-    items: [
-      { title: "Entrega rápida", text: "Para todo o Brasil" },
-      { title: "Compra protegida", text: "Pagamento seguro" },
-      { title: "Troca sem atrito", text: "Em até 30 dias" },
-    ],
-  },
-  products: {
-    eyebrow: "SELEÇÃO DA SEMANA",
-    title: "Mais vendidos",
-    linkLabel: "Ver todos",
-    background: "#a8d6b8",
-    textColor: "#3700ff",
-    accentColor: "#05acff",
-    cardBackground: "#eff6f4",
-    items: [
-      { name: "Balance", price: "R$ 149", badge: "BEST SELLER" },
-      { name: "Daily Ritual", price: "R$ 129", badge: "ESSENCIAL" },
-      { name: "Pure Form", price: "R$ 179", badge: "ESSENCIAL" },
-    ],
-  },
-  bundle: {
-    enabled: true,
-    eyebrow: "COMPRE JUNTO",
-    title: "Seu ritual completo",
-    body: "Combine os favoritos e economize no conjunto.",
-    buttonLabel: "Adicionar conjunto",
-    background: "#f4f7f5",
-    textColor: "#10231c",
-    accentColor: "#008060",
-  },
-  comparison: {
-    enabled: true,
-    eyebrow: "POR QUE ESCOLHER",
-    title: "Feito para a sua rotina",
-    background: "#10231c",
-    textColor: "#ffffff",
-    accentColor: "#22d49b",
-    items: ["Fórmula selecionada", "Uso simples", "Compra protegida"],
-  },
-  testimonials: {
-    enabled: true,
-    eyebrow: "QUEM USA, RECOMENDA",
-    title: "Experiências da comunidade",
-    quote: "Conteúdo demonstrativo. Substitua por um depoimento real antes de publicar.",
-    author: "Cliente de demonstração",
-    background: "#edf5f0",
-    textColor: "#10231c",
-    accentColor: "#008060",
-  },
-  faq: {
-    enabled: true,
-    eyebrow: "DÚVIDAS",
-    title: "Perguntas frequentes",
-    background: "#f4f7f5",
-    textColor: "#10231c",
-    borderColor: "#c5d8ce",
-    items: [
-      { question: "Qual é o prazo de envio?", answer: "O prazo é calculado no checkout conforme o CEP." },
-      { question: "Posso trocar meu pedido?", answer: "Sim. Solicite a troca dentro do período informado pela loja." },
-      { question: "Quais formas de pagamento?", answer: "Configure as formas disponíveis na sua plataforma de pagamento." },
-    ],
-  },
-  newsletter: {
-    enabled: true,
-    title: "Novidades direto na sua caixa de entrada",
-    body: "Cadastre seu e-mail para receber lançamentos e conteúdos da marca.",
-    placeholder: "Seu melhor e-mail",
-    buttonLabel: "Quero receber",
-    background: "#008060",
-    textColor: "#ffffff",
-    buttonBackground: "#10231c",
-    buttonTextColor: "#ffffff",
-  },
-  footer: {
-    brand: "CACTUS",
-    description: "Produtos essenciais para uma rotina mais simples.",
-    copyright: "© 2026 CACTUS. Todos os direitos reservados.",
-    background: "#07100c",
-    textColor: "#edf7f1",
-    mutedColor: "#87978f",
-    instagram: "",
-    whatsapp: "",
-    storeLinks: ["Novidades", "Mais vendidos", "Sobre"],
-    helpLinks: ["Contato", "Trocas", "Políticas"],
-  },
-  search: {
-    title: "Pesquisa",
-    placeholder: "O que você procura?",
-    emptyMessage: "Digite para buscar produtos, coleções e conteúdos.",
-    popularTitle: "Buscas populares",
-    popularTerms: ["Mais vendidos", "Novidades", "Kits"],
-    background: "#f4f7f5",
-    textColor: "#10231c",
-    accentColor: "#008060",
-  },
-  productPage: {
-    eyebrow: "BEST SELLER",
-    title: "Balance",
-    price: "R$ 149",
-    description: "Uma fórmula essencial criada para acompanhar sua rotina.",
-    buttonLabel: "Adicionar ao carrinho",
-    background: "#f4f7f5",
-    textColor: "#10231c",
-    accentColor: "#008060",
-    cardBackground: "#d8e9e0",
-  },
-  collection: {
-    eyebrow: "COLEÇÃO",
-    title: "Mais vendidos",
-    description: "Os favoritos escolhidos pela comunidade.",
-    background: "#f4f7f5",
-    textColor: "#10231c",
-    accentColor: "#008060",
-  },
-  cart: {
-    title: "Seu carrinho",
-    emptyText: "Seu carrinho está vazio.",
-    progressText: "Adicione mais produtos para ganhar frete grátis.",
-    checkoutLabel: "Finalizar compra",
-    background: "#f4f7f5",
-    textColor: "#10231c",
-    accentColor: "#008060",
-  },
-  blog: {
-    eyebrow: "CONTEÚDO",
-    title: "Diário CACTUS",
-    description: "Guias, novidades e histórias da marca.",
-    background: "#f4f7f5",
-    textColor: "#10231c",
-    accentColor: "#008060",
-    articles: ["Rituais para começar bem", "Como escolher seus essenciais", "Por dentro da CACTUS"],
-  },
-});
+import { IDIOMA_PADRAO, formatarDinheiro, idiomaDe } from "./idiomas.mjs";
+import { textosDoIdioma } from "./textos.mjs";
+
+/** A marca do modelo de demonstracao: nome proprio, e por isso nao traduz. */
+const MARCA_DO_MODELO = "CACTUS";
+/* o ano do rodape do MODELO. Fixo de proposito: `new Date()` faria a mesma loja
+   sair diferente em janeiro, e o determinismo e o que deixa a previa honesta. */
+const ANO_DO_MODELO = 2026;
+
+/**
+ * O MODELO da loja, no idioma dela.
+ *
+ * Era um objeto congelado com o português escrito dentro. Virou função porque a
+ * loja passou a poder nascer em três idiomas, e um modelo fixo em português
+ * significava que TODO campo que o cliente não preencheu voltava em português —
+ * a faixa de anúncio, os benefícios, o FAQ, o rodapé — no meio de uma loja em
+ * inglês. O que muda com o idioma é só o texto: cor, medida e liga/desliga não
+ * têm idioma, e continuam aqui.
+ *
+ * As frases moram em `textos.mjs`, inclusive as portuguesas: uma tradução que
+ * vive em dois arquivos diverge no primeiro conserto que alguém faz num só.
+ */
+export function modeloPadrao(idioma = IDIOMA_PADRAO) {
+  const codigo = idiomaDe(idioma);
+  const textos = textosDoIdioma(codigo);
+  const m = textos.modelo;
+  const preco = (centavos) => formatarDinheiro(centavos, codigo);
+  return {
+    global: {
+      font: "Inter",
+      buttonRadius: 10,
+      sectionSpacing: 40,
+      contentWidth: 1200,
+      language: codigo,
+    },
+    announcement: {
+      enabled: true,
+      text: m.announcement.text,
+      background: "#008060",
+      textColor: "#ffffff",
+    },
+    header: {
+      brand: MARCA_DO_MODELO,
+      background: "#f4f7f5",
+      textColor: "#10231c",
+      accentColor: "#008060",
+      menuItems: [...m.header.menuItems],
+      searchEnabled: true,
+      cartEnabled: true,
+      sticky: true,
+    },
+    hero: {
+      eyebrow: m.hero.eyebrow,
+      headline: `${MARCA_DO_MODELO} 12`,
+      body: m.hero.body,
+      buttonLabel: m.hero.buttonLabel,
+      background: "#a8d6b8",
+      textColor: "#3700ff",
+      accentColor: "#05acff",
+      buttonTextColor: "#ffffff",
+      image: "",
+    },
+    benefits: {
+      background: "#a8d6b8",
+      textColor: "#3700ff",
+      borderColor: "#7dbf9c",
+      items: m.benefits.items.map((item) => ({ ...item })),
+    },
+    products: {
+      eyebrow: m.products.eyebrow,
+      title: m.products.title,
+      linkLabel: m.products.linkLabel,
+      background: "#a8d6b8",
+      textColor: "#3700ff",
+      accentColor: "#05acff",
+      cardBackground: "#eff6f4",
+      /* nome de produto de demonstração não traduz: são nomes próprios, e é o
+         que o cliente troca pelo catálogo dele no primeiro dia */
+      items: [
+        { name: "Balance", price: preco(14900), badge: m.products.badges[0] },
+        { name: "Daily Ritual", price: preco(12900), badge: m.products.badges[1] },
+        { name: "Pure Form", price: preco(17900), badge: m.products.badges[2] },
+      ],
+    },
+    bundle: {
+      enabled: true,
+      eyebrow: m.bundle.eyebrow,
+      title: m.bundle.title,
+      body: m.bundle.body,
+      buttonLabel: m.bundle.buttonLabel,
+      background: "#f4f7f5",
+      textColor: "#10231c",
+      accentColor: "#008060",
+    },
+    comparison: {
+      enabled: true,
+      eyebrow: m.comparison.eyebrow,
+      title: m.comparison.title,
+      background: "#10231c",
+      textColor: "#ffffff",
+      accentColor: "#22d49b",
+      items: [...m.comparison.items],
+    },
+    testimonials: {
+      enabled: true,
+      eyebrow: m.testimonials.eyebrow,
+      title: m.testimonials.title,
+      quote: m.testimonials.quote,
+      author: m.testimonials.author,
+      background: "#edf5f0",
+      textColor: "#10231c",
+      accentColor: "#008060",
+    },
+    faq: {
+      enabled: true,
+      eyebrow: m.faq.eyebrow,
+      title: m.faq.title,
+      background: "#f4f7f5",
+      textColor: "#10231c",
+      borderColor: "#c5d8ce",
+      items: m.faq.items.map((item) => ({ ...item })),
+    },
+    newsletter: {
+      enabled: true,
+      title: m.newsletter.title,
+      body: m.newsletter.body,
+      placeholder: m.newsletter.placeholder,
+      buttonLabel: m.newsletter.buttonLabel,
+      background: "#008060",
+      textColor: "#ffffff",
+      buttonBackground: "#10231c",
+      buttonTextColor: "#ffffff",
+    },
+    footer: {
+      brand: MARCA_DO_MODELO,
+      description: m.footer.description,
+      copyright: textos.marca.copyright(MARCA_DO_MODELO, ANO_DO_MODELO),
+      background: "#07100c",
+      textColor: "#edf7f1",
+      mutedColor: "#87978f",
+      instagram: "",
+      whatsapp: "",
+      storeLinks: [...m.footer.storeLinks],
+      helpLinks: [...m.footer.helpLinks],
+    },
+    search: {
+      title: m.search.title,
+      placeholder: m.search.placeholder,
+      emptyMessage: m.search.emptyMessage,
+      popularTitle: m.search.popularTitle,
+      popularTerms: [...m.search.popularTerms],
+      background: "#f4f7f5",
+      textColor: "#10231c",
+      accentColor: "#008060",
+    },
+    productPage: {
+      eyebrow: m.productPage.eyebrow,
+      title: "Balance",
+      price: preco(14900),
+      description: m.productPage.description,
+      buttonLabel: m.productPage.buttonLabel,
+      background: "#f4f7f5",
+      textColor: "#10231c",
+      accentColor: "#008060",
+      cardBackground: "#d8e9e0",
+    },
+    collection: {
+      eyebrow: m.collection.eyebrow,
+      title: m.collection.title,
+      description: m.collection.description,
+      background: "#f4f7f5",
+      textColor: "#10231c",
+      accentColor: "#008060",
+    },
+    cart: {
+      title: m.cart.title,
+      emptyText: m.cart.emptyText,
+      progressText: m.cart.progressText,
+      checkoutLabel: m.cart.checkoutLabel,
+      background: "#f4f7f5",
+      textColor: "#10231c",
+      accentColor: "#008060",
+    },
+    blog: {
+      eyebrow: m.blog.eyebrow,
+      title: textos.marca.diarioDaMarca(MARCA_DO_MODELO),
+      description: m.blog.description,
+      background: "#f4f7f5",
+      textColor: "#10231c",
+      accentColor: "#008060",
+      articles: [...m.blog.articles],
+    },
+  };
+}
+
+/**
+ * O modelo em português, congelado, para quem não pergunta idioma.
+ *
+ * Continua sendo o padrão do banco e o chão de `normalizeCustomization` quando
+ * o valor recebido não declara idioma — que é o caso de toda loja gravada antes
+ * desta tela existir.
+ */
+export const DEFAULT_CUSTOMIZATION = Object.freeze(modeloPadrao(IDIOMA_PADRAO));
 
 export function normalizeCustomization(input = {}) {
   const source = isRecord(input) ? input : {};
   const global = section(source.global);
+  /**
+   * O CHAO desta normalizacao e o modelo NO IDIOMA da loja.
+   *
+   * Era o modelo em portugues, sempre. Entao todo campo que o cliente nao
+   * preencheu voltava em portugues — a faixa de anuncio, os beneficios, o FAQ,
+   * o rodape — no meio de uma loja em ingles. O idioma vem do proprio valor
+   * recebido; loja gravada antes desta tela nao o declara, e cai no portugues,
+   * que era o unico idioma que havia.
+   */
+  const D = modeloPadrao(global.language ?? source.language);
   const announcement = section(source.announcement);
   const header = section(source.header);
   const hero = section(source.hero);
@@ -236,104 +277,104 @@ export function normalizeCustomization(input = {}) {
 
   return {
     global: {
-      font: choice(global.font ?? source.font, ["Inter", "Manrope", "Poppins", "Georgia"], DEFAULT_CUSTOMIZATION.global.font),
-      buttonRadius: clampNumber(global.buttonRadius ?? source.buttonRadius, 0, 28, DEFAULT_CUSTOMIZATION.global.buttonRadius),
-      sectionSpacing: clampNumber(global.sectionSpacing ?? source.spacing, 20, 80, DEFAULT_CUSTOMIZATION.global.sectionSpacing),
-      contentWidth: clampNumber(global.contentWidth, 900, 1600, DEFAULT_CUSTOMIZATION.global.contentWidth),
-      language: choice(global.language ?? source.language, ["pt-BR", "en", "es"], DEFAULT_CUSTOMIZATION.global.language),
+      font: choice(global.font ?? source.font, ["Inter", "Manrope", "Poppins", "Georgia"], D.global.font),
+      buttonRadius: clampNumber(global.buttonRadius ?? source.buttonRadius, 0, 28, D.global.buttonRadius),
+      sectionSpacing: clampNumber(global.sectionSpacing ?? source.spacing, 20, 80, D.global.sectionSpacing),
+      contentWidth: clampNumber(global.contentWidth, 900, 1600, D.global.contentWidth),
+      language: choice(global.language ?? source.language, ["pt-BR", "en", "es"], D.global.language),
     },
     announcement: {
-      enabled: cleanBoolean(announcement.enabled, DEFAULT_CUSTOMIZATION.announcement.enabled),
-      text: cleanText(announcement.text ?? (typeof source.announcement === "string" ? source.announcement : undefined), DEFAULT_CUSTOMIZATION.announcement.text, 120),
-      background: cleanColor(announcement.background ?? source.primaryColor, DEFAULT_CUSTOMIZATION.announcement.background),
-      textColor: cleanColor(announcement.textColor, DEFAULT_CUSTOMIZATION.announcement.textColor),
+      enabled: cleanBoolean(announcement.enabled, D.announcement.enabled),
+      text: cleanText(announcement.text ?? (typeof source.announcement === "string" ? source.announcement : undefined), D.announcement.text, 120),
+      background: cleanColor(announcement.background ?? source.primaryColor, D.announcement.background),
+      textColor: cleanColor(announcement.textColor, D.announcement.textColor),
     },
     header: {
-      brand: cleanText(header.brand ?? source.brand, DEFAULT_CUSTOMIZATION.header.brand, 48),
-      background: cleanColor(header.background ?? source.backgroundColor, DEFAULT_CUSTOMIZATION.header.background),
-      textColor: cleanColor(header.textColor ?? source.textColor, DEFAULT_CUSTOMIZATION.header.textColor),
-      accentColor: cleanColor(header.accentColor ?? source.primaryColor, DEFAULT_CUSTOMIZATION.header.accentColor),
-      menuItems: cleanStringList(header.menuItems, DEFAULT_CUSTOMIZATION.header.menuItems, 5),
-      searchEnabled: cleanBoolean(header.searchEnabled, DEFAULT_CUSTOMIZATION.header.searchEnabled),
-      cartEnabled: cleanBoolean(header.cartEnabled, DEFAULT_CUSTOMIZATION.header.cartEnabled),
-      sticky: cleanBoolean(header.sticky, DEFAULT_CUSTOMIZATION.header.sticky),
+      brand: cleanText(header.brand ?? source.brand, D.header.brand, 48),
+      background: cleanColor(header.background ?? source.backgroundColor, D.header.background),
+      textColor: cleanColor(header.textColor ?? source.textColor, D.header.textColor),
+      accentColor: cleanColor(header.accentColor ?? source.primaryColor, D.header.accentColor),
+      menuItems: cleanStringList(header.menuItems, D.header.menuItems, 5),
+      searchEnabled: cleanBoolean(header.searchEnabled, D.header.searchEnabled),
+      cartEnabled: cleanBoolean(header.cartEnabled, D.header.cartEnabled),
+      sticky: cleanBoolean(header.sticky, D.header.sticky),
     },
     hero: {
-      eyebrow: cleanText(hero.eyebrow, DEFAULT_CUSTOMIZATION.hero.eyebrow, 60),
-      headline: cleanText(hero.headline ?? source.headline, DEFAULT_CUSTOMIZATION.hero.headline, 100),
-      body: cleanText(hero.body ?? source.subheadline, DEFAULT_CUSTOMIZATION.hero.body, 240),
-      buttonLabel: cleanText(hero.buttonLabel, DEFAULT_CUSTOMIZATION.hero.buttonLabel, 40),
-      background: cleanColor(hero.background ?? source.backgroundColor, DEFAULT_CUSTOMIZATION.hero.background),
-      textColor: cleanColor(hero.textColor ?? source.textColor, DEFAULT_CUSTOMIZATION.hero.textColor),
-      accentColor: cleanColor(hero.accentColor ?? source.primaryColor, DEFAULT_CUSTOMIZATION.hero.accentColor),
-      buttonTextColor: cleanColor(hero.buttonTextColor, DEFAULT_CUSTOMIZATION.hero.buttonTextColor),
+      eyebrow: cleanText(hero.eyebrow, D.hero.eyebrow, 60),
+      headline: cleanText(hero.headline ?? source.headline, D.hero.headline, 100),
+      body: cleanText(hero.body ?? source.subheadline, D.hero.body, 240),
+      buttonLabel: cleanText(hero.buttonLabel, D.hero.buttonLabel, 40),
+      background: cleanColor(hero.background ?? source.backgroundColor, D.hero.background),
+      textColor: cleanColor(hero.textColor ?? source.textColor, D.hero.textColor),
+      accentColor: cleanColor(hero.accentColor ?? source.primaryColor, D.hero.accentColor),
+      buttonTextColor: cleanColor(hero.buttonTextColor, D.hero.buttonTextColor),
       image: cleanMediaUrl(hero.image ?? source.heroImage),
     },
     benefits: {
-      background: cleanColor(benefits.background, DEFAULT_CUSTOMIZATION.benefits.background),
-      textColor: cleanColor(benefits.textColor, DEFAULT_CUSTOMIZATION.benefits.textColor),
-      borderColor: cleanColor(benefits.borderColor, DEFAULT_CUSTOMIZATION.benefits.borderColor),
-      items: cleanItems(benefits.items, DEFAULT_CUSTOMIZATION.benefits.items, ["title", "text"], 3),
+      background: cleanColor(benefits.background, D.benefits.background),
+      textColor: cleanColor(benefits.textColor, D.benefits.textColor),
+      borderColor: cleanColor(benefits.borderColor, D.benefits.borderColor),
+      items: cleanItems(benefits.items, D.benefits.items, ["title", "text"], 3),
     },
     products: {
-      eyebrow: cleanText(products.eyebrow, DEFAULT_CUSTOMIZATION.products.eyebrow, 60),
-      title: cleanText(products.title, DEFAULT_CUSTOMIZATION.products.title, 80),
-      linkLabel: cleanText(products.linkLabel, DEFAULT_CUSTOMIZATION.products.linkLabel, 30),
-      background: cleanColor(products.background, DEFAULT_CUSTOMIZATION.products.background),
-      textColor: cleanColor(products.textColor, DEFAULT_CUSTOMIZATION.products.textColor),
-      accentColor: cleanColor(products.accentColor, DEFAULT_CUSTOMIZATION.products.accentColor),
-      cardBackground: cleanColor(products.cardBackground, DEFAULT_CUSTOMIZATION.products.cardBackground),
-      items: cleanItems(products.items, DEFAULT_CUSTOMIZATION.products.items, ["name", "price", "badge"], 3),
+      eyebrow: cleanText(products.eyebrow, D.products.eyebrow, 60),
+      title: cleanText(products.title, D.products.title, 80),
+      linkLabel: cleanText(products.linkLabel, D.products.linkLabel, 30),
+      background: cleanColor(products.background, D.products.background),
+      textColor: cleanColor(products.textColor, D.products.textColor),
+      accentColor: cleanColor(products.accentColor, D.products.accentColor),
+      cardBackground: cleanColor(products.cardBackground, D.products.cardBackground),
+      items: cleanItems(products.items, D.products.items, ["name", "price", "badge"], 3),
     },
-    bundle: normalizePromoSection(bundle, DEFAULT_CUSTOMIZATION.bundle),
+    bundle: normalizePromoSection(bundle, D.bundle),
     comparison: {
-      ...normalizeSimpleSection(comparison, DEFAULT_CUSTOMIZATION.comparison),
-      items: cleanStringList(comparison.items, DEFAULT_CUSTOMIZATION.comparison.items, 5),
+      ...normalizeSimpleSection(comparison, D.comparison),
+      items: cleanStringList(comparison.items, D.comparison.items, 5),
     },
     testimonials: {
-      ...normalizeSimpleSection(testimonials, DEFAULT_CUSTOMIZATION.testimonials),
-      quote: cleanText(testimonials.quote, DEFAULT_CUSTOMIZATION.testimonials.quote, 240),
-      author: cleanText(testimonials.author, DEFAULT_CUSTOMIZATION.testimonials.author, 80),
+      ...normalizeSimpleSection(testimonials, D.testimonials),
+      quote: cleanText(testimonials.quote, D.testimonials.quote, 240),
+      author: cleanText(testimonials.author, D.testimonials.author, 80),
     },
     faq: {
-      enabled: cleanBoolean(faq.enabled, DEFAULT_CUSTOMIZATION.faq.enabled),
-      eyebrow: cleanText(faq.eyebrow, DEFAULT_CUSTOMIZATION.faq.eyebrow, 60),
-      title: cleanText(faq.title, DEFAULT_CUSTOMIZATION.faq.title, 80),
-      background: cleanColor(faq.background, DEFAULT_CUSTOMIZATION.faq.background),
-      textColor: cleanColor(faq.textColor, DEFAULT_CUSTOMIZATION.faq.textColor),
-      borderColor: cleanColor(faq.borderColor, DEFAULT_CUSTOMIZATION.faq.borderColor),
-      items: cleanItems(faq.items, DEFAULT_CUSTOMIZATION.faq.items, ["question", "answer"], 3),
+      enabled: cleanBoolean(faq.enabled, D.faq.enabled),
+      eyebrow: cleanText(faq.eyebrow, D.faq.eyebrow, 60),
+      title: cleanText(faq.title, D.faq.title, 80),
+      background: cleanColor(faq.background, D.faq.background),
+      textColor: cleanColor(faq.textColor, D.faq.textColor),
+      borderColor: cleanColor(faq.borderColor, D.faq.borderColor),
+      items: cleanItems(faq.items, D.faq.items, ["question", "answer"], 3),
     },
     newsletter: {
-      enabled: cleanBoolean(newsletter.enabled, DEFAULT_CUSTOMIZATION.newsletter.enabled),
-      title: cleanText(newsletter.title, DEFAULT_CUSTOMIZATION.newsletter.title, 100),
-      body: cleanText(newsletter.body, DEFAULT_CUSTOMIZATION.newsletter.body, 220),
-      placeholder: cleanText(newsletter.placeholder, DEFAULT_CUSTOMIZATION.newsletter.placeholder, 60),
-      buttonLabel: cleanText(newsletter.buttonLabel, DEFAULT_CUSTOMIZATION.newsletter.buttonLabel, 40),
-      background: cleanColor(newsletter.background, DEFAULT_CUSTOMIZATION.newsletter.background),
-      textColor: cleanColor(newsletter.textColor, DEFAULT_CUSTOMIZATION.newsletter.textColor),
-      buttonBackground: cleanColor(newsletter.buttonBackground, DEFAULT_CUSTOMIZATION.newsletter.buttonBackground),
-      buttonTextColor: cleanColor(newsletter.buttonTextColor, DEFAULT_CUSTOMIZATION.newsletter.buttonTextColor),
+      enabled: cleanBoolean(newsletter.enabled, D.newsletter.enabled),
+      title: cleanText(newsletter.title, D.newsletter.title, 100),
+      body: cleanText(newsletter.body, D.newsletter.body, 220),
+      placeholder: cleanText(newsletter.placeholder, D.newsletter.placeholder, 60),
+      buttonLabel: cleanText(newsletter.buttonLabel, D.newsletter.buttonLabel, 40),
+      background: cleanColor(newsletter.background, D.newsletter.background),
+      textColor: cleanColor(newsletter.textColor, D.newsletter.textColor),
+      buttonBackground: cleanColor(newsletter.buttonBackground, D.newsletter.buttonBackground),
+      buttonTextColor: cleanColor(newsletter.buttonTextColor, D.newsletter.buttonTextColor),
     },
     footer: {
-      brand: cleanText(footer.brand ?? header.brand ?? source.brand, DEFAULT_CUSTOMIZATION.footer.brand, 48),
-      description: cleanText(footer.description, DEFAULT_CUSTOMIZATION.footer.description, 180),
-      copyright: cleanText(footer.copyright, DEFAULT_CUSTOMIZATION.footer.copyright, 120),
-      background: cleanColor(footer.background, DEFAULT_CUSTOMIZATION.footer.background),
-      textColor: cleanColor(footer.textColor, DEFAULT_CUSTOMIZATION.footer.textColor),
-      mutedColor: cleanColor(footer.mutedColor, DEFAULT_CUSTOMIZATION.footer.mutedColor),
+      brand: cleanText(footer.brand ?? header.brand ?? source.brand, D.footer.brand, 48),
+      description: cleanText(footer.description, D.footer.description, 180),
+      copyright: cleanText(footer.copyright, D.footer.copyright, 120),
+      background: cleanColor(footer.background, D.footer.background),
+      textColor: cleanColor(footer.textColor, D.footer.textColor),
+      mutedColor: cleanColor(footer.mutedColor, D.footer.mutedColor),
       instagram: cleanSocial(footer.instagram),
       whatsapp: cleanSocial(footer.whatsapp),
-      storeLinks: cleanStringList(footer.storeLinks, DEFAULT_CUSTOMIZATION.footer.storeLinks, 6),
-      helpLinks: cleanStringList(footer.helpLinks, DEFAULT_CUSTOMIZATION.footer.helpLinks, 6),
+      storeLinks: cleanStringList(footer.storeLinks, D.footer.storeLinks, 6),
+      helpLinks: cleanStringList(footer.helpLinks, D.footer.helpLinks, 6),
     },
-    search: normalizeUtilityPage(search, DEFAULT_CUSTOMIZATION.search, { popularTitle: 60 }),
-    productPage: normalizeProductPage(productPage, DEFAULT_CUSTOMIZATION.productPage),
-    collection: normalizeUtilityPage(collection, DEFAULT_CUSTOMIZATION.collection, {}),
-    cart: normalizeCart(cart, DEFAULT_CUSTOMIZATION.cart),
+    search: normalizeUtilityPage(search, D.search, { popularTitle: 60 }),
+    productPage: normalizeProductPage(productPage, D.productPage),
+    collection: normalizeUtilityPage(collection, D.collection, {}),
+    cart: normalizeCart(cart, D.cart),
     blog: {
-      ...normalizeUtilityPage(blog, DEFAULT_CUSTOMIZATION.blog, {}),
-      articles: cleanStringList(blog.articles, DEFAULT_CUSTOMIZATION.blog.articles, 6),
+      ...normalizeUtilityPage(blog, D.blog, {}),
+      articles: cleanStringList(blog.articles, D.blog.articles, 6),
     },
     shopify: cleanShopifyData(source.shopify),
   };

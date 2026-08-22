@@ -11,6 +11,8 @@
  * Sem Orbis e sem a nossa marca aqui: o site é do cliente, não nosso.
  */
 import { normalizeCustomization } from "./business-rules.mjs";
+import { IDIOMA_PADRAO, idiomaDe } from "./idiomas.mjs";
+import { textosDoIdioma } from "./textos.mjs";
 
 export const SECTION_LABELS = Object.freeze({
   announcement: "Barra de avisos",
@@ -41,6 +43,10 @@ export const SITE_TEMPLATES = Object.freeze([
   },
 ]);
 
+/* o ano do rodape da loja entregue. Fixo pelo mesmo motivo do modelo: `new
+   Date()` faria a mesma marca sair diferente em janeiro, e a previa precisa
+   bater com a entrega. */
+const ANO_DA_ENTREGA = 2026;
 const MAX_LOGO_DATA_URI = 2_000_000;
 const DATA_URI_IMAGE = /^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i;
 /* A logo gerada pelo Orbis Criativos é SVG e vem percent-encoded, não base64.
@@ -80,6 +86,15 @@ export function sanitizeBrand(input = {}) {
   return {
     name,
     slug: slugify(name),
+    /**
+     * O IDIOMA da loja viaja com a marca.
+     *
+     * Aqui, e nao num parametro a mais, porque a marca ja e o que atravessa o
+     * gerador inteiro: previa, customizacao, tema e pacote leem o mesmo objeto.
+     * Um parametro paralelo seria esquecido em uma das quatro pontas, e a loja
+     * sairia metade num idioma e metade no outro.
+     */
+    idioma: idiomaDe(source.idioma ?? source.language),
     slogan: text(source.slogan, "", 140),
     description: text(source.description, "", 240),
     primaryColor: color(source.primaryColor, "#0e7490"),
@@ -105,13 +120,17 @@ export function brandCustomization(brandInput) {
   const onB = textColorFor(B);
   const dark = mix(P, "#000000", 0.78);
   const tintSoft = mix(P, "#ffffff", 0.88);
-  const slogan = brand.slogan || "Produtos escolhidos com cuidado, entregues para todo o Brasil.";
+  const textos = textosDoIdioma(brand.idioma ?? IDIOMA_PADRAO);
+  const slogan = brand.slogan || textos.marca.slogan;
 
   return normalizeCustomization({
+    /* o idioma entra ANTES de tudo: e ele que decide em que lingua volta cada
+       campo que a marca nao preencheu */
+    global: { language: brand.idioma ?? IDIOMA_PADRAO },
     announcement: { background: P, textColor: onP },
     header: { brand: brand.name, background: B, textColor: onB, accentColor: P },
     hero: {
-      eyebrow: "LOJA OFICIAL",
+      eyebrow: textos.marca.eyebrow,
       headline: brand.name,
       body: brand.description || slogan,
       background: B,
@@ -129,7 +148,7 @@ export function brandCustomization(brandInput) {
     footer: {
       brand: brand.name,
       description: slogan,
-      copyright: `© 2026 ${brand.name}. Todos os direitos reservados.`,
+      copyright: textos.marca.copyright(brand.name, ANO_DA_ENTREGA),
       background: mix(P, "#000000", 0.86),
       textColor: "#f2f7f5",
       mutedColor: mix(P, "#ffffff", 0.55),

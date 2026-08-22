@@ -217,9 +217,13 @@ test("a capa vai para o cartão pelo settings, que é por onde o tema pergunta",
      expressão regular: a linha tem parêntese, chave e crase demais, e
      escapar tudo isso é onde o teste vira armadilha para quem vem depois */
   assert.ok(
-    fonte.includes('if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}, helpers.vaga, helpers.nomes ?? {}); continue; }'),
+    fonte.includes('if (type === "collection") { resolved[id] = demoCollection(helpers.loja, typeof value === "string" ? value : "", helpers.capas ?? {}, helpers.vaga, helpers.nomes ?? {}, helpers.idioma); continue; }'),
     "o cartão de coleção deixou de receber a capa e o nome pelo settings",
   );
+  /* e o IDIOMA vai junto, pelo mesmo caminho. Sem ele o cartão de uma loja em
+     inglês caía no título em português quando a coleção não tinha nome
+     próprio: a vaga é a mesma, a língua e que se perdia no meio. */
+  assert.match(fonte, /demoCollection\([^)]*helpers\.idioma\)/);
   /* e a lista de coleções mostra as DA LOJA: a lista fixa de colecao-1..4
      inventava quatro cartões no lugar das que a pessoa escreveu */
   assert.match(fonte, /const daLoja = Object\.keys\(helpers\.capas \?\? \{\}\)/);

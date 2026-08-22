@@ -123,6 +123,15 @@ export type ShopifyThemeImport = {
    */
   orbisCapas?: Record<string, string>;
   /**
+   * O IDIOMA em que a loja nasceu.
+   *
+   * Viaja com o tema pelo mesmo motivo do nicho e das capas: sem ele, reabrir a
+   * loja no Editor ou reimportar o pacote devolvia tudo em portugues — e a
+   * pessoa via a loja que ela escolheu em ingles trocar de lingua sozinha ao
+   * ser reaberta. Ausente significa portugues, que era o unico idioma que havia.
+   */
+  orbisIdioma?: string;
+  /**
    * O NOME de cada coleção, como a pessoa escreveu.
    *
    * O tema guarda handle: "organizacao", "cama-e-banho". Handle é slug — sem
@@ -434,6 +443,8 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   if (sorteio) theme.orbisSorteio = sorteio;
   const loja = lerLojaDoTema(byRelativePath);
   if (loja) theme.orbisLoja = loja;
+  const idioma = lerIdiomaDoTema(byRelativePath);
+  if (idioma) theme.orbisIdioma = idioma;
   const customizacao = lerCustomizacaoDoTema(byRelativePath);
   if (customizacao) theme.orbisCustomizacao = customizacao;
   return { theme, images: assets };
@@ -476,6 +487,15 @@ export function marcadorDaLoja(
     customizacao?: Record<string, unknown>;
     colecoes?: string[];
     sorteio?: string;
+    /**
+     * O IDIOMA em que a loja nasceu.
+     *
+     * Sem ele no marcador, reimportar a propria loja devolvia tudo em
+     * portugues: o idioma so existia no banco desta maquina, e a loja em
+     * ingles trocava de lingua sozinha ao ser reaberta noutro computador — o
+     * mesmo defeito que o nicho e as capas ja tinham tido.
+     */
+    idioma?: string;
   } = {},
 ) {
   const corpo: Record<string, unknown> = { orbisNicheId: nicheId };
@@ -484,6 +504,9 @@ export function marcadorDaLoja(
   const colecoes = (loja.colecoes ?? []).map((nome) => String(nome ?? "").trim()).filter(Boolean).slice(0, 40);
   if (colecoes.length) corpo.orbisColecoes = colecoes.map((nome) => nome.slice(0, 60));
   if (loja.sorteio?.trim()) corpo.orbisSorteio = loja.sorteio.trim().slice(0, 80);
+  /* so quando ha idioma declarado: campo vazio faz quem le achar que a loja
+     disse "sem idioma", e o certo e ele cair no padrao sem perguntar */
+  if (loja.idioma?.trim()) corpo.orbisIdioma = loja.idioma.trim().slice(0, 12);
   /* as capas só aparecem quando existem: marcador com campo vazio faz quem lê
      achar que a loja declarou "sem capa", e o certo é ele nem perguntar */
   if (Object.keys(capas).length) corpo.orbisCapas = capas;
@@ -533,6 +556,14 @@ function lerLojaDoTema(byRelativePath: Map<string, Uint8Array>): { nome: string;
   const { nome, slug } = cru as { nome?: unknown; slug?: unknown };
   if (typeof nome !== "string" || typeof slug !== "string" || !nome.trim() || !slug.trim()) return null;
   return { nome: nome.slice(0, 80), slug: slug.slice(0, 56) };
+}
+
+/** O idioma em que a loja entregue nasceu — ausente significa portugues. */
+function lerIdiomaDoTema(byRelativePath: Map<string, Uint8Array>): string | null {
+  const marcador = byRelativePath.get(ARQUIVO_DA_LOJA);
+  if (!marcador) return null;
+  const cru = parseJson<Record<string, unknown>>(marcador, {}).orbisIdioma;
+  return typeof cru === "string" && cru.trim() ? cru.trim().slice(0, 12) : null;
 }
 
 /** O modelo nativo do estúdio que a loja entregue leva consigo. */
