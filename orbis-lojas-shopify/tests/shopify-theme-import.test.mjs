@@ -135,6 +135,24 @@ test("a pasta de prévia do pacote entregue não entra no tema", async () => {
     for (const obrigatorio of ["layout/theme.liquid", "config/settings_schema.json", "templates/index.json", "sections/hero.liquid"]) {
       assert.ok(lidos.has(obrigatorio), `sumiu ${obrigatorio}`);
     }
+
+    /**
+     * MAS A ARTE SOBE PARA `assets/`, e não fica de fora com o resto.
+     *
+     * Ela é o único arquivo de `previa-local/` que é do TEMA: está ali porque a
+     * Shopify recusa tema acima de 50 MB, não porque não pertença. O importador
+     * já a promovia; este leitor não, e a assimetria era o defeito — o tema
+     * salvo referenciava um arquivo que o EXPORTADOR não enxergava, e baixar a
+     * própria loja devolvia um ZIP sem arte. Medido na Hora Watches: 15 MB de
+     * entrada, 0,8 MB de saída.
+     *
+     * O que continua fora é o que reabria o ciclo: o CSV, o leia-me, o kit de
+     * logo e o site de prévia.
+     */
+    assert.ok(lidos.has("assets/orbis-1-banner.png"), "a arte da entrega tem de virar asset do tema");
+    assert.equal(lidos.has("assets/produtos-para-importar.csv"), false, "só imagem sobe, e só da pasta de artes");
+    assert.equal(caminhos.filter((p) => p.endsWith(".csv") || p.endsWith("index.html")).length, 0);
+
     /* o importador tambem nao lista a previa entre os arquivos do tema */
     const tema = extractShopifyThemeBytes(zip, "pacote.zip");
     assert.equal(tema.sourceFiles.filter((f) => f.path.startsWith("previa-local/")).length, 0);

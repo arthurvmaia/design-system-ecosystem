@@ -288,11 +288,10 @@ function createMediaRewriter(
      * Shopify e morre também na próxima importação, que gera outro `fp` — a
      * loja perdia a arte a cada volta, com o arquivo dentro do pacote.
      *
-     * O nome é o que atravessa: o arquivo já viaja no ZIP (a entrega o guarda
-     * em `previa-local/imagens-para-a-shopify/`, e o `output` copia tudo o que
-     * veio), então basta devolver a referência que o tema procura. Registrar
-     * de novo em `assets/` só duplicaria megabytes — foi o que levou um pacote
-     * a 140 MB.
+     * O nome é o que atravessa, e o arquivo vem junto sozinho: o leitor de
+     * arquivos promove a arte da entrega a `assets/<nome>` (a mesma promoção
+     * que o importador faz), e o `output` copia tudo o que veio. Registrar de
+     * novo aqui só duplicaria megabytes — foi o que levou um pacote a 140 MB.
      */
     const doPacote = nomeDoAssetNaUrl(raw);
     if (doPacote) return `shopify://shop_images/${doPacote}`;

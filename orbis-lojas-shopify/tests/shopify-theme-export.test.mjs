@@ -512,3 +512,57 @@ test("a capa sem vaga na página viaja no pacote e volta na reimportação", asy
     await server.close();
   }
 });
+
+/**
+ * A VOLTA INTEIRA: entregar, importar, EXPORTAR e importar de novo.
+ *
+ * É o gesto de quem baixa a própria loja pelo estúdio e a abre noutro
+ * computador. Cada perna já tinha teste; a emenda entre elas não, e era ali que
+ * a arte sumia — o leitor de arquivos descartava `previa-local/` inteiro, então
+ * a exportação não tinha o arquivo para reemitir. Medido na Hora Watches: 15 MB
+ * de entrada, 0,8 MB de saída, as seis peças pelo caminho.
+ */
+test("a arte sobrevive a exportar e importar de novo, sem acervo nenhum", async () => {
+  const { server, shopifyTheme, themeExport } = await loadModules();
+  try {
+    const { urlDeAssetDoTema } = await server.ssrLoadModule("/lib/asset-do-tema.ts");
+    /* um pacote ENTREGUE: a arte mora fora de `assets/`, como a entrega faz */
+    const arte = strToU8("bytes-da-arte-de-banner");
+    const entregue = zipSync({
+      ...Object.fromEntries(Object.entries(unzipSync(buildFixtureZip())).map(([p, v]) => [p, v])),
+      "Tema/previa-local/imagens-para-a-shopify/orbis-390d7e56-banner.png": arte,
+      "Tema/previa-local/produtos-para-importar.csv": strToU8("Title\nvelho"),
+    });
+
+    /* 1ª importação: a arte vira asset e a referência aponta para cá */
+    const primeira = shopifyTheme.extractShopifyThemePackage(entregue, "entregue.zip");
+    assert.ok(primeira.images.some((img) => img.path === "assets/orbis-390d7e56-banner.png"));
+    const tema = primeira.theme;
+    tema.globalValues.logo = "shopify://shop_images/orbis-390d7e56-banner.png";
+    const urls = {};
+    for (const img of primeira.images) urls[img.name.toLowerCase()] = urlDeAssetDoTema(tema.sourceFingerprint, img.path);
+    tema.assetUrls = urls;
+    themeExport.reconectarImagens(tema, new Map(), new Map(Object.entries(urls)));
+    assert.match(tema.globalValues.logo, /^\/api\/theme-assets\?/, "religada para o endereço servido");
+
+    /* 2. EXPORTAR pelo estúdio, que é onde o arquivo se perdia */
+    const { zip } = themeExport.exportThemeZip(tema, shopifyTheme.themeFilesFromZip(entregue), new Map());
+    const saida = unzipSync(zip);
+    assert.ok(saida["assets/orbis-390d7e56-banner.png"], "o arquivo tem de sair no ZIP");
+    assert.equal(saida["previa-local/produtos-para-importar.csv"], undefined, "o resto da prévia continua fora");
+    const globais = JSON.parse(strFromU8(saida["config/settings_data.json"]));
+    assert.equal(globais.current.logo, "shopify://shop_images/orbis-390d7e56-banner.png", "referência canônica, não endereço local");
+
+    /* 3. IMPORTAR de novo, em máquina sem acervo: a arte volta do pacote */
+    const segunda = shopifyTheme.extractShopifyThemePackage(zip, "baixado.zip");
+    const urls2 = {};
+    for (const img of segunda.images) urls2[img.name.toLowerCase()] = urlDeAssetDoTema(segunda.theme.sourceFingerprint, img.path);
+    segunda.theme.assetUrls = urls2;
+    const contagem = themeExport.reconectarImagens(segunda.theme, new Map(), new Map(Object.entries(urls2)));
+    assert.equal(contagem.doPacote, 1, "a arte volta do próprio ZIP baixado");
+    assert.deepEqual(contagem.perdidas, [], "nada se perde na volta");
+    assert.match(segunda.theme.globalValues.logo, /orbis-390d7e56-banner\.png/);
+  } finally {
+    await server.close();
+  }
+});

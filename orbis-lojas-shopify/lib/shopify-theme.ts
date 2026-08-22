@@ -743,6 +743,9 @@ export function themeFilesFromZip(bytes: Uint8Array): Map<string, Uint8Array> {
   if (!resolved) throw new Error("SHOPIFY_THEME_STRUCTURE");
   const rootPrefix = normalizedPath(resolved.settingsSchemaEntry[0]).slice(0, -"config/settings_schema.json".length);
   const byRelativePath = new Map<string, Uint8Array>();
+  /* as ARTES da entrega, promovidas a `assets/` como o importador faz — ver a
+     exceção logo abaixo */
+  const artesDaEntrega = new Map<string, Uint8Array>();
   for (const [path, value] of resolved.entries) {
     const normalized = normalizedPath(path);
     if (!normalized.startsWith(rootPrefix)) continue;
@@ -765,8 +768,39 @@ export function themeFilesFromZip(bytes: Uint8Array): Map<string, Uint8Array> {
      * Aqui se corta na raiz: prévia não é arquivo de tema, e a Shopify também
      * não a reconheceria.
      */
-    if (relativo.startsWith("previa-local/")) continue;
+    if (relativo.startsWith("previa-local/")) {
+      /**
+       * COM A MESMA EXCEÇÃO DO IMPORTADOR, e a assimetria entre os dois ERA o
+       * defeito.
+       *
+       * `extractShopifyThemePackage` promove a arte da entrega a
+       * `assets/<arquivo>`, porque é lá que o tema a procuraria. Este leitor
+       * não promovia: descartava a pasta inteira. Resultado — o tema salvo
+       * referenciava um arquivo que o EXPORTADOR não enxergava, e baixar a
+       * própria loja pelo estúdio devolvia um ZIP sem arte nenhuma. Medido na
+       * Hora Watches: 15 MB de entrada, 0,8 MB de saída, as seis peças pelo
+       * caminho.
+       *
+       * O resto da prévia continua fora, e é o que importa: o CSV, o leia-me,
+       * o kit de logo e o site de prévia é que entravam no tema e voltavam
+       * gravados por cima da entrega seguinte. Imagem promovida a `assets/`
+       * não reabre esse ciclo — a entrega seguinte a move para fora de novo,
+       * pelo nome.
+       */
+      if (relativo.startsWith(ARTES_DA_ENTREGA)) {
+        const nome = relativo.slice(ARTES_DA_ENTREGA.length);
+        if (nome && !nome.includes("/") && IMAGE_EXTENSIONS[nome.split(".").at(-1)?.toLowerCase() ?? ""]) {
+          artesDaEntrega.set(`assets/${nome}`, value);
+        }
+      }
+      continue;
+    }
     byRelativePath.set(relativo, value);
+  }
+  /* quem já existe vence: sobrescrever arquivo do tema com arte da loja seria
+     trocar uma coisa certa por outra — a mesma regra do importador */
+  for (const [caminho, dados] of artesDaEntrega) {
+    if (!byRelativePath.has(caminho)) byRelativePath.set(caminho, dados);
   }
   return byRelativePath;
 }
