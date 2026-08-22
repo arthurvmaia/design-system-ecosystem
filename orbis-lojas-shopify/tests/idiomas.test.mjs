@@ -355,3 +355,115 @@ test("a tela de idiomas lê do registro, e não de uma lista repetida", async ()
   assert.match(tela, /function trocarIdioma/);
   assert.match(tela, /setMarca\(marcaGerada\(nicheId, semente, lerEdicoes\(nicheId\), codigo\)\)/);
 });
+
+/**
+ * O TEXTO QUE O TEMA JÁ TRAZIA ESCRITO também muda de língua.
+ *
+ * É a metade que faltou na primeira volta, e o cliente a viu na tela: as
+ * coleções em inglês com "Nossas Coleções" por cima, "Ofertas Imperdíveis" no
+ * meio da página e "Links rápidos" no rodapé. Não são chaves de tradução — são
+ * settings que o lojista da loja de ORIGEM digitou, e a regra "só escreve onde
+ * o tema não escreveu nada de próprio" os protegia.
+ *
+ * Medido no Dawn do acervo, gerando uma loja de roupas em inglês: 24 settings
+ * em português antes, 1 depois — e o que sobra é um marcador do importador que
+ * só aparece no Editor.
+ */
+test("o texto próprio do tema muda de língua, e só quando a língua difere", async () => {
+  const server = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), server: { middlewareMode: true }, appType: "custom", logLevel: "silent" });
+  try {
+    const { extractShopifyThemeBytes, idiomaDoConteudoDoTema } = await server.ssrLoadModule("/lib/shopify-theme.ts");
+    const { aplicarMarcaNoTema } = await server.ssrLoadModule("/lib/shopify-brand.ts");
+
+    const schema = JSON.stringify([{ name: "theme_info", theme_name: "T", theme_version: "1", theme_author: "a" }]);
+    const secao = (nome, settings) => `<div></div>{% schema %}${JSON.stringify({ name: nome, settings })}{% endschema %}`;
+    const zip = zipSync(Object.fromEntries(Object.entries({
+      "config/settings_schema.json": schema,
+      "config/settings_data.json": JSON.stringify({ current: {} }),
+      "layout/theme.liquid": "{{ content_for_layout }}",
+      "sections/collection-list.liquid": secao("Lista", [{ type: "text", id: "title", label: "Título" }]),
+      "templates/index.json": JSON.stringify({
+        sections: { lista: { type: "collection-list", settings: { title: "Nossas Coleções" } } },
+        order: ["lista"],
+      }),
+      /* é o arquivo de tradução PADRÃO que declara a língua do tema */
+      "locales/pt-BR.default.json": JSON.stringify({ general: {} }),
+    }).map(([caminho, valor]) => [`Tema/${caminho}`, strToU8(valor)])));
+
+    const base = extractShopifyThemeBytes(zip, "pt.zip");
+    assert.equal(idiomaDoConteudoDoTema(base), "pt-BR", "o tema declara a língua no nome do locale padrão");
+
+    const titulo = (idioma) => {
+      const { theme } = aplicarMarcaNoTema(base, { name: "Aurora", idioma, primaryColor: "#111111", backgroundColor: "#ffffff" });
+      return theme.pages.find((p) => p.id === "index").sections[0].settings.title;
+    };
+    assert.equal(titulo("en"), "Our collections");
+    assert.equal(titulo("es"), "Nuestras colecciones");
+    /**
+     * E a loja em PORTUGUÊS sobre tema português não encosta em nada.
+     *
+     * É a metade que protege o dono: sobrescrever o que o lojista digitou é
+     * apagar decisão dele, e só a diferença de língua autoriza a troca.
+     */
+    assert.equal(titulo("pt-BR"), "Nossas Coleções");
+
+    /* tema sem locale padrão não declara língua, e sem declaração não se mexe:
+       adivinhar aqui trocaria texto certo por texto traduzido à toa */
+    const arquivosSemLocale = {
+      "config/settings_schema.json": schema,
+      "config/settings_data.json": JSON.stringify({ current: {} }),
+      "layout/theme.liquid": "{{ content_for_layout }}",
+      "sections/collection-list.liquid": secao("Lista", [{ type: "text", id: "title", label: "Título" }]),
+      "templates/index.json": JSON.stringify({ sections: { lista: { type: "collection-list", settings: { title: "Nossas Coleções" } } }, order: ["lista"] }),
+    };
+    const zipSemLocale = zipSync(Object.fromEntries(Object.entries(arquivosSemLocale).map(([caminho, valor]) => [`Tema/${caminho}`, strToU8(valor)])));
+    const semLocale = extractShopifyThemeBytes(zipSemLocale, "sem-locale.zip");
+    assert.equal(idiomaDoConteudoDoTema(semLocale), "");
+    const { theme: intocado } = aplicarMarcaNoTema(semLocale, { name: "Aurora", idioma: "en", primaryColor: "#111111", backgroundColor: "#ffffff" });
+    assert.equal(intocado.pages.find((p) => p.id === "index").sections[0].settings.title, "Nossas Coleções");
+
+    /* e a MARCA passa a ser dona do tema, para o rodapé parar de dizer o nome
+       do tema de origem: era o "© 2026, Dawn" na loja do cliente */
+    const { theme: comMarca } = aplicarMarcaNoTema(base, { name: "Aurora Wear", idioma: "en", primaryColor: "#111111", backgroundColor: "#ffffff" });
+    assert.equal(comMarca.orbisLoja?.nome, "Aurora Wear");
+    assert.equal(comMarca.orbisLoja?.slug, "aurora-wear");
+  } finally {
+    await server.close();
+  }
+});
+
+test("o distribuidor não repete o mesmo título em duas seções iguais", async () => {
+  const { distribuidorDeTextos } = await import("../lib/textos-do-tema.mjs");
+  const dar = distribuidorDeTextos("en");
+  /* a home tem DUAS `featured-collection`; as duas com o mesmo nome seriam duas
+     vitrines chamadas a mesma coisa */
+  assert.equal(dar("featured-collection.title"), "You may also like");
+  assert.equal(dar("featured-collection.title"), "Special offers");
+  /* acabando a lista, a última repete: repetir é feio, ficar em português é pior */
+  const ultimo = dar("featured-collection.title");
+  assert.equal(dar("featured-collection.title"), ultimo);
+  /* chave que ninguém traduziu devolve nada, e o texto do tema fica como veio */
+  assert.equal(dar("secao-desconhecida.title"), undefined);
+  /* português não tem tabela: tema daqui já fala a língua da loja */
+  assert.equal(distribuidorDeTextos("pt-BR")("collection-list.title"), undefined);
+});
+
+test("os marcadores do tema atravessam a tradução inteiros", async () => {
+  const { CONTEUDO_DE_TEMA } = await import("../lib/textos-do-tema.mjs");
+  /* `[amount]`, `[timer]` e `[amount_saved]` são preenchidos pelo tema; um
+     marcador traduzido vira texto morto na tela do comprador */
+  const chavesEn = Object.keys(CONTEUDO_DE_TEMA.en).sort();
+  assert.deepEqual(chavesEn, Object.keys(CONTEUDO_DE_TEMA.es).sort(), "as duas tabelas divergiram");
+  for (const [codigo, tabela] of Object.entries(CONTEUDO_DE_TEMA)) {
+    for (const [chave, lista] of Object.entries(tabela)) {
+      for (const texto of lista) {
+        for (const marcador of ["[amount]", "[timer]", "[amount_saved]"]) {
+          const noPt = chave.includes("progress_message") && marcador === "[amount]"
+            || chave.includes("timer_text") && marcador === "[timer]"
+            || chave.includes("_caption") && marcador === "[amount_saved]";
+          if (noPt) assert.ok(texto.includes(marcador), `${codigo}/${chave} perdeu ${marcador}`);
+        }
+      }
+    }
+  }
+});

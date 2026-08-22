@@ -450,6 +450,27 @@ export function extractShopifyThemePackage(bytes: Uint8Array, sourceFile: string
   return { theme, images: assets };
 }
 
+/**
+ * EM QUE LÍNGUA o próprio tema está escrito.
+ *
+ * O tema não declara isso em campo nenhum, mas declara no nome do arquivo de
+ * tradução PADRÃO: `locales/pt-BR.default.json` é um tema que veio de uma loja
+ * brasileira, e o texto que o lojista digitou nos settings dele está em
+ * português. É esse fato que autoriza `aplicarMarcaNoTema` a reescrever
+ * "Nossas Coleções" numa loja em inglês — e a NÃO encostar em nada quando a
+ * loja fala a mesma língua do tema.
+ *
+ * Sem arquivo padrão, devolve vazio: quem chama trata isso como "não sei", que
+ * é diferente de "é português".
+ */
+export function idiomaDoConteudoDoTema(theme: Pick<ShopifyThemeImport, "sourceFiles">): string {
+  for (const arquivo of theme.sourceFiles ?? []) {
+    const nome = /^locales\/([^/]+)\.default\.json$/.exec(arquivo.path)?.[1];
+    if (nome) return nome;
+  }
+  return "";
+}
+
 /** Onde um tema entregue pela Orbis guarda de que loja ele é. */
 export const ARQUIVO_DA_LOJA = "assets/orbis-loja.json";
 

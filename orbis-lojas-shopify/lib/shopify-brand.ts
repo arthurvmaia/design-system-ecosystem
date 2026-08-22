@@ -24,9 +24,11 @@
  * O tema de origem não é tocado: a função devolve uma cópia. Puro e testável.
  */
 import { misturar, nichoPorId, textoSobre } from "./marca-generator.mjs";
+import { idiomaDoConteudoDoTema } from "./shopify-theme";
 import type { ShopifySettingDefinition, ShopifyThemeImport, ShopifyValue } from "./shopify-theme";
 import { sortearVitrine } from "./sorteio-de-vitrine";
-import { idiomaDe } from "./idiomas.mjs";
+import { IDIOMA_PADRAO, idiomaDe } from "./idiomas.mjs";
+import { distribuidorDeTextos } from "./textos-do-tema.mjs";
 import { nichoNoIdioma } from "./nichos-textos.mjs";
 
 export type MarcaAplicavel = {
@@ -326,6 +328,24 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
   const definicoes = achatar(theme.globalGroups.flatMap((grupo) => grupo.settings));
   const valores = theme.globalValues;
   /**
+   * O TEXTO QUE O TEMA JÁ TRAZIA, quando a loja fala outra língua.
+   *
+   * `aplicarMarcaNoTema` só escreve onde o tema não escreveu nada de próprio, e
+   * está certo: sobrescrever o que o lojista digitou é apagar decisão dele. Mas
+   * numa loja em inglês o que o lojista de ORIGEM digitou em português não é
+   * decisão a preservar — é texto na língua errada, e foi o que o cliente viu:
+   * as coleções em inglês e "Nossas Coleções" por cima delas.
+   *
+   * O tema declara a própria língua no nome do arquivo de tradução padrão. Só
+   * quando ela DIFERE da língua da loja é que este distribuidor devolve alguma
+   * coisa; loja portuguesa sobre tema português não encosta em nada.
+   */
+  const idiomaDaLoja = idiomaDe(marca.idioma ?? IDIOMA_PADRAO);
+  const idiomaDoTema = idiomaDoConteudoDoTema(theme);
+  const traduzirDoTema = idiomaDoTema && idiomaDe(idiomaDoTema) !== idiomaDaLoja
+    ? distribuidorDeTextos(idiomaDaLoja)
+    : () => undefined;
+  /**
    * Só imagem de verdade entra em setting de tema.
    *
    * O `image_picker` da Shopify espera uma referência de arquivo. Gravar um
@@ -396,6 +416,14 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
 
   /* 2 e 3. cores soltas e fontes, pelo tipo declarado no schema */
   for (const definicao of definicoes) {
+    /* o conteúdo próprio do tema, traduzido, vem antes de tudo: ele não disputa
+       com a marca, ele só troca de língua o que já estava escrito */
+    const doTemaGlobal = traduzirDoTema(`global.${definicao.id}`);
+    if (doTemaGlobal !== undefined && typeof valores[definicao.id] === "string") {
+      valores[definicao.id] = doTemaGlobal;
+      marcou(definicao.id);
+      continue;
+    }
     if (definicao.type === "color") {
       const papel = papelDaCor(definicao);
       if (!papel) continue;
@@ -481,6 +509,19 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
           ? definicoesDaSecao
           : achatar(schema?.blocks?.find((bloco) => bloco.type === alvo.type)?.settings ?? []);
         for (const definicao of definicoesDoAlvo) {
+          /* mesma regra das globais: o texto do tema muda de língua, e só isso.
+             A chave leva o tipo do BLOCO quando o alvo é bloco, porque
+             `newsletter>heading` e `footer>link_list` são coisas diferentes com
+             o mesmo `heading` dentro. */
+          const chaveDoTema = alvo === secao
+            ? `${secao.type}.${definicao.id}`
+            : `${secao.type}>${alvo.type}.${definicao.id}`;
+          const doTema = traduzirDoTema(chaveDoTema);
+          if (doTema !== undefined && typeof alvo.settings[definicao.id] === "string") {
+            alvo.settings[definicao.id] = doTema;
+            marcou(`${secao.type}.${definicao.id}`);
+            continue;
+          }
           const pista = `${definicao.id} ${definicao.label ?? ""}`;
           const atual = alvo.settings[definicao.id];
           if (definicao.type === "color") {
@@ -818,6 +859,18 @@ export function aplicarMarcaNoTema(original: ShopifyThemeImport, marca: MarcaApl
    * vaga — mover isso seria passar por cima de uma decisão que tem autor.
    */
   const sorteada = sortearVitrine(theme, marca.semente?.trim() || marca.name, { naoMover: SECAO_DE_BANNER });
+  /**
+   * A LOJA passa a ser DESTA marca, e o tema grava isso.
+   *
+   * O tema escreve `{{ shop.name }}` no rodape e no cabecalho sem logo, e sem
+   * este campo o render caia no nome do TEMA: a loja de roupas do cliente
+   * fechava com "© 2026, Dawn". O pedido ja gravava `orbisLoja` no fim, mas a
+   * PREVIA nao passa por ele — entao a pessoa via "Dawn" a geracao inteira e o
+   * nome certo so no ZIP. Gravar aqui e o que faz as duas telas concordarem.
+   */
+  if (marca.name?.trim()) {
+    sorteada.theme.orbisLoja = { nome: marca.name.trim().slice(0, 80), slug: handleDeColecao(marca.name).slice(0, 56) || "loja" };
+  }
   /* o idioma viaja GRAVADO no tema, junto do nicho e das capas: e o que faz a
      loja continuar na lingua dela ao ser reaberta ou reimportada */
   if (marca.idioma) {

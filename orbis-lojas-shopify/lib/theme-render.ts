@@ -962,7 +962,17 @@ export async function renderThemePage({ theme, files, pageId, assetBase, cartIte
   const globals: Record<string, unknown> = {
     settings,
     shop: {
-      name: theme.themeName.replace(/\s*\(.*\)$/, ""), locale: paisEMoeda.locale, currency: paisEMoeda.moeda.iso,
+      /**
+       * O NOME DA LOJA é o da MARCA, e só cai no nome do tema quando não há loja.
+       *
+       * O tema escreve `{{ shop.name }}` no rodapé e no cabeçalho sem logo, e
+       * aqui isso vinha do nome do TEMA: a loja de roupas do cliente fechava
+       * com "© 2026, Dawn". O tema entregue carrega o nome próprio da loja
+       * (`orbisLoja`) desde que ela passou a viajar no marcador; usá-lo é só
+       * ler o que já está lá. Tema importado cru não tem loja, e aí o nome do
+       * tema continua sendo a melhor resposta disponível.
+       */
+      name: (theme.orbisLoja?.nome ?? theme.themeName).replace(/\s*\(.*\)$/, ""), locale: paisEMoeda.locale, currency: paisEMoeda.moeda.iso,
       money_format: formatoDeDinheiro(cod), money_with_currency_format: `${formatoDeDinheiro(cod)} ${paisEMoeda.moeda.iso}`,
       url: "", secure_url: "", domain: "minha-loja.exemplo", permanent_domain: "minha-loja.exemplo",
       email: "contato@exemplo.com", description: "", products_count: loja.produtos.length, collections_count: 3,
